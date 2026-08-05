@@ -1,7 +1,9 @@
 import { AppNav } from "../../components/AppNav";
+import { InviteForm } from "../../components/InviteForm";
 import type { PickRow, ProfileRow } from "../../lib/db-types";
 import { fetchCurrentSeasonWeek, fetchProfiles } from "../../lib/queries";
 import { createClient } from "../../lib/supabase/server";
+import { createServiceClient } from "../../lib/supabase/service";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,26 @@ export default async function CrewPage() {
   const supabase = await createClient();
   const { seasonId } = await fetchCurrentSeasonWeek(supabase);
   const profiles = await fetchProfiles(supabase);
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const me = profiles.find((p) => p.id === user?.id);
+  let invited: Array<{ email: string; joined: boolean }> = [];
+  if (me?.is_admin) {
+    const service = createServiceClient();
+    const [{ data: allowlist }, { data: joinedUsers }] = await Promise.all([
+      service.from("invite_allowlist").select("email").order("created_at"),
+      service.auth.admin.listUsers({ perPage: 100 }),
+    ]);
+    const joinedEmails = new Set(
+      (joinedUsers?.users ?? []).map((u) => u.email?.toLowerCase()).filter(Boolean),
+    );
+    invited = (allowlist ?? []).map((a: { email: string }) => ({
+      email: a.email,
+      joined: joinedEmails.has(a.email.toLowerCase()),
+    }));
+  }
 
   // RLS limits visible picks to own + post-kickoff; graded picks are all post-kickoff.
   const { data } = await supabase
@@ -107,6 +129,29 @@ export default async function CrewPage() {
         <p className="mt-3 text-xs text-chalk/50">
           Graded picks only. Units at −110; CLV = your number vs the closing consensus.
         </p>
+
+        {me?.is_admin && (
+          <section className="mt-8 rounded border border-chalk/10 bg-surface p-4">
+            <h2 className="mb-1 text-sm text-gold">Invite the crew</h2>
+            <p className="mb-3 text-xs text-chalk/60">
+              Commissioner only. Enter an email, get a one-tap sign-in link to text them — no
+              email delivery needed.
+            </p>
+            <InviteForm />
+            {invited.length > 0 && (
+              <ul className="mt-4 flex flex-col gap-1">
+                {invited.map((i) => (
+                  <li key={i.email} className="stat flex justify-between text-xs">
+                    <span className="text-chalk/80">{i.email}</span>
+                    <span className={i.joined ? "text-gold" : "text-chalk/40"}>
+                      {i.joined ? "joined" : "invited"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
       </main>
     </>
   );
