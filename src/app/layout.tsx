@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Archivo, Graduate, IBM_Plex_Mono } from "next/font/google";
+import { Archivo, Barlow_Condensed, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
 const archivo = Archivo({
@@ -7,9 +7,9 @@ const archivo = Archivo({
   subsets: ["latin"],
 });
 
-const graduate = Graduate({
+const barlow = Barlow_Condensed({
   variable: "--font-display",
-  weight: "400",
+  weight: ["500", "600", "700"],
   subsets: ["latin"],
 });
 
@@ -30,16 +30,26 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#08251C",
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#0B0D12" },
+    { media: "(prefers-color-scheme: light)", color: "#F2F3F6" },
+  ],
 };
+
+/* Runs before paint so a saved light-mode choice never flashes dark. */
+const themeInit = `(function(){try{if(localStorage.getItem("slate-theme")==="light")document.documentElement.dataset.theme="light"}catch(e){}})()`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${archivo.variable} ${graduate.variable} ${plexMono.variable} h-full antialiased`}
+      suppressHydrationWarning
+      className={`${archivo.variable} ${barlow.variable} ${plexMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <script dangerouslySetInnerHTML={{ __html: themeInit }} />
+        {children}
+      </body>
     </html>
   );
 }

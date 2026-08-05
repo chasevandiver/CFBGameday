@@ -1,0 +1,485 @@
+"use client";
+
+import { ChevronDown, RefreshCw, Search, SearchX } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useStarred, useViewerTz } from "../../lib/client-store";
+import { clockTime, dayKey, dayTabLabel, DEFAULT_TZ, tzLabel } from "../../lib/kick";
+import {
+  heroScore,
+  isDead,
+  isFinal,
+  isLive,
+  pickHero,
+  weekModelRecord,
+  type GameView,
+  type SlateData,
+} from "../../lib/slate";
+import { GameCard } from "./GameCard";
+import { HeroCard } from "./HeroCard";
+import { SkeletonCard } from "./SkeletonCard";
+
+const SORTS = [
+  { key: "kickoff", label: "Kickoff" },
+  { key: "spread-big", label: "Biggest spread" },
+  { key: "spread-close", label: "Closest spread" },
+  { key: "total", label: "Highest total" },
+  { key: "edge", label: "Best edge" },
+] as const;
+type SortKey = (typeof SORTS)[number]["key"];
+
+const SPREAD_RANGES = [
+  { key: "any", label: "Any spread", max: Infinity },
+  { key: "3", label: "≤ 3", max: 3 },
+  { key: "7", label: "≤ 7", max: 7 },
+  { key: "14", label: "≤ 14", max: 14 },
+] as const;
+
+export function SlateView({ initial, currentWeek }: { initial: SlateData; currentWeek: number }) {
+  const [data, setData] = useState<SlateData>(initial);
+  const [loading, setLoading] = useState(false);
+  const tz = useViewerTz(DEFAULT_TZ);
+  const [starred, toggleStar] = useStarred();
+  const [day, setDay] = useState<string>("all");
+  const [conference, setConference] = useState("all");
+  const [network, setNetwork] = useState("all");
+  const [spreadRange, setSpreadRange] = useState<string>("any");
+  const [rankedOnly, setRankedOnly] = useState(false);
+  const [myPicksOnly, setMyPicksOnly] = useState(false);
+  const [sort, setSort] = useState<SortKey>("kickoff");
+  const [query, setQuery] = useState("");
+
+  /* ---- data refresh ---------------------------------------------------- */
+
+  const week = data.week;
+  // tracks the week the user is looking at so stale fetches never clobber it;
+  // updated only in changeWeek (render never mutates it)
+  const weekRef = useRef(initial.week);
+
+  const refresh = useCallback(async (targetWeek: number, showSkeleton: boolean) => {
+    if (showSkeleton) setLoading(true);
+    try {
+      const res = await fetch(`/api/slate?week=${targetWeek}`, { cache: "no-store" });
+      if (res.ok) {
+        const next = (await res.json()) as SlateData;
+        if (next.week === weekRef.current) setData(next);
+      }
+    } catch {
+      /* transient network error — next poll retries */
+    } finally {
+      if (showSkeleton) setLoading(false);
+    }
+  }, []);
+
+  const anyLive = data.games.some(isLive);
+  useEffect(() => {
+    const ms = anyLive ? 30_000 : 90_000;
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") void refresh(weekRef.current, false);
+    }, ms);
+    return () => clearInterval(id);
+  }, [anyLive, refresh]);
+
+  const changeWeek = (w: number) => {
+    if (w === week) return;
+    weekRef.current = w;
+    setData((d) => ({ ...d, week: w, games: [] }));
+    setDay("all");
+    window.history.replaceState(null, "", w === currentWeek ? "/slate" : `/slate?week=${w}`);
+    void refresh(w, true);
+  };
+
+  /* ---- derived --------------------------------------------------------- */
+
+  const games = data.games;
+  const liveCount = games.filter(isLive).length;
+
+  const dayTabs = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const g of games) {
+      if (!g.startTs) continue;
+      const k = dayKey(g.startTs, tz);
+      if (!seen.has(k)) seen.set(k, dayTabLabel(g.startTs, tz));
+    }
+    return [...seen.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [games, tz]);
+
+  const conferences = useMemo(
+    () =>
+      [...new Set(games.flatMap((g) => [g.home.conference, g.away.conference]))]
+        .filter((c): c is string => !!c)
+        .sort(),
+    [games],
+  );
+  const networks = useMemo(
+    () => [...new Set(games.map((g) => g.tv).filter((t): t is string => !!t))].sort(),
+    [games],
+  );
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const maxSpread = SPREAD_RANGES.find((r) => r.key === spreadRange)?.max ?? Infinity;
+    return games.filter((g) => {
+      if (day !== "all" && (!g.startTs || dayKey(g.startTs, tz) !== day)) return false;
+      if (conference !== "all" && g.home.conference !== conference && g.away.conference !== conference)
+        return false;
+      if (network !== "all" && g.tv !== network) return false;
+      if (rankedOnly && !isRankedMatchup(g)) return false;
+      if (myPicksOnly && !g.myPick) return false;
+      if (
+        maxSpread !== Infinity &&
+        (g.lines.spread === null || Math.abs(g.lines.spread) > maxSpread)
+      )
+        return false;
+      if (
+        q &&
+        !g.home.school.toLowerCase().includes(q) &&
+        !g.away.school.toLowerCase().includes(q) &&
+        !g.home.abbr.toLowerCase().includes(q) &&
+        !g.away.abbr.toLowerCase().includes(q)
+      )
+        return false;
+      return true;
+    });
+  }, [games, day, conference, network, rankedOnly, myPicksOnly, spreadRange, query, tz]);
+
+  const sorted = useMemo(() => {
+    const starredSet = new Set(starred);
+    const isPinned = (g: GameView) => starredSet.has(g.home.id) || starredSet.has(g.away.id);
+    const cmp = (a: GameView, b: GameView): number => {
+      switch (sort) {
+        case "spread-big":
+          return absOr(b.lines.spread, -1) - absOr(a.lines.spread, -1);
+        case "spread-close":
+          return absOr(a.lines.spread, Infinity) - absOr(b.lines.spread, Infinity);
+        case "total":
+          return (b.lines.total ?? -1) - (a.lines.total ?? -1);
+        case "edge":
+          return absOr(b.prediction?.edge ?? null, -1) - absOr(a.prediction?.edge ?? null, -1);
+        default:
+          return (a.startTs ?? "9999").localeCompare(b.startTs ?? "9999");
+      }
+    };
+    return [...filtered].sort((a, b) => {
+      const pin = Number(isPinned(b)) - Number(isPinned(a));
+      if (pin !== 0) return pin;
+      // dead games sink
+      const dead = Number(isDead(a)) - Number(isDead(b));
+      if (dead !== 0) return dead;
+      return cmp(a, b);
+    });
+  }, [filtered, sort, starred]);
+
+  const noFilters =
+    day === "all" &&
+    conference === "all" &&
+    network === "all" &&
+    !rankedOnly &&
+    !myPicksOnly &&
+    spreadRange === "any" &&
+    query.trim() === "";
+
+  const hero = useMemo(
+    () => (sort === "kickoff" && noFilters ? pickHero(sorted) : null),
+    [sorted, sort, noFilters],
+  );
+  const gridGames = hero ? sorted.filter((g) => g.id !== hero.id) : sorted;
+
+  const rankedCount = games.filter(isRankedMatchup).length;
+  const record = weekModelRecord(games);
+  const biggest = useMemo(() => pickHero(games), [games]);
+  const finals = games.filter(isFinal).length;
+
+  /* ---- render ---------------------------------------------------------- */
+
+  return (
+    <>
+      {/* sticky control bar */}
+      <div className="sticky top-[49px] z-10 -mx-4 border-b border-chalk/10 bg-background/85 px-4 backdrop-blur-md">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 py-2.5">
+          <WeekSelect week={week} currentWeek={currentWeek} onChange={changeWeek} />
+
+          <div className="flex items-center gap-1" role="tablist" aria-label="Day">
+            <DayTab label="All" active={day === "all"} onClick={() => setDay("all")} />
+            {dayTabs.map(([k, label]) => (
+              <DayTab key={k} label={label} active={day === k} onClick={() => setDay(k)} />
+            ))}
+          </div>
+
+          <div className="ml-auto flex items-center gap-3">
+            {liveCount > 0 && (
+              <span className="stat flex items-center gap-1.5 text-xs font-semibold text-live">
+                <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-live" />
+                {liveCount} live
+              </span>
+            )}
+            <span className="stat hidden items-center gap-1 text-[10.5px] text-chalk/35 sm:flex">
+              <RefreshCw size={10} aria-hidden className={loading ? "animate-spin" : ""} />
+              {clockTime(data.fetchedAt, tz)} {tzLabel(tz)}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* summary strip */}
+      <div className="mx-auto mt-4 max-w-7xl">
+        <div className="scroll-thin flex items-stretch gap-2 overflow-x-auto pb-1">
+          <SummaryStat label="Games" value={String(games.length)} />
+          <SummaryStat label="Ranked" value={String(rankedCount)} />
+          <SummaryStat label="Finals" value={`${finals}/${games.length}`} />
+          {record.wins + record.losses + record.pushes > 0 && (
+            <SummaryStat
+              label="Model ATS"
+              value={`${record.wins}-${record.losses}${record.pushes ? `-${record.pushes}` : ""}`}
+              tone={record.wins >= record.losses ? "win" : "loss"}
+            />
+          )}
+          {biggest && (
+            <SummaryStat
+              label="Biggest game"
+              value={`${biggest.away.abbr} @ ${biggest.home.abbr}`}
+            />
+          )}
+        </div>
+
+        {/* filters */}
+        <div className="scroll-thin mt-3 flex items-center gap-2 overflow-x-auto pb-1">
+          <label className="relative shrink-0">
+            <Search
+              size={13}
+              aria-hidden
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-dim"
+            />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search teams"
+              aria-label="Search by team name"
+              className="h-8 w-40 rounded-lg border border-chalk/12 bg-surface pl-8 pr-2 text-sm text-chalk placeholder:text-chalk/35 focus:border-accent/60 focus:outline-none"
+            />
+          </label>
+          <FilterSelect
+            value={conference}
+            onChange={setConference}
+            options={[["all", "All conferences"], ...conferences.map((c): [string, string] => [c, c])]}
+          />
+          <FilterSelect
+            value={network}
+            onChange={setNetwork}
+            options={[["all", "All networks"], ...networks.map((n): [string, string] => [n, n])]}
+          />
+          <FilterSelect
+            value={spreadRange}
+            onChange={setSpreadRange}
+            options={SPREAD_RANGES.map((r): [string, string] => [r.key, r.label])}
+          />
+          <FilterToggle label="Ranked" active={rankedOnly} onClick={() => setRankedOnly(!rankedOnly)} />
+          <FilterToggle
+            label="My picks"
+            active={myPicksOnly}
+            onClick={() => setMyPicksOnly(!myPicksOnly)}
+          />
+          <span className="mx-1 h-5 w-px shrink-0 bg-chalk/10" aria-hidden />
+          <FilterSelect
+            value={sort}
+            onChange={(v) => setSort(v as SortKey)}
+            options={SORTS.map((s): [string, string] => [s.key, s.label])}
+            label="Sort"
+          />
+        </div>
+      </div>
+
+      {/* slate */}
+      <div className="mx-auto mt-4 max-w-7xl pb-12">
+        {loading ? (
+          <SkeletonSlate />
+        ) : games.length === 0 ? (
+          <EmptyState
+            title={`No games loaded for week ${week} yet`}
+            hint="The slate fills in when data ingestion runs."
+          />
+        ) : sorted.length === 0 ? (
+          <EmptyState
+            title="No games match your filters"
+            hint="Loosen a filter or clear the search to see the rest of the slate."
+          />
+        ) : (
+          <>
+            {hero && heroScore(hero) > 0 && (
+              <div className="mb-4">
+                <HeroCard game={hero} tz={tz} />
+              </div>
+            )}
+            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              {gridGames.map((g, i) => (
+                <GameCard key={g.id} game={g} tz={tz} starred={starred} onStar={toggleStar} index={i} />
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
+/* ---- little pieces ----------------------------------------------------- */
+
+function isRankedMatchup(g: GameView): boolean {
+  return (
+    g.home.rank !== null && g.home.rank <= 25 && g.away.rank !== null && g.away.rank <= 25
+  );
+}
+
+function absOr(v: number | null, fallback: number): number {
+  return v === null ? fallback : Math.abs(v);
+}
+
+function WeekSelect({
+  week,
+  currentWeek,
+  onChange,
+}: {
+  week: number;
+  currentWeek: number;
+  onChange: (w: number) => void;
+}) {
+  return (
+    <label className="relative shrink-0">
+      <span className="sr-only">Week</span>
+      <select
+        value={week}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="display h-8 appearance-none rounded-lg border border-chalk/12 bg-surface pl-3 pr-8 text-base text-chalk focus:border-accent/60 focus:outline-none"
+      >
+        {Array.from({ length: 15 }, (_, i) => i + 1).map((w) => (
+          <option key={w} value={w}>
+            Week {w}
+            {w === currentWeek ? " ·" : ""}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        size={14}
+        aria-hidden
+        className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-dim"
+      />
+    </label>
+  );
+}
+
+function DayTab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`rounded-lg px-2.5 py-1 text-sm font-medium transition-colors ${
+        active ? "bg-accent text-accent-ink" : "text-dim hover:bg-surface hover:text-chalk"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function SummaryStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "win" | "loss";
+}) {
+  return (
+    <div className="card flex shrink-0 flex-col justify-center px-3.5 py-2">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-chalk/40">
+        {label}
+      </span>
+      <span
+        className={`stat text-sm font-semibold leading-tight ${
+          tone === "win" ? "text-win" : tone === "loss" ? "text-loss" : "text-chalk"
+        }`}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function FilterSelect({
+  value,
+  onChange,
+  options,
+  label,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: Array<[string, string]>;
+  label?: string;
+}) {
+  return (
+    <label className="relative shrink-0">
+      {label && <span className="sr-only">{label}</span>}
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-8 appearance-none rounded-lg border border-chalk/12 bg-surface pl-3 pr-7 text-xs font-medium text-chalk focus:border-accent/60 focus:outline-none"
+      >
+        {options.map(([v, l]) => (
+          <option key={v} value={v}>
+            {label ? `${label}: ${l}` : l}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        size={12}
+        aria-hidden
+        className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-dim"
+      />
+    </label>
+  );
+}
+
+function FilterToggle({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      className={`h-8 shrink-0 rounded-lg border px-3 text-xs font-medium transition-colors ${
+        active
+          ? "border-accent/60 bg-accent/15 text-accent"
+          : "border-chalk/12 bg-surface text-dim hover:text-chalk"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function EmptyState({ title, hint }: { title: string; hint: string }) {
+  return (
+    <div className="card flex flex-col items-center gap-2 px-6 py-14 text-center">
+      <SearchX size={28} aria-hidden className="text-chalk/25" />
+      <p className="display text-lg text-chalk/80">{title}</p>
+      <p className="max-w-sm text-sm text-dim">{hint}</p>
+    </div>
+  );
+}
+
+export function SkeletonSlate({ cards = 9 }: { cards?: number }) {
+  return (
+    <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+      {Array.from({ length: cards }, (_, i) => (
+        <SkeletonCard key={i} />
+      ))}
+    </div>
+  );
+}

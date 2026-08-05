@@ -1,7 +1,12 @@
+import { ArrowLeft, CloudRain, Thermometer, Tv, Wind } from "lucide-react";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppNav } from "../../../components/AppNav";
-import { ConsensusBadge, EdgeBadge, fmtPct, fmtSpread } from "../../../components/badges";
 import { PickButtons } from "../../../components/PickButtons";
+import { ConsensusChip, EdgeChip, LiveBadge } from "../../../components/slate/chips";
+import { Sparkline } from "../../../components/slate/Sparkline";
+import { TeamMark } from "../../../components/slate/TeamMark";
+import { WinProbBar } from "../../../components/slate/WinProbBar";
 import type {
   GameRow,
   LineSnapshotRow,
@@ -10,11 +15,27 @@ import type {
   ProfileRow,
   TeamRow,
 } from "../../../lib/db-types";
-import { consensusFromSnapshots } from "../../../lib/queries";
+import { kickDateLong, kickParts, periodLabel, DEFAULT_TZ } from "../../../lib/kick";
+import { consensusFromSnapshots, consensusHistory } from "../../../lib/queries";
+import { fmtMoneyline, fmtPct, fmtSpread, fmtTotal, type TeamView } from "../../../lib/slate";
 import { createClient } from "../../../lib/supabase/server";
-import { kickDate, kickDayTime } from "../../../lib/time";
 
 export const dynamic = "force-dynamic";
+
+function toView(t: TeamRow): TeamView {
+  return {
+    id: t.id,
+    school: t.school,
+    abbr: t.abbreviation ?? t.school.replace(/[^A-Za-z]/g, "").slice(0, 4).toUpperCase(),
+    mascot: t.mascot,
+    conference: t.conference,
+    color: t.color,
+    altColor: t.alt_color,
+    logo: t.logo_url,
+    rank: null,
+    record: null,
+  };
+}
 
 export default async function GamePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -48,12 +69,15 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   ]);
 
   const teams = new Map(((teamsRes.data ?? []) as TeamRow[]).map((t) => [t.id, t]));
-  const home = teams.get(game.home_team_id);
-  const away = teams.get(game.away_team_id);
-  if (!home || !away) notFound();
+  const homeRow = teams.get(game.home_team_id);
+  const awayRow = teams.get(game.away_team_id);
+  if (!homeRow || !awayRow) notFound();
+  const home = toView(homeRow);
+  const away = toView(awayRow);
 
   const snapshots = (linesRes.data ?? []) as LineSnapshotRow[];
   const consensus = consensusFromSnapshots(snapshots);
+  const history = consensusHistory(snapshots);
   const predictions = (predRes.data ?? []) as PredictionRow[];
   const prediction = predictions.find((p) => p.frozen) ?? predictions[0] ?? null;
   const picks = (picksRes.data ?? []) as PickRow[]; // RLS: others' picks only post-kickoff
@@ -68,90 +92,232 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   const myPick = user ? (picks.find((p) => p.user_id === user.id) ?? null) : null;
   const crewPicks = picks.filter((p) => p.user_id !== user?.id);
 
+  const live = game.status === "in_progress";
+  const final = game.status === "final";
+  const showScore = live || final;
+  const tz = DEFAULT_TZ;
+  const homeColor = home.color ?? "#5b6472";
+  const awayColor = away.color ?? "#5b6472";
+  const homeLost =
+    final && game.home_points !== null && game.away_points !== null && game.home_points < game.away_points;
+  const awayLost =
+    final && game.home_points !== null && game.away_points !== null && game.away_points < game.home_points;
+
+  const modelEdge = prediction?.edge === null || prediction === null ? null : Number(prediction.edge);
+
   return (
     <>
       <AppNav />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
-        {/* Header */}
-        <section className="mb-6 rounded border border-chalk/10 bg-surface p-4">
-          <div className="mb-1 flex items-center justify-between text-xs text-chalk/60">
-            <span className="stat">
-              {game.start_ts ? `${kickDate(game.start_ts)} · ${kickDayTime(game.start_ts)} CT` : "TBD"}
-            </span>
-            <span className="stat">{game.tv ?? ""}</span>
-          </div>
-          <div className="flex items-center justify-between gap-4">
-            <TeamBlock team={away} points={game.away_points} status={game.status} />
-            <span className="text-chalk/40">@</span>
-            <TeamBlock team={home} points={game.home_points} status={game.status} right />
-          </div>
-          {weather && (weather.wind_mph ?? 0) > 0 && (
-            <p className="stat mt-2 text-xs text-chalk/60">
-              {weather.temp_f !== null ? `${Math.round(weather.temp_f)}°F` : ""}
-              {weather.wind_mph !== null ? ` · wind ${Math.round(weather.wind_mph)} mph` : ""}
-              {(weather.wind_mph ?? 0) > 15 ? " ⚠ totals" : ""}
-              {weather.precip_prob !== null ? ` · ${Math.round(weather.precip_prob)}% precip` : ""}
-            </p>
-          )}
-        </section>
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-5">
+        <Link
+          href="/slate"
+          className="mb-3 inline-flex items-center gap-1.5 text-xs font-medium text-dim transition-colors hover:text-chalk"
+        >
+          <ArrowLeft size={13} aria-hidden /> Back to slate
+        </Link>
 
-        {/* Numbers row */}
-        <section className="mb-6 overflow-x-auto">
-          <table className="stats w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-chalk/20 text-left text-xs uppercase text-chalk/50">
-                <th className="py-1 pr-3">Model</th>
-                <th className="py-1 pr-3">Vegas</th>
-                <th className="py-1 pr-3">Open</th>
-                <th className="py-1 pr-3">Win %</th>
-                <th className="py-1 pr-3">Cover %</th>
-                <th className="py-1">Flags</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td className="py-2 pr-3">
-                  {prediction ? `${home.abbreviation ?? "Home"} ${fmtSpread(prediction.spread)}` : "–"}
-                </td>
-                <td className="py-2 pr-3">{fmtSpread(consensus.spread)}</td>
-                <td className="py-2 pr-3">{fmtSpread(consensus.open)}</td>
-                <td className="py-2 pr-3">{fmtPct(prediction?.home_win_prob ?? null)}</td>
-                <td className="py-2 pr-3">{fmtPct(prediction?.cover_prob ?? null)}</td>
-                <td className="py-2">
-                  <span className="flex gap-1">
-                    <EdgeBadge flag={prediction?.edge_flag ?? null} />
-                    <ConsensusBadge on={prediction?.consensus_flag ?? false} />
+        {/* Broadcast header */}
+        <section className={`card relative overflow-hidden ${live ? "card-live" : ""}`}>
+          <div
+            aria-hidden
+            className="absolute inset-0 opacity-[0.16]"
+            style={{
+              background: `linear-gradient(105deg, ${awayColor} 0%, ${awayColor} 38%, transparent 50%, ${homeColor} 62%, ${homeColor} 100%)`,
+            }}
+          />
+          <div aria-hidden className="absolute inset-x-0 top-0 flex h-1">
+            <span className="flex-1" style={{ background: awayColor }} />
+            <span className="flex-1" style={{ background: homeColor }} />
+          </div>
+
+          <div className="relative px-4 py-4 sm:px-6">
+            <div className="flex items-center justify-between gap-2 text-xs text-dim">
+              <span className="stat">
+                {live ? (
+                  <span className="flex items-center gap-2">
+                    <LiveBadge />
+                    <span className="font-semibold text-chalk">
+                      {periodLabel(game.current_period)}
+                      {game.current_clock ? ` · ${game.current_clock}` : ""}
+                    </span>
                   </span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                ) : final ? (
+                  <span className="font-semibold uppercase">
+                    Final
+                    {game.current_period !== null && game.current_period > 4
+                      ? ` / ${periodLabel(game.current_period)}`
+                      : ""}
+                  </span>
+                ) : game.start_ts ? (
+                  `${kickDateLong(game.start_ts, tz)} · ${kickParts(game.start_ts, tz).time} CT`
+                ) : (
+                  "Kickoff TBD"
+                )}
+              </span>
+              {game.tv && (
+                <span className="stat flex items-center gap-1">
+                  <Tv size={12} aria-hidden />
+                  {game.tv}
+                </span>
+              )}
+            </div>
+
+            <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6">
+              <HeaderTeam team={away} points={game.away_points} showScore={showScore} lost={awayLost} align="left" />
+              <span className="scorebug text-lg text-chalk/35">{game.neutral_site ? "vs" : "@"}</span>
+              <HeaderTeam team={home} points={game.home_points} showScore={showScore} lost={homeLost} align="right" />
+            </div>
+
+            {prediction && (
+              <div className="mx-auto mt-4 max-w-md">
+                <WinProbBar
+                  home={home}
+                  away={away}
+                  homeWinProb={Number(prediction.home_win_prob)}
+                  height={7}
+                />
+              </div>
+            )}
+          </div>
         </section>
 
-        {/* Projected score */}
-        {prediction?.home_score !== null && prediction?.away_score !== null && prediction && (
-          <section className="mb-6 rounded border border-chalk/10 bg-surface p-4 text-center">
-            <p className="text-xs uppercase text-chalk/50">Projected</p>
-            <p className="stat mt-1 text-2xl">
-              {home.abbreviation ?? home.school} {Math.round(prediction.home_score!)},{" "}
-              {away.abbreviation ?? away.school} {Math.round(prediction.away_score!)}
-            </p>
-            {prediction.total !== null && consensus.total !== null && (
-              <p className="stat mt-1 text-xs text-chalk/60">
-                model total {Math.round(prediction.total)} vs O/U {consensus.total} →{" "}
-                {prediction.total > consensus.total ? "over lean" : "under lean"}
+        {/* Odds table */}
+        <section className="card mt-4 overflow-hidden">
+          <header className="flex items-center justify-between border-b border-chalk/8 px-4 py-2.5">
+            <h2 className="text-sm text-accent">Market</h2>
+            <span className="flex items-center gap-2 text-dim">
+              {history.length >= 2 && <Sparkline points={history} width={72} height={20} />}
+            </span>
+          </header>
+          <div className="overflow-x-auto">
+            <table className="stats w-full border-collapse text-sm">
+              <thead>
+                <tr className="text-left text-[10.5px] uppercase tracking-wider text-chalk/40">
+                  <th className="py-2 pl-4 pr-3 font-semibold">&nbsp;</th>
+                  <th className="py-2 pr-3 font-semibold">Spread</th>
+                  <th className="py-2 pr-3 font-semibold">Total</th>
+                  <th className="py-2 pr-4 font-semibold">ML</th>
+                </tr>
+              </thead>
+              <tbody>
+                <OddsRow
+                  label={away.abbr}
+                  spread={consensus.spread === null ? null : -consensus.spread}
+                  total={consensus.total}
+                  totalSide="O"
+                  ml={consensus.mlAway}
+                />
+                <OddsRow
+                  label={home.abbr}
+                  spread={consensus.spread}
+                  total={consensus.total}
+                  totalSide="U"
+                  ml={consensus.mlHome}
+                />
+                <tr className="border-t border-chalk/8 text-xs text-dim">
+                  <td className="py-2 pl-4 pr-3">Open</td>
+                  <td className="py-2 pr-3">
+                    {home.abbr} {fmtSpread(consensus.open)}
+                  </td>
+                  <td className="py-2 pr-3">{fmtTotal(consensus.totalOpen)}</td>
+                  <td className="py-2 pr-4">–</td>
+                </tr>
+                {prediction && (
+                  <tr className="border-t border-chalk/8 text-xs">
+                    <td className="py-2 pl-4 pr-3 text-accent">Model</td>
+                    <td className="py-2 pr-3 text-chalk">
+                      {home.abbr} {fmtSpread(Number(prediction.spread))}
+                    </td>
+                    <td className="py-2 pr-3 text-chalk">
+                      {prediction.total === null ? "–" : fmtTotal(Number(prediction.total))}
+                    </td>
+                    <td className="py-2 pr-4 text-chalk">{fmtPct(Number(prediction.home_win_prob))}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* Model projection */}
+        {prediction && (
+          <section className="card mt-4 px-4 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm text-accent">Model projection</h2>
+              <span className="flex gap-1.5">
+                <EdgeChip flag={prediction.edge_flag} edge={modelEdge} />
+                <ConsensusChip on={prediction.consensus_flag} />
+              </span>
+            </div>
+            {prediction.home_score !== null && prediction.away_score !== null && (
+              <p className="scorebug mt-3 text-center text-3xl text-chalk">
+                {home.abbr} {Math.round(Number(prediction.home_score))}
+                <span className="mx-2 text-chalk/30">–</span>
+                {away.abbr} {Math.round(Number(prediction.away_score))}
               </p>
             )}
+            <div className="stat mt-3 grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-4">
+              <ProjStat label="Win prob" value={fmtPct(Number(prediction.home_win_prob))} sub={home.abbr} />
+              <ProjStat
+                label="Cover prob"
+                value={prediction.cover_prob === null ? "–" : fmtPct(Number(prediction.cover_prob))}
+                sub={`vs ${fmtSpread(prediction.vegas_spread === null ? null : Number(prediction.vegas_spread))}`}
+              />
+              <ProjStat
+                label="Model total"
+                value={prediction.total === null ? "–" : fmtTotal(Number(prediction.total))}
+                sub={
+                  prediction.total !== null && consensus.total !== null
+                    ? Number(prediction.total) > consensus.total
+                      ? "over lean"
+                      : "under lean"
+                    : ""
+                }
+              />
+              <ProjStat
+                label="Edge"
+                value={modelEdge === null ? "–" : fmtSpread(modelEdge)}
+                sub="model − market"
+              />
+            </div>
+          </section>
+        )}
+
+        {/* Weather */}
+        {weather && (weather.temp_f !== null || weather.wind_mph !== null) && (
+          <section className="card mt-4 px-4 py-3.5">
+            <h2 className="mb-2 text-sm text-accent">Weather</h2>
+            <div className="stat flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-chalk">
+              {weather.temp_f !== null && (
+                <span className="flex items-center gap-1.5">
+                  <Thermometer size={14} aria-hidden className="text-dim" />
+                  {Math.round(weather.temp_f)}°F
+                </span>
+              )}
+              {weather.wind_mph !== null && (
+                <span className={`flex items-center gap-1.5 ${weather.wind_mph > 15 ? "text-edge" : ""}`}>
+                  <Wind size={14} aria-hidden className={weather.wind_mph > 15 ? "" : "text-dim"} />
+                  {Math.round(weather.wind_mph)} mph
+                  {weather.wind_mph > 15 ? " — totals flag" : ""}
+                </span>
+              )}
+              {weather.precip_prob !== null && (
+                <span className="flex items-center gap-1.5">
+                  <CloudRain size={14} aria-hidden className="text-dim" />
+                  {Math.round(weather.precip_prob)}% precip
+                </span>
+              )}
+            </div>
           </section>
         )}
 
         {/* Pick'em */}
-        <section className="mb-6 rounded border border-chalk/10 bg-surface p-4">
-          <h2 className="mb-3 text-sm text-gold">Your Pick</h2>
+        <section className="card mt-4 px-4 py-4">
+          <h2 className="mb-3 text-sm text-accent">Your pick</h2>
           <PickButtons
             gameId={game.id}
-            homeLabel={home.abbreviation ?? home.school}
-            awayLabel={away.abbreviation ?? away.school}
+            homeLabel={home.abbr}
+            awayLabel={away.abbr}
             currentSpread={consensus.spread}
             myPick={myPick}
             kickoffPassed={kickoffPassed}
@@ -159,21 +325,32 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
         </section>
 
         {/* Crew corner */}
-        <section className="rounded border border-chalk/10 bg-surface p-4">
-          <h2 className="mb-3 text-sm text-gold">Crew Picks</h2>
+        <section className="card mt-4 px-4 py-4">
+          <h2 className="mb-3 text-sm text-accent">Crew picks</h2>
           {!kickoffPassed ? (
-            <p className="text-sm text-chalk/50">Hidden until kickoff.</p>
+            <p className="text-sm text-dim">Hidden until kickoff.</p>
           ) : crewPicks.length === 0 ? (
-            <p className="text-sm text-chalk/50">Nobody else picked this one.</p>
+            <p className="text-sm text-dim">Nobody else picked this one.</p>
           ) : (
             <ul className="flex flex-col gap-1.5">
               {crewPicks.map((p) => (
                 <li key={p.id} className="stat flex justify-between text-sm">
                   <span>{profiles.get(p.user_id)?.display_name ?? "?"}</span>
                   <span>
-                    {p.side === "home" ? (home.abbreviation ?? home.school) : (away.abbreviation ?? away.school)}{" "}
-                    {fmtSpread(p.line_at_pick)}
-                    {p.result && <span className="ml-2 uppercase text-chalk/50">{p.result}</span>}
+                    {p.side === "home" ? home.abbr : away.abbr} {fmtSpread(Number(p.line_at_pick))}
+                    {p.result && (
+                      <span
+                        className={`ml-2 uppercase ${
+                          p.result === "win"
+                            ? "text-win"
+                            : p.result === "loss"
+                              ? "text-loss"
+                              : "text-push"
+                        }`}
+                      >
+                        {p.result}
+                      </span>
+                    )}
                   </span>
                 </li>
               ))}
@@ -185,25 +362,67 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   );
 }
 
-function TeamBlock({
+function HeaderTeam({
   team,
   points,
-  status,
-  right = false,
+  showScore,
+  lost,
+  align,
 }: {
-  team: TeamRow;
+  team: TeamView;
   points: number | null;
-  status: string;
-  right?: boolean;
+  showScore: boolean;
+  lost: boolean;
+  align: "left" | "right";
 }) {
-  const showScore = status === "in_progress" || status === "final";
+  const right = align === "right";
   return (
-    <div className={`flex-1 ${right ? "text-right" : ""}`}>
-      <p className="text-lg font-semibold" style={{ color: team.color ?? undefined }}>
-        {team.school}
-      </p>
-      <p className="text-xs text-chalk/60">{team.conference ?? ""}</p>
-      {showScore && <p className="stat mt-1 text-3xl">{points ?? 0}</p>}
+    <div className={`flex items-center gap-3 ${right ? "flex-row-reverse" : ""} ${lost ? "opacity-50" : ""}`}>
+      <TeamMark team={team} size={48} glow />
+      <div className={`min-w-0 ${right ? "text-right" : ""}`}>
+        <p className="scorebug truncate text-lg leading-tight text-chalk sm:text-xl">{team.school}</p>
+        <p className="stat text-[10.5px] text-dim">{team.conference ?? ""}</p>
+        {showScore && (
+          <p className={`scorebug text-4xl leading-none ${lost ? "text-dim" : "text-chalk"}`}>
+            {points ?? 0}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OddsRow({
+  label,
+  spread,
+  total,
+  totalSide,
+  ml,
+}: {
+  label: string;
+  spread: number | null;
+  total: number | null;
+  totalSide: "O" | "U";
+  ml: number | null;
+}) {
+  return (
+    <tr>
+      <td className="py-2 pl-4 pr-3 font-medium text-chalk">{label}</td>
+      <td className="py-2 pr-3 text-chalk">{fmtSpread(spread)}</td>
+      <td className="py-2 pr-3 text-chalk">
+        {total === null ? "–" : `${totalSide} ${fmtTotal(total)}`}
+      </td>
+      <td className="py-2 pr-4 text-chalk">{fmtMoneyline(ml)}</td>
+    </tr>
+  );
+}
+
+function ProjStat({ label, value, sub }: { label: string; value: string; sub: string }) {
+  return (
+    <div className="rounded-lg bg-elev px-2 py-2.5 ring-1 ring-inset ring-chalk/8">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-chalk/40">{label}</p>
+      <p className="mt-0.5 text-base font-semibold text-chalk">{value}</p>
+      {sub && <p className="text-[10px] text-dim">{sub}</p>}
     </div>
   );
 }
