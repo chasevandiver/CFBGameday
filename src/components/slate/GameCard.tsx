@@ -4,22 +4,28 @@ import { CloudRain, Snowflake, Star, Tv, Wind } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { kickParts, periodLabel } from "../../lib/kick";
+import { statusForBet, statusForPick } from "../../lib/live-status";
 import {
   atsResult,
+  displayRank,
   fmtMoneyline,
+  fmtPct,
   fmtSpread,
   fmtTotal,
   gradeModel,
   isDead,
   isFinal,
   isLive,
+  isRedZone,
+  liveHomeWinProb,
   modelPicks,
   ouResult,
   spreadMove,
   type GameView,
+  type MyBetView,
   type TeamView,
 } from "../../lib/slate";
-import { ConsensusChip, EdgeChip, LiveBadge, MoveIndicator, PickedChip, RankBadge, ResultChip } from "./chips";
+import { ConsensusChip, EdgeChip, LiveBadge, LiveStatusChip, MoveIndicator, PickedChip, RankBadge, ResultChip } from "./chips";
 import { Sparkline } from "./Sparkline";
 import { TeamMark } from "./TeamMark";
 import { WinProbBar } from "./WinProbBar";
@@ -220,7 +226,7 @@ function TeamRow({
     <div className={`flex items-center gap-2 transition-opacity ${lost ? "opacity-45" : ""}`}>
       <TeamMark team={team} size={26} glow />
       <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
-        <RankBadge rank={team.rank} />
+        <RankBadge rank={displayRank(team)} poll={team.poll} />
         <span
           className={`scorebug truncate text-[15px] leading-tight ${won ? "text-chalk" : "text-chalk"}`}
         >
@@ -246,18 +252,28 @@ function TeamRow({
       </div>
 
       {showScore ? (
-        <span
-          key={flash && flash.side === side ? flash.key : side}
-          className={`scorebug w-10 shrink-0 text-right text-[22px] leading-none ${
-            lost ? "text-dim" : "text-chalk"
-          } ${flash && flash.side === side ? "score-flash" : ""}`}
-          style={
-            flash && flash.side === side
-              ? ({ "--flash-color": team.color ?? "var(--accent)" } as React.CSSProperties)
-              : undefined
-          }
-        >
-          {points ?? 0}
+        <span className="flex shrink-0 items-center gap-1.5">
+          {live && game.possession === side && (
+            <span
+              role="img"
+              aria-label={`${team.school} has possession`}
+              title="Possession"
+              className="inline-block h-1.5 w-1.5 rounded-full bg-accent"
+            />
+          )}
+          <span
+            key={flash && flash.side === side ? flash.key : side}
+            className={`scorebug w-10 text-right text-[22px] leading-none ${
+              lost ? "text-dim" : "text-chalk"
+            } ${flash && flash.side === side ? "score-flash" : ""}`}
+            style={
+              flash && flash.side === side
+                ? ({ "--flash-color": team.color ?? "var(--accent)" } as React.CSSProperties)
+                : undefined
+            }
+          >
+            {points ?? 0}
+          </span>
         </span>
       ) : (
         <OddsCells game={game} side={side} />
@@ -296,10 +312,39 @@ function OddsCell({ value, wide = false }: { value: string; wide?: boolean }) {
 
 /* ---- footers ----------------------------------------------------------- */
 
+/** "OSU -3.5" / "O 54.5" for the viewer's pick chip. */
+function pickPrefix(g: GameView): string {
+  const p = g.myPick!;
+  if (p.side === "home") return `${g.home.abbr} ${fmtSpread(p.line)}`;
+  if (p.side === "away") return `${g.away.abbr} ${fmtSpread(p.line)}`;
+  return `${p.side === "over" ? "O" : "U"} ${fmtTotal(p.line)}`;
+}
+
+function betPrefix(g: GameView, b: MyBetView): string {
+  const team = b.side === "home" ? g.home : g.away;
+  if (b.betType === "spread") return `${team.abbr} ${fmtSpread(b.line)}`;
+  if (b.betType === "total") return `${b.side === "over" ? "O" : "U"} ${fmtTotal(b.line)}`;
+  return `${team.abbr} ML`;
+}
+
 function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
   const p = game.prediction;
   const picks = modelPicks(game);
   const move = spreadMove(game);
+
+  const liveProb = live ? liveHomeWinProb(game) : null;
+  const redZone = live && isRedZone(game);
+  const posTeam =
+    game.possession === "home" ? game.home : game.possession === "away" ? game.away : null;
+  const h = game.homePoints ?? 0;
+  const a = game.awayPoints ?? 0;
+  const pickStatus =
+    live && game.myPick ? statusForPick(game.myPick.side, game.myPick.line, h, a) : null;
+  const betStatuses = live
+    ? game.myBets
+        .map((b) => ({ bet: b, status: statusForBet(b, h, a) }))
+        .filter((x): x is { bet: MyBetView; status: NonNullable<typeof x.status> } => x.status !== null)
+    : [];
 
   return (
     <div className="mt-3 border-t border-chalk/8 pt-2.5">
@@ -307,7 +352,7 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
         <div className="flex min-w-0 items-center gap-1.5">
           <EdgeChip flag={p?.edgeFlag ?? null} edge={p?.edge ?? null} />
           <ConsensusChip on={p?.consensus ?? false} />
-          {game.myPick && <PickedChip />}
+          {game.myPick && !pickStatus && <PickedChip />}
         </div>
         <div className="flex items-center gap-1.5 text-dim">
           <MoveIndicator move={move} open={game.lines.spreadOpen} />
@@ -315,28 +360,69 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
         </div>
       </div>
 
-      {p && (
+      {live && game.situation && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className="stat text-[11px] font-medium text-chalk">
+            {posTeam ? `${posTeam.abbr} ball · ` : ""}
+            {game.situation}
+          </span>
+          {redZone && <span className="chip bg-loss/15 text-loss">Red zone</span>}
+        </div>
+      )}
+
+      {(pickStatus || betStatuses.length > 0) && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {pickStatus && <LiveStatusChip prefix={`Pick ${pickPrefix(game)}`} status={pickStatus} />}
+          {betStatuses.map(({ bet, status }) => (
+            <LiveStatusChip key={bet.id} prefix={betPrefix(game, bet)} status={status} />
+          ))}
+        </div>
+      )}
+
+      {(p || liveProb !== null) && (
         <div className="mt-2.5">
-          <WinProbBar home={game.home} away={game.away} homeWinProb={p.homeWinProb} />
+          <WinProbBar
+            home={game.home}
+            away={game.away}
+            homeWinProb={liveProb ?? p!.homeWinProb}
+          />
           <p className="stat mt-1.5 truncate text-[10.5px] leading-none text-dim">
-            {live ? "Pregame model: " : "Model: "}
-            {p.homeScore !== null && p.awayScore !== null && (
-              <span className="text-chalk">
-                {game.home.abbr} {Math.round(p.homeScore)}–{Math.round(p.awayScore)}
-              </span>
-            )}
-            {picks.atsSide && (
+            {live ? (
               <>
-                {" · "}
-                <span className="text-chalk">
-                  {picks.atsSide === "home" ? game.home.abbr : game.away.abbr} ATS
-                </span>
+                Live win prob
+                {p && (
+                  <>
+                    {" · pregame "}
+                    <span className="text-chalk">
+                      {fmtPct(p.homeWinProb)} {game.home.abbr}
+                    </span>
+                  </>
+                )}
               </>
-            )}
-            {picks.ouLean && (
+            ) : (
               <>
-                {" · "}
-                <span className="text-chalk">{picks.ouLean === "over" ? "Over" : "Under"} lean</span>
+                {"Model: "}
+                {p!.homeScore !== null && p!.awayScore !== null && (
+                  <span className="text-chalk">
+                    {game.home.abbr} {Math.round(p!.homeScore)}–{Math.round(p!.awayScore)}
+                  </span>
+                )}
+                {picks.atsSide && (
+                  <>
+                    {" · "}
+                    <span className="text-chalk">
+                      {picks.atsSide === "home" ? game.home.abbr : game.away.abbr} ATS
+                    </span>
+                  </>
+                )}
+                {picks.ouLean && (
+                  <>
+                    {" · "}
+                    <span className="text-chalk">
+                      {picks.ouLean === "over" ? "Over" : "Under"} lean
+                    </span>
+                  </>
+                )}
               </>
             )}
           </p>

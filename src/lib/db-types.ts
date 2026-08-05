@@ -31,6 +31,8 @@ export interface GameRow {
   status: string;
   current_period: number | null;
   current_clock: string | null;
+  current_situation: string | null;
+  possession: "home" | "away" | null;
   tv: string | null;
 }
 
@@ -64,6 +66,18 @@ export interface PredictionRow {
   edge_flag: "EDGE" | "BIG_EDGE" | null;
   consensus_flag: boolean;
   created_at: string;
+}
+
+export interface PollRankingRow {
+  season_id: number;
+  week: number;
+  season_type: string;
+  poll: string;
+  team_id: number;
+  rank: number;
+  points: number | null;
+  first_place_votes: number | null;
+  fetched_at: string;
 }
 
 export interface ProfileRow {

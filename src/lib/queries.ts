@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
+  BetRow,
   GameRow,
   LineSnapshotRow,
   PickRow,
@@ -7,10 +8,16 @@ import type {
   ProfileRow,
   TeamRow,
 } from "./db-types";
-import type { GameView, LinePoint, SlateData, TeamView } from "./slate";
+import { pickPollRanks, pollShortName } from "./rankings";
+import { atsRecord, ouRecord } from "./slate";
+import type { GameView, LinePoint, MyBetView, SlateData, TeamView } from "./slate";
 
-/** Consensus of the most recent snapshot per provider. */
-export function consensusFromSnapshots(snapshots: LineSnapshotRow[]): {
+/**
+ * Consensus of the most recent snapshot per provider. Pass `before` (usually
+ * kickoff) to get the closing consensus — the same cutoff the grading job
+ * uses — instead of the latest one.
+ */
+export function consensusFromSnapshots(snapshots: LineSnapshotRow[], before?: string): {
   spread: number | null;
   open: number | null;
   total: number | null;
@@ -20,6 +27,7 @@ export function consensusFromSnapshots(snapshots: LineSnapshotRow[]): {
 } {
   const latestByProvider = new Map<string, LineSnapshotRow>();
   for (const s of snapshots) {
+    if (before !== undefined && s.captured_at >= before) continue;
     const prev = latestByProvider.get(s.provider);
     if (!prev || s.captured_at > prev.captured_at) latestByProvider.set(s.provider, s);
   }
@@ -70,8 +78,11 @@ function toTeamView(
   t: TeamRow,
   ranks: Map<number, number>,
   records: Map<number, { w: number; l: number }>,
+  pollRanks: Map<number, number>,
+  pollName: string | null,
 ): TeamView {
   const rec = records.get(t.id);
+  const pollRank = pollRanks.get(t.id) ?? null;
   return {
     id: t.id,
     school: t.school,
@@ -82,6 +93,8 @@ function toTeamView(
     altColor: t.alt_color,
     logo: t.logo_url,
     rank: ranks.get(t.id) ?? null,
+    pollRank,
+    poll: pollRank === null ? null : pollName,
     record: rec ? `${rec.w}-${rec.l}` : null,
   };
 }
@@ -107,7 +120,7 @@ export async function fetchSlateView(
   const teamIds = [...new Set(gameRows.flatMap((g) => [g.home_team_id, g.away_team_id]))];
   const venueIds = [...new Set(gameRows.map((g) => g.venue_id).filter((v): v is number => v !== null))];
 
-  const [teamsRes, linesRes, predsRes, picksRes, weatherRes, venuesRes, seasonGamesRes, ratingsRes] =
+  const [teamsRes, linesRes, predsRes, picksRes, betsRes, weatherRes, venuesRes, seasonGamesRes, ratingsRes, pollsRes] =
     await Promise.all([
       supabase.from("teams").select("*").in("id", teamIds),
       supabase.from("line_snapshots").select("*").in("game_id", gameIds),
@@ -118,6 +131,15 @@ export async function fetchSlateView(
         .order("created_at", { ascending: false }),
       userId
         ? supabase.from("picks").select("*").in("game_id", gameIds).eq("user_id", userId)
+        : Promise.resolve({ data: [], error: null }),
+      userId
+        ? supabase
+            .from("bets")
+            .select("id, game_id, bet_type, side, line_taken")
+            .in("game_id", gameIds)
+            .eq("user_id", userId)
+            .is("result", null)
+            .is("voided_at", null)
         : Promise.resolve({ data: [], error: null }),
       supabase.from("weather_forecasts").select("*").in("game_id", gameIds),
       venueIds.length > 0
@@ -132,6 +154,11 @@ export async function fetchSlateView(
         .from("ratings")
         .select("team_id, week, overall")
         .eq("season_id", seasonId),
+      supabase
+        .from("poll_rankings")
+        .select("week, poll, team_id, rank")
+        .eq("season_id", seasonId)
+        .eq("season_type", "regular"),
     ]);
 
   const teams = new Map(((teamsRes.data ?? []) as TeamRow[]).map((t) => [t.id, t]));
@@ -151,6 +178,21 @@ export async function fetchSlateView(
   }
 
   const pickByGame = new Map(((picksRes.data ?? []) as PickRow[]).map((p) => [p.game_id, p]));
+
+  const betsByGame = new Map<number, MyBetView[]>();
+  for (const b of (betsRes.data ?? []) as Array<
+    Pick<BetRow, "id" | "game_id" | "bet_type" | "side" | "line_taken">
+  >) {
+    if (b.game_id === null) continue;
+    const arr = betsByGame.get(b.game_id) ?? [];
+    arr.push({
+      id: b.id,
+      betType: b.bet_type,
+      side: b.side,
+      line: b.line_taken === null ? null : Number(b.line_taken),
+    });
+    betsByGame.set(b.game_id, arr);
+  }
 
   const weatherByGame = new Map(
     ((weatherRes.data ?? []) as Array<{
@@ -198,6 +240,12 @@ export async function fetchSlateView(
     .sort((a, b) => b.overall - a.overall)
     .forEach((r, i) => ranks.set(r.team_id, i + 1));
 
+  // human-poll ranks: latest week, CFP > AP > Coaches
+  const { poll, byTeam: pollRanks } = pickPollRanks(
+    (pollsRes.data ?? []) as Array<{ week: number; poll: string; team_id: number; rank: number }>,
+  );
+  const pollName = pollShortName(poll);
+
   const views: GameView[] = gameRows.flatMap((game) => {
     const home = teams.get(game.home_team_id);
     const away = teams.get(game.away_team_id);
@@ -215,12 +263,14 @@ export async function fetchSlateView(
         status: game.status,
         period: game.current_period,
         clock: game.current_clock,
+        situation: game.current_situation,
+        possession: game.possession,
         tv: game.tv,
         neutralSite: game.neutral_site,
         homePoints: game.home_points,
         awayPoints: game.away_points,
-        home: toTeamView(home, ranks, records),
-        away: toTeamView(away, ranks, records),
+        home: toTeamView(home, ranks, records, pollRanks, pollName),
+        away: toTeamView(away, ranks, records, pollRanks, pollName),
         lines: {
           spread: consensus.spread,
           spreadOpen: consensus.open,
@@ -237,13 +287,16 @@ export async function fetchSlateView(
               homeScore: pred.home_score === null ? null : Number(pred.home_score),
               awayScore: pred.away_score === null ? null : Number(pred.away_score),
               homeWinProb: Number(pred.home_win_prob),
+              coverProb: pred.cover_prob === null ? null : Number(pred.cover_prob),
               vegasSpread: pred.vegas_spread === null ? null : Number(pred.vegas_spread),
               edge: pred.edge === null ? null : Number(pred.edge),
               edgeFlag: pred.edge_flag,
               consensus: pred.consensus_flag,
+              frozen: pred.frozen,
             }
           : null,
         myPick: pick ? { side: pick.side, line: Number(pick.line_at_pick) } : null,
+        myBets: betsByGame.get(game.id) ?? [],
         weather: weather
           ? { tempF: weather.temp_f, windMph: weather.wind_mph, precipProb: weather.precip_prob }
           : null,
@@ -253,6 +306,83 @@ export async function fetchSlateView(
   });
 
   return { seasonId, week, fetchedAt, games: views };
+}
+
+export interface TeamAtsSummary {
+  ats: { w: number; l: number; p: number };
+  homeAts: { w: number; l: number; p: number };
+  awayAts: { w: number; l: number; p: number };
+  ou: { o: number; u: number; p: number };
+}
+
+/**
+ * Season ATS + O/U records for a set of teams, graded against the closing
+ * consensus (last snapshots before kickoff — same cutoff as the Sunday
+ * grader). Fun-box data only; never fed to the model (docs/SPEC.md §6).
+ */
+export async function fetchTeamAtsSeason(
+  supabase: SupabaseClient,
+  seasonId: number,
+  teamIds: number[],
+): Promise<Map<number, TeamAtsSummary>> {
+  if (teamIds.length === 0) return new Map();
+  const orExpr = teamIds
+    .flatMap((id) => [`home_team_id.eq.${id}`, `away_team_id.eq.${id}`])
+    .join(",");
+  const { data: gameRows } = await supabase
+    .from("games")
+    .select("id, start_ts, home_team_id, away_team_id, home_points, away_points")
+    .eq("season_id", seasonId)
+    .eq("status", "final")
+    .or(orExpr);
+  const finals = ((gameRows ?? []) as Array<{
+    id: number;
+    start_ts: string | null;
+    home_team_id: number;
+    away_team_id: number;
+    home_points: number | null;
+    away_points: number | null;
+  }>).filter((g) => g.home_points !== null && g.away_points !== null);
+  if (finals.length === 0) return new Map();
+
+  const { data: snaps } = await supabase
+    .from("line_snapshots")
+    .select("*")
+    .in(
+      "game_id",
+      finals.map((g) => g.id),
+    );
+  const snapsByGame = new Map<number, LineSnapshotRow[]>();
+  for (const s of (snaps ?? []) as LineSnapshotRow[]) {
+    const arr = snapsByGame.get(s.game_id) ?? [];
+    arr.push(s);
+    snapsByGame.set(s.game_id, arr);
+  }
+
+  const result = new Map<number, TeamAtsSummary>();
+  for (const teamId of teamIds) {
+    const mine = finals.filter((g) => g.home_team_id === teamId || g.away_team_id === teamId);
+    const inputs = mine.map((g) => {
+      const closing = consensusFromSnapshots(
+        snapsByGame.get(g.id) ?? [],
+        g.start_ts ?? undefined,
+      );
+      return {
+        teamIsHome: g.home_team_id === teamId,
+        margin: (g.home_points as number) - (g.away_points as number),
+        closingSpread: closing.spread,
+        totalPoints: (g.home_points as number) + (g.away_points as number),
+        closingTotal: closing.total,
+      };
+    });
+    result.set(teamId, {
+      ats: atsRecord(inputs),
+      homeAts: atsRecord(inputs.filter((i) => i.teamIsHome)),
+      awayAts: atsRecord(inputs.filter((i) => !i.teamIsHome)),
+      ou: ouRecord(inputs),
+    });
+  }
+  return result;
 }
 
 export async function fetchCurrentSeasonWeek(

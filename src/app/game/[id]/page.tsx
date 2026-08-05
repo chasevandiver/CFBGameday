@@ -3,11 +3,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppNav } from "../../../components/AppNav";
 import { PickButtons } from "../../../components/PickButtons";
-import { ConsensusChip, EdgeChip, LiveBadge } from "../../../components/slate/chips";
+import { ConsensusChip, EdgeChip, LiveBadge, LiveStatusChip } from "../../../components/slate/chips";
 import { Sparkline } from "../../../components/slate/Sparkline";
 import { TeamMark } from "../../../components/slate/TeamMark";
 import { WinProbBar } from "../../../components/slate/WinProbBar";
 import type {
+  BetRow,
   GameRow,
   LineSnapshotRow,
   PickRow,
@@ -16,13 +17,29 @@ import type {
   TeamRow,
 } from "../../../lib/db-types";
 import { kickDateLong, kickParts, periodLabel, DEFAULT_TZ } from "../../../lib/kick";
-import { consensusFromSnapshots, consensusHistory } from "../../../lib/queries";
-import { fmtMoneyline, fmtPct, fmtSpread, fmtTotal, type TeamView } from "../../../lib/slate";
+import { statusForBet, statusForPick } from "../../../lib/live-status";
+import { pickPollRanks, pollShortName } from "../../../lib/rankings";
+import {
+  consensusFromSnapshots,
+  consensusHistory,
+  fetchTeamAtsSeason,
+  type TeamAtsSummary,
+} from "../../../lib/queries";
+import {
+  fmtMoneyline,
+  fmtPct,
+  fmtSpread,
+  fmtTotal,
+  isRedZone,
+  stakeForPrediction,
+  type TeamView,
+} from "../../../lib/slate";
+import { liveWinProb } from "../../../model/live";
 import { createClient } from "../../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-function toView(t: TeamRow): TeamView {
+function toView(t: TeamRow, pollRank: number | null = null, poll: string | null = null): TeamView {
   return {
     id: t.id,
     school: t.school,
@@ -33,6 +50,8 @@ function toView(t: TeamRow): TeamView {
     altColor: t.alt_color,
     logo: t.logo_url,
     rank: null,
+    pollRank,
+    poll,
     record: null,
   };
 }
@@ -54,7 +73,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     .maybeSingle<GameRow>();
   if (!game) notFound();
 
-  const [teamsRes, linesRes, predRes, picksRes, profilesRes, weatherRes, questionsRes] = await Promise.all([
+  const [teamsRes, linesRes, predRes, picksRes, betsRes, profilesRes, weatherRes, questionsRes, pollsRes] = await Promise.all([
     supabase.from("teams").select("*").in("id", [game.home_team_id, game.away_team_id]),
     supabase.from("line_snapshots").select("*").eq("game_id", gameId),
     supabase
@@ -64,17 +83,37 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
       .order("created_at", { ascending: false })
       .limit(5),
     supabase.from("picks").select("*").eq("game_id", gameId),
+    user
+      ? supabase
+          .from("bets")
+          .select("id, bet_type, side, line_taken")
+          .eq("game_id", gameId)
+          .eq("user_id", user.id)
+          .is("result", null)
+          .is("voided_at", null)
+      : Promise.resolve({ data: [], error: null }),
     supabase.from("profiles").select("*"),
     supabase.from("weather_forecasts").select("*").eq("game_id", gameId).maybeSingle(),
     supabase.from("game_questions").select("questions").eq("game_id", gameId).maybeSingle(),
+    // whole season, not just these teams: "latest poll week" must come from
+    // the full table or a team that dropped out would show a stale rank
+    supabase
+      .from("poll_rankings")
+      .select("week, poll, team_id, rank")
+      .eq("season_id", game.season_id)
+      .eq("season_type", "regular"),
   ]);
 
   const teams = new Map(((teamsRes.data ?? []) as TeamRow[]).map((t) => [t.id, t]));
   const homeRow = teams.get(game.home_team_id);
   const awayRow = teams.get(game.away_team_id);
   if (!homeRow || !awayRow) notFound();
-  const home = toView(homeRow);
-  const away = toView(awayRow);
+  const { poll, byTeam: pollRanks } = pickPollRanks(
+    (pollsRes.data ?? []) as Array<{ week: number; poll: string; team_id: number; rank: number }>,
+  );
+  const pollName = pollShortName(poll);
+  const home = toView(homeRow, pollRanks.get(game.home_team_id) ?? null, pollName);
+  const away = toView(awayRow, pollRanks.get(game.away_team_id) ?? null, pollName);
 
   const snapshots = (linesRes.data ?? []) as LineSnapshotRow[];
   const consensus = consensusFromSnapshots(snapshots);
@@ -92,6 +131,15 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     (questionsRes.data as { questions: { question: string; why_it_matters: string }[] } | null)
       ?.questions ?? null;
 
+  const trends = await fetchTeamAtsSeason(supabase, game.season_id, [
+    game.home_team_id,
+    game.away_team_id,
+  ]);
+  const graded = (t: TeamAtsSummary | undefined) =>
+    t !== undefined && t.ats.w + t.ats.l + t.ats.p > 0;
+  const showTrends =
+    graded(trends.get(game.home_team_id)) || graded(trends.get(game.away_team_id));
+
   const kickoffPassed = game.start_ts !== null && new Date(game.start_ts) <= new Date();
   const myPick = user ? (picks.find((p) => p.user_id === user.id) ?? null) : null;
   const crewPicks = picks.filter((p) => p.user_id !== user?.id);
@@ -102,12 +150,67 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   const tz = DEFAULT_TZ;
   const homeColor = home.color ?? "#5b6472";
   const awayColor = away.color ?? "#5b6472";
+
+  // live layer: situation, red zone, in-game win prob, pick/bet cover status
+  const redZone =
+    live &&
+    isRedZone({
+      status: game.status,
+      possession: game.possession,
+      situation: game.current_situation,
+      home,
+      away,
+    });
+  const posAbbr =
+    game.possession === "home" ? home.abbr : game.possession === "away" ? away.abbr : null;
+  const liveProb = live
+    ? liveWinProb({
+        pregameMargin: prediction ? -Number(prediction.spread) : 0,
+        homePoints: game.home_points ?? 0,
+        awayPoints: game.away_points ?? 0,
+        period: game.current_period,
+        clock: game.current_clock,
+      })
+    : null;
+  const hPts = game.home_points ?? 0;
+  const aPts = game.away_points ?? 0;
+  const myPickStatus =
+    live && myPick ? statusForPick(myPick.side, Number(myPick.line_at_pick), hPts, aPts) : null;
+  const openBets = (betsRes.data ?? []) as Array<
+    Pick<BetRow, "id" | "bet_type" | "side" | "line_taken">
+  >;
+  const myBetStatuses = live
+    ? openBets
+        .map((b) => ({
+          bet: b,
+          status: statusForBet(
+            {
+              id: b.id,
+              betType: b.bet_type,
+              side: b.side,
+              line: b.line_taken === null ? null : Number(b.line_taken),
+            },
+            hPts,
+            aPts,
+          ),
+        }))
+        .filter((x) => x.status !== null)
+    : [];
   const homeLost =
     final && game.home_points !== null && game.away_points !== null && game.home_points < game.away_points;
   const awayLost =
     final && game.home_points !== null && game.away_points !== null && game.away_points < game.home_points;
 
   const modelEdge = prediction?.edge === null || prediction === null ? null : Number(prediction.edge);
+  const stake = prediction
+    ? stakeForPrediction({
+        edge: modelEdge,
+        edgeFlag: prediction.edge_flag,
+        coverProb: prediction.cover_prob === null ? null : Number(prediction.cover_prob),
+        vegasSpread: prediction.vegas_spread === null ? null : Number(prediction.vegas_spread),
+      })
+    : null;
+  const stakeTeam = stake?.side === "home" ? home : away;
 
   return (
     <>
@@ -167,19 +270,77 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             </div>
 
             <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6">
-              <HeaderTeam team={away} points={game.away_points} showScore={showScore} lost={awayLost} align="left" />
+              <HeaderTeam team={away} points={game.away_points} showScore={showScore} lost={awayLost} align="left" hasBall={live && game.possession === "away"} />
               <span className="scorebug text-lg text-chalk/35">{game.neutral_site ? "vs" : "@"}</span>
-              <HeaderTeam team={home} points={game.home_points} showScore={showScore} lost={homeLost} align="right" />
+              <HeaderTeam team={home} points={game.home_points} showScore={showScore} lost={homeLost} align="right" hasBall={live && game.possession === "home"} />
             </div>
 
-            {prediction && (
+            {live && game.current_situation && (
+              <p className="stat mt-3 flex flex-wrap items-center justify-center gap-1.5 text-center text-sm text-chalk">
+                <span>
+                  {posAbbr ? `${posAbbr} ball · ` : ""}
+                  {game.current_situation}
+                </span>
+                {redZone && <span className="chip bg-loss/15 text-loss">Red zone</span>}
+              </p>
+            )}
+
+            {(prediction || liveProb !== null) && (
               <div className="mx-auto mt-4 max-w-md">
                 <WinProbBar
                   home={home}
                   away={away}
-                  homeWinProb={Number(prediction.home_win_prob)}
+                  homeWinProb={liveProb ?? Number(prediction!.home_win_prob)}
                   height={7}
                 />
+                {liveProb !== null && (
+                  <p className="stat mt-1.5 text-center text-[10.5px] leading-none text-dim">
+                    Live win probability
+                    {prediction && (
+                      <>
+                        {" · pregame "}
+                        <span className="text-chalk">
+                          {fmtPct(Number(prediction.home_win_prob))} {home.abbr}
+                        </span>
+                      </>
+                    )}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {(myPickStatus || myBetStatuses.length > 0) && (
+              <div className="mt-4 border-t border-chalk/10 pt-3">
+                <p className="mb-1.5 text-center text-[10px] font-semibold uppercase tracking-wider text-chalk/40">
+                  Your action
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-1.5">
+                  {myPickStatus && myPick && (
+                    <LiveStatusChip
+                      prefix={`Pick ${
+                        myPick.side === "home"
+                          ? `${home.abbr} ${fmtSpread(Number(myPick.line_at_pick))}`
+                          : myPick.side === "away"
+                            ? `${away.abbr} ${fmtSpread(Number(myPick.line_at_pick))}`
+                            : `${myPick.side === "over" ? "O" : "U"} ${fmtTotal(Number(myPick.line_at_pick))}`
+                      }`}
+                      status={myPickStatus}
+                    />
+                  )}
+                  {myBetStatuses.map(({ bet, status }) => (
+                    <LiveStatusChip
+                      key={bet.id}
+                      prefix={
+                        bet.bet_type === "spread"
+                          ? `${(bet.side === "home" ? home : away).abbr} ${fmtSpread(bet.line_taken === null ? null : Number(bet.line_taken))}`
+                          : bet.bet_type === "total"
+                            ? `${bet.side === "over" ? "O" : "U"} ${fmtTotal(bet.line_taken === null ? null : Number(bet.line_taken))}`
+                            : `${(bet.side === "home" ? home : away).abbr} ML`
+                      }
+                      status={status!}
+                    />
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -284,6 +445,17 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                 sub="model − market"
               />
             </div>
+            {stake !== null && (
+              <p className="stat mt-3 text-center text-sm text-chalk">
+                Suggested stake ·{" "}
+                <span className="font-semibold text-accent">
+                  {stake.units <= 0
+                    ? "pass"
+                    : `${stake.units}u on ${stakeTeam.abbr} ${fmtSpread(stake.line)}`}
+                </span>
+                <span className="ml-1.5 text-[10.5px] text-dim">¼ Kelly, 2u cap</span>
+              </p>
+            )}
           </section>
         )}
 
@@ -312,6 +484,20 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                 </span>
               )}
             </div>
+          </section>
+        )}
+
+        {/* ATS trends — fun box only */}
+        {showTrends && (
+          <section className="card mt-4 px-4 py-3.5">
+            <h2 className="mb-2 text-sm text-accent">Trends</h2>
+            <div className="flex flex-col gap-1.5">
+              <TrendLine team={away} summary={trends.get(game.away_team_id)} />
+              <TrendLine team={home} summary={trends.get(game.home_team_id)} />
+            </div>
+            <p className="mt-2 text-[10.5px] text-dim">
+              For fun — trends are never fed to the model.
+            </p>
           </section>
         )}
 
@@ -390,27 +576,71 @@ function HeaderTeam({
   showScore,
   lost,
   align,
+  hasBall = false,
 }: {
   team: TeamView;
   points: number | null;
   showScore: boolean;
   lost: boolean;
   align: "left" | "right";
+  hasBall?: boolean;
 }) {
   const right = align === "right";
+  const ball = hasBall && (
+    <span
+      role="img"
+      aria-label={`${team.school} has possession`}
+      title="Possession"
+      className="inline-block h-2 w-2 rounded-full bg-accent"
+    />
+  );
   return (
     <div className={`flex items-center gap-3 ${right ? "flex-row-reverse" : ""} ${lost ? "opacity-50" : ""}`}>
       <TeamMark team={team} size={48} glow />
       <div className={`min-w-0 ${right ? "text-right" : ""}`}>
         <p className="scorebug truncate text-lg leading-tight text-chalk sm:text-xl">{team.school}</p>
-        <p className="stat text-[10.5px] text-dim">{team.conference ?? ""}</p>
+        <p className="stat text-[10.5px] text-dim">
+          {[team.conference, team.pollRank !== null && team.poll ? `#${team.pollRank} ${team.poll}` : null]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
         {showScore && (
-          <p className={`scorebug text-4xl leading-none ${lost ? "text-dim" : "text-chalk"}`}>
+          <p
+            className={`scorebug flex items-center gap-2 text-4xl leading-none ${
+              right ? "justify-end" : ""
+            } ${lost ? "text-dim" : "text-chalk"}`}
+          >
+            {!right && ball}
             {points ?? 0}
+            {right && ball}
           </p>
         )}
       </div>
     </div>
+  );
+}
+
+const fmtRec = (r: { w: number; l: number; p: number }) =>
+  `${r.w}-${r.l}${r.p ? `-${r.p}` : ""}`;
+
+function TrendLine({ team, summary }: { team: TeamView; summary: TeamAtsSummary | undefined }) {
+  if (!summary || summary.ats.w + summary.ats.l + summary.ats.p === 0) return null;
+  const ouTotal = summary.ou.o + summary.ou.u + summary.ou.p;
+  return (
+    <p className="stat text-sm text-chalk">
+      <span className="font-semibold">{team.abbr}</span>{" "}
+      <span>{fmtRec(summary.ats)} ATS</span>
+      <span className="text-dim">
+        {" "}
+        ({fmtRec(summary.homeAts)} home, {fmtRec(summary.awayAts)} road)
+      </span>
+      {ouTotal > 0 && (
+        <span>
+          {" · "}O/U {summary.ou.o}-{summary.ou.u}
+          {summary.ou.p ? `-${summary.ou.p}` : ""}
+        </span>
+      )}
+    </p>
   );
 }
 

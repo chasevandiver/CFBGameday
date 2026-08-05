@@ -1,7 +1,9 @@
 import { AppNav } from "../../components/AppNav";
 import { RatingsTable, type RatingRow } from "../../components/RatingsTable";
+import { MODEL_VERSION } from "../../model/ratings";
 import type { TeamRow } from "../../lib/db-types";
 import { fetchCurrentSeasonWeek } from "../../lib/queries";
+import { pickPollRanks, pollShortName } from "../../lib/rankings";
 import { createClient } from "../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -39,17 +41,26 @@ export default async function RatingsPage() {
   );
 
   const teamIds = current.map((r) => r.team_id);
-  const [teamsRes, compsRes] = await Promise.all([
+  const [teamsRes, compsRes, pollsRes] = await Promise.all([
     supabase.from("teams").select("*").in("id", teamIds),
     supabase
       .from("preseason_components")
       .select("team_id, churn_adjustment, luck_correction")
       .eq("season_id", seasonId),
+    supabase
+      .from("poll_rankings")
+      .select("week, poll, team_id, rank")
+      .eq("season_id", seasonId)
+      .eq("season_type", "regular"),
   ]);
   const teams = new Map(((teamsRes.data ?? []) as TeamRow[]).map((t) => [t.id, t]));
   const comps = new Map(
     ((compsRes.data ?? []) as DbComponents[]).map((c) => [c.team_id, c]),
   );
+  const { poll, byTeam: pollRanks } = pickPollRanks(
+    (pollsRes.data ?? []) as Array<{ week: number; poll: string; team_id: number; rank: number }>,
+  );
+  const pollName = pollShortName(poll);
 
   const rows: RatingRow[] = current.flatMap((r) => {
     const team = teams.get(r.team_id);
@@ -70,6 +81,8 @@ export default async function RatingsPage() {
         delta: prev ? Number(r.overall) - Number(prev.overall) : null,
         churn: comp?.churn_adjustment !== null && comp ? Number(comp.churn_adjustment) : null,
         luck: comp?.luck_correction !== null && comp ? Number(comp.luck_correction) : null,
+        pollRank: pollRanks.get(r.team_id) ?? null,
+        poll: pollName,
       },
     ];
   });
@@ -81,7 +94,7 @@ export default async function RatingsPage() {
         <div className="mb-6 flex items-baseline justify-between">
           <h1 className="text-2xl">Ratings</h1>
           <p className="stat text-xs text-chalk/50">
-            {latestWeek === 0 ? "preseason" : `through week ${latestWeek}`} · model 2026.1.0
+            {latestWeek === 0 ? "preseason" : `through week ${latestWeek}`} · model {MODEL_VERSION}
           </p>
         </div>
         <RatingsTable rows={rows} />

@@ -21,6 +21,7 @@ on:
           - refresh-lines
           - refresh-lines-burst
           - sync-games
+          - sync-rankings
           - scoreboard
           - weather
           - ratings-update
@@ -35,9 +36,11 @@ on:
     - cron: "*/10 0-3 * * 0"
     # Games sync daily
     - cron: "0 9 * * *"
-    # Scoreboard: Sat daytime + Thu/Fri/Sat nights (CT evenings = 0-4 UTC)
-    - cron: "*/10 16-23 * * 6"
-    - cron: "*/10 0-4 * * 0"
+    # Scoreboard: Sat daytime + Thu/Fri/Sat nights (CT evenings = 0-4 UTC).
+    # Every 5 min in the Saturday windows — realtime pushes these writes to
+    # browsers the moment they land, so job cadence is the freshness ceiling.
+    - cron: "*/5 16-23 * * 6"
+    - cron: "*/5 0-4 * * 0"
     - cron: "*/15 0-3 * * 5,6"
     # Weather Saturday mornings
     - cron: "0 10 * * 6"
@@ -72,7 +75,7 @@ jobs:
             "0 3,12,17,22 * * *"|"0 13-23 * * 6") echo "task=refresh-lines" >> "$GITHUB_OUTPUT" ;;
             "*/10 15-23 * * 6"|"*/10 0-3 * * 0") echo "task=refresh-lines-burst" >> "$GITHUB_OUTPUT" ;;
             "0 9 * * *") echo "task=sync-games" >> "$GITHUB_OUTPUT" ;;
-            "*/10 16-23 * * 6"|"*/10 0-4 * * 0"|"*/15 0-3 * * 5,6") echo "task=scoreboard" >> "$GITHUB_OUTPUT" ;;
+            "*/5 16-23 * * 6"|"*/5 0-4 * * 0"|"*/15 0-3 * * 5,6") echo "task=scoreboard" >> "$GITHUB_OUTPUT" ;;
             "0 10 * * 6") echo "task=weather" >> "$GITHUB_OUTPUT" ;;
             "0 13 * * 0") echo "task=ratings-update" >> "$GITHUB_OUTPUT" ;;
             "0 3 * * 5") echo "task=freeze" >> "$GITHUB_OUTPUT" ;;
@@ -84,7 +87,8 @@ jobs:
           case "${{ steps.task.outputs.task }}" in
             refresh-lines) npx tsx scripts/refresh-lines.ts ;;
             refresh-lines-burst) npx tsx scripts/refresh-lines.ts --burst ;;
-            sync-games) npx tsx scripts/sync-games.ts ;;
-            scoreboard|weather|ratings-update|freeze) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
+            # daily slot also refreshes poll rankings (AP Sun, CFP Tue — 1 call/day)
+            sync-games) npx tsx scripts/sync-games.ts && npx tsx scripts/run-job.ts sync-rankings ;;
+            sync-rankings|scoreboard|weather|ratings-update|freeze) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
             *) echo "no task matched schedule '${{ github.event.schedule }}'" && exit 1 ;;
           esac

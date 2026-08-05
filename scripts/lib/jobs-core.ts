@@ -6,6 +6,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cfbd } from "../../src/lib/cfbd";
+import { buildTeamNameIndex } from "../../src/lib/rankings";
 import {
   DEFAULT_PARAMS,
   MODEL_VERSION,
@@ -72,6 +73,7 @@ export async function scoreboardJob(db: SupabaseClient): Promise<Json> {
     const status =
       g.status === "in_progress" ? "in_progress" : g.status === "completed" ? "final" : "scheduled";
     if (status === "scheduled") continue;
+    const inProgress = status === "in_progress";
     const { data: touched } = await db
       .from("games")
       .update({
@@ -80,6 +82,12 @@ export async function scoreboardJob(db: SupabaseClient): Promise<Json> {
         away_points: g.awayTeam.points,
         current_period: g.period,
         current_clock: g.clock,
+        // nulled once final so finished games never show a stale down-and-distance
+        current_situation: inProgress ? g.situation : null,
+        possession:
+          inProgress && (g.possession === "home" || g.possession === "away")
+            ? g.possession
+            : null,
         tv: g.tv ?? undefined,
       })
       .eq("id", g.id)
@@ -87,6 +95,53 @@ export async function scoreboardJob(db: SupabaseClient): Promise<Json> {
     if (touched && touched.length > 0) updated++;
   }
   return { live_or_final: updated };
+}
+
+/**
+ * Daily poll sync: AP / Coaches / CFP committee ranks (display-only context;
+ * never fed to the model). CFBD returns school names, so rows that don't
+ * match teams.school or teams.alt_names are reported for repair via alt_names.
+ */
+export async function syncRankingsJob(db: SupabaseClient): Promise<Json> {
+  const KEEP = new Set(["AP Top 25", "Coaches Poll", "Playoff Committee Rankings"]);
+  const weeks = await cfbd.rankings(SEASON);
+  const { data: teamRows } = await db.from("teams").select("id, school, alt_names");
+  const nameIndex = buildTeamNameIndex(
+    (teamRows ?? []) as Array<{ id: number; school: string; alt_names: string[] | null }>,
+  );
+
+  const rows: Json[] = [];
+  const unmatched = new Set<string>();
+  for (const wk of weeks) {
+    for (const poll of wk.polls) {
+      if (!KEEP.has(poll.poll)) continue;
+      for (const r of poll.ranks) {
+        const teamId = nameIndex.get(r.school.toLowerCase());
+        if (teamId === undefined) {
+          unmatched.add(r.school);
+          continue;
+        }
+        rows.push({
+          season_id: wk.season,
+          week: wk.week,
+          season_type: wk.seasonType,
+          poll: poll.poll,
+          team_id: teamId,
+          rank: r.rank,
+          points: r.points,
+          first_place_votes: r.firstPlaceVotes,
+          fetched_at: new Date().toISOString(),
+        });
+      }
+    }
+  }
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await db.from("poll_rankings").upsert(rows.slice(i, i + 500), {
+      onConflict: "season_id,season_type,week,poll,team_id",
+    });
+    if (error) throw new Error(error.message);
+  }
+  return { rows: rows.length, unmatched: [...unmatched] };
 }
 
 /** Open-Meteo forecasts for outdoor games in the next 7 days. */

@@ -1,11 +1,11 @@
 /**
  * CLI entry for scheduled jobs (GitHub Actions calls this).
- * Usage: npx tsx scripts/run-job.ts <scoreboard|weather|ratings-update|freeze>
+ * Usage: npx tsx scripts/run-job.ts <scoreboard|weather|ratings-update|freeze|sync-rankings>
  * (refresh-lines and sync-games have their own scripts with extra flags.)
  */
 
 import { createServiceClient } from "../src/lib/supabase/service";
-import { freezeJob, ratingsUpdateJob, scoreboardJob, weatherJob } from "./lib/jobs-core";
+import { freezeJob, ratingsUpdateJob, scoreboardJob, syncRankingsJob, weatherJob } from "./lib/jobs-core";
 
 async function main() {
   const task = process.argv[2];
@@ -15,6 +15,7 @@ async function main() {
     weather: weatherJob,
     "ratings-update": ratingsUpdateJob,
     freeze: freezeJob,
+    "sync-rankings": syncRankingsJob,
   } as const;
   const job = jobs[task as keyof typeof jobs];
   if (!job) throw new Error(`unknown task "${task}" (${Object.keys(jobs).join("|")})`);

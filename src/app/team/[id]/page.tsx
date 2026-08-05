@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { AppNav } from "../../../components/AppNav";
 import type { GameRow, TeamRow } from "../../../lib/db-types";
 import { DEFAULT_TZ, kickDateLong } from "../../../lib/kick";
+import { pickPollRanks, pollShortName } from "../../../lib/rankings";
 import { createClient } from "../../../lib/supabase/server";
 import {
   DEFAULT_PARAMS,
@@ -44,7 +45,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
     .maybeSingle<TeamRow>();
   if (!team) notFound();
 
-  const [ratingsRes, compsRes, hfaRes, gamesRes, verdictRes] = await Promise.all([
+  const [ratingsRes, compsRes, hfaRes, gamesRes, verdictRes, pollsRes] = await Promise.all([
     supabase
       .from("ratings")
       .select("team_id, week, overall")
@@ -69,6 +70,11 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
       .eq("season_id", 2026)
       .eq("team_id", teamId)
       .maybeSingle<VerdictRow>(),
+    supabase
+      .from("poll_rankings")
+      .select("week, poll, team_id, rank")
+      .eq("season_id", 2026)
+      .eq("season_type", "regular"),
   ]);
 
   // Latest rating per team + this team's rank
@@ -130,6 +136,12 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
   const comp = compsRes.data;
   const verdict = verdictRes.data?.verdict ?? null;
 
+  const { poll, byTeam: pollRanks } = pickPollRanks(
+    (pollsRes.data ?? []) as Array<{ week: number; poll: string; team_id: number; rank: number }>,
+  );
+  const pollRank = pollRanks.get(teamId) ?? null;
+  const pollName = pollShortName(poll);
+
   return (
     <>
       <AppNav />
@@ -143,8 +155,13 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-2xl leading-tight">{team.school}</h1>
             <p className="text-sm text-dim">
-              {team.mascot ? `${team.mascot} · ` : ""}
-              {team.conference ?? ""}
+              {[
+                team.mascot,
+                team.conference,
+                pollRank !== null && pollName ? `#${pollRank} ${pollName}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </p>
           </div>
           <div className="shrink-0 text-right">

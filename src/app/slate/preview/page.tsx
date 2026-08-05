@@ -12,7 +12,7 @@ import { GameCard } from "../../../components/slate/GameCard";
 import { HeroCard } from "../../../components/slate/HeroCard";
 import { SkeletonCard } from "../../../components/slate/SkeletonCard";
 import { DEFAULT_TZ } from "../../../lib/kick";
-import type { GameView, TeamView } from "../../../lib/slate";
+import type { GameView, MyBetView, TeamView } from "../../../lib/slate";
 
 const logo = (id: number) => `https://a.espncdn.com/i/teamlogos/ncaa/500-dark/${id}.png`;
 
@@ -34,6 +34,8 @@ const team = (
   altColor: null,
   logo: logo(id),
   rank,
+  pollRank: rank,
+  poll: rank === null ? null : "AP",
   record,
 });
 
@@ -58,8 +60,11 @@ const base = {
   neutralSite: false,
   dome: false,
   myPick: null,
+  myBets: [] as MyBetView[],
+  situation: null as string | null,
+  possession: null as "home" | "away" | null,
   weather: null,
-} as const;
+};
 
 const PREGAME: GameView = {
   ...base,
@@ -81,10 +86,12 @@ const PREGAME: GameView = {
     homeScore: 29.5,
     awayScore: 24.9,
     homeWinProb: 0.62,
+    coverProb: null,
     vegasSpread: -1.5,
     edge: -3,
     edgeFlag: "EDGE",
     consensus: false,
+    frozen: false,
   },
   myPick: { side: "home", line: -1.5 },
   weather: { tempF: 44, windMph: 18, precipProb: 20 },
@@ -97,11 +104,15 @@ const LIVE: GameView = {
   status: "in_progress",
   period: 3,
   clock: "8:42",
+  situation: "2nd & 8 at MICH 14",
+  possession: "away",
   tv: "FOX",
   homePoints: 24,
   awayPoints: 21,
   home: MICHIGAN,
   away: OHIO_STATE,
+  myPick: { side: "away", line: 3.5 },
+  myBets: [{ id: 1, betType: "total", side: "over", line: 44.5 }],
   lines: { spread: 3.5, spreadOpen: 2.5, total: 44.5, totalOpen: 45.5, mlHome: 150, mlAway: -175 },
   spreadHistory: hist([2.5, 3, 3, 3.5]),
   prediction: {
@@ -110,10 +121,12 @@ const LIVE: GameView = {
     homeScore: 21.5,
     awayScore: 24.3,
     homeWinProb: 0.41,
+    coverProb: null,
     vegasSpread: 3.5,
     edge: -0.7,
     edgeFlag: null,
     consensus: false,
+    frozen: false,
   },
 };
 
@@ -137,10 +150,12 @@ const FINAL_GAME: GameView = {
     homeScore: 33.4,
     awayScore: 24.2,
     homeWinProb: 0.74,
+    coverProb: null,
     vegasSpread: -6.5,
     edge: -2.7,
     edgeFlag: "EDGE",
     consensus: true,
+    frozen: false,
   },
 };
 
@@ -164,10 +179,12 @@ const FINAL_OT: GameView = {
     homeScore: 23.8,
     awayScore: 25.7,
     homeWinProb: 0.45,
+    coverProb: null,
     vegasSpread: 2.5,
     edge: -0.6,
     edgeFlag: null,
     consensus: false,
+    frozen: false,
   },
 };
 

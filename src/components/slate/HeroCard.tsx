@@ -4,11 +4,14 @@ import { Tv } from "lucide-react";
 import Link from "next/link";
 import { kickParts } from "../../lib/kick";
 import {
+  displayRank,
   fmtMoneyline,
   fmtSpread,
   fmtTotal,
   isFinal,
   isLive,
+  isRedZone,
+  liveHomeWinProb,
   modelPicks,
   type GameView,
   type TeamView,
@@ -27,6 +30,10 @@ export function HeroCard({ game, tz }: { game: GameView; tz: string }) {
   const picks = modelPicks(game);
   const homeColor = game.home.color ?? "#5b6472";
   const awayColor = game.away.color ?? "#5b6472";
+  const liveProb = live ? liveHomeWinProb(game) : null;
+  const redZone = live && isRedZone(game);
+  const posTeam =
+    game.possession === "home" ? game.home : game.possession === "away" ? game.away : null;
 
   return (
     <article className={`card card-hover card-in relative overflow-hidden ${live ? "card-live" : ""}`}>
@@ -78,7 +85,7 @@ export function HeroCard({ game, tz }: { game: GameView; tz: string }) {
         </div>
 
         <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-6">
-          <HeroTeam team={game.away} points={game.awayPoints} showScore={showScore} align="left" other={game.homePoints} final={final} />
+          <HeroTeam team={game.away} points={game.awayPoints} showScore={showScore} align="left" other={game.homePoints} final={final} hasBall={live && game.possession === "away"} />
           <div className="text-center">
             {showScore ? (
               <span className="scorebug text-lg text-chalk/40">–</span>
@@ -105,19 +112,35 @@ export function HeroCard({ game, tz }: { game: GameView; tz: string }) {
               </div>
             )}
           </div>
-          <HeroTeam team={game.home} points={game.homePoints} showScore={showScore} align="right" other={game.awayPoints} final={final} />
+          <HeroTeam team={game.home} points={game.homePoints} showScore={showScore} align="right" other={game.awayPoints} final={final} hasBall={live && game.possession === "home"} />
         </div>
 
-        {p && (
+        {live && game.situation && (
+          <p className="stat mt-3 flex flex-wrap items-center justify-center gap-1.5 text-center text-xs text-chalk">
+            <span>
+              {posTeam ? `${posTeam.abbr} ball · ` : ""}
+              {game.situation}
+            </span>
+            {redZone && <span className="chip bg-loss/15 text-loss">Red zone</span>}
+          </p>
+        )}
+
+        {(p || liveProb !== null) && (
           <div className="mx-auto mt-4 max-w-xl">
-            <WinProbBar home={game.home} away={game.away} homeWinProb={p.homeWinProb} height={7} />
+            <WinProbBar home={game.home} away={game.away} homeWinProb={liveProb ?? p!.homeWinProb} height={7} />
             <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5">
-              <EdgeChip flag={p.edgeFlag} edge={p.edge} />
-              <ConsensusChip on={p.consensus} />
+              {p && (
+                <>
+                  <EdgeChip flag={p.edgeFlag} edge={p.edge} />
+                  <ConsensusChip on={p.consensus} />
+                </>
+              )}
               <span className="stat text-[11px] text-dim">
-                {p.homeScore !== null && p.awayScore !== null && (
+                {liveProb !== null && "Live win prob"}
+                {p && p.homeScore !== null && p.awayScore !== null && (
                   <>
-                    Model {game.home.abbr} {Math.round(p.homeScore)}–{Math.round(p.awayScore)}
+                    {liveProb !== null ? " · pregame model " : "Model "}
+                    {game.home.abbr} {Math.round(p.homeScore)}–{Math.round(p.awayScore)}
                   </>
                 )}
                 {picks.atsSide && (
@@ -159,6 +182,7 @@ function HeroTeam({
   align,
   other,
   final,
+  hasBall = false,
 }: {
   team: TeamView;
   points: number | null;
@@ -166,6 +190,7 @@ function HeroTeam({
   align: "left" | "right";
   other: number | null;
   final: boolean;
+  hasBall?: boolean;
 }) {
   const lost = final && points !== null && other !== null && points < other;
   const right = align === "right";
@@ -178,15 +203,45 @@ function HeroTeam({
       <TeamMark team={team} size={56} glow />
       <div className={`min-w-0 ${right ? "text-right" : ""}`}>
         <p className="stat text-[10.5px] leading-none text-dim">
-          {team.rank !== null && team.rank <= 25 && <span className="font-semibold">#{team.rank} </span>}
+          {(() => {
+            const rank = displayRank(team);
+            return (
+              rank !== null &&
+              rank <= 25 && (
+                <span className="font-semibold" title={team.poll ? `${team.poll} rank` : "Model rank"}>
+                  #{rank}{" "}
+                </span>
+              )
+            );
+          })()}
           {team.record ?? ""}
         </p>
         <p className="scorebug truncate text-xl leading-tight text-chalk sm:text-2xl">
           {team.school}
         </p>
         {showScore && (
-          <p className={`scorebug text-4xl leading-none sm:text-5xl ${lost ? "text-dim" : "text-chalk"}`}>
+          <p
+            className={`scorebug flex items-center gap-2 text-4xl leading-none sm:text-5xl ${
+              right ? "justify-end" : ""
+            } ${lost ? "text-dim" : "text-chalk"}`}
+          >
+            {hasBall && !right && (
+              <span
+                role="img"
+                aria-label={`${team.school} has possession`}
+                title="Possession"
+                className="inline-block h-2 w-2 rounded-full bg-accent"
+              />
+            )}
             {points ?? 0}
+            {hasBall && right && (
+              <span
+                role="img"
+                aria-label={`${team.school} has possession`}
+                title="Possession"
+                className="inline-block h-2 w-2 rounded-full bg-accent"
+              />
+            )}
           </p>
         )}
       </div>

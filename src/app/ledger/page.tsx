@@ -1,26 +1,106 @@
 import { AppNav } from "../../components/AppNav";
-import { BetForm } from "../../components/BetForm";
+import { BetForm, type BetFormGame } from "../../components/BetForm";
+import { LiveStatusChip } from "../../components/slate/chips";
 import { VoidBetButton } from "../../components/VoidBetButton";
-import { REASON_TAG_LABELS, type BetRow } from "../../lib/db-types";
+import { REASON_TAG_LABELS, type BetRow, type TeamRow } from "../../lib/db-types";
+import { kickParts, DEFAULT_TZ } from "../../lib/kick";
+import { statusForBet, type LiveBetStatus } from "../../lib/live-status";
 import { fetchCurrentSeasonWeek } from "../../lib/queries";
 import { createClient } from "../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+const abbrOf = (t: TeamRow | undefined): string =>
+  t?.abbreviation ?? t?.school.replace(/[^A-Za-z]/g, "").slice(0, 4).toUpperCase() ?? "?";
 
 export default async function LedgerPage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const { seasonId } = await fetchCurrentSeasonWeek(supabase);
+  const { seasonId, week } = await fetchCurrentSeasonWeek(supabase);
 
-  const { data } = await supabase
-    .from("bets")
-    .select("*")
-    .eq("season_id", seasonId)
-    .eq("user_id", user?.id ?? "")
-    .order("placed_at", { ascending: false });
+  const [{ data }, { data: weekGames }] = await Promise.all([
+    supabase
+      .from("bets")
+      .select("*")
+      .eq("season_id", seasonId)
+      .eq("user_id", user?.id ?? "")
+      .order("placed_at", { ascending: false }),
+    supabase
+      .from("games")
+      .select("id, start_ts, home_team_id, away_team_id")
+      .eq("season_id", seasonId)
+      .eq("week", week)
+      .order("start_ts", { ascending: true }),
+  ]);
   const bets = (data ?? []) as BetRow[];
+
+  // this week's games for the bet form, so bets link to a game for grading
+  const gameRows = (weekGames ?? []) as Array<{
+    id: number;
+    start_ts: string | null;
+    home_team_id: number;
+    away_team_id: number;
+  }>;
+  const formTeamIds = [...new Set(gameRows.flatMap((g) => [g.home_team_id, g.away_team_id]))];
+  const { data: formTeams } =
+    formTeamIds.length > 0
+      ? await supabase.from("teams").select("*").in("id", formTeamIds)
+      : { data: [] };
+  const teamById = new Map(((formTeams ?? []) as TeamRow[]).map((t) => [t.id, t]));
+  const formGames: BetFormGame[] = gameRows.map((g) => {
+    const homeAbbr = abbrOf(teamById.get(g.home_team_id));
+    const awayAbbr = abbrOf(teamById.get(g.away_team_id));
+    const kick = g.start_ts ? kickParts(g.start_ts, DEFAULT_TZ) : null;
+    return {
+      id: g.id,
+      label: `${awayAbbr} @ ${homeAbbr}${kick ? ` · ${kick.day} ${kick.time}` : ""}`,
+      homeAbbr,
+      awayAbbr,
+    };
+  });
+
+  // live status for open bets tied to an in-progress game (snapshot at page load)
+  const openGameIds = [
+    ...new Set(
+      bets
+        .filter((b) => !b.result && !b.voided_at && b.game_id !== null)
+        .map((b) => b.game_id as number),
+    ),
+  ];
+  const { data: openGames } =
+    openGameIds.length > 0
+      ? await supabase
+          .from("games")
+          .select("id, status, home_points, away_points")
+          .in("id", openGameIds)
+      : { data: [] };
+  const liveGameById = new Map(
+    ((openGames ?? []) as Array<{
+      id: number;
+      status: string;
+      home_points: number | null;
+      away_points: number | null;
+    }>)
+      .filter((g) => g.status === "in_progress")
+      .map((g) => [g.id, g]),
+  );
+  const liveStatusFor = (b: BetRow): LiveBetStatus | null => {
+    if (b.result || b.voided_at || b.game_id === null) return null;
+    const g = liveGameById.get(b.game_id);
+    if (!g) return null;
+    return statusForBet(
+      {
+        id: b.id,
+        betType: b.bet_type,
+        side: b.side,
+        line: b.line_taken === null ? null : Number(b.line_taken),
+      },
+      g.home_points ?? 0,
+      g.away_points ?? 0,
+    );
+  };
 
   const graded = bets.filter((b) => b.result && b.result !== "void");
   const wins = graded.filter((b) => b.result === "win").length;
@@ -61,7 +141,7 @@ export default async function LedgerPage() {
         {/* Entry */}
         <section className="mb-8 rounded border border-chalk/10 bg-surface p-4">
           <h2 className="mb-3 text-sm text-gold">Log a bet</h2>
-          <BetForm seasonId={seasonId} />
+          <BetForm seasonId={seasonId} games={formGames} />
         </section>
 
         {/* History */}
@@ -101,7 +181,15 @@ export default async function LedgerPage() {
                     {b.clv === null ? "–" : `${b.clv > 0 ? "+" : ""}${b.clv}`}
                   </td>
                   <td className="px-3 py-2 text-right uppercase">
-                    {b.result ?? <span className="text-chalk/40">open</span>}
+                    {b.result ??
+                      (() => {
+                        const status = liveStatusFor(b);
+                        return status ? (
+                          <LiveStatusChip prefix="" status={status} />
+                        ) : (
+                          <span className="text-chalk/40">open</span>
+                        );
+                      })()}
                   </td>
                   <td className="px-3 py-2 text-right">
                     {!b.voided_at && !b.result && <VoidBetButton betId={b.id} />}

@@ -11,6 +11,9 @@ export interface TeamCard {
   logo: string | null;
   rating: number;
   rank: number;
+  /** Human-poll rank shown as a pip; ordering stays by model rating */
+  pollRank: number | null;
+  poll: string | null;
 }
 
 export function TeamsGrid({ teams }: { teams: TeamCard[] }) {
@@ -46,7 +49,14 @@ export function TeamsGrid({ teams }: { teams: TeamCard[] }) {
                 <span className="h-7 w-7 shrink-0 rounded-full bg-elev" />
               )}
               <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium">{t.school}</span>
+                <span className="flex items-baseline gap-1.5">
+                  <span className="truncate font-medium">{t.school}</span>
+                  {t.pollRank !== null && t.poll && (
+                    <span className="stat shrink-0 text-[10px] text-dim" title={`${t.poll} rank`}>
+                      #{t.pollRank} {t.poll}
+                    </span>
+                  )}
+                </span>
                 <span className="block truncate text-xs text-dim">{t.conference ?? "—"}</span>
               </span>
               <span

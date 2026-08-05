@@ -16,6 +16,9 @@ export interface RatingRow {
   delta: number | null;
   churn: number | null;
   luck: number | null;
+  /** Human-poll rank ("#4 AP") — context only, ordering stays model rating */
+  pollRank: number | null;
+  poll: string | null;
 }
 
 type SortKey = "overall" | "offense" | "defense" | "delta" | "churn" | "luck";
@@ -103,6 +106,14 @@ export function RatingsTable({ rows }: { rows: RatingRow[] }) {
                       <img src={r.logoUrl} alt="" className="h-4 w-4 shrink-0" loading="lazy" />
                     )}
                     <span className="truncate">{r.school}</span>
+                    {r.pollRank !== null && r.poll && (
+                      <span
+                        className="stat shrink-0 text-[10px] text-chalk/40"
+                        title={`${r.poll} rank`}
+                      >
+                        #{r.pollRank} {r.poll}
+                      </span>
+                    )}
                     <span className="hidden text-xs text-chalk/40 sm:inline">{r.conference}</span>
                   </span>
                 </td>

@@ -190,6 +190,22 @@ export interface CfbdPortalEntry {
   eligibility: string | null;
 }
 
+export interface CfbdRankingWeek {
+  season: number;
+  seasonType: string;
+  week: number;
+  polls: Array<{
+    poll: string; // "AP Top 25" | "Coaches Poll" | "Playoff Committee Rankings" | ...
+    ranks: Array<{
+      rank: number;
+      school: string;
+      conference: string | null;
+      firstPlaceVotes: number | null;
+      points: number | null;
+    }>;
+  }>;
+}
+
 export interface CfbdScoreboardGame {
   id: number;
   startDate: string;
@@ -233,6 +249,10 @@ export const cfbd = {
   fpiRatings: (year: number) => get<CfbdFpiRating[]>("/ratings/fpi", { year }),
 
   portal: (year: number) => get<CfbdPortalEntry[]>("/player/portal", { year }),
+
+  /** Human polls (AP / Coaches / CFP). Returns school NAMES, not team ids. */
+  rankings: (year: number, opts: { week?: number; seasonType?: string } = {}) =>
+    get<CfbdRankingWeek[]>("/rankings", { year, week: opts.week, seasonType: opts.seasonType }),
 
   /** Requires Tier 1+. Live game states for the Saturday poll job. */
   scoreboard: (classification = "fbs") =>

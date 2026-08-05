@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
+  atsRecord,
   atsResult,
   fmtMoneyline,
   fmtSpread,
   gradeModel,
+  isRedZone,
   modelPicks,
   ouResult,
+  ouRecord,
+  parseSituation,
   pickHero,
   spreadMove,
+  stakeForPrediction,
   weekModelRecord,
   type GameView,
   type TeamView,
@@ -23,6 +28,8 @@ const team = (id: number, rank: number | null = null): TeamView => ({
   altColor: null,
   logo: null,
   rank,
+  pollRank: null,
+  poll: null,
   record: null,
 });
 
@@ -47,9 +54,12 @@ const game = (overrides: Partial<GameView> = {}): GameView => ({
     mlHome: -260,
     mlAway: 210,
   },
+  situation: null,
+  possession: null,
   spreadHistory: [],
   prediction: null,
   myPick: null,
+  myBets: [],
   weather: null,
   dome: false,
   ...overrides,
@@ -61,10 +71,12 @@ const prediction = (overrides = {}) => ({
   homeScore: 31,
   awayScore: 22,
   homeWinProb: 0.72,
+  coverProb: null,
   vegasSpread: -6.5,
   edge: -2.5,
   edgeFlag: "EDGE" as const,
   consensus: false,
+  frozen: false,
   ...overrides,
 });
 
@@ -176,6 +188,127 @@ describe("pickHero", () => {
     const dead = game({ status: "postponed", home: team(1, 1), away: team(2, 2) });
     const alive = game({ id: 12, status: "scheduled" });
     expect(pickHero([dead, alive])?.id).toBe(12);
+  });
+});
+
+describe("atsRecord / ouRecord", () => {
+  it("covers from the team's perspective, home or road", () => {
+    // -6.5 home favorite wins by 10 → home team covers, road opponent doesn't
+    expect(atsRecord([{ teamIsHome: true, margin: 10, closingSpread: -6.5 }])).toEqual({
+      w: 1,
+      l: 0,
+      p: 0,
+    });
+    expect(atsRecord([{ teamIsHome: false, margin: 10, closingSpread: -6.5 }])).toEqual({
+      w: 0,
+      l: 1,
+      p: 0,
+    });
+  });
+
+  it("pushes on the number; games without a closing line are skipped", () => {
+    expect(
+      atsRecord([
+        { teamIsHome: true, margin: 7, closingSpread: -7 },
+        { teamIsHome: true, margin: 3, closingSpread: null },
+      ]),
+    ).toEqual({ w: 0, l: 0, p: 1 });
+  });
+
+  it("ouRecord tallies over/under/push and skips missing totals", () => {
+    expect(
+      ouRecord([
+        { totalPoints: 50, closingTotal: 48.5 },
+        { totalPoints: 41, closingTotal: 44.5 },
+        { totalPoints: 45, closingTotal: 45 },
+        { totalPoints: 60, closingTotal: null },
+      ]),
+    ).toEqual({ o: 1, u: 1, p: 1 });
+  });
+});
+
+describe("stakeForPrediction", () => {
+  it("negative edge → home side at the market line", () => {
+    const s = stakeForPrediction({ edge: -3, edgeFlag: "EDGE", coverProb: 0.58, vegasSpread: -6.5 });
+    expect(s?.side).toBe("home");
+    expect(s?.line).toBe(-6.5);
+    expect(s!.units).toBeGreaterThan(0);
+    expect(s!.units).toBeLessThanOrEqual(2);
+  });
+
+  it("positive edge → away side with the complementary cover prob", () => {
+    const s = stakeForPrediction({ edge: 3, edgeFlag: "EDGE", coverProb: 0.42, vegasSpread: -6.5 });
+    expect(s?.side).toBe("away");
+    expect(s?.line).toBe(6.5);
+    expect(s!.units).toBeGreaterThan(0);
+  });
+
+  it("a flagged game priced near the breakeven is a pass (0u), not hidden", () => {
+    const s = stakeForPrediction({ edge: -2, edgeFlag: "EDGE", coverProb: 0.5, vegasSpread: -3 });
+    expect(s?.units).toBe(0);
+  });
+
+  it("null without a flag or cover probability", () => {
+    expect(stakeForPrediction({ edge: -1, edgeFlag: null, coverProb: 0.6, vegasSpread: -3 })).toBeNull();
+    expect(stakeForPrediction({ edge: -3, edgeFlag: "EDGE", coverProb: null, vegasSpread: -3 })).toBeNull();
+  });
+});
+
+describe("parseSituation", () => {
+  it("parses a normal down-and-distance", () => {
+    expect(parseSituation("2nd & 10 at OSU 34")).toEqual({
+      down: 2,
+      distance: 10,
+      sideToken: "OSU",
+      yardLine: 34,
+    });
+  });
+
+  it("parses goal-to-go", () => {
+    expect(parseSituation("1st & Goal at MICH 8")).toEqual({
+      down: 1,
+      distance: "Goal",
+      sideToken: "MICH",
+      yardLine: 8,
+    });
+  });
+
+  it("returns null for non-play strings", () => {
+    expect(parseSituation("Halftime")).toBeNull();
+    expect(parseSituation("End of 3rd Quarter")).toBeNull();
+    expect(parseSituation(null)).toBeNull();
+    expect(parseSituation("")).toBeNull();
+  });
+});
+
+describe("isRedZone", () => {
+  const live = (overrides: Partial<GameView>) =>
+    game({
+      status: "in_progress",
+      home: { ...team(1), abbr: "HOME" },
+      away: { ...team(2), abbr: "AWAY" },
+      ...overrides,
+    });
+
+  it("inside the defense's 20 with possession known", () => {
+    expect(isRedZone(live({ possession: "away", situation: "2nd & 6 at HOME 14" }))).toBe(true);
+  });
+
+  it("goal-to-go always counts", () => {
+    expect(isRedZone(live({ possession: "home", situation: "1st & Goal at AWAY 4" }))).toBe(true);
+  });
+
+  it("own side of the field is not the red zone", () => {
+    expect(isRedZone(live({ possession: "away", situation: "2nd & 6 at AWAY 14" }))).toBe(false);
+  });
+
+  it("fails closed on ambiguity, missing possession, or non-live games", () => {
+    expect(isRedZone(live({ possession: "away", situation: "2nd & 6 at XYZ 14" }))).toBe(false);
+    expect(isRedZone(live({ possession: null, situation: "2nd & 6 at HOME 14" }))).toBe(false);
+    expect(
+      isRedZone(live({ status: "final", possession: "away", situation: "2nd & 6 at HOME 14" })),
+    ).toBe(false);
+    expect(isRedZone(live({ possession: "away", situation: "2nd & 6 at HOME 34" }))).toBe(false);
   });
 });
 

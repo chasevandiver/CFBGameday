@@ -3,8 +3,11 @@
 import { ChevronDown, RefreshCw, Search, SearchX } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStarred, useViewerTz } from "../../lib/client-store";
+import type { GameRow } from "../../lib/db-types";
 import { clockTime, dayKey, dayTabLabel, DEFAULT_TZ, tzLabel } from "../../lib/kick";
+import { useGamesRealtime } from "../../lib/use-games-realtime";
 import {
+  displayRank,
   heroScore,
   isDead,
   isFinal,
@@ -54,14 +57,38 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
   // tracks the week the user is looking at so stale fetches never clobber it;
   // updated only in changeWeek (render never mutates it)
   const weekRef = useRef(initial.week);
+  // per-game timestamp of the last realtime event, so an in-flight poll that
+  // started before an event never rolls a fresher score back
+  const liveEventAt = useRef(new Map<number, number>());
 
   const refresh = useCallback(async (targetWeek: number, showSkeleton: boolean) => {
     if (showSkeleton) setLoading(true);
+    const fetchStart = Date.now();
     try {
       const res = await fetch(`/api/slate?week=${targetWeek}`, { cache: "no-store" });
       if (res.ok) {
         const next = (await res.json()) as SlateData;
-        if (next.week === weekRef.current) setData(next);
+        if (next.week === weekRef.current) {
+          setData((cur) => ({
+            ...next,
+            games: next.games.map((g) => {
+              const evt = liveEventAt.current.get(g.id);
+              if (evt === undefined || evt <= fetchStart) return g;
+              const held = cur.games.find((x) => x.id === g.id);
+              if (!held) return g;
+              return {
+                ...g,
+                status: held.status,
+                homePoints: held.homePoints,
+                awayPoints: held.awayPoints,
+                period: held.period,
+                clock: held.clock,
+                situation: held.situation,
+                possession: held.possession,
+              };
+            }),
+          }));
+        }
       }
     } catch {
       /* transient network error — next poll retries */
@@ -70,14 +97,56 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
     }
   }, []);
 
+  const handleGameUpdate = useCallback((row: GameRow) => {
+    liveEventAt.current.set(row.id, Date.now());
+    setData((d) => ({
+      ...d,
+      games: d.games.map((g) =>
+        g.id === row.id
+          ? {
+              ...g,
+              status: row.status,
+              homePoints: row.home_points,
+              awayPoints: row.away_points,
+              period: row.current_period,
+              clock: row.current_clock,
+              situation: row.current_situation,
+              possession: row.possession,
+            }
+          : g,
+      ),
+    }));
+  }, []);
+
   const anyLive = data.games.some(isLive);
+  // realtime only for the current week when games are live or kicking off soon;
+  // off-week browsing costs nothing
+  const anyImminent = useMemo(
+    () =>
+      data.games.some((g) => {
+        if (isLive(g)) return true;
+        if (g.status !== "scheduled" || !g.startTs) return false;
+        const dt = Date.parse(g.startTs) - Date.now();
+        return dt > -3 * 3600_000 && dt < 6 * 3600_000;
+      }),
+    [data.games],
+  );
+  const { connected } = useGamesRealtime({
+    enabled: week === currentWeek && anyImminent,
+    week,
+    seasonId: data.seasonId,
+    onGameUpdate: handleGameUpdate,
+  });
+
   useEffect(() => {
-    const ms = anyLive ? 30_000 : 90_000;
+    // realtime carries scores; the slower connected poll still heals missed
+    // events and refreshes lines/predictions
+    const ms = connected ? 180_000 : anyLive ? 30_000 : 90_000;
     const id = setInterval(() => {
       if (document.visibilityState === "visible") void refresh(weekRef.current, false);
     }, ms);
     return () => clearInterval(id);
-  }, [anyLive, refresh]);
+  }, [anyLive, connected, refresh]);
 
   const changeWeek = (w: number) => {
     if (w === week) return;
@@ -324,9 +393,9 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
 /* ---- little pieces ----------------------------------------------------- */
 
 function isRankedMatchup(g: GameView): boolean {
-  return (
-    g.home.rank !== null && g.home.rank <= 25 && g.away.rank !== null && g.away.rank <= 25
-  );
+  const hr = displayRank(g.home);
+  const ar = displayRank(g.away);
+  return hr !== null && hr <= 25 && ar !== null && ar <= 25;
 }
 
 function absOr(v: number | null, fallback: number): number {

@@ -1,4 +1,5 @@
 import { ArrowDown, ArrowUp, Check, Minus, X } from "lucide-react";
+import type { LiveBetStatus } from "../../lib/live-status";
 import { fmtSpread } from "../../lib/slate";
 
 export function LiveBadge() {
@@ -10,10 +11,13 @@ export function LiveBadge() {
   );
 }
 
-export function RankBadge({ rank }: { rank: number | null }) {
+export function RankBadge({ rank, poll }: { rank: number | null; poll?: string | null }) {
   if (rank === null || rank > 25) return null;
   return (
-    <span className="stat shrink-0 text-[10.5px] font-semibold leading-none text-dim" title="Model rank">
+    <span
+      className="stat shrink-0 text-[10.5px] font-semibold leading-none text-dim"
+      title={poll ? `${poll} rank` : "Model rank"}
+    >
       #{rank}
     </span>
   );
@@ -68,6 +72,31 @@ export function ResultChip({
     <span className={`chip ${styles}`}>
       <Icon size={11} strokeWidth={3} aria-hidden />
       {label}
+    </span>
+  );
+}
+
+/**
+ * Live "is this bet winning right now" chip — icon + text, never color alone.
+ * Clinched outcomes (totals past the line) go solid.
+ */
+export function LiveStatusChip({ prefix, status }: { prefix: string; status: LiveBetStatus }) {
+  const style =
+    status.state === "winning"
+      ? status.clinched
+        ? "bg-win text-white"
+        : "bg-win/12 text-win"
+      : status.state === "losing"
+        ? status.clinched
+          ? "bg-loss text-white"
+          : "bg-loss/12 text-loss"
+        : "bg-push/12 text-push";
+  const Icon = status.state === "winning" ? Check : status.state === "losing" ? X : Minus;
+  return (
+    <span className={`chip ${style}`}>
+      <Icon size={11} strokeWidth={3} aria-hidden />
+      {prefix && <span>{prefix}</span>}
+      <span className="normal-case tracking-normal">{status.label}</span>
     </span>
   );
 }

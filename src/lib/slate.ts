@@ -6,6 +6,9 @@
  * Spread convention everywhere: home perspective, negative = home favored.
  */
 
+import { liveWinProb } from "../model/live";
+import { suggestedStake } from "../model/ratings";
+
 export interface TeamView {
   id: number;
   school: string;
@@ -17,9 +20,16 @@ export interface TeamView {
   logo: string | null;
   /** Model rank from the latest ratings week (1 = best), null if unrated */
   rank: number | null;
+  /** Human-poll rank (AP/CFP/Coaches, latest week), null if unranked */
+  pollRank: number | null;
+  /** Which poll pollRank came from, e.g. "AP Top 25" */
+  poll: string | null;
   /** "3-1" from final games this season, null before any finals */
   record: string | null;
 }
+
+/** Rank to display on cards: the human poll when available, else the model's. */
+export const displayRank = (t: TeamView): number | null => t.pollRank ?? t.rank;
 
 export interface LinePoint {
   t: string;
@@ -32,10 +42,21 @@ export interface PredictionView {
   homeScore: number | null;
   awayScore: number | null;
   homeWinProb: number;
+  /** P(home covers vegasSpread); null when priced without a line */
+  coverProb: number | null;
   vegasSpread: number | null;
   edge: number | null;
   edgeFlag: "EDGE" | "BIG_EDGE" | null;
   consensus: boolean;
+  /** True for the Thursday-frozen receipts row */
+  frozen: boolean;
+}
+
+export interface MyBetView {
+  id: number;
+  betType: string;
+  side: string | null;
+  line: number | null;
 }
 
 export interface GameView {
@@ -45,6 +66,9 @@ export interface GameView {
   status: string;
   period: number | null;
   clock: string | null;
+  /** Verbatim CFBD situation string while live, e.g. "2nd & 10 at OSU 34" */
+  situation: string | null;
+  possession: "home" | "away" | null;
   tv: string | null;
   neutralSite: boolean;
   homePoints: number | null;
@@ -62,6 +86,8 @@ export interface GameView {
   spreadHistory: LinePoint[];
   prediction: PredictionView | null;
   myPick: { side: string; line: number } | null;
+  /** The viewer's open (ungraded, unvoided) bets on this game */
+  myBets: MyBetView[];
   weather: { tempF: number | null; windMph: number | null; precipProb: number | null } | null;
   dome: boolean;
 }
@@ -76,6 +102,70 @@ export interface SlateData {
 export const isLive = (g: GameView) => g.status === "in_progress";
 export const isFinal = (g: GameView) => g.status === "final";
 export const isDead = (g: GameView) => g.status === "postponed" || g.status === "canceled";
+
+/* ---- live situation ---------------------------------------------------- */
+
+export interface ParsedSituation {
+  down: number;
+  /** Yards to go, or "Goal" for goal-to-go */
+  distance: number | "Goal";
+  /** Field-side token as CFBD gives it, e.g. "OSU" in "at OSU 34" */
+  sideToken: string;
+  yardLine: number;
+}
+
+/** Best-effort parse of CFBD's situation string ("2nd & 10 at OSU 34"). */
+export function parseSituation(s: string | null): ParsedSituation | null {
+  if (!s) return null;
+  const m = /^(\d)(?:st|nd|rd|th)\s*&\s*(\d+|goal)\s+at\s+(\S+)\s+(\d{1,2})$/i.exec(s.trim());
+  if (!m) return null;
+  return {
+    down: Number(m[1]),
+    distance: /^goal$/i.test(m[2]) ? "Goal" : Number(m[2]),
+    sideToken: m[3],
+    yardLine: Number(m[4]),
+  };
+}
+
+/**
+ * Red zone = ball inside the defense's 20 with possession known. Fails closed:
+ * the raw situation string is the primary UI, this only adds a highlight when
+ * the field-side token unambiguously matches the defending team's abbreviation.
+ */
+export function isRedZone(g: {
+  status: string;
+  possession: "home" | "away" | null;
+  situation: string | null;
+  home: { abbr: string };
+  away: { abbr: string };
+}): boolean {
+  if (g.status !== "in_progress" || !g.possession) return false;
+  const sit = parseSituation(g.situation);
+  if (!sit) return false;
+  if (sit.distance === "Goal") return true;
+  const offense = g.possession === "home" ? g.home : g.away;
+  const defense = g.possession === "home" ? g.away : g.home;
+  const token = sit.sideToken.toUpperCase();
+  if (token === offense.abbr.toUpperCase()) return false; // own side of the field
+  if (token !== defense.abbr.toUpperCase()) return false; // ambiguous → no highlight
+  return sit.yardLine <= 20;
+}
+
+/**
+ * In-game home win probability from score + time + pregame model margin.
+ * Null unless the game is live. Computed client-side so realtime score
+ * merges move the bar without a server round-trip.
+ */
+export function liveHomeWinProb(g: GameView): number | null {
+  if (!isLive(g)) return null;
+  return liveWinProb({
+    pregameMargin: g.prediction ? -g.prediction.spread : 0,
+    homePoints: g.homePoints ?? 0,
+    awayPoints: g.awayPoints ?? 0,
+    period: g.period,
+    clock: g.clock,
+  });
+}
 
 /* ---- formatting ------------------------------------------------------- */
 
@@ -205,6 +295,72 @@ export function weekModelRecord(games: GameView[]): WeekRecord {
   return rec;
 }
 
+/* ---- ATS / O-U trends (spec §6: for fun, never fed to the model) ------ */
+
+export interface AtsGameInput {
+  teamIsHome: boolean;
+  /** Final home margin (home − away) */
+  margin: number;
+  /** Closing consensus spread, home perspective; null skips the game */
+  closingSpread: number | null;
+}
+
+/** Team-perspective ATS record; same cover formula as the Sunday grader. */
+export function atsRecord(games: AtsGameInput[]): { w: number; l: number; p: number } {
+  const rec = { w: 0, l: 0, p: 0 };
+  for (const g of games) {
+    if (g.closingSpread === null) continue;
+    const homeCover = g.margin + g.closingSpread;
+    if (homeCover === 0) rec.p += 1;
+    else if (homeCover > 0 === g.teamIsHome) rec.w += 1;
+    else rec.l += 1;
+  }
+  return rec;
+}
+
+export function ouRecord(
+  games: Array<{ totalPoints: number; closingTotal: number | null }>,
+): { o: number; u: number; p: number } {
+  const rec = { o: 0, u: 0, p: 0 };
+  for (const g of games) {
+    if (g.closingTotal === null) continue;
+    if (g.totalPoints > g.closingTotal) rec.o += 1;
+    else if (g.totalPoints < g.closingTotal) rec.u += 1;
+    else rec.p += 1;
+  }
+  return rec;
+}
+
+/* ---- bet sizing (spec §5.4) ------------------------------------------- */
+
+export interface StakeSuggestion {
+  side: "home" | "away";
+  /** ¼-Kelly units, capped at 2; 0 = flagged but priced as a pass */
+  units: number;
+  /** Market line for the suggested side (side perspective) */
+  line: number | null;
+}
+
+/**
+ * Suggested stake for a flagged edge: the model's side of the spread priced
+ * by ¼ Kelly on the side's cover probability. Null when the game isn't
+ * flagged or the cover probability is unknown.
+ */
+export function stakeForPrediction(p: {
+  edge: number | null;
+  edgeFlag: "EDGE" | "BIG_EDGE" | null;
+  coverProb: number | null;
+  vegasSpread: number | null;
+}): StakeSuggestion | null {
+  if (!p.edgeFlag || p.edge === null || p.edge === 0 || p.coverProb === null) return null;
+  // model spread below market → model likes home (same rule as modelPicks)
+  const side: "home" | "away" = p.edge < 0 ? "home" : "away";
+  const sideCoverProb = side === "home" ? p.coverProb : 1 - p.coverProb;
+  const line =
+    p.vegasSpread === null ? null : side === "home" ? p.vegasSpread : -p.vegasSpread;
+  return { side, units: suggestedStake(sideCoverProb), line };
+}
+
 /* ---- hero selection & line movement ----------------------------------- */
 
 /**
@@ -214,8 +370,8 @@ export function weekModelRecord(games: GameView[]): WeekRecord {
 export function heroScore(g: GameView): number {
   if (isDead(g)) return -Infinity;
   let score = 0;
-  const hr = g.home.rank;
-  const ar = g.away.rank;
+  const hr = displayRank(g.home);
+  const ar = displayRank(g.away);
   if (hr !== null && ar !== null && hr <= 25 && ar <= 25) score += 300 - (hr + ar) * 4;
   else if ((hr !== null && hr <= 25) || (ar !== null && ar <= 25)) score += 60;
   if (g.lines.spread !== null) score += Math.max(0, 25 - Math.abs(g.lines.spread)) * 2;

@@ -72,6 +72,9 @@ Deno.serve(async (req: Request) => {
       case "freeze":
         result = await freeze(db);
         break;
+      case "sync-rankings":
+        result = await syncRankings(db);
+        break;
       default:
         return Response.json({ ok: false, error: "unknown task" }, { status: 400 });
     }
@@ -206,6 +209,7 @@ async function scoreboard(db: SupabaseClient): Promise<Json> {
     const status =
       g.status === "in_progress" ? "in_progress" : g.status === "completed" ? "final" : "scheduled";
     if (status === "scheduled") continue;
+    const inProgress = status === "in_progress";
     const { error } = await db
       .from("games")
       .update({
@@ -214,6 +218,12 @@ async function scoreboard(db: SupabaseClient): Promise<Json> {
         away_points: g.awayTeam.points,
         current_period: g.period,
         current_clock: g.clock,
+        // nulled once final so finished games never show a stale down-and-distance
+        current_situation: inProgress ? g.situation : null,
+        possession:
+          inProgress && (g.possession === "home" || g.possession === "away")
+            ? g.possession
+            : null,
         tv: g.tv ?? undefined,
       })
       .eq("id", g.id);
@@ -284,6 +294,58 @@ async function weather(db: SupabaseClient): Promise<Json> {
     if (!error) forecasts++;
   }
   return { forecasts };
+}
+
+/**
+ * Daily poll sync: AP / Coaches / CFP committee ranks (display-only context;
+ * never fed to the model). Mirrors scripts/lib/jobs-core.ts syncRankingsJob.
+ */
+async function syncRankings(db: SupabaseClient): Promise<Json> {
+  const KEEP = new Set(["AP Top 25", "Coaches Poll", "Playoff Committee Rankings"]);
+  const weeks = await cfbd.rankings(SEASON);
+  const { data: teamRows } = await db.from("teams").select("id, school, alt_names");
+  const nameIndex = new Map<string, number>();
+  for (const t of (teamRows ?? []) as Array<{
+    id: number;
+    school: string;
+    alt_names: string[] | null;
+  }>) {
+    nameIndex.set(t.school.toLowerCase(), t.id);
+    for (const alt of t.alt_names ?? []) nameIndex.set(alt.toLowerCase(), t.id);
+  }
+
+  const rows: Json[] = [];
+  const unmatched = new Set<string>();
+  for (const wk of weeks) {
+    for (const poll of wk.polls) {
+      if (!KEEP.has(poll.poll)) continue;
+      for (const r of poll.ranks) {
+        const teamId = nameIndex.get(r.school.toLowerCase());
+        if (teamId === undefined) {
+          unmatched.add(r.school);
+          continue;
+        }
+        rows.push({
+          season_id: wk.season,
+          week: wk.week,
+          season_type: wk.seasonType,
+          poll: poll.poll,
+          team_id: teamId,
+          rank: r.rank,
+          points: r.points,
+          first_place_votes: r.firstPlaceVotes,
+          fetched_at: new Date().toISOString(),
+        });
+      }
+    }
+  }
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await db.from("poll_rankings").upsert(rows.slice(i, i + 500), {
+      onConflict: "season_id,season_type,week,poll,team_id",
+    });
+    if (error) throw new Error(error.message);
+  }
+  return { rows: rows.length, unmatched: [...unmatched] };
 }
 
 /**

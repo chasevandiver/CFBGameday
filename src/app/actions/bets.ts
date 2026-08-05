@@ -24,6 +24,8 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
   const lineRaw = String(formData.get("line_taken") ?? "").trim();
   const book = String(formData.get("book") ?? "").trim();
   const seasonId = Number(formData.get("season_id"));
+  const gameIdRaw = String(formData.get("game_id") ?? "").trim();
+  const sideRaw = String(formData.get("side") ?? "").trim();
 
   if (!description) return { ok: false, message: "Describe the bet (e.g. “Michigan -3.5”)" };
   if (!REASON_TAGS.includes(reasonTag as (typeof REASON_TAGS)[number])) {
@@ -31,11 +33,23 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
   }
   if (!Number.isFinite(units) || units <= 0) return { ok: false, message: "Units must be > 0" };
 
+  let gameId: number | null = null;
+  if (gameIdRaw !== "") {
+    const parsed = Number(gameIdRaw);
+    if (!Number.isInteger(parsed)) return { ok: false, message: "Bad game" };
+    const { data: game } = await supabase.from("games").select("id").eq("id", parsed).maybeSingle();
+    if (!game) return { ok: false, message: "Bad game" };
+    gameId = parsed;
+  }
+  const side = ["home", "away", "over", "under"].includes(sideRaw) ? sideRaw : null;
+
   const { error } = await supabase.from("bets").insert({
     season_id: seasonId,
     user_id: user.id,
+    game_id: gameId,
     bet_type: betType,
     description,
+    side,
     line_taken: lineRaw === "" ? null : Number(lineRaw),
     odds,
     units,
