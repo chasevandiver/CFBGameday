@@ -4,7 +4,8 @@
 --   * picks are invisible to other users until kickoff, and immutable after kickoff
 --   * every domain table carries season_id (year-round, multi-season product)
 
-create extension if not exists pg_cron;
+-- pg_cron is enabled separately (dashboard/extensions) when jobs are promoted
+-- to schedules; not created here so the migration runs on a fresh project.
 
 -- ---------------------------------------------------------------------------
 -- Reference data
@@ -278,6 +279,7 @@ alter table rating_adjustments enable row level security;
 alter table seasons enable row level security;
 alter table teams enable row level security;
 alter table venues enable row level security;
+alter table venue_coord_overrides enable row level security;  -- deny-all: service role only
 alter table games enable row level security;
 alter table line_snapshots enable row level security;
 alter table weather_forecasts enable row level security;
@@ -286,6 +288,8 @@ alter table preseason_components enable row level security;
 alter table team_hfa enable row level security;
 alter table predictions enable row level security;
 alter table rivalries enable row level security;
+alter table invite_allowlist enable row level security;       -- deny-all: service role only
+alter table api_call_log enable row level security;           -- deny-all: service role only
 
 create policy "read reference data" on seasons for select to authenticated using (true);
 create policy "read teams" on teams for select to authenticated using (true);
