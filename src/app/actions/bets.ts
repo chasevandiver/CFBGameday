@@ -14,7 +14,7 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { ok: false, message: "Not signed in" };
+  if (!user) return { ok: false, message: "Sign in to log bets" };
 
   const description = String(formData.get("description") ?? "").trim();
   const betType = String(formData.get("bet_type") ?? "spread");

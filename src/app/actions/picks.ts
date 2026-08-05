@@ -23,7 +23,7 @@ export async function makePick(
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { ok: false, message: "Not signed in" };
+  if (!user) return { ok: false, message: "Sign in to save your picks" };
 
   const [{ data: game }, { data: snapshots }] = await Promise.all([
     supabase.from("games").select("id, season_id, start_ts").eq("id", gameId).maybeSingle(),
@@ -66,7 +66,7 @@ export async function removePick(gameId: number): Promise<PickResult> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { ok: false, message: "Not signed in" };
+  if (!user) return { ok: false, message: "Sign in to save your picks" };
 
   const { error } = await supabase
     .from("picks")
