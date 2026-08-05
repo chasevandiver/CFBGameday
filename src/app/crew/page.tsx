@@ -1,3 +1,4 @@
+import { AdjustmentsPanel, type AdjustmentView } from "../../components/AdjustmentsPanel";
 import { AppNav } from "../../components/AppNav";
 import { InviteForm } from "../../components/InviteForm";
 import type { PickRow, ProfileRow } from "../../lib/db-types";
@@ -27,12 +28,21 @@ export default async function CrewPage() {
   } = await supabase.auth.getUser();
   const me = profiles.find((p) => p.id === user?.id);
   let invited: Array<{ email: string; joined: boolean }> = [];
+  let ratedTeams: Array<{ id: number; school: string }> = [];
+  let adjustments: AdjustmentView[] = [];
   if (me?.is_admin) {
     const service = createServiceClient();
-    const [{ data: allowlist }, { data: joinedUsers }] = await Promise.all([
-      service.from("invite_allowlist").select("email").order("created_at"),
-      service.auth.admin.listUsers({ perPage: 100 }),
-    ]);
+    const [{ data: allowlist }, { data: joinedUsers }, { data: ratingRows }, { data: adjRows }] =
+      await Promise.all([
+        service.from("invite_allowlist").select("email").order("created_at"),
+        service.auth.admin.listUsers({ perPage: 100 }),
+        supabase.from("ratings").select("team_id").eq("season_id", seasonId),
+        supabase
+          .from("rating_adjustments")
+          .select("id, team_id, points, reason, source, confirmed_at")
+          .eq("season_id", seasonId)
+          .order("proposed_at", { ascending: false }),
+      ]);
     const joinedEmails = new Set(
       (joinedUsers?.users ?? []).map((u) => u.email?.toLowerCase()).filter(Boolean),
     );
@@ -40,6 +50,33 @@ export default async function CrewPage() {
       email: a.email,
       joined: joinedEmails.has(a.email.toLowerCase()),
     }));
+
+    const ratedIds = new Set((ratingRows ?? []).map((r: { team_id: number }) => r.team_id));
+    const { data: teamRows } = await supabase
+      .from("teams")
+      .select("id, school")
+      .in("id", [...ratedIds])
+      .order("school");
+    ratedTeams = (teamRows ?? []) as Array<{ id: number; school: string }>;
+    const schoolById = new Map(ratedTeams.map((t) => [t.id, t.school]));
+    adjustments = (adjRows ?? []).map(
+      (a: {
+        id: number;
+        team_id: number;
+        points: number;
+        reason: string;
+        source: string;
+        confirmed_at: string | null;
+      }) => ({
+        id: a.id,
+        teamId: a.team_id,
+        school: schoolById.get(a.team_id) ?? `#${a.team_id}`,
+        points: Number(a.points),
+        reason: a.reason,
+        source: a.source,
+        confirmed: a.confirmed_at !== null,
+      }),
+    );
   }
 
   // RLS limits visible picks to own + post-kickoff; graded picks are all post-kickoff.
@@ -150,6 +187,18 @@ export default async function CrewPage() {
                 ))}
               </ul>
             )}
+          </section>
+        )}
+
+        {me?.is_admin && (
+          <section className="mt-6 rounded border border-chalk/10 bg-surface p-4">
+            <h2 className="mb-1 text-sm text-gold">Rating adjustments</h2>
+            <p className="mb-3 text-xs text-chalk/60">
+              Dock or credit a team before Thursday&apos;s freeze — QB out, suspension, chaos.
+              Active adjustments are added to that team&apos;s rating when predictions are priced.
+              Removing one never rewrites already-frozen predictions.
+            </p>
+            <AdjustmentsPanel teams={ratedTeams} adjustments={adjustments} />
           </section>
         )}
       </main>

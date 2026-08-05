@@ -7,7 +7,7 @@ const TABS: Array<{ label: string; href: string; ready: boolean }> = [
   { label: "Teams", href: "/teams", ready: true },
   { label: "Ledger", href: "/ledger", ready: true },
   { label: "Crew", href: "/crew", ready: true },
-  { label: "Receipts", href: "/receipts", ready: false },
+  { label: "Receipts", href: "/receipts", ready: true },
 ];
 
 export function AppNav() {
