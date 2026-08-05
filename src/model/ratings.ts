@@ -7,7 +7,11 @@
 
 // 2026.1.0: params tuned on the 2023–2025 backtest (K/HFA grid + σ fit +
 // slope calibrated to σ). Calibration within ~2pts in every win-prob bucket.
-export const MODEL_VERSION = "2026.1.0";
+// 2026.2.0: talent-composite field fix (was silently defaulting for all
+// teams), prior-year baseline blends replay finals 50/50 with final SP+
+// (--tune-sp-blend): opponent adjustment fixes G5 schedule-pocket inflation.
+// Both experiments re-validated with talent flowing; carryover optimum 0.70.
+export const MODEL_VERSION = "2026.2.0";
 
 export interface ModelParams {
   /** Elo-style learning rate on capped margin error */
@@ -91,8 +95,8 @@ export interface ChurnInputs {
   /** CFBD percentPPA-style returning production, 0..1 */
   returningProductionOffense: number;
   returningProductionDefense: number;
-  /** True if the primary QB (by prior-season usage) returns */
-  qbReturns: boolean;
+  /** True if the primary QB (by prior-season usage) returns; null = unknown (no signal) */
+  qbReturns: boolean | null;
   /** OL returning starts as a share of 5 × games, 0..1 */
   olReturningShare: number;
   /** Net portal points: sum of incoming impact minus outgoing impact, rating points */
@@ -110,7 +114,8 @@ export function churnAdjustment(c: ChurnInputs): number {
   const AVG_RETURNING = 0.6;
   const offCore = (c.returningProductionOffense - AVG_RETURNING) * 5;
   const defCore = (c.returningProductionDefense - AVG_RETURNING) * 5;
-  const qb = c.qbReturns ? 1.0 : -1.0; // ~2x weight embedded relative to a generic starter
+  // ~2x weight embedded relative to a generic starter; unknown = no signal
+  const qb = c.qbReturns === null ? 0 : c.qbReturns ? 1.0 : -1.0;
   const ol = (c.olReturningShare - 0.5) * 3; // ~1.5x weight
   const freshmen = Math.min(c.blueChipFreshmen * 0.1, 0.75);
   const raw = offCore + defCore + qb + ol + c.netPortalPoints + freshmen;

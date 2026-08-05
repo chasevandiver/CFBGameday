@@ -96,7 +96,7 @@ async function tunePriorCarryover(seasons: SeasonData[], teamIdsByName: Map<stri
     const std = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length);
     const map = new Map<number, number>();
     for (const t of talent) {
-      const id = teamIdsByName.get(t.school);
+      const id = teamIdsByName.get(t.team);
       if (id !== undefined) {
         map.set(id, Math.max(-18, Math.min(18, ((t.talent - mean) / std) * 5.5)));
       }
@@ -134,10 +134,73 @@ async function tunePriorCarryover(seasons: SeasonData[], teamIdsByName: Map<stri
   if (best) console.log(`\nBest early-season carryover: w=${best.w}`);
 }
 
+/**
+ * --tune-sp-blend: should the previous-season baseline be the replay's own
+ * finals, CFBD's final SP+ (opponent-adjusted, better cross-conference
+ * placement), or a blend? Builds priors as
+ *   base = α × replay_finals + (1−α) × SP+_prev_final
+ *   prior = 0.7 × base + 0.3 × talent
+ * and scores weeks 1–4 of the chained seasons.
+ */
+async function tuneSpBlend(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
+  const { cfbd } = await import("../src/lib/cfbd");
+  const { cached } = await import("./lib/replay");
+
+  const talentBySeason = new Map<number, Map<number, number>>();
+  const spFinalBySeason = new Map<number, Map<number, number>>();
+  for (const season of SEASONS) {
+    const talent = await cached(`talent-${season}`, () => cfbd.talent(season), true);
+    const vals = talent.map((t) => t.talent);
+    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const std = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length);
+    const tMap = new Map<number, number>();
+    for (const t of talent) {
+      const id = teamIdsByName.get(t.team);
+      if (id !== undefined) tMap.set(id, Math.max(-18, Math.min(18, ((t.talent - mean) / std) * 5.5)));
+    }
+    talentBySeason.set(season, tMap);
+
+    // final SP+ of the season itself (used as next season's baseline input)
+    const sp = await cached(`sp-${season}`, () => cfbd.spRatings(season), true);
+    spFinalBySeason.set(season, priorsFromSp(sp, teamIdsByName));
+  }
+
+  console.log("alpha (replay share)   early-wk NLL   early-wk MAE");
+  let best: { a: number; nll: number } | null = null;
+  for (const a of [0, 0.25, 0.5, 0.75, 1]) {
+    let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
+    const early: ReplayPrediction[] = [];
+    for (const season of seasons) {
+      const { predictions, finalRatings } = replaySeason(season, priors, DEFAULT_PARAMS);
+      if (season.season > SEASONS[0]) early.push(...predictions.filter((p) => p.week <= 4));
+      const spFinal = spFinalBySeason.get(season.season)!;
+      const talent = talentBySeason.get(season.season)!;
+      const next = new Map<number, number>();
+      for (const [teamId, rating] of finalRatings) {
+        const sp = spFinal.get(teamId);
+        const base = sp !== undefined ? a * rating + (1 - a) * sp : rating;
+        const tal = talent.get(teamId) ?? -8;
+        next.set(teamId, 0.7 * base + 0.3 * tal);
+      }
+      priors = next;
+    }
+    const graded = early.filter((p) => p.favoriteWon !== null);
+    const nll =
+      -graded.reduce((s, p) => s + Math.log(p.favoriteWon ? p.favWinProb : 1 - p.favWinProb), 0) /
+      graded.length;
+    const errors = early.map((p) => p.actualMargin - p.margin);
+    const mae = errors.reduce((s, e) => s + Math.abs(e), 0) / errors.length;
+    console.log(`${a.toFixed(2)}                   ${nll.toFixed(4)}         ${mae.toFixed(2)}   n=${graded.length}`);
+    if (!best || nll < best.nll) best = { a, nll };
+  }
+  if (best) console.log(`\nBest replay share: alpha=${best.a}`);
+}
+
 async function main() {
   const useCache = process.argv.includes("--cached");
   const tune = process.argv.includes("--tune");
   const tunePrior = process.argv.includes("--tune-prior");
+  const tuneSp = process.argv.includes("--tune-sp-blend");
 
   console.log(`Loading seasons ${SEASONS.join(", ")} ${useCache ? "(cache preferred)" : "(fetching)"}…`);
   const seasons: SeasonData[] = [];
@@ -147,6 +210,10 @@ async function main() {
 
   if (tunePrior) {
     await tunePriorCarryover(seasons, teamIdsByName);
+    return;
+  }
+  if (tuneSp) {
+    await tuneSpBlend(seasons, teamIdsByName);
     return;
   }
 

@@ -139,7 +139,8 @@ export interface CfbdReturningProduction {
 
 export interface CfbdTalent {
   year: number;
-  school: string;
+  /** CFBD returns the school name under `team` on this endpoint */
+  team: string;
   talent: number;
 }
 

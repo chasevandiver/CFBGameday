@@ -75,13 +75,30 @@ async function main() {
   const idsByName = teamIdsByNameFrom(seasons);
 
   let priors = priorsFromSp(seasons[0].prevSp, idsByName);
-  let finals = new Map<number, number>();
+  let replayFinals = new Map<number, number>();
   for (const season of seasons) {
     const { finalRatings } = replaySeason(season, priors, DEFAULT_PARAMS);
-    finals = finalRatings;
+    replayFinals = finalRatings;
     priors = chainPriors(finalRatings);
   }
-  console.log(`  ${finals.size} teams have 2025 final ratings`);
+
+  // Prior-year baseline: 50/50 our replay and final SP+ (--tune-sp-blend).
+  // SP+'s opponent adjustment corrects G5 schedule-pocket inflation that a
+  // pure margin replay can't see.
+  const REPLAY_SHARE = 0.5;
+  const sp2025 = priorsFromSp(
+    await cached("sp-2025", () => cfbd.spRatings(2025), true),
+    idsByName,
+  );
+  const finals = new Map<number, number>();
+  for (const [teamId, replayRating] of replayFinals) {
+    const sp = sp2025.get(teamId);
+    finals.set(
+      teamId,
+      sp !== undefined ? REPLAY_SHARE * replayRating + (1 - REPLAY_SHARE) * sp : replayRating,
+    );
+  }
+  console.log(`  ${finals.size} teams have 2025 final ratings (${sp2025.size} with SP+)`);
 
   // ---- 2. Fetch 2026 data ---------------------------------------------------
   console.log("Fetching 2026 reference data…");
@@ -108,7 +125,7 @@ async function main() {
   const tStd = Math.sqrt(talentVals.reduce((a, b) => a + (b - tMean) ** 2, 0) / talentVals.length);
   const talentBaseline = new Map<number, number>();
   for (const t of talent) {
-    const team = teamByName.get(t.school);
+    const team = teamByName.get(t.team);
     if (team) talentBaseline.set(team.id, clamp(((t.talent - tMean) / tStd) * 5.5, -18, 18));
   }
 
@@ -197,7 +214,7 @@ async function main() {
     const churn = churnAdjustment({
       returningProductionOffense: retOverall ?? 0.6,
       returningProductionDefense: ret?.usage !== null && ret ? clamp(ret.usage ?? 0.6, 0, 1) : 0.6,
-      qbReturns: (retPassing ?? 0.5) >= 0.5,
+      qbReturns: ret && retPassing !== null ? retPassing >= 0.5 : null,
       olReturningShare: 0.5, // no data source — neutral (docs/SPEC.md §3 v2)
       netPortalPoints: clamp(((portalNet.get(team.id) ?? 0) / pStd) * 1.5, -4, 4),
       blueChipFreshmen: 0,
