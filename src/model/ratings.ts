@@ -5,7 +5,9 @@
  * Spec: docs/SPEC.md §2.
  */
 
-export const MODEL_VERSION = "2026.0.1";
+// 2026.1.0: params tuned on the 2023–2025 backtest (K/HFA grid + σ fit +
+// slope calibrated to σ). Calibration within ~2pts in every win-prob bucket.
+export const MODEL_VERSION = "2026.1.0";
 
 export interface ModelParams {
   /** Elo-style learning rate on capped margin error */
@@ -35,7 +37,7 @@ export interface ModelParams {
 }
 
 export const DEFAULT_PARAMS: ModelParams = {
-  kFactor: 0.175,
+  kFactor: 0.3,
   marginCap: 28,
   baseHfa: 2.3,
   teamHfaBlend: 0.5,
@@ -47,8 +49,8 @@ export const DEFAULT_PARAMS: ModelParams = {
     [8, 0.15],
     [12, 0.05],
   ],
-  marginSigma: 15.5,
-  winProbSlope: 0.145,
+  marginSigma: 16.8,
+  winProbSlope: 0.101,
   edgeThreshold: 2,
   bigEdgeThreshold: 4,
   fcsTopRating: -25,

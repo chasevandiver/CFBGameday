@@ -1,0 +1,455 @@
+/**
+ * 2026 preseason build (docs/SPEC.md §2.1): computes preseason ratings for
+ * every FBS team and emits chunked JSON row files for loading into Supabase
+ * (via PostgREST or the admin-load edge function).
+ *
+ * Rating = 0.70×final_2025 (from the tuned replay chain over 2023–2025)
+ *        + 0.30×talent_baseline
+ *        + churn (returning production, QB proxy, portal stars)
+ *        + coaching (0 for v1 — admin adjustments handle known changes)
+ *        + luck (2025 actual vs second-order wins + one-score record)
+ *
+ * Also emits: teams, venues, 2026 games, week-1 line snapshots, team HFA
+ * (2015–2024 quick estimate), week-0 ratings, preseason components, and
+ * frozen week-1 predictions.
+ *
+ * Output: files named NN-<table>-<chunk>.json in --out (default .preseason-json/),
+ * each a plain JSON array of row objects for that table, load in filename order.
+ * Data-quality proxies (v1, noted in detail JSON): OL share=0.5 (no data),
+ * turnover margin=0 (not pulled), coaching=intact for all teams.
+ *
+ * Usage: npx tsx scripts/build-preseason.ts [--out DIR]
+ */
+
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { cfbd, type CfbdGame } from "../src/lib/cfbd";
+import {
+  DEFAULT_PARAMS,
+  MODEL_VERSION,
+  churnAdjustment,
+  clamp,
+  luckCorrection,
+  preseasonRating,
+  priceGame,
+  type TeamRating,
+} from "../src/model/ratings";
+import {
+  cached,
+  chainPriors,
+  consensusLine,
+  loadSeason,
+  priorsFromSp,
+  replaySeason,
+  teamIdsByNameFrom,
+} from "./lib/replay";
+
+const SEASON = 2026;
+const REPLAY_SEASONS = [2023, 2024, 2025];
+const CHUNK = 250;
+
+type Row = Record<string, string | number | boolean | null | object>;
+
+async function main() {
+  const outArg = process.argv.indexOf("--out");
+  const outDir = outArg > -1 ? process.argv[outArg + 1] : ".preseason-json";
+  await mkdir(outDir, { recursive: true });
+  let fileNo = 0;
+
+  async function emit(table: string, rows: Row[]) {
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      const chunkRows = rows.slice(i, i + CHUNK);
+      const file = path.join(
+        outDir,
+        `${String(++fileNo).padStart(2, "0")}-${table}-${i / CHUNK}.json`,
+      );
+      await writeFile(file, JSON.stringify(chunkRows));
+      console.log(`  wrote ${file} (${chunkRows.length} rows)`);
+    }
+  }
+
+  // ---- 1. Replay 2023–2025 with tuned params → final 2025 ratings ----------
+  console.log("Replaying 2023–2025 for final ratings…");
+  const seasons = [];
+  for (const s of REPLAY_SEASONS) seasons.push(await loadSeason(s, true));
+  const idsByName = teamIdsByNameFrom(seasons);
+
+  let priors = priorsFromSp(seasons[0].prevSp, idsByName);
+  let finals = new Map<number, number>();
+  for (const season of seasons) {
+    const { finalRatings } = replaySeason(season, priors, DEFAULT_PARAMS);
+    finals = finalRatings;
+    priors = chainPriors(finalRatings);
+  }
+  console.log(`  ${finals.size} teams have 2025 final ratings`);
+
+  // ---- 2. Fetch 2026 data ---------------------------------------------------
+  console.log("Fetching 2026 reference data…");
+  const [teams, venues, games2026, lines2026, returning, portal] = await Promise.all([
+    cached(`teams-${SEASON}`, () => cfbd.teams(SEASON), true),
+    cached("venues", () => cfbd.venues(), true),
+    cached(`games-${SEASON}`, () => cfbd.games(SEASON), true),
+    cached(`lines-${SEASON}`, () => cfbd.lines(SEASON), true),
+    cached(`returning-${SEASON}`, () => cfbd.returningProduction(SEASON), true),
+    cached(`portal-${SEASON}`, () => cfbd.portal(SEASON), true),
+  ]);
+  let talent = await cached(`talent-${SEASON}`, () => cfbd.talent(SEASON), true);
+  if (talent.length === 0) {
+    console.log("  no 2026 talent yet — falling back to 2025");
+    talent = await cached("talent-2025", () => cfbd.talent(2025), true);
+  }
+
+  const fbs = teams.filter((t) => t.classification === "fbs");
+  const teamByName = new Map(teams.map((t) => [t.school, t]));
+
+  // ---- 3. Talent baseline (points scale) ------------------------------------
+  const talentVals = talent.map((t) => t.talent);
+  const tMean = talentVals.reduce((a, b) => a + b, 0) / talentVals.length;
+  const tStd = Math.sqrt(talentVals.reduce((a, b) => a + (b - tMean) ** 2, 0) / talentVals.length);
+  const talentBaseline = new Map<number, number>();
+  for (const t of talent) {
+    const team = teamByName.get(t.school);
+    if (team) talentBaseline.set(team.id, clamp(((t.talent - tMean) / tStd) * 5.5, -18, 18));
+  }
+
+  // ---- 4. Churn inputs ------------------------------------------------------
+  const returningByTeam = new Map(returning.map((r) => [r.team, r]));
+  const portalNet = new Map<number, number>();
+  for (const p of portal) {
+    const stars = p.stars ?? 2;
+    if (p.destination) {
+      const t = teamByName.get(p.destination);
+      if (t) portalNet.set(t.id, (portalNet.get(t.id) ?? 0) + stars);
+    }
+    if (p.origin) {
+      const t = teamByName.get(p.origin);
+      if (t) portalNet.set(t.id, (portalNet.get(t.id) ?? 0) - stars);
+    }
+  }
+  const portalVals = [...portalNet.values()];
+  const pStd =
+    Math.sqrt(portalVals.reduce((a, b) => a + b * b, 0) / Math.max(portalVals.length, 1)) || 1;
+
+  // ---- 5. Luck inputs from 2025 results ------------------------------------
+  const games2025 = seasons[2].games;
+  interface LuckAgg {
+    wins: number;
+    soWins: number;
+    oneScoreW: number;
+    oneScoreL: number;
+  }
+  const luck = new Map<number, LuckAgg>();
+  const luckFor = (id: number): LuckAgg => {
+    let l = luck.get(id);
+    if (!l) {
+      l = { wins: 0, soWins: 0, oneScoreW: 0, oneScoreL: 0 };
+      luck.set(id, l);
+    }
+    return l;
+  };
+  for (const g of games2025) {
+    if (g.homePoints === null || g.awayPoints === null) continue;
+    const margin = g.homePoints - g.awayPoints;
+    const pHome = g.homePostgameWinProbability;
+    const h = luckFor(g.homeId);
+    const a = luckFor(g.awayId);
+    if (margin > 0) h.wins++;
+    else if (margin < 0) a.wins++;
+    if (pHome !== null) {
+      h.soWins += pHome;
+      a.soWins += 1 - pHome;
+    } else {
+      h.soWins += margin > 0 ? 1 : 0;
+      a.soWins += margin < 0 ? 1 : 0;
+    }
+    if (Math.abs(margin) <= 8) {
+      if (margin > 0) {
+        h.oneScoreW++;
+        a.oneScoreL++;
+      } else if (margin < 0) {
+        a.oneScoreW++;
+        h.oneScoreL++;
+      }
+    }
+  }
+
+  // ---- 6. Preseason rating per FBS team -------------------------------------
+  console.log("Computing preseason ratings…");
+  interface Preseason {
+    teamId: number;
+    rating: number;
+    finalPrev: number | null;
+    talent: number;
+    churn: number;
+    coaching: number;
+    luckCorr: number;
+    retOff: number | null;
+    retDef: number | null;
+  }
+  const preseason: Preseason[] = [];
+  for (const team of fbs) {
+    const finalPrev = finals.get(team.id) ?? null;
+    const tal = talentBaseline.get(team.id) ?? -8;
+    const ret = returningByTeam.get(team.school);
+    const retPassing = ret?.percentPassingPPA ?? null;
+    const retOverall = ret?.percentPPA ?? null;
+
+    const churn = churnAdjustment({
+      returningProductionOffense: retOverall ?? 0.6,
+      returningProductionDefense: ret?.usage !== null && ret ? clamp(ret.usage ?? 0.6, 0, 1) : 0.6,
+      qbReturns: (retPassing ?? 0.5) >= 0.5,
+      olReturningShare: 0.5, // no data source — neutral (docs/SPEC.md §3 v2)
+      netPortalPoints: clamp(((portalNet.get(team.id) ?? 0) / pStd) * 1.5, -4, 4),
+      blueChipFreshmen: 0,
+    });
+
+    const l = luck.get(team.id);
+    const luckCorr = l
+      ? luckCorrection({
+          actualWins: l.wins,
+          secondOrderWins: l.soWins,
+          turnoverMargin: 0, // not pulled in v1
+          oneScoreWins: l.oneScoreW,
+          oneScoreLosses: l.oneScoreL,
+        })
+      : 0;
+
+    const rating = preseasonRating({
+      finalPrevRating: finalPrev,
+      talentBaseline: tal,
+      churnAdjustment: churn,
+      coachingAdjustment: 0, // manual/admin in v1 — no data source
+      luckCorrection: luckCorr,
+    });
+
+    preseason.push({
+      teamId: team.id,
+      rating,
+      finalPrev,
+      talent: tal,
+      churn,
+      coaching: 0,
+      luckCorr,
+      retOff: retOverall,
+      retDef: ret?.usage ?? null,
+    });
+  }
+  preseason.sort((a, b) => b.rating - a.rating);
+  const top5 = preseason
+    .slice(0, 5)
+    .map((p) => `${fbs.find((t) => t.id === p.teamId)?.school} ${p.rating.toFixed(1)}`);
+  console.log(`  top 5: ${top5.join(", ")}`);
+
+  // ---- 7. Team HFA quick estimate (2015–2024) -------------------------------
+  console.log("Estimating team HFA from 2015–2024…");
+  const homeMargins = new Map<number, number[]>();
+  const awayMargins = new Map<number, number[]>();
+  for (let year = 2015; year <= 2024; year++) {
+    const games = await cached(`games-${year}`, () => cfbd.games(year), true);
+    for (const g of games) {
+      if (g.homePoints === null || g.awayPoints === null || g.neutralSite) continue;
+      const margin = g.homePoints - g.awayPoints;
+      if (!homeMargins.has(g.homeId)) homeMargins.set(g.homeId, []);
+      homeMargins.get(g.homeId)!.push(margin);
+      if (!awayMargins.has(g.awayId)) awayMargins.set(g.awayId, []);
+      awayMargins.get(g.awayId)!.push(-margin);
+    }
+  }
+  const avg = (xs: number[] | undefined) =>
+    xs && xs.length > 0 ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+
+  // ---- 8. Emit --------------------------------------------------------------
+  console.log("Emitting JSON…");
+  const r2 = (x: number) => Math.round(x * 100) / 100;
+
+  await emit("seasons", [
+    { id: SEASON, label: String(SEASON), week0_start: "2026-08-29", is_current: true },
+  ]);
+
+  const gameTeamIds = new Set(games2026.flatMap((g) => [g.homeId, g.awayId]));
+  const known = new Set(teams.map((t) => t.id));
+  const nameById = new Map<number, string>();
+  for (const g of games2026) {
+    nameById.set(g.homeId, g.homeTeam);
+    nameById.set(g.awayId, g.awayTeam);
+  }
+  const teamRows: Row[] = teams
+    .filter((t) => t.classification === "fbs" || t.classification === "fcs" || gameTeamIds.has(t.id))
+    .map((t) => ({
+      id: t.id,
+      school: t.school,
+      mascot: t.mascot,
+      abbreviation: t.abbreviation,
+      conference: t.conference,
+      classification: t.classification ?? "fbs",
+      color: t.color,
+      alt_color: t.alternateColor,
+      logo_url: t.logos?.[0] ?? null,
+    }));
+  for (const id of gameTeamIds) {
+    if (!known.has(id)) {
+      teamRows.push({ id, school: nameById.get(id) ?? `Team ${id}`, classification: "other" });
+    }
+  }
+  await emit("teams", teamRows);
+
+  await emit(
+    "venues",
+    venues.map((v) => ({
+      id: v.id,
+      name: v.name,
+      city: v.city,
+      state: v.state,
+      latitude: v.latitude,
+      longitude: v.longitude,
+      capacity: v.capacity,
+      dome: v.dome ?? false,
+      timezone: v.timezone,
+    })),
+  );
+
+  const venueIds = new Set(venues.map((v) => v.id));
+  await emit(
+    "games",
+    games2026.map((g) => ({
+      id: g.id,
+      season_id: SEASON,
+      week: g.week,
+      season_type: g.seasonType,
+      start_ts: g.startDate,
+      start_time_tbd: g.startTimeTBD,
+      neutral_site: g.neutralSite,
+      conference_game: g.conferenceGame,
+      venue_id: g.venueId !== null && venueIds.has(g.venueId) ? g.venueId : null,
+      home_team_id: g.homeId,
+      away_team_id: g.awayId,
+      home_points: g.homePoints,
+      away_points: g.awayPoints,
+      status: g.completed ? "final" : "scheduled",
+      notes: g.notes,
+    })),
+  );
+
+  const gameIds2026 = new Set(games2026.map((g) => g.id));
+  await emit(
+    "line_snapshots",
+    lines2026
+      .filter((l) => gameIds2026.has(l.id))
+      .flatMap((game) =>
+        game.lines.map((l) => ({
+          game_id: game.id,
+          provider: l.provider,
+          source: "cfbd",
+          spread: l.spread,
+          spread_open: l.spreadOpen,
+          total: l.overUnder,
+          total_open: l.overUnderOpen,
+          ml_home: l.homeMoneyline,
+          ml_away: l.awayMoneyline,
+        })),
+      ),
+  );
+
+  const hfaRows: Row[] = [];
+  const hfaById = new Map<number, number>();
+  for (const team of fbs) {
+    const h = avg(homeMargins.get(team.id));
+    const a = avg(awayMargins.get(team.id));
+    // (home avg − away avg)/2: team strength cancels to first order
+    const raw = h !== null && a !== null ? clamp((h - a) / 2, 0, 6) : null;
+    const blended =
+      raw !== null
+        ? DEFAULT_PARAMS.teamHfaBlend * raw + (1 - DEFAULT_PARAMS.teamHfaBlend) * DEFAULT_PARAMS.baseHfa
+        : DEFAULT_PARAMS.baseHfa;
+    hfaById.set(team.id, blended);
+    hfaRows.push({ team_id: team.id, raw_hfa: raw !== null ? r2(raw) : null, blended_hfa: r2(blended) });
+  }
+  await emit("team_hfa", hfaRows);
+
+  await emit(
+    "ratings",
+    preseason.map((p) => ({
+      season_id: SEASON,
+      team_id: p.teamId,
+      week: 0,
+      overall: r2(p.rating),
+      offense: r2(p.rating / 2),
+      defense: r2(p.rating / 2),
+      tempo: 70,
+      prior_weight: 1,
+      model_version: MODEL_VERSION,
+    })),
+  );
+
+  await emit(
+    "preseason_components",
+    preseason.map((p) => ({
+      season_id: SEASON,
+      team_id: p.teamId,
+      final_prev_rating: p.finalPrev !== null ? r2(p.finalPrev) : null,
+      talent_baseline: r2(p.talent),
+      churn_adjustment: r2(p.churn),
+      coaching_adjustment: p.coaching,
+      luck_correction: r2(p.luckCorr),
+      returning_prod_off: p.retOff !== null ? r2(p.retOff) : null,
+      returning_prod_def: p.retDef !== null ? r2(p.retDef) : null,
+      detail: { proxies: ["ol_share=0.5", "turnover_margin=0", "coaching=intact"] },
+    })),
+  );
+
+  // ---- 9. Frozen week-1 predictions ----------------------------------------
+  console.log("Pricing week 1…");
+  const ratingById = new Map(preseason.map((p) => [p.teamId, p.rating]));
+  const linesById = new Map(lines2026.map((l) => [l.id, l]));
+  const week1 = (games2026 as CfbdGame[]).filter((g) => g.week === 1 && g.seasonType === "regular");
+
+  const predRows: Row[] = [];
+  for (const g of week1) {
+    const homeR = ratingById.get(g.homeId);
+    const awayR = ratingById.get(g.awayId);
+    if (homeR === undefined && awayR === undefined) continue; // non-FBS matchup
+    const rating = (overall: number | undefined): TeamRating => ({
+      overall: overall ?? -30,
+      offense: (overall ?? -30) / 2,
+      defense: (overall ?? -30) / 2,
+      tempo: 70,
+    });
+    const vegasRaw = consensusLine(linesById.get(g.id));
+    const vegas = vegasRaw !== null ? Math.round(vegasRaw * 10) / 10 : null;
+    const price = priceGame(
+      {
+        home: rating(homeR),
+        away: rating(awayR),
+        homeTeamHfa: hfaById.get(g.homeId) ?? DEFAULT_PARAMS.baseHfa,
+        neutralSite: g.neutralSite,
+        situationalPoints: 0,
+        vegasSpread: vegas,
+      },
+      DEFAULT_PARAMS,
+    );
+    predRows.push({
+      game_id: g.id,
+      model_version: MODEL_VERSION,
+      frozen: true,
+      spread: Math.round(price.spread * 10) / 10,
+      total: Math.round(price.projectedTotal * 10) / 10,
+      home_score: Math.round(price.projectedHomeScore * 10) / 10,
+      away_score: Math.round(price.projectedAwayScore * 10) / 10,
+      home_win_prob: Math.round(price.homeWinProb * 10000) / 10000,
+      cover_prob: price.homeCoverProb !== null ? Math.round(price.homeCoverProb * 10000) / 10000 : null,
+      vegas_spread: vegas,
+      edge: price.edge !== null ? Math.round(price.edge * 10) / 10 : null,
+      edge_flag: price.edgeFlag,
+      consensus_flag: price.consensusFlag,
+    });
+  }
+  await emit("predictions", predRows);
+
+  console.log(`\nDone: ${fileNo} JSON files in ${outDir}/`);
+  console.log(`Week 1 games priced: ${predRows.length} (of ${week1.length} on the slate)`);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
