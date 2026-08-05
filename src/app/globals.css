@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+/* The CFB Slate — stadium-scoreboard-meets-ledger (docs/SPEC.md §7).
+   Dark theme is native; light theme is the variant. */
+:root {
+  --field-deep: #08251c;
+  --field: #0e3b2c;
+  --chalk: #f4efe2;
+  --gold: #e8b93d;
+  --flag-orange: #e4572e;
+
+  --background: var(--field-deep);
+  --surface: var(--field);
+  --foreground: var(--chalk);
+  --accent: var(--gold);
+  --edge: var(--flag-orange);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-accent: var(--accent);
+  --color-edge: var(--edge);
+  --color-field-deep: var(--field-deep);
+  --color-field: var(--field);
+  --color-chalk: var(--chalk);
+  --color-gold: var(--gold);
+  --color-flag: var(--flag-orange);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+  --font-mono: var(--font-numeric);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+/* All numbers render in IBM Plex Mono with lining tabular figures */
+.stat,
+table.stats td,
+table.stats th {
+  font-family: var(--font-numeric), monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+h1,
+h2,
+.display {
+  font-family: var(--font-display), var(--font-body), sans-serif;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
