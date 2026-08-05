@@ -2,14 +2,14 @@
 
 /**
  * Design preview: the three game-card states (pregame / live / final), the
- * Game-of-the-Day hero, and the loading skeleton — rendered from sample data
- * so the card system can be reviewed without live ingestion.
+ * featured Game-of-the-Week treatment, and the loading skeleton — rendered
+ * from sample data so the card system can be reviewed without live ingestion.
  */
 
 import { useState } from "react";
 import { AppNav } from "../../../components/AppNav";
+import { BetSlip } from "../../../components/slate/BetSlip";
 import { GameCard } from "../../../components/slate/GameCard";
-import { HeroCard } from "../../../components/slate/HeroCard";
 import { SkeletonCard } from "../../../components/slate/SkeletonCard";
 import { DEFAULT_TZ } from "../../../lib/kick";
 import type { GameView, MyBetView, TeamView } from "../../../lib/slate";
@@ -229,13 +229,15 @@ export default function SlatePreviewPage() {
         <div className="mb-6 mt-6">
           <h1 className="text-2xl text-chalk">Card states preview</h1>
           <p className="mt-1 text-sm text-dim">
-            Sample data only — pregame, live, and final states plus the hero, edge cases, and
-            loading skeleton.
+            Sample data only — pregame, live, and final states plus the featured card, edge cases,
+            and loading skeleton. Tap the odds cells to build a bet slip.
           </p>
         </div>
 
-        <Section title="Game of the Day hero">
-          <HeroCard game={HERO} tz={tz} />
+        <Section title="Game of the Week — featured card">
+          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+            <GameCard game={HERO} tz={tz} starred={starred} onStar={toggle} featured />
+          </div>
         </Section>
 
         <Section title="Pregame · Live · Final">
@@ -262,6 +264,7 @@ export default function SlatePreviewPage() {
           </div>
         </Section>
       </main>
+      <BetSlip seasonId={0} />
     </>
   );
 }

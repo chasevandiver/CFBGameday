@@ -147,7 +147,7 @@ Ambiguity here is the #1 source of arguments in betting groups, so the rules are
 
 1. **A pick locks with the line snapshot at the moment it's made** (`line_at_pick`). Line-shopping timing is part of the skill, and it makes per-pick CLV meaningful. Users may hold different numbers on the same game.
 2. Picks are editable until kickoff, but **editing re-snapshots the line** to the current number.
-3. All pick mutation and visibility is enforced at the database layer: no writes where `now() ≥ kickoff_ts`; others' picks readable only after kickoff.
+3. All pick mutation is enforced at the database layer: no writes where `now() ≥ kickoff_ts`. **[Changed Aug 2026, owner decision]** Picks are visible to the whole crew at all times — the pre-kickoff blind was removed (migration 0010).
 4. **Push = no action** (doesn't count in record or units). Postponed/canceled = void.
 5. Season leaderboard: record, units, ROI, CLV. **Tiebreaker: ROI, then average CLV.**
 6. Minimum picks per week and units conventions are league settings (defaults: 3 picks/week minimum to stay on the leaderboard, 1 unit per pick unless specified).
@@ -228,7 +228,7 @@ Weights tuned by feel; displayed as a 0–100 score.
 
 **[v2] Pick locking is NOT a cron job** — enforced in the data layer: mutations rejected and visibility granted by `now() vs kickoff_ts` checks (RLS + server).
 
-**Accounts:** **[v2]** Supabase magic-link auth + invite allowlist table + `admin` role flag. Privacy (picks hidden until lock, ledger rules) enforced via **RLS policies**, never client-side.
+**Accounts:** **[v2]** Supabase magic-link auth + invite allowlist table + `admin` role flag. Write locks (picks immutable after kickoff, ledger rules) enforced via **RLS policies**, never client-side. Picks are readable crew-wide at all times (changed Aug 2026, migration 0010).
 
 **Stack (confirmed):** Next.js on Vercel (Hobby) + Supabase Postgres/Auth/Edge Functions + pg_cron. CFBD + Open-Meteo + Anthropic APIs server-side only. Mobile-first; PWA for home-screen install. **[v2]** `season_id` on every table from day one — this is a year-round, multi-season product. Keep raw play-level data out of Postgres (free tier is 500MB; aggregate during backtest).
 
