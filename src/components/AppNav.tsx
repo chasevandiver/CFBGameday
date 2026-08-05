@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AuthButton } from "./AuthButton";
 import { ScoreTicker } from "./ScoreTicker";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -41,6 +42,7 @@ export function AppNav() {
               ),
             )}
           </nav>
+          <AuthButton />
           <ThemeToggle />
         </div>
       </header>

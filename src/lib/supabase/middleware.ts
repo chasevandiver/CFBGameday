@@ -6,11 +6,12 @@ import { NextResponse, type NextRequest } from "next/server";
  * session and re-sets auth cookies with the longest lifetime browsers honor
  * (~400 days). The session only ends if the user clears cookies or switches
  * devices — nothing in the app ever expires it.
+ *
+ * The site is public to browse — no login redirect. Signing in is only needed
+ * to save picks / log bets, enforced by RLS and the server actions, not by
+ * page-level gates (migration 0011 grants anon read access).
  */
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 400;
-
-// /slate/preview is a design showcase rendered from sample data — no user data
-const PUBLIC_PATHS = ["/login", "/auth", "/slate/preview"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -36,18 +37,7 @@ export async function updateSession(request: NextRequest) {
 
   // Refreshes the token when needed; do not run logic between client creation
   // and getUser() (per @supabase/ssr guidance).
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const path = request.nextUrl.pathname;
-  const isPublic = PUBLIC_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
-
-  if (!user && !isPublic) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
-  }
+  await supabase.auth.getUser();
 
   return response;
 }
