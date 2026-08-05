@@ -42,7 +42,10 @@ interface Snapshot {
   captured_at: string;
 }
 
-/** Latest snapshot per provider (optionally before a cutoff), averaged. */
+/**
+ * Latest snapshot per provider (optionally before a cutoff), averaged and
+ * snapped to the half point — books only hang lines in 0.5 increments.
+ */
 function consensus(
   snapshots: Snapshot[],
   before?: string,
@@ -56,7 +59,7 @@ function consensus(
   const avg = (vals: Array<number | null>) => {
     const nums = vals.filter((v): v is number => v !== null);
     return nums.length
-      ? Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 10) / 10
+      ? Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 2) / 2
       : null;
   };
   const rows = [...latest.values()];
