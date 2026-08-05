@@ -1,0 +1,406 @@
+"use client";
+
+import { CloudRain, Snowflake, Star, Tv, Wind } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { kickParts, periodLabel } from "../../lib/kick";
+import {
+  atsResult,
+  fmtMoneyline,
+  fmtSpread,
+  fmtTotal,
+  gradeModel,
+  isDead,
+  isFinal,
+  isLive,
+  modelPicks,
+  ouResult,
+  spreadMove,
+  type GameView,
+  type TeamView,
+} from "../../lib/slate";
+import { ConsensusChip, EdgeChip, LiveBadge, MoveIndicator, PickedChip, RankBadge, ResultChip } from "./chips";
+import { Sparkline } from "./Sparkline";
+import { TeamMark } from "./TeamMark";
+import { WinProbBar } from "./WinProbBar";
+
+interface Props {
+  game: GameView;
+  tz: string;
+  starred: number[];
+  onStar: (teamId: number) => void;
+  /** stagger index for the load-in animation */
+  index?: number;
+}
+
+export function GameCard({ game, tz, starred, onStar, index = 0 }: Props) {
+  const live = isLive(game);
+  const final = isFinal(game);
+  const dead = isDead(game);
+
+  // brief team-colored flash when a live score ticks
+  const prev = useRef<{ h: number | null; a: number | null }>({
+    h: game.homePoints,
+    a: game.awayPoints,
+  });
+  const [flash, setFlash] = useState<{ side: "home" | "away"; key: number } | null>(null);
+  useEffect(() => {
+    const p = prev.current;
+    if (game.homePoints !== p.h && game.homePoints !== null && p.h !== null)
+      setFlash({ side: "home", key: Date.now() });
+    else if (game.awayPoints !== p.a && game.awayPoints !== null && p.a !== null)
+      setFlash({ side: "away", key: Date.now() });
+    prev.current = { h: game.homePoints, a: game.awayPoints };
+  }, [game.homePoints, game.awayPoints]);
+
+  const homeColor = game.home.color ?? "#5b6472";
+  const awayColor = game.away.color ?? "#5b6472";
+
+  return (
+    <article
+      className={`card card-hover card-in relative overflow-hidden ${live ? "card-live" : ""}`}
+      style={{ animationDelay: `${Math.min(index * 30, 150)}ms` }}
+    >
+      {/* team-color split accent edge */}
+      <div aria-hidden className="absolute inset-x-0 top-0 flex h-[3px]">
+        <span className="flex-1" style={{ background: awayColor }} />
+        <span className="flex-1" style={{ background: homeColor }} />
+      </div>
+
+      <Link
+        href={`/game/${game.id}`}
+        aria-label={`${game.away.school} at ${game.home.school}`}
+        className="absolute inset-0 z-0 rounded-[12px] focus-visible:outline-2 focus-visible:outline-accent"
+      />
+
+      <div className="pointer-events-none relative z-10 flex h-full flex-col p-3.5 pt-4">
+        <CardHeader game={game} tz={tz} live={live} final={final} dead={dead} />
+
+        <div key={game.status} className="fade-swap flex flex-1 flex-col">
+          <div className="mt-2.5 flex flex-col gap-2">
+            <TeamRow
+              game={game}
+              team={game.away}
+              side="away"
+              starred={starred}
+              onStar={onStar}
+              flash={flash}
+            />
+            <TeamRow
+              game={game}
+              team={game.home}
+              side="home"
+              starred={starred}
+              onStar={onStar}
+              flash={flash}
+            />
+          </div>
+
+          <div className="mt-auto">
+            {dead ? null : final ? (
+              <FinalFooter game={game} />
+            ) : (
+              <PregameFooter game={game} live={live} />
+            )}
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+/* ---- header ------------------------------------------------------------ */
+
+function CardHeader({
+  game,
+  tz,
+  live,
+  final,
+  dead,
+}: {
+  game: GameView;
+  tz: string;
+  live: boolean;
+  final: boolean;
+  dead: boolean;
+}) {
+  return (
+    <div className="flex min-h-5 items-center justify-between gap-2">
+      <div className="flex items-center gap-2">
+        {live ? (
+          <>
+            <LiveBadge />
+            <span className="stat text-xs font-semibold text-chalk">
+              {periodLabel(game.period)}
+              {game.clock ? ` · ${game.clock}` : ""}
+            </span>
+          </>
+        ) : final ? (
+          <span className="stat text-xs font-semibold uppercase tracking-wide text-dim">
+            Final{game.period !== null && game.period > 4 ? ` / ${periodLabel(game.period)}` : ""}
+          </span>
+        ) : dead ? (
+          <span className="stat text-xs uppercase text-push">{game.status}</span>
+        ) : game.startTs ? (
+          <Kickoff iso={game.startTs} tz={tz} />
+        ) : (
+          <span className="stat text-xs text-dim">TBD</span>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <WeatherFlag game={game} />
+        {game.tv && (
+          <span className="stat flex items-center gap-1 text-[10.5px] font-medium text-dim">
+            <Tv size={11} aria-hidden />
+            {game.tv}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Kickoff({ iso, tz }: { iso: string; tz: string }) {
+  const { day, time } = kickParts(iso, tz);
+  return (
+    <span className="stat text-xs text-dim">
+      <span className="font-semibold text-chalk">{day}</span> {time}
+    </span>
+  );
+}
+
+function WeatherFlag({ game }: { game: GameView }) {
+  const w = game.weather;
+  if (!w || game.dome || isFinal(game)) return null;
+  const windy = (w.windMph ?? 0) >= 15;
+  const wet = (w.precipProb ?? 0) >= 50;
+  const cold = w.tempF !== null && w.tempF <= 25;
+  if (!windy && !wet && !cold) return null;
+  const Icon = windy ? Wind : wet ? CloudRain : Snowflake;
+  const label = windy
+    ? `Wind ${Math.round(w.windMph!)} mph`
+    : wet
+      ? `${Math.round(w.precipProb!)}% precip`
+      : `${Math.round(w.tempF!)}°F`;
+  return (
+    <span className="stat flex items-center gap-1 text-[10.5px] text-edge" title={label}>
+      <Icon size={11} aria-hidden />
+      {label}
+    </span>
+  );
+}
+
+/* ---- team rows --------------------------------------------------------- */
+
+function TeamRow({
+  game,
+  team,
+  side,
+  starred,
+  onStar,
+  flash,
+}: {
+  game: GameView;
+  team: TeamView;
+  side: "home" | "away";
+  starred: number[];
+  onStar: (teamId: number) => void;
+  flash: { side: "home" | "away"; key: number } | null;
+}) {
+  const live = isLive(game);
+  const final = isFinal(game);
+  const showScore = live || final;
+  const points = side === "home" ? game.homePoints : game.awayPoints;
+  const oppPoints = side === "home" ? game.awayPoints : game.homePoints;
+  const lost = final && points !== null && oppPoints !== null && points < oppPoints;
+  const won = final && points !== null && oppPoints !== null && points > oppPoints;
+  const isStarred = starred.includes(team.id);
+
+  return (
+    <div className={`flex items-center gap-2 transition-opacity ${lost ? "opacity-45" : ""}`}>
+      <TeamMark team={team} size={26} glow />
+      <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
+        <RankBadge rank={team.rank} />
+        <span
+          className={`scorebug truncate text-[15px] leading-tight ${won ? "text-chalk" : "text-chalk"}`}
+        >
+          {team.school}
+        </span>
+        {team.record && (
+          <span className="stat shrink-0 text-[10px] leading-none text-dim">{team.record}</span>
+        )}
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onStar(team.id);
+          }}
+          aria-label={isStarred ? `Unstar ${team.school}` : `Star ${team.school}`}
+          aria-pressed={isStarred}
+          className={`pointer-events-auto shrink-0 rounded p-0.5 transition-colors ${
+            isStarred ? "text-accent" : "text-chalk/20 hover:text-chalk/60"
+          }`}
+        >
+          <Star size={12} fill={isStarred ? "currentColor" : "none"} aria-hidden />
+        </button>
+      </div>
+
+      {showScore ? (
+        <span
+          key={flash && flash.side === side ? flash.key : side}
+          className={`scorebug w-10 shrink-0 text-right text-[22px] leading-none ${
+            lost ? "text-dim" : "text-chalk"
+          } ${flash && flash.side === side ? "score-flash" : ""}`}
+          style={
+            flash && flash.side === side
+              ? ({ "--flash-color": team.color ?? "var(--accent)" } as React.CSSProperties)
+              : undefined
+          }
+        >
+          {points ?? 0}
+        </span>
+      ) : (
+        <OddsCells game={game} side={side} />
+      )}
+    </div>
+  );
+}
+
+/** Sportsbook-style spread / total / ML cells for one team row. */
+function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
+  const { spread, total, mlHome, mlAway } = game.lines;
+  const teamSpread = spread === null ? null : side === "home" ? spread : -spread;
+  const ml = side === "home" ? mlHome : mlAway;
+  if (spread === null && total === null && ml === null)
+    return <span className="stat text-[11px] text-chalk/30">no line</span>;
+  return (
+    <div className="flex shrink-0 gap-1">
+      <OddsCell value={fmtSpread(teamSpread)} />
+      <OddsCell value={total === null ? "–" : `${side === "home" ? "U" : "O"} ${fmtTotal(total)}`} />
+      <OddsCell value={fmtMoneyline(ml)} wide />
+    </div>
+  );
+}
+
+function OddsCell({ value, wide = false }: { value: string; wide?: boolean }) {
+  return (
+    <span
+      className={`stat flex h-6 items-center justify-center rounded-md bg-elev px-1 text-[11px] font-medium text-chalk ring-1 ring-inset ring-chalk/8 ${
+        wide ? "min-w-12" : "min-w-10"
+      }`}
+    >
+      {value}
+    </span>
+  );
+}
+
+/* ---- footers ----------------------------------------------------------- */
+
+function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
+  const p = game.prediction;
+  const picks = modelPicks(game);
+  const move = spreadMove(game);
+
+  return (
+    <div className="mt-3 border-t border-chalk/8 pt-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <EdgeChip flag={p?.edgeFlag ?? null} edge={p?.edge ?? null} />
+          <ConsensusChip on={p?.consensus ?? false} />
+          {game.myPick && <PickedChip />}
+        </div>
+        <div className="flex items-center gap-1.5 text-dim">
+          <MoveIndicator move={move} open={game.lines.spreadOpen} />
+          <Sparkline points={game.spreadHistory} />
+        </div>
+      </div>
+
+      {p && (
+        <div className="mt-2.5">
+          <WinProbBar home={game.home} away={game.away} homeWinProb={p.homeWinProb} />
+          <p className="stat mt-1.5 truncate text-[10.5px] leading-none text-dim">
+            {live ? "Pregame model: " : "Model: "}
+            {p.homeScore !== null && p.awayScore !== null && (
+              <span className="text-chalk">
+                {game.home.abbr} {Math.round(p.homeScore)}–{Math.round(p.awayScore)}
+              </span>
+            )}
+            {picks.atsSide && (
+              <>
+                {" · "}
+                <span className="text-chalk">
+                  {picks.atsSide === "home" ? game.home.abbr : game.away.abbr} ATS
+                </span>
+              </>
+            )}
+            {picks.ouLean && (
+              <>
+                {" · "}
+                <span className="text-chalk">{picks.ouLean === "over" ? "Over" : "Under"} lean</span>
+              </>
+            )}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FinalFooter({ game }: { game: GameView }) {
+  const cover = atsResult(game);
+  const ou = ouResult(game);
+  const grade = gradeModel(game);
+  const { spread } = game.lines;
+
+  // favorite by closing line; cover chip judges whether the favorite covered
+  const favorite: "home" | "away" | null =
+    spread === null ? null : spread < 0 ? "home" : spread > 0 ? "away" : null;
+  const favTeam = favorite === "home" ? game.home : game.away;
+  const favSpread = spread === null ? null : favorite === "home" ? spread : -spread;
+
+  const chips: React.ReactNode[] = [];
+  if (favorite && cover) {
+    chips.push(
+      <ResultChip
+        key="ats"
+        label={`${favTeam.abbr} ${fmtSpread(favSpread)}`}
+        result={cover === "push" ? "push" : cover === favorite ? "pass" : "fail"}
+      />,
+    );
+  }
+  if (ou && game.lines.total !== null) {
+    chips.push(
+      <ResultChip
+        key="ou"
+        label={ou === "push" ? `Push ${fmtTotal(game.lines.total)}` : `${ou === "over" ? "O" : "U"} ${fmtTotal(game.lines.total)}`}
+        result={ou === "push" ? "push" : ou === "over" ? "pass" : "fail"}
+      />,
+    );
+  }
+
+  const gradeChips: React.ReactNode[] = [];
+  if (grade.winner !== null)
+    gradeChips.push(
+      <ResultChip key="w" label="Winner" result={grade.winner ? "pass" : "fail"} />,
+    );
+  if (grade.ats !== null)
+    gradeChips.push(<ResultChip key="a" label="ATS" result={grade.ats ? "pass" : "fail"} />);
+  if (grade.total !== null)
+    gradeChips.push(<ResultChip key="t" label="O/U" result={grade.total ? "pass" : "fail"} />);
+
+  if (chips.length === 0 && gradeChips.length === 0) return null;
+
+  return (
+    <div className="mt-3 border-t border-chalk/8 pt-2.5">
+      {chips.length > 0 && <div className="flex flex-wrap gap-1.5">{chips}</div>}
+      {gradeChips.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-chalk/35">
+            Model
+          </span>
+          {gradeChips}
+        </div>
+      )}
+    </div>
+  );
+}

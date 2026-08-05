@@ -9,7 +9,8 @@ import { NextResponse, type NextRequest } from "next/server";
  */
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 400;
 
-const PUBLIC_PATHS = ["/login", "/auth"];
+// /slate/preview is a design showcase rendered from sample data — no user data
+const PUBLIC_PATHS = ["/login", "/auth", "/slate/preview"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });

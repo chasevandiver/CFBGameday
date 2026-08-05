@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { makePick, removePick } from "../app/actions/picks";
-import { fmtSpread } from "./badges";
+import { fmtSpread } from "../lib/slate";
 
 interface Props {
   gameId: number;
