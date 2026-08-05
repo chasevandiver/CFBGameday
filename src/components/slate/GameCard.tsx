@@ -5,10 +5,11 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { inSlip, useBetSlip, type SlipSelection } from "../../lib/bet-slip-store";
 import { kickParts, periodLabel } from "../../lib/kick";
-import { statusForBet, statusForPick } from "../../lib/live-status";
+import { pickCoverView, statusForBet, statusForPick, type PickCoverView } from "../../lib/live-status";
 import {
   atsResult,
   displayRank,
+  fieldPosition,
   fmtMoneyline,
   fmtPct,
   fmtSpread,
@@ -21,12 +22,14 @@ import {
   liveHomeWinProb,
   modelPicks,
   ouResult,
+  parseSituation,
   spreadMove,
+  type FieldPosition,
   type GameView,
   type MyBetView,
   type TeamView,
 } from "../../lib/slate";
-import { ConsensusChip, EdgeChip, LiveBadge, LiveStatusChip, MoveIndicator, PickedChip, RankBadge, ResultChip } from "./chips";
+import { ConsensusChip, EdgeChip, LiveBadge, LiveStatusChip, MoveIndicator, PickedChip, ResultChip } from "./chips";
 import { Sparkline } from "./Sparkline";
 import { TeamMark } from "./TeamMark";
 import { WinProbBar } from "./WinProbBar";
@@ -42,12 +45,20 @@ interface Props {
   featured?: boolean;
 }
 
+const DOWN = ["", "1st", "2nd", "3rd", "4th"];
+
+function underTwo(period: number | null, clock: string | null): boolean {
+  if ((period !== 2 && period !== 4) || !clock) return false;
+  const m = /^(\d+):\d\d$/.exec(clock);
+  return m !== null && Number(m[1]) < 2;
+}
+
 export function GameCard({ game, tz, starred, onStar, index = 0, featured = false }: Props) {
   const live = isLive(game);
   const final = isFinal(game);
   const dead = isDead(game);
 
-  // brief team-colored flash when a live score ticks
+  // score pop + team-colored flash when a live score ticks
   const prev = useRef<{ h: number | null; a: number | null }>({
     h: game.homePoints,
     a: game.awayPoints,
@@ -62,21 +73,30 @@ export function GameCard({ game, tz, starred, onStar, index = 0, featured = fals
     prev.current = { h: game.homePoints, a: game.awayPoints };
   }, [game.homePoints, game.awayPoints]);
 
+  const cover =
+    live && game.myPick
+      ? pickCoverView(game.myPick.side, game.myPick.line, game.homePoints ?? 0, game.awayPoints ?? 0)
+      : null;
+
   const homeColor = game.home.color ?? "#5b6472";
   const awayColor = game.away.color ?? "#5b6472";
 
   return (
     <article
       className={`card card-hover card-in relative overflow-hidden ${live ? "card-live" : ""} ${
-        featured ? "ring-1 ring-accent/40" : ""
-      }`}
+        cover?.tier === "bubble" ? "card-bubble" : ""
+      } ${final && !featured ? "card-final" : ""} ${featured ? "ring-1 ring-accent/40" : ""}`}
       style={{ animationDelay: `${Math.min(index * 30, 150)}ms` }}
     >
-      {/* team-color split accent edge */}
-      <div aria-hidden className="absolute inset-x-0 top-0 flex h-[3px]">
-        <span className="flex-1" style={{ background: awayColor }} />
-        <span className="flex-1" style={{ background: homeColor }} />
-      </div>
+      {cover ? (
+        <CoverStrip cover={cover} pick={pickPrefix(game)} />
+      ) : (
+        /* team-color split accent edge */
+        <div aria-hidden className="absolute inset-x-0 top-0 flex h-[3px]">
+          <span className="flex-1" style={{ background: awayColor }} />
+          <span className="flex-1" style={{ background: homeColor }} />
+        </div>
+      )}
 
       <Link
         href={`/game/${game.id}`}
@@ -84,12 +104,14 @@ export function GameCard({ game, tz, starred, onStar, index = 0, featured = fals
         className="absolute inset-0 z-0 rounded-[12px] focus-visible:outline-2 focus-visible:outline-accent"
       />
 
-      <div className="pointer-events-none relative z-10 flex h-full flex-col p-3.5 pt-4">
+      <div
+        className={`pointer-events-none relative z-10 flex h-full flex-col p-3.5 ${cover ? "pt-2.5" : "pt-4"}`}
+      >
         <CardHeader game={game} tz={tz} live={live} final={final} dead={dead} featured={featured} />
 
         <div key={game.status} className="fade-swap flex flex-1 flex-col">
           {!live && !final && !dead && <OddsColumnLabels game={game} />}
-          <div className="mt-2 flex flex-col gap-2">
+          <div className="mt-2 flex flex-col gap-1.5">
             <TeamRow
               game={game}
               team={game.away}
@@ -108,6 +130,8 @@ export function GameCard({ game, tz, starred, onStar, index = 0, featured = fals
             />
           </div>
 
+          {live && <LiveSituation game={game} />}
+
           <div className="mt-auto">
             {dead ? null : final ? (
               <FinalFooter game={game} />
@@ -118,6 +142,24 @@ export function GameCard({ game, tz, starred, onStar, index = 0, featured = fals
         </div>
       </div>
     </article>
+  );
+}
+
+/* ---- cover strip -------------------------------------------------------- */
+
+/**
+ * The loudest element on a live card with a pick: covering / bubble / losing.
+ * pointer-events stay off so taps fall through to the card link.
+ */
+function CoverStrip({ cover, pick }: { cover: PickCoverView; pick: string }) {
+  return (
+    <div className={`cover-strip relative z-10 pointer-events-none cover-${cover.tier}`}>
+      <span className="cover-word">{cover.word}</span>
+      {/* the margin earns its place only when the number is in doubt */}
+      {cover.tier !== "covering" && cover.margin && <span className="cover-margin">{cover.margin}</span>}
+      {cover.sub && <span className="cover-sub">{cover.sub}</span>}
+      <span className="cover-pick">Pick {pick}</span>
+    </div>
   );
 }
 
@@ -138,6 +180,7 @@ function CardHeader({
   dead: boolean;
   featured: boolean;
 }) {
+  const u2m = live && underTwo(game.period, game.clock);
   return (
     <div className="flex min-h-5 items-center justify-between gap-2">
       <div className="flex items-center gap-2">
@@ -145,7 +188,7 @@ function CardHeader({
         {live ? (
           <>
             <LiveBadge />
-            <span className="stat text-xs font-semibold text-chalk">
+            <span className={`stat text-xs font-semibold ${u2m ? "u2m" : "text-chalk"}`}>
               {periodLabel(game.period)}
               {game.clock ? ` · ${game.clock}` : ""}
             </span>
@@ -207,6 +250,28 @@ function WeatherFlag({ game }: { game: GameView }) {
 
 /* ---- team rows --------------------------------------------------------- */
 
+/** Possession marker — a tiny football, unmistakable at a glance. */
+function Football({ label }: { label?: string }) {
+  return (
+    <svg
+      width="17"
+      height="11"
+      viewBox="0 0 17 11"
+      role="img"
+      aria-label={label ?? "has possession"}
+      className="shrink-0"
+    >
+      <ellipse cx="8.5" cy="5.5" rx="7.8" ry="4.7" fill="#9A6430" stroke="#5C3A18" strokeWidth="0.8" />
+      <path
+        d="M5.4 5.5h6.2M6.9 4.2v2.6M8.5 4.2v2.6M10.1 4.2v2.6"
+        stroke="#F4EFE6"
+        strokeWidth="0.9"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function TeamRow({
   game,
   team,
@@ -228,20 +293,29 @@ function TeamRow({
   const points = side === "home" ? game.homePoints : game.awayPoints;
   const oppPoints = side === "home" ? game.awayPoints : game.homePoints;
   const lost = final && points !== null && oppPoints !== null && points < oppPoints;
-  const won = final && points !== null && oppPoints !== null && points > oppPoints;
   const isStarred = starred.includes(team.id);
+  const rank = displayRank(team);
 
   return (
-    <div className={`flex items-center gap-2 transition-opacity ${lost ? "opacity-45" : ""}`}>
-      <TeamMark team={team} size={26} glow />
+    <div
+      className={`trow flex items-center gap-2.5 transition-opacity ${lost ? "opacity-45" : ""}`}
+      style={{ "--tc": team.color ?? "#5b6472" } as React.CSSProperties}
+    >
+      <span className="trail" aria-hidden />
+      <TeamMark team={team} size={showScore ? 44 : 32} glow />
       <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
-        <RankBadge rank={displayRank(team)} poll={team.poll} />
-        <span
-          className={`scorebug truncate text-[15px] leading-tight ${won ? "text-chalk" : "text-chalk"}`}
-        >
+        <span className={`scorebug truncate leading-tight text-chalk ${showScore ? "text-[16.5px]" : "text-[15px]"}`}>
           {team.school}
+          {rank !== null && rank <= 25 && (
+            <sup
+              className="stat ml-0.5 text-[10px] font-medium text-dim"
+              title={team.poll ? `${team.poll} rank` : "Model rank"}
+            >
+              {rank}
+            </sup>
+          )}
         </span>
-        {team.record && (
+        {team.record && !showScore && (
           <span className="stat shrink-0 text-[10px] leading-none text-dim">{team.record}</span>
         )}
         <button
@@ -261,20 +335,13 @@ function TeamRow({
       </div>
 
       {showScore ? (
-        <span className="flex shrink-0 items-center gap-1.5">
-          {live && game.possession === side && (
-            <span
-              role="img"
-              aria-label={`${team.school} has possession`}
-              title="Possession"
-              className="inline-block h-1.5 w-1.5 rounded-full bg-accent"
-            />
-          )}
+        <span className="flex shrink-0 items-center gap-2">
+          {live && game.possession === side && <Football label={`${team.school} has possession`} />}
           <span
             key={flash && flash.side === side ? flash.key : side}
-            className={`scorebug w-10 text-right text-[22px] leading-none ${
+            className={`stat w-11 text-right text-[24px] font-semibold leading-none ${
               lost ? "text-dim" : "text-chalk"
-            } ${flash && flash.side === side ? "score-flash" : ""}`}
+            } ${flash && flash.side === side ? "score-pop" : ""}`}
             style={
               flash && flash.side === side
                 ? ({ "--flash-color": team.color ?? "var(--accent)" } as React.CSSProperties)
@@ -287,6 +354,76 @@ function TeamRow({
       ) : (
         <OddsCells game={game} side={side} />
       )}
+    </div>
+  );
+}
+
+/* ---- live situation + field strip -------------------------------------- */
+
+/**
+ * Tier-3 information: the broadcast situation line, then the field strip —
+ * the ball at its true yard line so danger reads spatially. Both fail closed
+ * to the raw situation string when parsing is ambiguous.
+ */
+function LiveSituation({ game }: { game: GameView }) {
+  const sit = parseSituation(game.situation);
+  const pos = fieldPosition(game);
+  const redZone = isRedZone(game);
+  const posTeam =
+    game.possession === "home" ? game.home : game.possession === "away" ? game.away : null;
+  if (!game.situation && !pos) return null;
+
+  return (
+    <div className="mt-2.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {sit ? (
+          <span className="stat text-[12.5px] font-semibold text-chalk">
+            {sit.down === 4 ? (
+              <span className="down4">
+                {DOWN[sit.down]} &amp; {sit.distance === "Goal" ? "Goal" : sit.distance}
+              </span>
+            ) : (
+              <>
+                {DOWN[sit.down]} &amp; {sit.distance === "Goal" ? "Goal" : sit.distance}
+              </>
+            )}
+            <span className="font-medium text-dim">
+              {" "}
+              at {sit.sideToken} {sit.yardLine}
+            </span>
+          </span>
+        ) : game.situation ? (
+          <span className="stat text-[12.5px] font-medium text-chalk">
+            {posTeam ? `${posTeam.abbr} ball · ` : ""}
+            {game.situation}
+          </span>
+        ) : null}
+        {redZone && <span className="chip bg-loss/15 text-loss">Red zone</span>}
+      </div>
+      {pos && <FieldStrip game={game} pos={pos} redZone={redZone} />}
+    </div>
+  );
+}
+
+function FieldStrip({
+  game,
+  pos,
+  redZone,
+}: {
+  game: GameView;
+  pos: FieldPosition;
+  redZone: boolean;
+}) {
+  return (
+    <div className="field-strip" aria-hidden>
+      <span className="field-ez field-ez-l" style={{ background: game.away.color ?? "#5b6472" }} />
+      <span className="field-ez field-ez-r" style={{ background: game.home.color ?? "#5b6472" }} />
+      {redZone && <span className={`field-rz ${pos.dir === "right" ? "field-rz-r" : "field-rz-l"}`} />}
+      <span className="field-ball" style={{ left: `${pos.x}%` }}>
+        {pos.dir === "left" && <span className="field-dir">◂</span>}
+        <Football />
+        {pos.dir === "right" && <span className="field-dir">▸</span>}
+      </span>
     </div>
   );
 }
@@ -432,13 +569,9 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
   const move = spreadMove(game);
 
   const liveProb = live ? liveHomeWinProb(game) : null;
-  const redZone = live && isRedZone(game);
-  const posTeam =
-    game.possession === "home" ? game.home : game.possession === "away" ? game.away : null;
   const h = game.homePoints ?? 0;
   const a = game.awayPoints ?? 0;
-  const pickStatus =
-    live && game.myPick ? statusForPick(game.myPick.side, game.myPick.line, h, a) : null;
+  // the cover strip owns the pick while live; this row keeps the ledger bets
   const betStatuses = live
     ? game.myBets
         .map((b) => ({ bet: b, status: statusForBet(b, h, a) }))
@@ -451,7 +584,7 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
         <div className="flex min-w-0 items-center gap-1.5">
           <EdgeChip flag={p?.edgeFlag ?? null} edge={p?.edge ?? null} />
           <ConsensusChip on={p?.consensus ?? false} />
-          {game.myPick && !pickStatus && <PickedChip />}
+          {game.myPick && !live && <PickedChip />}
         </div>
         <div className="flex items-center gap-1.5 text-dim">
           <MoveIndicator move={move} open={game.lines.spreadOpen} />
@@ -459,19 +592,8 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
         </div>
       </div>
 
-      {live && game.situation && (
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <span className="stat text-[11px] font-medium text-chalk">
-            {posTeam ? `${posTeam.abbr} ball · ` : ""}
-            {game.situation}
-          </span>
-          {redZone && <span className="chip bg-loss/15 text-loss">Red zone</span>}
-        </div>
-      )}
-
-      {(pickStatus || betStatuses.length > 0) && (
+      {betStatuses.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {pickStatus && <LiveStatusChip prefix={`Pick ${pickPrefix(game)}`} status={pickStatus} />}
           {betStatuses.map(({ bet, status }) => (
             <LiveStatusChip key={bet.id} prefix={betPrefix(game, bet)} status={status} />
           ))}
@@ -532,18 +654,33 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
 }
 
 function FinalFooter({ game }: { game: GameView }) {
-  const cover = atsResult(game);
   const ou = ouResult(game);
   const grade = gradeModel(game);
   const { spread } = game.lines;
+
+  // the viewer's pick, resolved: if-the-game-ended-now at the final score IS the result
+  const pickStatus =
+    game.myPick && game.homePoints !== null && game.awayPoints !== null
+      ? statusForPick(game.myPick.side, game.myPick.line, game.homePoints, game.awayPoints)
+      : null;
 
   // favorite by closing line; cover chip judges whether the favorite covered
   const favorite: "home" | "away" | null =
     spread === null ? null : spread < 0 ? "home" : spread > 0 ? "away" : null;
   const favTeam = favorite === "home" ? game.home : game.away;
   const favSpread = spread === null ? null : favorite === "home" ? spread : -spread;
+  const cover = favorite ? atsResult(game) : null;
 
   const chips: React.ReactNode[] = [];
+  if (pickStatus) {
+    chips.push(
+      <ResultChip
+        key="pick"
+        label={`Pick ${pickPrefix(game)}`}
+        result={pickStatus.state === "winning" ? "pass" : pickStatus.state === "losing" ? "fail" : "push"}
+      />,
+    );
+  }
   if (favorite && cover) {
     chips.push(
       <ResultChip

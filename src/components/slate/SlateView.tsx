@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStarred, useViewerTz } from "../../lib/client-store";
 import type { GameRow } from "../../lib/db-types";
 import { clockTime, dayKey, dayTabLabel, DEFAULT_TZ, tzLabel } from "../../lib/kick";
+import { liveUrgency } from "../../lib/live-status";
 import { useGamesRealtime } from "../../lib/use-games-realtime";
 import {
   displayRank,
@@ -256,7 +257,8 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
   // Only when sorted by kickoff — explicit sorts stay a flat grid.
   const sections = useMemo(() => {
     if (sort !== "kickoff") return null;
-    const liveGames = sorted.filter(isLive);
+    // within Live, the sweats lead: bubble picks, then losing, covering, no pick
+    const liveGames = [...sorted.filter(isLive)].sort((a, b) => liveUrgency(a) - liveUrgency(b));
     const finalGames = sorted.filter(isFinal);
     if (liveGames.length === 0 && finalGames.length === 0) return null;
     const upcoming = sorted.filter((g) => !isLive(g) && !isFinal(g));

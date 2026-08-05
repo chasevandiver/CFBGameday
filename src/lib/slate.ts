@@ -151,6 +151,37 @@ export function isRedZone(g: {
   return sit.yardLine <= 20;
 }
 
+export interface FieldPosition {
+  /** 0 = away team's goal line, 100 = home team's goal line */
+  x: number;
+  /** Drive direction on a strip drawn away-left / home-right */
+  dir: "left" | "right";
+}
+
+/**
+ * Ball spot for the field strip, derived from the CFBD situation string.
+ * Convention: the away team defends the left end zone, home the right, so
+ * the offense always drives toward the defender's end. Fails closed (null)
+ * when the field-side token matches neither team — same policy as isRedZone.
+ */
+export function fieldPosition(g: {
+  status: string;
+  possession: "home" | "away" | null;
+  situation: string | null;
+  home: { abbr: string };
+  away: { abbr: string };
+}): FieldPosition | null {
+  if (g.status !== "in_progress" || !g.possession) return null;
+  const sit = parseSituation(g.situation);
+  if (!sit) return null;
+  const token = sit.sideToken.toUpperCase();
+  let x: number;
+  if (token === g.home.abbr.toUpperCase()) x = 100 - sit.yardLine;
+  else if (token === g.away.abbr.toUpperCase()) x = sit.yardLine;
+  else return null;
+  return { x, dir: g.possession === "away" ? "right" : "left" };
+}
+
 /**
  * In-game home win probability from score + time + pregame model margin.
  * Null unless the game is live. Computed client-side so realtime score
