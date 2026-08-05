@@ -210,7 +210,9 @@ function CoverStrip({ cm, pickLabel }: { cm: number; pickLabel: string }) {
   return (
     <div className={`gc-cover gc-cover-${tier}`}>
       <span className="gc-cover-word">{word}</span>
-      <span className="gc-cover-margin">{fmtMargin(cm)}</span>
+      {/* the margin earns its place only when the number is in doubt:
+          bubble = the whole point, losing = how far back; safe covers stay quiet */}
+      {tier !== "covering" && <span className="gc-cover-margin">{fmtMargin(cm)}</span>}
       {tier === "bubble" && <span className="gc-cover-sub">a FG flips it</span>}
       <span className="gc-cover-pick">Pick {pickLabel}</span>
     </div>
