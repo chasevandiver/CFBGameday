@@ -120,7 +120,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   const history = consensusHistory(snapshots);
   const predictions = (predRes.data ?? []) as PredictionRow[];
   const prediction = predictions.find((p) => p.frozen) ?? predictions[0] ?? null;
-  const picks = (picksRes.data ?? []) as PickRow[]; // RLS: others' picks only post-kickoff
+  const picks = (picksRes.data ?? []) as PickRow[]; // crew picks are never hidden (0010)
   const profiles = new Map(((profilesRes.data ?? []) as ProfileRow[]).map((p) => [p.id, p]));
   const weather = weatherRes.data as {
     temp_f: number | null;
@@ -346,6 +346,51 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
           </div>
         </section>
 
+        {/* Pick'em + crew — up top, never hidden */}
+        <section className="card mt-4 px-4 py-4">
+          <h2 className="mb-3 text-sm text-accent">Your pick</h2>
+          <PickButtons
+            gameId={game.id}
+            homeLabel={home.abbr}
+            awayLabel={away.abbr}
+            currentSpread={consensus.spread}
+            myPick={myPick}
+            kickoffPassed={kickoffPassed}
+          />
+          <div className="mt-4 border-t border-chalk/8 pt-3">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-chalk/40">
+              Crew picks
+            </p>
+            {crewPicks.length === 0 ? (
+              <p className="text-sm text-dim">Nobody else has picked this one yet.</p>
+            ) : (
+              <ul className="flex flex-col gap-1.5">
+                {crewPicks.map((p) => (
+                  <li key={p.id} className="stat flex justify-between text-sm">
+                    <span>{profiles.get(p.user_id)?.display_name ?? "?"}</span>
+                    <span>
+                      {p.side === "home" ? home.abbr : away.abbr} {fmtSpread(Number(p.line_at_pick))}
+                      {p.result && (
+                        <span
+                          className={`ml-2 uppercase ${
+                            p.result === "win"
+                              ? "text-win"
+                              : p.result === "loss"
+                                ? "text-loss"
+                                : "text-push"
+                          }`}
+                        >
+                          {p.result}
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+
         {/* Odds table */}
         <section className="card mt-4 overflow-hidden">
           <header className="flex items-center justify-between border-b border-chalk/8 px-4 py-2.5">
@@ -519,52 +564,6 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
           </section>
         )}
 
-        {/* Pick'em */}
-        <section className="card mt-4 px-4 py-4">
-          <h2 className="mb-3 text-sm text-accent">Your pick</h2>
-          <PickButtons
-            gameId={game.id}
-            homeLabel={home.abbr}
-            awayLabel={away.abbr}
-            currentSpread={consensus.spread}
-            myPick={myPick}
-            kickoffPassed={kickoffPassed}
-          />
-        </section>
-
-        {/* Crew corner */}
-        <section className="card mt-4 px-4 py-4">
-          <h2 className="mb-3 text-sm text-accent">Crew picks</h2>
-          {!kickoffPassed ? (
-            <p className="text-sm text-dim">Hidden until kickoff.</p>
-          ) : crewPicks.length === 0 ? (
-            <p className="text-sm text-dim">Nobody else picked this one.</p>
-          ) : (
-            <ul className="flex flex-col gap-1.5">
-              {crewPicks.map((p) => (
-                <li key={p.id} className="stat flex justify-between text-sm">
-                  <span>{profiles.get(p.user_id)?.display_name ?? "?"}</span>
-                  <span>
-                    {p.side === "home" ? home.abbr : away.abbr} {fmtSpread(Number(p.line_at_pick))}
-                    {p.result && (
-                      <span
-                        className={`ml-2 uppercase ${
-                          p.result === "win"
-                            ? "text-win"
-                            : p.result === "loss"
-                              ? "text-loss"
-                              : "text-push"
-                        }`}
-                      >
-                        {p.result}
-                      </span>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
       </main>
     </>
   );

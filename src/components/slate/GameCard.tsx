@@ -3,6 +3,7 @@
 import { CloudRain, Snowflake, Star, Tv, Wind } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { inSlip, useBetSlip, type SlipSelection } from "../../lib/bet-slip-store";
 import { kickParts, periodLabel } from "../../lib/kick";
 import { statusForBet, statusForPick } from "../../lib/live-status";
 import {
@@ -37,9 +38,11 @@ interface Props {
   onStar: (teamId: number) => void;
   /** stagger index for the load-in animation */
   index?: number;
+  /** Game of the Week — accent ring + chip, otherwise a normal card */
+  featured?: boolean;
 }
 
-export function GameCard({ game, tz, starred, onStar, index = 0 }: Props) {
+export function GameCard({ game, tz, starred, onStar, index = 0, featured = false }: Props) {
   const live = isLive(game);
   const final = isFinal(game);
   const dead = isDead(game);
@@ -64,7 +67,9 @@ export function GameCard({ game, tz, starred, onStar, index = 0 }: Props) {
 
   return (
     <article
-      className={`card card-hover card-in relative overflow-hidden ${live ? "card-live" : ""}`}
+      className={`card card-hover card-in relative overflow-hidden ${live ? "card-live" : ""} ${
+        featured ? "ring-1 ring-accent/40" : ""
+      }`}
       style={{ animationDelay: `${Math.min(index * 30, 150)}ms` }}
     >
       {/* team-color split accent edge */}
@@ -80,10 +85,11 @@ export function GameCard({ game, tz, starred, onStar, index = 0 }: Props) {
       />
 
       <div className="pointer-events-none relative z-10 flex h-full flex-col p-3.5 pt-4">
-        <CardHeader game={game} tz={tz} live={live} final={final} dead={dead} />
+        <CardHeader game={game} tz={tz} live={live} final={final} dead={dead} featured={featured} />
 
         <div key={game.status} className="fade-swap flex flex-1 flex-col">
-          <div className="mt-2.5 flex flex-col gap-2">
+          {!live && !final && !dead && <OddsColumnLabels game={game} />}
+          <div className="mt-2 flex flex-col gap-2">
             <TeamRow
               game={game}
               team={game.away}
@@ -123,16 +129,19 @@ function CardHeader({
   live,
   final,
   dead,
+  featured,
 }: {
   game: GameView;
   tz: string;
   live: boolean;
   final: boolean;
   dead: boolean;
+  featured: boolean;
 }) {
   return (
     <div className="flex min-h-5 items-center justify-between gap-2">
       <div className="flex items-center gap-2">
+        {featured && <span className="chip bg-accent/15 text-accent">Game of the Week</span>}
         {live ? (
           <>
             <LiveBadge />
@@ -282,31 +291,121 @@ function TeamRow({
   );
 }
 
-/** Sportsbook-style spread / total / ML cells for one team row. */
-function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
+/** Column labels above the tappable odds grid — right-aligned over the cells. */
+function OddsColumnLabels({ game }: { game: GameView }) {
   const { spread, total, mlHome, mlAway } = game.lines;
-  const teamSpread = spread === null ? null : side === "home" ? spread : -spread;
-  const ml = side === "home" ? mlHome : mlAway;
-  if (spread === null && total === null && ml === null)
-    return <span className="stat text-[11px] text-chalk/30">no line</span>;
+  if (spread === null && total === null && mlHome === null && mlAway === null) return null;
   return (
-    <div className="flex shrink-0 gap-1">
-      <OddsCell value={fmtSpread(teamSpread)} />
-      <OddsCell value={total === null ? "–" : `${side === "home" ? "U" : "O"} ${fmtTotal(total)}`} />
-      <OddsCell value={fmtMoneyline(ml)} wide />
+    <div className="mt-2 flex justify-end gap-1 text-[9px] font-semibold uppercase tracking-wider text-chalk/30">
+      <span className="min-w-10 text-center">Spread</span>
+      <span className="min-w-10 text-center">Total</span>
+      <span className="min-w-12 text-center">Money</span>
     </div>
   );
 }
 
-function OddsCell({ value, wide = false }: { value: string; wide?: boolean }) {
+/**
+ * Sportsbook-style spread / total / ML cells for one team row. Each cell is a
+ * button that adds the selection to the bet slip (tap again to remove, tap the
+ * opposite side to swap).
+ */
+function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
+  const { slip, toggle } = useBetSlip();
+  const dead = isDead(game);
+  const team = side === "home" ? game.home : game.away;
+  const matchup = `${game.away.abbr} @ ${game.home.abbr}`;
+  const { spread, total, mlHome, mlAway } = game.lines;
+  const teamSpread = spread === null ? null : side === "home" ? spread : -spread;
+  const ml = side === "home" ? mlHome : mlAway;
+  const totalSide = side === "home" ? ("under" as const) : ("over" as const);
+  const totalLabel = total === null ? "–" : `${side === "home" ? "U" : "O"} ${fmtTotal(total)}`;
+  if (spread === null && total === null && ml === null)
+    return <span className="stat text-[11px] text-chalk/30">no line</span>;
+
+  const sel = (
+    betType: SlipSelection["betType"],
+    selSide: SlipSelection["side"],
+    label: string,
+    description: string,
+    line: number | null,
+    odds: number,
+  ): SlipSelection => ({ gameId: game.id, betType, side: selSide, label, matchup, description, line, odds });
+
   return (
-    <span
-      className={`stat flex h-6 items-center justify-center rounded-md bg-elev px-1 text-[11px] font-medium text-chalk ring-1 ring-inset ring-chalk/8 ${
+    <div className="flex shrink-0 gap-1">
+      <OddsCell
+        value={fmtSpread(teamSpread)}
+        active={inSlip(slip, game.id, "spread", side)}
+        disabled={dead || teamSpread === null}
+        aria={`${team.abbr} ${fmtSpread(teamSpread)} spread — add to bet slip`}
+        onToggle={() =>
+          toggle(
+            sel("spread", side, `${team.abbr} ${fmtSpread(teamSpread)}`,
+              `${team.school} ${fmtSpread(teamSpread)} (${matchup})`, teamSpread, -110),
+          )
+        }
+      />
+      <OddsCell
+        value={totalLabel}
+        active={inSlip(slip, game.id, "total", totalSide)}
+        disabled={dead || total === null}
+        aria={`${totalSide === "over" ? "Over" : "Under"} ${fmtTotal(total)} — add to bet slip`}
+        onToggle={() =>
+          toggle(
+            sel("total", totalSide, `${totalSide === "over" ? "O" : "U"} ${fmtTotal(total)}`,
+              `${totalSide === "over" ? "Over" : "Under"} ${fmtTotal(total)} (${matchup})`, total, -110),
+          )
+        }
+      />
+      <OddsCell
+        value={fmtMoneyline(ml)}
+        active={inSlip(slip, game.id, "moneyline", side)}
+        disabled={dead || ml === null}
+        aria={`${team.abbr} moneyline ${fmtMoneyline(ml)} — add to bet slip`}
+        wide
+        onToggle={() =>
+          toggle(sel("moneyline", side, `${team.abbr} ML`, `${team.school} ML (${matchup})`, null, ml ?? -110))
+        }
+      />
+    </div>
+  );
+}
+
+function OddsCell({
+  value,
+  active,
+  disabled,
+  aria,
+  onToggle,
+  wide = false,
+}: {
+  value: string;
+  active: boolean;
+  disabled: boolean;
+  aria: string;
+  onToggle: () => void;
+  wide?: boolean;
+}) {
+  return (
+    <button
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggle();
+      }}
+      disabled={disabled}
+      aria-label={aria}
+      aria-pressed={active}
+      className={`stat pointer-events-auto flex h-7 items-center justify-center rounded-md px-1 text-[11px] font-medium transition-colors ${
         wide ? "min-w-12" : "min-w-10"
-      }`}
+      } ${
+        active
+          ? "bg-accent text-accent-ink ring-1 ring-inset ring-accent"
+          : "bg-elev text-chalk ring-1 ring-inset ring-chalk/8 hover:ring-accent/60"
+      } disabled:cursor-default disabled:opacity-40 disabled:hover:ring-chalk/8`}
     >
       {value}
-    </span>
+    </button>
   );
 }
 

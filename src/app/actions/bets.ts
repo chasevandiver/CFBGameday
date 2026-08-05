@@ -62,6 +62,72 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
   return { ok: true };
 }
 
+const SLIP_BET_TYPES = new Set(["spread", "total", "moneyline"]);
+const SLIP_SIDES = new Set(["home", "away", "over", "under"]);
+
+export interface SlipBetInput {
+  gameId: number;
+  betType: string;
+  side: string;
+  line: number | null;
+  odds: number;
+  units: number;
+  description: string;
+}
+
+/** Log every selection on the bet slip in one shot (one ledger row each). */
+export async function logSlipBets(
+  seasonId: number,
+  reasonTag: string,
+  bets: SlipBetInput[],
+): Promise<BetActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Sign in to log bets" };
+
+  if (!Number.isInteger(seasonId)) return { ok: false, message: "Bad season" };
+  if (!REASON_TAGS.includes(reasonTag as (typeof REASON_TAGS)[number])) {
+    return { ok: false, message: "Pick a reason tag — that's the whole point of the audit" };
+  }
+  if (bets.length === 0) return { ok: false, message: "Nothing on the slip" };
+  if (bets.length > 25) return { ok: false, message: "Too many bets at once" };
+  for (const b of bets) {
+    if (!SLIP_BET_TYPES.has(b.betType) || !SLIP_SIDES.has(b.side))
+      return { ok: false, message: "Bad selection" };
+    if (!Number.isFinite(b.units) || b.units <= 0)
+      return { ok: false, message: "Units must be > 0" };
+    if (!Number.isFinite(b.odds)) return { ok: false, message: "Bad odds" };
+    if (b.line !== null && !Number.isFinite(b.line)) return { ok: false, message: "Bad line" };
+    if (!b.description.trim()) return { ok: false, message: "Bad selection" };
+  }
+
+  const gameIds = [...new Set(bets.map((b) => b.gameId))];
+  const { data: games } = await supabase.from("games").select("id").in("id", gameIds);
+  if ((games ?? []).length !== gameIds.length) return { ok: false, message: "Bad game" };
+
+  const { error } = await supabase.from("bets").insert(
+    bets.map((b) => ({
+      season_id: seasonId,
+      user_id: user.id,
+      game_id: b.gameId,
+      bet_type: b.betType,
+      description: b.description.trim(),
+      side: b.side,
+      line_taken: b.line,
+      odds: b.odds,
+      units: b.units,
+      reason_tag: reasonTag,
+    })),
+  );
+
+  if (error) return { ok: false, message: error.message };
+  revalidatePath("/ledger");
+  revalidatePath("/slate");
+  return { ok: true };
+}
+
 /** Append-only ledger: voiding is the only "delete" (docs/SPEC.md §5.3). */
 export async function voidBet(betId: number): Promise<BetActionResult> {
   const supabase = await createClient();

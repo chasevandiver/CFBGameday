@@ -8,7 +8,6 @@ import { clockTime, dayKey, dayTabLabel, DEFAULT_TZ, tzLabel } from "../../lib/k
 import { useGamesRealtime } from "../../lib/use-games-realtime";
 import {
   displayRank,
-  heroScore,
   isDead,
   isFinal,
   isLive,
@@ -17,8 +16,8 @@ import {
   type GameView,
   type SlateData,
 } from "../../lib/slate";
+import { BetSlip } from "./BetSlip";
 import { GameCard } from "./GameCard";
-import { HeroCard } from "./HeroCard";
 import { SkeletonCard } from "./SkeletonCard";
 
 const SORTS = [
@@ -247,15 +246,29 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
     spreadRange === "any" &&
     query.trim() === "";
 
-  const hero = useMemo(
-    () => (sort === "kickoff" && noFilters ? pickHero(sorted) : null),
+  // Game of the Week: highlighted in place in the grid, not a separate hero
+  const featuredId = useMemo(
+    () => (sort === "kickoff" && noFilters ? (pickHero(sorted)?.id ?? null) : null),
     [sorted, sort, noFilters],
   );
-  const gridGames = hero ? sorted.filter((g) => g.id !== hero.id) : sorted;
+
+  // High-powered day structure: live games lead, then pregame, then finals.
+  // Only when sorted by kickoff — explicit sorts stay a flat grid.
+  const sections = useMemo(() => {
+    if (sort !== "kickoff") return null;
+    const liveGames = sorted.filter(isLive);
+    const finalGames = sorted.filter(isFinal);
+    if (liveGames.length === 0 && finalGames.length === 0) return null;
+    const upcoming = sorted.filter((g) => !isLive(g) && !isFinal(g));
+    return [
+      { key: "live", title: "Live", games: liveGames },
+      { key: "pregame", title: "Pregame", games: upcoming },
+      { key: "final", title: "Final", games: finalGames },
+    ].filter((s) => s.games.length > 0);
+  }, [sorted, sort]);
 
   const rankedCount = games.filter(isRankedMatchup).length;
   const record = weekModelRecord(games);
-  const biggest = useMemo(() => pickHero(games), [games]);
   const finals = games.filter(isFinal).length;
 
   /* ---- render ---------------------------------------------------------- */
@@ -300,12 +313,6 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
               label="Model ATS"
               value={`${record.wins}-${record.losses}${record.pushes ? `-${record.pushes}` : ""}`}
               tone={record.wins >= record.losses ? "win" : "loss"}
-            />
-          )}
-          {biggest && (
-            <SummaryStat
-              label="Biggest game"
-              value={`${biggest.away.abbr} @ ${biggest.home.abbr}`}
             />
           )}
         </div>
@@ -371,26 +378,77 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
             title="No games match your filters"
             hint="Loosen a filter or clear the search to see the rest of the slate."
           />
+        ) : sections ? (
+          sections.map((s) => (
+            <section key={s.key} aria-label={s.title} className="mt-7 first:mt-0">
+              <SectionHeader title={s.title} count={s.games.length} live={s.key === "live"} />
+              <CardGrid
+                games={s.games}
+                tz={tz}
+                starred={starred}
+                onStar={toggleStar}
+                featuredId={featuredId}
+              />
+            </section>
+          ))
         ) : (
-          <>
-            {hero && heroScore(hero) > 0 && (
-              <div className="mb-4">
-                <HeroCard game={hero} tz={tz} />
-              </div>
-            )}
-            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-              {gridGames.map((g, i) => (
-                <GameCard key={g.id} game={g} tz={tz} starred={starred} onStar={toggleStar} index={i} />
-              ))}
-            </div>
-          </>
+          <CardGrid
+            games={sorted}
+            tz={tz}
+            starred={starred}
+            onStar={toggleStar}
+            featuredId={featuredId}
+          />
         )}
       </div>
+
+      <BetSlip seasonId={data.seasonId} />
     </>
   );
 }
 
 /* ---- little pieces ----------------------------------------------------- */
+
+function CardGrid({
+  games,
+  tz,
+  starred,
+  onStar,
+  featuredId,
+}: {
+  games: GameView[];
+  tz: string;
+  starred: number[];
+  onStar: (teamId: number) => void;
+  featuredId: number | null;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+      {games.map((g, i) => (
+        <GameCard
+          key={g.id}
+          game={g}
+          tz={tz}
+          starred={starred}
+          onStar={onStar}
+          index={i}
+          featured={g.id === featuredId}
+        />
+      ))}
+    </div>
+  );
+}
+
+function SectionHeader({ title, count, live }: { title: string; count: number; live: boolean }) {
+  return (
+    <div className="mb-2.5 flex items-center gap-2">
+      {live && <span className="live-dot h-2 w-2 shrink-0 rounded-full bg-live" aria-hidden />}
+      <h2 className={`text-sm ${live ? "text-live" : "text-chalk/70"}`}>{title}</h2>
+      <span className="stat text-xs text-dim">{count}</span>
+      <span className="h-px flex-1 bg-chalk/10" aria-hidden />
+    </div>
+  );
+}
 
 function isRankedMatchup(g: GameView): boolean {
   const hr = displayRank(g.home);
