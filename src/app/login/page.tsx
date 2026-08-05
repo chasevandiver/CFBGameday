@@ -1,12 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "../../lib/supabase/client";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [message, setMessage] = useState("");
+  const [linkFailed, setLinkFailed] = useState(false);
+
+  useEffect(() => {
+    setLinkFailed(new URLSearchParams(window.location.search).get("error") === "link");
+  }, []);
 
   async function sendLink(e: React.FormEvent) {
     e.preventDefault();
@@ -42,6 +47,12 @@ export default function LoginPage() {
         </div>
       ) : (
         <form onSubmit={sendLink} className="flex w-full max-w-sm flex-col gap-3">
+          {linkFailed && (
+            <p className="rounded border border-flag/50 bg-flag/10 p-2 text-sm text-flag">
+              That link didn&rsquo;t work (it may have expired or already been used). Enter your
+              email for a fresh one.
+            </p>
+          )}
           <p className="text-sm text-chalk/70">
             One-time sign-in. After this you stay logged in.
           </p>
