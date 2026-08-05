@@ -7,7 +7,7 @@
  * passes the line the over has won and the under is dead, whatever the clock.
  */
 
-import type { MyBetView } from "./slate";
+import type { GameView, MyBetView } from "./slate";
 
 export interface LiveBetStatus {
   state: "winning" | "losing" | "push";
@@ -77,6 +77,84 @@ export function statusForPick(
   if (side === "home" || side === "away") return liveSpreadStatus(side, line, homePts, awayPts);
   if (side === "over" || side === "under") return liveTotalStatus(side, line, homePts, awayPts);
   return null;
+}
+
+/* ---- cover strip (pick'em) --------------------------------------------- */
+
+export type CoverTier = "covering" | "bubble" | "losing";
+
+export interface PickCoverView {
+  tier: CoverTier;
+  /** Verdict word, e.g. "Covering" / "On the bubble" */
+  word: string;
+  /** Signed margin vs the number in broadcast halves ("+2½"); spread picks only */
+  margin: string | null;
+  /** Supporting text: the bubble hint, or the totals room label */
+  sub: string | null;
+}
+
+/** Broadcast halves with a real minus sign: 2.5 → "+2½", -0.5 → "−½". */
+const fmtHalves = (n: number): string => {
+  const a = Math.abs(n);
+  const whole = Math.trunc(a);
+  const frac = a % 1 !== 0 ? "½" : "";
+  return `${n > 0 ? "+" : "−"}${whole === 0 && frac ? frac : `${whole}${frac}`}`;
+};
+
+/**
+ * The cover strip's view of a live pick. Bubble = within a field goal of the
+ * number, on either side of it — the state where one score flips the result.
+ */
+export function pickCoverView(
+  side: string,
+  line: number,
+  homePts: number,
+  awayPts: number,
+): PickCoverView | null {
+  if (side === "home" || side === "away") {
+    const margin = side === "home" ? homePts - awayPts : awayPts - homePts;
+    const cm = margin + line;
+    const tier: CoverTier = Math.abs(cm) <= 3 ? "bubble" : cm > 0 ? "covering" : "losing";
+    const word =
+      tier === "covering"
+        ? "Covering"
+        : tier === "losing"
+          ? "Not covering"
+          : cm === 0
+            ? "On the number"
+            : "On the bubble";
+    return {
+      tier,
+      word,
+      margin: cm === 0 ? null : fmtHalves(cm),
+      sub: tier === "bubble" ? "a FG flips it" : null,
+    };
+  }
+  if (side === "over" || side === "under") {
+    const st = liveTotalStatus(side, line, homePts, awayPts);
+    const room = line - (homePts + awayPts);
+    const tier: CoverTier =
+      st.state === "push" || (!st.clinched && Math.abs(room) <= 3)
+        ? "bubble"
+        : st.state === "winning"
+          ? "covering"
+          : "losing";
+    return {
+      tier,
+      word: st.state === "winning" ? "Winning" : st.state === "losing" ? "Losing" : "On the number",
+      margin: null,
+      sub: st.label,
+    };
+  }
+  return null;
+}
+
+/** Feed sort key for live games: bubble sweats first, then losing, covering, no pick. */
+export function liveUrgency(g: GameView): number {
+  if (!g.myPick) return 3;
+  const v = pickCoverView(g.myPick.side, g.myPick.line, g.homePoints ?? 0, g.awayPoints ?? 0);
+  if (!v) return 3;
+  return v.tier === "bubble" ? 0 : v.tier === "losing" ? 1 : 2;
 }
 
 /**

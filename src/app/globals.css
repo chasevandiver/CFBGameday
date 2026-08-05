@@ -7,14 +7,14 @@
    every page shares one palette. */
 
 :root {
-  /* dark (default) */
-  --bg: #0b0d12;
-  --surface: #12151c;
-  --elev: #191d26;
-  --line: rgba(235, 240, 250, 0.09);
-  --line-strong: rgba(235, 240, 250, 0.18);
-  --text: #edeff4;
-  --text-dim: #9aa1ad;
+  /* dark (default) — warm charcoal, deep enough for OLED at 11pm */
+  --bg: #12100d;
+  --surface: #191512;
+  --elev: #211c16;
+  --line: rgba(244, 236, 220, 0.09);
+  --line-strong: rgba(244, 236, 220, 0.18);
+  --text: #f2eee5;
+  --text-dim: #a89f90;
   --accent: #f2b63c;
   --accent-ink: #0b0d12;
   --live: #ff4b57;
@@ -158,6 +158,161 @@ h2,
   white-space: nowrap;
 }
 
+/* ---- Game card: cover strip, team rails, field strip ------------------ */
+
+/* Cover strip — the loudest element on a live card. Italic condensed, the
+   way a broadcast score bug sets its verdict. Amber is reserved for the
+   bubble tier and appears nowhere else at full strength. */
+.cover-strip {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 14px;
+}
+.cover-word {
+  font-family: var(--font-display), var(--font-body), sans-serif;
+  font-weight: 700;
+  font-style: italic;
+  font-size: 13px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.cover-margin {
+  font-family: var(--font-numeric), monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-style: italic;
+  font-size: 18px;
+  line-height: 1;
+}
+.cover-sub {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
+}
+.cover-pick {
+  margin-left: auto;
+  font-family: var(--font-numeric), monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+.cover-covering {
+  color: var(--win);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--win) 15%, transparent), transparent 70%);
+  box-shadow: inset 3px 0 0 var(--win);
+}
+.cover-losing {
+  color: var(--loss);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--loss) 17%, transparent), transparent 70%);
+  box-shadow: inset 3px 0 0 var(--loss);
+}
+.cover-bubble {
+  color: #1c1405;
+  background: var(--accent);
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+.card-bubble {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow:
+    var(--shadow-card),
+    0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent),
+    0 0 24px -8px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+.card-final {
+  opacity: 0.68;
+  filter: saturate(0.78);
+}
+
+/* Team rows: the team's primary color binds its half of the card */
+.trow {
+  position: relative;
+  border-radius: 8px;
+  padding: 3px 6px 3px 10px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tc, transparent) 13%, transparent), transparent 60%);
+}
+.trail {
+  position: absolute;
+  left: 2px;
+  top: 15%;
+  bottom: 15%;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--tc);
+}
+
+/* Situation treatments */
+.down4 {
+  background: var(--text);
+  color: var(--bg);
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 5px;
+  letter-spacing: 0.02em;
+}
+.u2m {
+  background: var(--live);
+  color: #fff;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-weight: 700;
+}
+
+/* Field strip — the whole field in 12px: team-colored end zones, the ball
+   at its true yard line, drive direction, red zone shaded when active */
+.field-strip {
+  position: relative;
+  height: 12px;
+  margin-top: 7px;
+  border-radius: 4px;
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), rgba(244, 239, 230, 0.1) calc(10% - 1px) 10%),
+    linear-gradient(180deg, #232b20, #1c231a);
+}
+html[data-theme="light"] .field-strip {
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), rgba(18, 24, 38, 0.14) calc(10% - 1px) 10%),
+    linear-gradient(180deg, #b7c4ae, #a7b59e);
+}
+.field-ez {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 5%;
+  opacity: 0.55;
+}
+.field-ez-l { left: 0; }
+.field-ez-r { right: 0; }
+.field-rz {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 15%;
+  background: color-mix(in srgb, var(--loss) 45%, transparent);
+}
+.field-rz-r { right: 5%; }
+.field-rz-l { left: 5%; }
+.field-ball {
+  position: absolute;
+  top: 50%;
+  translate: -50% -50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
+.field-dir {
+  font-size: 9px;
+  line-height: 1;
+  color: var(--text);
+}
+
 /* ---- Motion ---------------------------------------------------------- */
 
 @keyframes card-in {
@@ -197,6 +352,21 @@ h2,
 }
 .score-flash {
   animation: score-flash 1.4s ease-out both;
+  border-radius: 6px;
+}
+
+@keyframes score-pop {
+  0% {
+    transform: translateY(-6px) scale(1.14);
+  }
+  60% {
+    transform: none;
+  }
+}
+.score-pop {
+  animation:
+    score-pop 600ms cubic-bezier(0.22, 1, 0.36, 1) both,
+    score-flash 1.4s ease-out both;
   border-radius: 6px;
 }
 
