@@ -76,15 +76,79 @@ function report(predictions: ReplayPrediction[], params: ModelParams): string {
   return lines.join("\n");
 }
 
+/**
+ * --tune-prior: how much should preseason ratings carry over from last season
+ * vs regress toward the talent composite? Replays with
+ *   priors = w × replay_finals + (1−w) × talent_baseline
+ * and scores ONLY weeks 1–4 (where the prior dominates pricing), for the
+ * chained seasons (2024–2025; 2023 is the SP+ bootstrap either way).
+ */
+async function tunePriorCarryover(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
+  const { cfbd } = await import("../src/lib/cfbd");
+  const { cached } = await import("./lib/replay");
+
+  // talent baseline per season, on the rating points scale (z × 5.5, clamped)
+  const talentBySeason = new Map<number, Map<number, number>>();
+  for (const season of SEASONS) {
+    const talent = await cached(`talent-${season}`, () => cfbd.talent(season), true);
+    const vals = talent.map((t) => t.talent);
+    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const std = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length);
+    const map = new Map<number, number>();
+    for (const t of talent) {
+      const id = teamIdsByName.get(t.school);
+      if (id !== undefined) {
+        map.set(id, Math.max(-18, Math.min(18, ((t.talent - mean) / std) * 5.5)));
+      }
+    }
+    talentBySeason.set(season, map);
+  }
+
+  console.log("carryover w   early-wk NLL   early-wk MAE   (weeks 1–4 of 2024–2025)");
+  let best: { w: number; nll: number } | null = null;
+  for (const w of [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]) {
+    let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
+    const early: ReplayPrediction[] = [];
+    for (const season of seasons) {
+      const { predictions, finalRatings } = replaySeason(season, priors, DEFAULT_PARAMS);
+      if (season.season > SEASONS[0]) {
+        early.push(...predictions.filter((p) => p.week <= 4));
+      }
+      const talent = talentBySeason.get(season.season + 1) ?? talentBySeason.get(season.season)!;
+      const next = new Map<number, number>();
+      for (const [teamId, rating] of finalRatings) {
+        const tal = talent.get(teamId) ?? -8;
+        next.set(teamId, w * rating + (1 - w) * tal);
+      }
+      priors = next;
+    }
+    const graded = early.filter((p) => p.favoriteWon !== null);
+    const nll =
+      -graded.reduce((a, p) => a + Math.log(p.favoriteWon ? p.favWinProb : 1 - p.favWinProb), 0) /
+      graded.length;
+    const errors = early.map((p) => p.actualMargin - p.margin);
+    const mae = errors.reduce((a, e) => a + Math.abs(e), 0) / errors.length;
+    console.log(`${w.toFixed(2)}          ${nll.toFixed(4)}         ${mae.toFixed(2)}         n=${graded.length}`);
+    if (!best || nll < best.nll) best = { w, nll };
+  }
+  if (best) console.log(`\nBest early-season carryover: w=${best.w}`);
+}
+
 async function main() {
   const useCache = process.argv.includes("--cached");
   const tune = process.argv.includes("--tune");
+  const tunePrior = process.argv.includes("--tune-prior");
 
   console.log(`Loading seasons ${SEASONS.join(", ")} ${useCache ? "(cache preferred)" : "(fetching)"}…`);
   const seasons: SeasonData[] = [];
   for (const s of SEASONS) seasons.push(await loadSeason(s, useCache));
 
   const teamIdsByName = teamIdsByNameFrom(seasons);
+
+  if (tunePrior) {
+    await tunePriorCarryover(seasons, teamIdsByName);
+    return;
+  }
 
   const run = (params: ModelParams): ReplayPrediction[] => {
     let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
