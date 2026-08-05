@@ -179,7 +179,7 @@ create table profiles (
   id            uuid primary key references auth.users(id) on delete cascade,
   display_name  text not null,
   favorite_team_ids integer[] not null default '{}',
-  timezone      text not null default 'America/New_York',
+  timezone      text not null default 'America/Chicago',  -- whole crew is CT; kept as escape hatch, not surfaced in UI
   is_admin      boolean not null default false,
   created_at    timestamptz not null default now()
 );
