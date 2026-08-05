@@ -25,6 +25,8 @@ on:
           - weather
           - ratings-update
           - freeze
+          - questions
+          - verdicts
   schedule:
     # Lines 4x daily (8am/1pm/6pm/11pm ET)
     - cron: "0 3,12,17,22 * * *"
@@ -45,6 +47,9 @@ on:
     - cron: "0 13 * * 0"
     # Thursday-night prediction freeze (10pm CT)
     - cron: "0 3 * * 5"
+    # Three Questions per game, Friday morning after the freeze (LLM; green
+    # no-op until the ANTHROPIC_API_KEY secret exists)
+    - cron: "0 9 * * 5"
 
 concurrency:
   group: jobs-${{ github.event.schedule || inputs.task }}
@@ -58,6 +63,7 @@ jobs:
       CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -76,6 +82,7 @@ jobs:
             "0 10 * * 6") echo "task=weather" >> "$GITHUB_OUTPUT" ;;
             "0 13 * * 0") echo "task=ratings-update" >> "$GITHUB_OUTPUT" ;;
             "0 3 * * 5") echo "task=freeze" >> "$GITHUB_OUTPUT" ;;
+            "0 9 * * 5") echo "task=questions" >> "$GITHUB_OUTPUT" ;;
             "") echo "task=${{ inputs.task }}" >> "$GITHUB_OUTPUT" ;;
             *) echo "task=unknown" >> "$GITHUB_OUTPUT" ;;
           esac
@@ -86,5 +93,13 @@ jobs:
             refresh-lines-burst) npx tsx scripts/refresh-lines.ts --burst ;;
             sync-games) npx tsx scripts/sync-games.ts ;;
             scoreboard|weather|ratings-update|freeze) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
+            questions|verdicts)
+              if [ -z "$ANTHROPIC_API_KEY" ]; then
+                echo "ANTHROPIC_API_KEY not set — skipping LLM generation"
+              elif [ "${{ steps.task.outputs.task }}" = "questions" ]; then
+                npx tsx scripts/generate-questions.ts
+              else
+                npx tsx scripts/generate-verdicts.ts
+              fi ;;
             *) echo "no task matched schedule '${{ github.event.schedule }}'" && exit 1 ;;
           esac
