@@ -1,0 +1,90 @@
+# The CFB Slate — scheduled jobs (docs/SPEC.md §8).
+# GitHub Actions is the v1 scheduler; the pg_cron + edge-function path lives in
+# supabase/functions/jobs/ for when it can be deployed. Actions schedules can
+# lag 5–30 min, which is fine for everything except the closing-line burst —
+# that one runs every 10 min in a window, so worst case the "closing" snapshot
+# is a bit stale (documented proxy, docs/SPEC.md §5.3).
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   CFBD_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+
+name: jobs
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Job to run"
+        required: true
+        type: choice
+        options:
+          - refresh-lines
+          - refresh-lines-burst
+          - sync-games
+          - scoreboard
+          - weather
+          - ratings-update
+          - freeze
+  schedule:
+    # Lines 4x daily (8am/1pm/6pm/11pm ET)
+    - cron: "0 3,12,17,22 * * *"
+    # Lines hourly on Saturdays (daytime UTC)
+    - cron: "0 13-23 * * 6"
+    # Closing-line burst: every 10 min around Saturday kickoff waves
+    - cron: "*/10 15-23 * * 6"
+    - cron: "*/10 0-3 * * 0"
+    # Games sync daily
+    - cron: "0 9 * * *"
+    # Scoreboard: Sat daytime + Thu/Fri/Sat nights (CT evenings = 0-4 UTC)
+    - cron: "*/10 16-23 * * 6"
+    - cron: "*/10 0-4 * * 0"
+    - cron: "*/15 0-3 * * 5,6"
+    # Weather Saturday mornings
+    - cron: "0 10 * * 6"
+    # Sunday ratings update + grading (8am ET)
+    - cron: "0 13 * * 0"
+    # Thursday-night prediction freeze (10pm CT)
+    - cron: "0 3 * * 5"
+
+concurrency:
+  group: jobs-${{ github.event.schedule || inputs.task }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Resolve task from schedule
+        id: task
+        run: |
+          case "${{ github.event.schedule }}" in
+            "0 3,12,17,22 * * *"|"0 13-23 * * 6") echo "task=refresh-lines" >> "$GITHUB_OUTPUT" ;;
+            "*/10 15-23 * * 6"|"*/10 0-3 * * 0") echo "task=refresh-lines-burst" >> "$GITHUB_OUTPUT" ;;
+            "0 9 * * *") echo "task=sync-games" >> "$GITHUB_OUTPUT" ;;
+            "*/10 16-23 * * 6"|"*/10 0-4 * * 0"|"*/15 0-3 * * 5,6") echo "task=scoreboard" >> "$GITHUB_OUTPUT" ;;
+            "0 10 * * 6") echo "task=weather" >> "$GITHUB_OUTPUT" ;;
+            "0 13 * * 0") echo "task=ratings-update" >> "$GITHUB_OUTPUT" ;;
+            "0 3 * * 5") echo "task=freeze" >> "$GITHUB_OUTPUT" ;;
+            "") echo "task=${{ inputs.task }}" >> "$GITHUB_OUTPUT" ;;
+            *) echo "task=unknown" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - name: Run job
+        run: |
+          case "${{ steps.task.outputs.task }}" in
+            refresh-lines) npx tsx scripts/refresh-lines.ts ;;
+            refresh-lines-burst) npx tsx scripts/refresh-lines.ts --burst ;;
+            sync-games) npx tsx scripts/sync-games.ts ;;
+            scoreboard|weather|ratings-update|freeze) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
+            *) echo "no task matched schedule '${{ github.event.schedule }}'" && exit 1 ;;
+          esac

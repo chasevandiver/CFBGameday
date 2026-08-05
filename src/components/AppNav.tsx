@@ -4,7 +4,7 @@ import { ThemeToggle } from "./ThemeToggle";
 const TABS: Array<{ label: string; href: string; ready: boolean }> = [
   { label: "Slate", href: "/slate", ready: true },
   { label: "Ratings", href: "/ratings", ready: true },
-  { label: "Teams", href: "/teams", ready: false },
+  { label: "Teams", href: "/teams", ready: true },
   { label: "Ledger", href: "/ledger", ready: true },
   { label: "Crew", href: "/crew", ready: true },
   { label: "Receipts", href: "/receipts", ready: false },

@@ -29,8 +29,16 @@ export function cfbdCallCount(): number {
 
 type Query = Record<string, string | number | boolean | undefined>;
 
+/** Works under Node (process.env) and the Deno edge runtime (Deno.env). */
+function readEnv(name: string): string | undefined {
+  const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+  if (proc?.env?.[name]) return proc.env[name];
+  const deno = (globalThis as { Deno?: { env: { get(k: string): string | undefined } } }).Deno;
+  return deno?.env.get(name);
+}
+
 async function get<T>(endpoint: string, query: Query = {}): Promise<T> {
-  const apiKey = process.env.CFBD_API_KEY;
+  const apiKey = readEnv("CFBD_API_KEY");
   if (!apiKey) throw new Error("CFBD_API_KEY is not set");
 
   const url = new URL(endpoint, BASE_URL);

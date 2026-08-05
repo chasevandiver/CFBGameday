@@ -54,7 +54,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     .maybeSingle<GameRow>();
   if (!game) notFound();
 
-  const [teamsRes, linesRes, predRes, picksRes, profilesRes, weatherRes] = await Promise.all([
+  const [teamsRes, linesRes, predRes, picksRes, profilesRes, weatherRes, questionsRes] = await Promise.all([
     supabase.from("teams").select("*").in("id", [game.home_team_id, game.away_team_id]),
     supabase.from("line_snapshots").select("*").eq("game_id", gameId),
     supabase
@@ -66,6 +66,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     supabase.from("picks").select("*").eq("game_id", gameId),
     supabase.from("profiles").select("*"),
     supabase.from("weather_forecasts").select("*").eq("game_id", gameId).maybeSingle(),
+    supabase.from("game_questions").select("questions").eq("game_id", gameId).maybeSingle(),
   ]);
 
   const teams = new Map(((teamsRes.data ?? []) as TeamRow[]).map((t) => [t.id, t]));
@@ -87,6 +88,9 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     wind_mph: number | null;
     precip_prob: number | null;
   } | null;
+  const questions =
+    (questionsRes.data as { questions: { question: string; why_it_matters: string }[] } | null)
+      ?.questions ?? null;
 
   const kickoffPassed = game.start_ts !== null && new Date(game.start_ts) <= new Date();
   const myPick = user ? (picks.find((p) => p.user_id === user.id) ?? null) : null;
@@ -308,6 +312,24 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                 </span>
               )}
             </div>
+          </section>
+        )}
+
+        {/* Three questions (LLM) */}
+        {questions && questions.length > 0 && (
+          <section className="card mt-4 px-4 py-4">
+            <h2 className="mb-3 text-sm text-accent">Three questions</h2>
+            <ol className="flex flex-col gap-3">
+              {questions.map((q, i) => (
+                <li key={i} className="flex gap-3">
+                  <span className="stat shrink-0 text-lg font-semibold text-chalk/30">{i + 1}</span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-chalk">{q.question}</p>
+                    <p className="mt-0.5 text-xs text-dim">{q.why_it_matters}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
           </section>
         )}
 
