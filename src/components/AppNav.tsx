@@ -2,7 +2,7 @@ import Link from "next/link";
 
 const TABS: Array<{ label: string; href: string; ready: boolean }> = [
   { label: "Slate", href: "/slate", ready: true },
-  { label: "Ratings", href: "/ratings", ready: false },
+  { label: "Ratings", href: "/ratings", ready: true },
   { label: "Teams", href: "/teams", ready: false },
   { label: "Ledger", href: "/ledger", ready: true },
   { label: "Crew", href: "/crew", ready: true },
