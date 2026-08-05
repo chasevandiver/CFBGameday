@@ -32,6 +32,7 @@ export interface GameRow {
   current_period: number | null;
   current_clock: string | null;
   current_situation: string | null;
+  last_play: string | null;
   possession: "home" | "away" | null;
   tv: string | null;
 }

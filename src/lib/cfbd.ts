@@ -213,6 +213,7 @@ export interface CfbdScoreboardGame {
   period: number | null;
   clock: string | null;
   situation: string | null;
+  lastPlay: string | null;
   possession: string | null;
   homeTeam: { id: number; name: string; points: number | null };
   awayTeam: { id: number; name: string; points: number | null };

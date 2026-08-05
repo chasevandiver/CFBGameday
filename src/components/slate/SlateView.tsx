@@ -84,6 +84,7 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
                 period: held.period,
                 clock: held.clock,
                 situation: held.situation,
+                lastPlay: held.lastPlay,
                 possession: held.possession,
               };
             }),
@@ -111,6 +112,7 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
               period: row.current_period,
               clock: row.current_clock,
               situation: row.current_situation,
+              lastPlay: row.last_play,
               possession: row.possession,
             }
           : g,

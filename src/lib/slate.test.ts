@@ -55,6 +55,8 @@ const game = (overrides: Partial<GameView> = {}): GameView => ({
     mlAway: 210,
   },
   situation: null,
+  lastPlay: null,
+  crewPicks: [],
   possession: null,
   spreadHistory: [],
   prediction: null,

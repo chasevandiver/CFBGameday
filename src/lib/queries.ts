@@ -10,7 +10,7 @@ import type {
 } from "./db-types";
 import { pickPollRanks, pollShortName } from "./rankings";
 import { atsRecord, ouRecord } from "./slate";
-import type { GameView, LinePoint, MyBetView, SlateData, TeamView } from "./slate";
+import type { CrewPickView, GameView, LinePoint, MyBetView, SlateData, TeamView } from "./slate";
 
 /** Books only hang lines in half-point increments, so consensus must land on one. */
 export function snapToHalf(v: number): number {
@@ -131,7 +131,7 @@ export async function fetchSlateView(
   const teamIds = [...new Set(gameRows.flatMap((g) => [g.home_team_id, g.away_team_id]))];
   const venueIds = [...new Set(gameRows.map((g) => g.venue_id).filter((v): v is number => v !== null))];
 
-  const [teamsRes, linesRes, predsRes, picksRes, betsRes, weatherRes, venuesRes, seasonGamesRes, ratingsRes, pollsRes] =
+  const [teamsRes, linesRes, predsRes, picksRes, betsRes, weatherRes, venuesRes, seasonGamesRes, ratingsRes, pollsRes, crewPicksRes, profilesRes] =
     await Promise.all([
       supabase.from("teams").select("*").in("id", teamIds),
       supabase.from("line_snapshots").select("*").in("game_id", gameIds),
@@ -170,6 +170,13 @@ export async function fetchSlateView(
         .select("week, poll, team_id, rank")
         .eq("season_id", seasonId)
         .eq("season_type", "regular"),
+      // whole season, whole crew: this week's rows drive the crew standing on
+      // each card, and the graded rows (result set) drive each mate's record
+      supabase
+        .from("picks")
+        .select("user_id, game_id, side, result")
+        .eq("season_id", seasonId),
+      supabase.from("profiles").select("id, display_name"),
     ]);
 
   const teams = new Map(((teamsRes.data ?? []) as TeamRow[]).map((t) => [t.id, t]));
@@ -189,6 +196,41 @@ export async function fetchSlateView(
   }
 
   const pickByGame = new Map(((picksRes.data ?? []) as PickRow[]).map((p) => [p.game_id, p]));
+
+  // crew standing: everyone else's picks per slate game + season records
+  const nameByUser = new Map(
+    ((profilesRes.data ?? []) as Array<{ id: string; display_name: string }>).map((p) => [
+      p.id,
+      p.display_name,
+    ]),
+  );
+  const allPicks = (crewPicksRes.data ?? []) as Array<{
+    user_id: string;
+    game_id: number;
+    side: string;
+    result: string | null;
+  }>;
+  const recordByUser = new Map<string, { w: number; l: number }>();
+  for (const p of allPicks) {
+    if (p.result !== "win" && p.result !== "loss") continue;
+    const rec = recordByUser.get(p.user_id) ?? { w: 0, l: 0 };
+    if (p.result === "win") rec.w += 1;
+    else rec.l += 1;
+    recordByUser.set(p.user_id, rec);
+  }
+  const gameIdSet = new Set(gameIds);
+  const crewByGame = new Map<number, CrewPickView[]>();
+  for (const p of allPicks) {
+    if (!gameIdSet.has(p.game_id) || p.user_id === userId) continue;
+    const rec = recordByUser.get(p.user_id);
+    const arr = crewByGame.get(p.game_id) ?? [];
+    arr.push({
+      name: nameByUser.get(p.user_id) ?? "Crew",
+      side: p.side,
+      record: rec ? `${rec.w}-${rec.l}` : null,
+    });
+    crewByGame.set(p.game_id, arr);
+  }
 
   const betsByGame = new Map<number, MyBetView[]>();
   for (const b of (betsRes.data ?? []) as Array<
@@ -275,6 +317,7 @@ export async function fetchSlateView(
         period: game.current_period,
         clock: game.current_clock,
         situation: game.current_situation,
+        lastPlay: game.last_play,
         possession: game.possession,
         tv: game.tv,
         neutralSite: game.neutral_site,
@@ -308,6 +351,7 @@ export async function fetchSlateView(
           : null,
         myPick: pick ? { side: pick.side, line: Number(pick.line_at_pick) } : null,
         myBets: betsByGame.get(game.id) ?? [],
+        crewPicks: crewByGame.get(game.id) ?? [],
         weather: weather
           ? { tempF: weather.temp_f, windMph: weather.wind_mph, precipProb: weather.precip_prob }
           : null,
