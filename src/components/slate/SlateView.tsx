@@ -4,7 +4,7 @@ import { ChevronDown, RefreshCw, Search, SearchX } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStarred, useViewerTz } from "../../lib/client-store";
 import type { GameRow } from "../../lib/db-types";
-import { clockTime, dayKey, dayTabLabel, DEFAULT_TZ, tzLabel } from "../../lib/kick";
+import { clockTime, dayKey, dayTabLabel, kickSlot, DEFAULT_TZ, tzLabel } from "../../lib/kick";
 import { liveUrgency } from "../../lib/live-status";
 import { useGamesRealtime } from "../../lib/use-games-realtime";
 import {
@@ -13,6 +13,7 @@ import {
   isFinal,
   isLive,
   pickHero,
+  watchability,
   weekModelRecord,
   type GameView,
   type SlateData,
@@ -23,6 +24,7 @@ import { SkeletonCard } from "./SkeletonCard";
 
 const SORTS = [
   { key: "kickoff", label: "Kickoff" },
+  { key: "watch", label: "Watchability" },
   { key: "spread-big", label: "Biggest spread" },
   { key: "spread-close", label: "Closest spread" },
   { key: "total", label: "Highest total" },
@@ -222,6 +224,8 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
     const isPinned = (g: GameView) => starredSet.has(g.home.id) || starredSet.has(g.away.id);
     const cmp = (a: GameView, b: GameView): number => {
       switch (sort) {
+        case "watch":
+          return (watchability(b) ?? -1) - (watchability(a) ?? -1);
         case "spread-big":
           return absOr(b.lines.spread, -1) - absOr(a.lines.spread, -1);
         case "spread-close":
@@ -259,21 +263,36 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
     [sorted, sort, noFilters],
   );
 
-  // High-powered day structure: live games lead, then pregame, then finals.
+  // High-powered day structure: live games lead, then pregame by kickoff
+  // slot (Noon / Afternoon / Primetime / Late — spec §7), then finals.
   // Only when sorted by kickoff — explicit sorts stay a flat grid.
   const sections = useMemo(() => {
     if (sort !== "kickoff") return null;
     // within Live, the sweats lead: bubble picks, then losing, covering, no pick
     const liveGames = [...sorted.filter(isLive)].sort((a, b) => liveUrgency(a) - liveUrgency(b));
     const finalGames = sorted.filter(isFinal);
-    if (liveGames.length === 0 && finalGames.length === 0) return null;
     const upcoming = sorted.filter((g) => !isLive(g) && !isFinal(g));
+    // big slates get the broadcast-window structure; small ones stay one block
+    const slotted: Array<{ key: string; title: string; games: GameView[] }> = [];
+    if (upcoming.length >= 8) {
+      for (const g of upcoming) {
+        const title = g.startTs
+          ? `${dayTabLabel(g.startTs, tz)} · ${kickSlot(g.startTs)}`
+          : "Kickoff TBD";
+        const last = slotted[slotted.length - 1];
+        if (last && last.title === title) last.games.push(g);
+        else slotted.push({ key: `pre-${slotted.length}`, title, games: [g] });
+      }
+    } else if (upcoming.length > 0) {
+      slotted.push({ key: "pregame", title: "Pregame", games: upcoming });
+    }
+    if (liveGames.length === 0 && finalGames.length === 0 && slotted.length <= 1) return null;
     return [
       { key: "live", title: "Live", games: liveGames },
-      { key: "pregame", title: "Pregame", games: upcoming },
+      ...slotted,
       { key: "final", title: "Final", games: finalGames },
     ].filter((s) => s.games.length > 0);
-  }, [sorted, sort]);
+  }, [sorted, sort, tz]);
 
   const rankedCount = games.filter(isRankedMatchup).length;
   const record = weekModelRecord(games);

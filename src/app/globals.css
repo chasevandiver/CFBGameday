@@ -295,6 +295,16 @@ html[data-theme="light"] .field-strip {
   bottom: 0;
   width: 15%;
   background: color-mix(in srgb, var(--loss) 45%, transparent);
+  animation: rz-pulse 1.8s ease-in-out infinite;
+}
+@keyframes rz-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
 }
 .field-rz-r { right: 5%; }
 .field-rz-l { left: 5%; }

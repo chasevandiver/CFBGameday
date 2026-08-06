@@ -62,6 +62,26 @@ export function clockTime(iso: string, tz: string): string {
   }).format(new Date(iso));
 }
 
+/**
+ * Broadcast kickoff slot, in the sport's shared (Eastern) vocabulary — the
+ * Noon–Afternoon–Primetime–Late windows the whole country schedules around
+ * (spec §7). Deliberately NOT viewer-local: "the noon slate" means the same
+ * games in every timezone.
+ */
+export function kickSlot(iso: string): "Noon" | "Afternoon" | "Primetime" | "Late" {
+  const h = Number(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      hour: "numeric",
+      hour12: false,
+    }).format(new Date(iso)),
+  );
+  if (h < 14) return "Noon";
+  if (h < 18) return "Afternoon";
+  if (h < 22) return "Primetime";
+  return "Late";
+}
+
 export function periodLabel(period: number | null): string {
   if (period === null) return "";
   if (period <= 4) return `Q${period}`;

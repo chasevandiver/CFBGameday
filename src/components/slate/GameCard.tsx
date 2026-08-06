@@ -23,7 +23,9 @@ import {
   modelPicks,
   ouResult,
   parseSituation,
-  spreadMove,
+  spreadMoveRead,
+  upsetAlert,
+  watchability,
   type FieldPosition,
   type GameView,
   type MyBetView,
@@ -202,6 +204,9 @@ function CardHeader({
               {periodLabel(game.period)}
               {game.clock ? ` · ${game.clock}` : ""}
             </span>
+            {upsetAlert(game) && (
+              <span className="chip live-dot bg-loss/15 text-loss">Upset alert</span>
+            )}
           </>
         ) : final ? (
           <span className="stat text-xs font-semibold uppercase tracking-wide text-dim">
@@ -672,7 +677,8 @@ function betPrefix(g: GameView, b: MyBetView): string {
 function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
   const p = game.prediction;
   const picks = modelPicks(game);
-  const move = spreadMove(game);
+  const move = spreadMoveRead(game);
+  const watch = live ? null : watchability(game);
 
   const liveProb = live ? liveHomeWinProb(game) : null;
   const h = game.homePoints ?? 0;
@@ -694,6 +700,14 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
           {game.myPick && !live && <CrewSplit game={game} />}
         </div>
         <div className="flex items-center gap-1.5 text-dim">
+          {watch !== null && (
+            <span
+              className="stat text-[10.5px] font-medium text-chalk/55"
+              title="Watchability 0–100: closeness + team quality + expected points"
+            >
+              watch {watch}
+            </span>
+          )}
           <MoveIndicator move={move} open={game.lines.spreadOpen} />
           <Sparkline points={game.spreadHistory} />
         </div>
