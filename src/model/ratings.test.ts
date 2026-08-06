@@ -256,14 +256,21 @@ describe("updateSubRatings (spec §2.2 groundwork — display stays gated until 
     expect(upd.homeOffDelta).toBeGreaterThan(0);
     expect(upd.awayDefDelta).toBeCloseTo(-upd.homeOffDelta, 10);
     expect(upd.awayOffDelta).toBeCloseTo(0, 10);
-    // off+def total change per team stays consistent with half the overall K
-    expect(upd.homeOffDelta).toBeCloseTo((0.3 / 2) * 10 * 0.5, 10);
+    // K·errHome/2 with K=0.3, err=10 → the off+def sum matches updateFromResult
+    expect(upd.homeOffDelta).toBeCloseTo((0.3 * 10) / 2, 10);
   });
 
-  it("caps blowout scoring errors at the margin cap", () => {
+  it("caps blowout scoring errors at half the margin cap per side", () => {
     const capped = updateSubRatings({ ...base, homePoints: 100, awayPoints: 22.5 });
-    const atCap = updateSubRatings({ ...base, homePoints: 34.5 + 28, awayPoints: 22.5 });
+    const atCap = updateSubRatings({ ...base, homePoints: 34.5 + 14, awayPoints: 22.5 });
     expect(capped.homeOffDelta).toBeCloseTo(atCap.homeOffDelta, 10);
+  });
+
+  it("off+def deltas per team sum to the overall margin update (invariant)", () => {
+    const upd = updateSubRatings({ ...base, homePoints: 41.5, awayPoints: 19.5 });
+    // margin error = errHome − errAway = 7 − (−3) = 10 → overall homeDelta = K·10/2
+    expect(upd.homeOffDelta + upd.homeDefDelta).toBeCloseTo((0.3 * 10) / 2, 10);
+    expect(upd.awayOffDelta + upd.awayDefDelta).toBeCloseTo(-(0.3 * 10) / 2, 10);
   });
 
   it("neutral sites drop the HFA split from expectations", () => {

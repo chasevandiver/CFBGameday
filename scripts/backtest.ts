@@ -52,6 +52,44 @@ function report(predictions: ReplayPrediction[], params: ModelParams): string {
   const sigma = Math.sqrt(errors.reduce((a, e) => a + e * e, 0) / errors.length);
   lines.push(`\n== Margin error ==  MAE ${mae.toFixed(2)}  σ ${sigma.toFixed(2)} (param: ${params.marginSigma})`);
 
+  // Totals calibration (§2.2 sub-ratings): the model total must beat the
+  // constant-baseline strawman convincingly before totals surfaces ship.
+  const withTotal = predictions.filter((p) => p.vegasTotal !== null);
+  if (withTotal.length > 0) {
+    const mae = (xs: number[]) => xs.reduce((a, e) => a + Math.abs(e), 0) / xs.length;
+    const modelErr = withTotal.map((p) => p.actualTotal - p.projectedTotal);
+    const marketErr = withTotal.map((p) => p.actualTotal - (p.vegasTotal as number));
+    const constErr = withTotal.map((p) => p.actualTotal - 57);
+    lines.push("\n== Totals calibration (vs games with a stored total) ==");
+    lines.push(`model MAE ${mae(modelErr).toFixed(2)}   market MAE ${mae(marketErr).toFixed(2)}   constant-57 MAE ${mae(constErr).toFixed(2)}   n=${withTotal.length}`);
+    const late = withTotal.filter((p) => p.week >= 5);
+    if (late.length > 0) {
+      lines.push(
+        `weeks 5+:  model MAE ${mae(late.map((p) => p.actualTotal - p.projectedTotal)).toFixed(2)}   ` +
+          `market MAE ${mae(late.map((p) => p.actualTotal - (p.vegasTotal as number))).toFixed(2)}   ` +
+          `constant-57 MAE ${mae(late.map((p) => p.actualTotal - 57)).toFixed(2)}   n=${late.length}`,
+      );
+    }
+    for (const min of [2, 4]) {
+      const leans = withTotal.filter(
+        (p) => Math.abs(p.projectedTotal - (p.vegasTotal as number)) >= min,
+      );
+      let overW = 0;
+      let overL = 0;
+      for (const p of leans) {
+        const likesOver = p.projectedTotal > (p.vegasTotal as number);
+        if (p.actualTotal === p.vegasTotal) continue;
+        const wentOver = p.actualTotal > (p.vegasTotal as number);
+        if (likesOver === wentOver) overW++;
+        else overL++;
+      }
+      const n = overW + overL;
+      lines.push(
+        `O/U leans ≥${min}:  ${overW}-${overL}  (${n ? ((overW / n) * 100).toFixed(1) : "–"}%)  n=${n}  (52.4% breaks even)`,
+      );
+    }
+  }
+
   lines.push("\n== Edge flags vs stored line (break-even 52.4% at -110) ==");
   for (const [label, min] of [["EDGE ≥2", params.edgeThreshold], ["BIG ≥4", params.bigEdgeThreshold]] as const) {
     const flagged = predictions.filter(

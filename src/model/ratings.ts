@@ -207,14 +207,15 @@ export interface SubRatingUpdate {
 /**
  * Off/def sub-rating update from points scored/allowed vs opponent-adjusted
  * expectation (§2.2). Each scoring error splits between the offense that
- * produced it and the defense that allowed it, at half the overall K (so
- * off+def moves in step with the overall update). Errors are capped like
- * margins so one 70-burger doesn't rewrite a season.
+ * produced it and the defense that allowed it.
  *
- * GROUNDWORK (audit #33): the pricing pipeline still gates totals/projected
- * scores off until these deltas are wired into the replay AND the projected
- * totals survive a calibration backtest against stored lines. Do not surface
- * model totals before that run.
+ * Invariant: a team's off+def deltas sum to exactly its overall delta from
+ * updateFromResult whenever the caps don't bind — homeOff + homeDef moves by
+ * K·(errHome − errAway)/2, the overall update's K·marginError/2. So a replay
+ * can carry ONLY off/def (overall ≡ off + def) and reproduce the margin
+ * behavior the backtest already tuned, while totals gain real signal.
+ * Scoring errors cap at marginCap/2 per side so the summed cap matches the
+ * overall margin cap.
  */
 export function updateSubRatings(
   inp: SubRatingUpdateInput,
@@ -223,10 +224,10 @@ export function updateSubRatings(
   const hfa = inp.neutralSite ? 0 : inp.hfa;
   const expHome = FBS_AVG_POINTS + inp.homeOffense - inp.awayDefense + hfa / 2;
   const expAway = FBS_AVG_POINTS + inp.awayOffense - inp.homeDefense - hfa / 2;
-  const cap = p.marginCap;
+  const cap = p.marginCap / 2;
   const errHome = clamp(inp.homePoints - expHome, -cap, cap);
   const errAway = clamp(inp.awayPoints - expAway, -cap, cap);
-  const k = p.kFactor / 2;
+  const k = p.kFactor;
   return {
     homeOffDelta: (k * errHome) / 2,
     awayDefDelta: -(k * errHome) / 2,

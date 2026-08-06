@@ -1,0 +1,34 @@
+# On-demand backtest (docs/SPEC.md §2.5) with the repo's CFBD key — the
+# honesty gate for re-enabling model totals: the calibration report in the
+# logs decides whether projected totals ship. ~10 CFBD calls per cold run.
+
+name: backtest
+
+on:
+  workflow_dispatch:
+    inputs:
+      tune:
+        description: "Also grid-search K/HFA and fit sigma"
+        type: boolean
+        default: false
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run backtest
+        run: |
+          if [ "${{ inputs.tune }}" = "true" ]; then
+            npx tsx scripts/backtest.ts --tune
+          else
+            npx tsx scripts/backtest.ts
+          fi
