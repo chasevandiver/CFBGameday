@@ -20,6 +20,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://cfb-gameday.vercel.app"),
   title: {
     default: "The CFB Slate",
     template: "%s · The CFB Slate",
@@ -27,6 +28,10 @@ export const metadata: Metadata = {
   description:
     "College football ratings, edges, pick'em, and the crew ledger — what matters right now, every Saturday.",
   applicationName: "The CFB Slate",
+  openGraph: {
+    siteName: "The CFB Slate",
+    type: "website",
+  },
 };
 
 export const viewport: Viewport = {

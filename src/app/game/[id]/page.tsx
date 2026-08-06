@@ -39,6 +39,34 @@ import { createClient } from "../../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+/** Shareable titles: "Georgia @ Alabama · Week 11" instead of the site default. */
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const gameId = Number(id);
+  if (!Number.isFinite(gameId)) return {};
+  const supabase = await createClient();
+  const { data: game } = await supabase
+    .from("games")
+    .select("week, season_type, home_team_id, away_team_id")
+    .eq("id", gameId)
+    .maybeSingle<Pick<GameRow, "week" | "season_type" | "home_team_id" | "away_team_id">>();
+  if (!game) return {};
+  const { data: teams } = await supabase
+    .from("teams")
+    .select("id, school")
+    .in("id", [game.home_team_id, game.away_team_id]);
+  const name = (tid: number) =>
+    (teams ?? []).find((t: { id: number; school: string }) => t.id === tid)?.school ?? "TBD";
+  const title = `${name(game.away_team_id)} @ ${name(game.home_team_id)}`;
+  const description = `${title} — lines, model number, picks, and live status on The CFB Slate.`;
+  return {
+    title:
+      game.season_type === "postseason" ? `${title} · Postseason` : `${title} · Week ${game.week}`,
+    description,
+    openGraph: { title, description },
+  };
+}
+
 function toView(t: TeamRow, pollRank: number | null = null, poll: string | null = null): TeamView {
   return {
     id: t.id,
@@ -215,7 +243,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   return (
     <>
       <AppNav />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-5">
+      <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-5">
         <Link
           href="/slate"
           className="mb-3 inline-flex items-center gap-1.5 text-xs font-medium text-dim transition-colors hover:text-chalk"
@@ -356,6 +384,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             currentSpread={consensus.spread}
             myPick={myPick}
             kickoffPassed={kickoffPassed}
+            signedIn={user !== null}
           />
           <div className="mt-4 border-t border-chalk/8 pt-3">
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-chalk/40">

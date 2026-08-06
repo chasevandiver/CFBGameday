@@ -74,14 +74,22 @@ export function RatingsTable({ rows }: { rows: RatingRow[] }) {
         ))}
       </div>
 
-      <div className="overflow-x-auto rounded border border-chalk/10 bg-surface">
+      {/* scrollable panel so the header can stick — 136 rows without it lose
+          the column labels three flicks in */}
+      <div className="max-h-[75vh] overflow-auto rounded border border-chalk/10 bg-surface">
         <table className="stats w-full text-sm">
-          <thead>
-            <tr className="border-b border-chalk/20 text-left text-xs uppercase text-chalk/50">
+          <thead className="sticky top-0 z-10 bg-surface">
+            <tr className="border-b border-chalk/20 text-left text-xs uppercase text-chalk/60">
               <th className="px-2 py-2">#</th>
               <th className="px-2 py-2">Team</th>
               {COLUMNS.map((c) => (
-                <th key={c.key} className="px-2 py-2 text-right">
+                <th
+                  key={c.key}
+                  className="px-2 py-2 text-right"
+                  aria-sort={
+                    sortKey === c.key ? (descending ? "descending" : "ascending") : "none"
+                  }
+                >
                   <button
                     onClick={() => toggleSort(c.key)}
                     title={c.title}

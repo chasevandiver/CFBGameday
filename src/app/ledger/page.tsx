@@ -6,9 +6,20 @@ import { REASON_TAG_LABELS, type BetRow, type TeamRow } from "../../lib/db-types
 import { kickParts, DEFAULT_TZ } from "../../lib/kick";
 import { statusForBet, type LiveBetStatus } from "../../lib/live-status";
 import { fetchBetFormGames, fetchCurrentSeasonWeek } from "../../lib/queries";
+import { fmtSpread, fmtTotal } from "../../lib/slate";
 import { createClient } from "../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+export const metadata = { title: "Ledger" };
+
+/** Spread-style lines get their sign ("-3.5"/"PK"); totals render bare. */
+function fmtBetLine(b: BetRow): string {
+  if (b.line_taken === null) return "–";
+  const n = Number(b.line_taken);
+  if (b.bet_type === "total" || b.bet_type === "team_total") return fmtTotal(n);
+  return fmtSpread(n);
+}
 
 const abbrOf = (t: TeamRow | undefined): string =>
   t?.abbreviation ?? t?.school.replace(/[^A-Za-z]/g, "").slice(0, 4).toUpperCase() ?? "?";
@@ -100,6 +111,7 @@ export default async function LedgerPage() {
   const graded = bets.filter((b) => b.result && b.result !== "void");
   const wins = graded.filter((b) => b.result === "win").length;
   const losses = graded.filter((b) => b.result === "loss").length;
+  const pushes = graded.filter((b) => b.result === "push").length;
   const units = graded.reduce((a, b) => a + (b.payout_units ?? 0), 0);
   const staked = graded
     .filter((b) => b.result !== "push")
@@ -111,12 +123,19 @@ export default async function LedgerPage() {
   return (
     <>
       <AppNav />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
+      <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
         <h1 className="mb-6 text-2xl">Ledger</h1>
 
         {/* Season dashboard */}
         <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat label="Record" value={graded.length ? `${wins}-${losses}` : "–"} />
+          <Stat
+            label="Record"
+            value={
+              graded.length
+                ? `${wins}-${losses}${pushes > 0 ? `-${pushes}` : ""}`
+                : "–"
+            }
+          />
           <Stat
             label="Units"
             value={graded.length ? `${units >= 0 ? "+" : ""}${units.toFixed(1)}` : "–"}
@@ -170,9 +189,13 @@ export default async function LedgerPage() {
                   <td className="px-3 py-2 text-xs text-chalk/60">
                     {REASON_TAG_LABELS[b.reason_tag as keyof typeof REASON_TAG_LABELS] ?? b.reason_tag}
                   </td>
-                  <td className="px-3 py-2 text-right">{b.line_taken ?? "–"}</td>
+                  <td className="px-3 py-2 text-right">{fmtBetLine(b)}</td>
                   <td className="px-3 py-2 text-right">{b.units}</td>
-                  <td className="px-3 py-2 text-right">
+                  <td
+                    className={`px-3 py-2 text-right ${
+                      b.clv === null ? "" : b.clv > 0 ? "text-win" : b.clv < 0 ? "text-loss" : ""
+                    }`}
+                  >
                     {b.clv === null ? "–" : `${b.clv > 0 ? "+" : ""}${b.clv}`}
                   </td>
                   <td className="px-3 py-2 text-right uppercase">

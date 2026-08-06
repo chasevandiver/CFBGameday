@@ -8,6 +8,8 @@ import { createClient } from "../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = { title: "Ratings" };
+
 interface DbRating {
   team_id: number;
   week: number;
@@ -86,7 +88,7 @@ export default async function RatingsPage() {
   return (
     <>
       <AppNav />
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">
+      <main id="main" className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">
         <div className="mb-6 flex items-baseline justify-between">
           <h1 className="text-2xl">Ratings</h1>
           <p className="stat text-xs text-chalk/50">

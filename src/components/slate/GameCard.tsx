@@ -109,6 +109,15 @@ export function GameCard({ game, tz, starred, onStar, index = 0, featured = fals
       >
         <CardHeader game={game} tz={tz} live={live} final={final} dead={dead} featured={featured} />
 
+        {/* score changes on games you have action on are announced to screen
+            readers; this region persists across score re-renders */}
+        {live && game.myPick && (
+          <p className="sr-only" aria-live="polite">
+            {game.away.abbr} {game.awayPoints ?? 0}, {game.home.abbr} {game.homePoints ?? 0},{" "}
+            {periodLabel(game.period)}
+          </p>
+        )}
+
         <div key={game.status} className="fade-swap flex flex-1 flex-col">
           {!live && !final && !dead && <OddsColumnLabels game={game} />}
           <div className="mt-2 flex flex-col gap-1.5">
@@ -327,11 +336,11 @@ function TeamRow({
           }}
           aria-label={isStarred ? `Unstar ${team.school}` : `Star ${team.school}`}
           aria-pressed={isStarred}
-          className={`pointer-events-auto shrink-0 rounded p-0.5 transition-colors ${
-            isStarred ? "text-accent" : "text-chalk/20 hover:text-chalk/60"
+          className={`pointer-events-auto -m-1.5 shrink-0 rounded p-1.5 transition-colors ${
+            isStarred ? "text-accent" : "text-chalk/25 hover:text-chalk/60"
           }`}
         >
-          <Star size={12} fill={isStarred ? "currentColor" : "none"} aria-hidden />
+          <Star size={13} fill={isStarred ? "currentColor" : "none"} aria-hidden />
         </button>
       </div>
 
@@ -404,7 +413,7 @@ function LiveSituation({ game }: { game: GameView }) {
       {pos && <FieldStrip game={game} pos={pos} redZone={redZone} />}
       {game.lastPlay && (
         <p className="mt-1.5 truncate text-[11px] leading-snug text-dim">
-          <span className="stat mr-1 text-[9px] font-semibold uppercase tracking-widest text-chalk/35">
+          <span className="stat mr-1 text-[9px] font-semibold uppercase tracking-widest text-chalk/55">
             Last
           </span>
           {game.lastPlay}
@@ -481,7 +490,7 @@ function CrewLine({ game }: { game: GameView }) {
           : `${withMe.map((c) => `${c.name}${c.record ? ` ${c.record}` : ""}`).join(" · ")} with you`}
       </span>
       {against.length > 0 && (
-        <span className="ml-auto shrink-0 truncate text-chalk/35">
+        <span className="ml-auto shrink-0 truncate text-chalk/55">
           {against.map((c) => `${c.name} ${sideLabel(game, c.side)}`).join(", ")}
         </span>
       )}
@@ -517,9 +526,9 @@ function OddsColumnLabels({ game }: { game: GameView }) {
   const { spread, total, mlHome, mlAway } = game.lines;
   if (spread === null && total === null && mlHome === null && mlAway === null) return null;
   return (
-    <div className="mt-2 flex justify-end gap-1 text-[9px] font-semibold uppercase tracking-wider text-chalk/30">
-      <span className="min-w-10 text-center">Spread</span>
-      <span className="min-w-10 text-center">Total</span>
+    <div className="mt-2 flex justify-end gap-1 text-[10px] font-semibold uppercase tracking-wider text-chalk/45">
+      <span className="min-w-11 text-center">Spread</span>
+      <span className="min-w-11 text-center">Total</span>
       <span className="min-w-12 text-center">Money</span>
     </div>
   );
@@ -617,8 +626,8 @@ function OddsCell({
       disabled={disabled}
       aria-label={aria}
       aria-pressed={active}
-      className={`stat pointer-events-auto flex h-7 items-center justify-center rounded-md px-1 text-[11px] font-medium transition-colors ${
-        wide ? "min-w-12" : "min-w-10"
+      className={`stat pointer-events-auto flex h-8 items-center justify-center rounded-md px-1 text-[11px] font-medium transition-colors ${
+        wide ? "min-w-12" : "min-w-11"
       } ${
         active
           ? "bg-accent text-accent-ink ring-1 ring-inset ring-accent"

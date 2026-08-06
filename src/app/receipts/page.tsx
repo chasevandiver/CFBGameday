@@ -107,7 +107,7 @@ export default async function ReceiptsPage() {
   return (
     <>
       <AppNav />
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">
+      <main id="main" className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">
         <h1 className="text-2xl">Receipts</h1>
         <p className="mb-5 mt-1 text-sm text-dim">
           Every prediction frozen Thursday night, timestamped, never edited. The model answers

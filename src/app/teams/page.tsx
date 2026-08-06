@@ -54,7 +54,7 @@ export default async function TeamsPage() {
   return (
     <>
       <AppNav />
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
+      <main id="main" className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
         <div className="mb-5 flex items-baseline justify-between">
           <h1 className="text-2xl">Teams</h1>
           <p className="stat text-xs text-dim">{cards.length} FBS · model {MODEL_VERSION}</p>

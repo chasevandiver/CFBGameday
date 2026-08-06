@@ -42,7 +42,7 @@ export default async function EdgesPage() {
   return (
     <>
       <AppNav />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
+      <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
         <div className="mb-1 flex items-baseline justify-between">
           <h1 className="text-2xl">Edges</h1>
           <p className="stat text-xs text-chalk/50">week {week}</p>

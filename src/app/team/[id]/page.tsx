@@ -13,6 +13,23 @@ import {
 
 export const dynamic = "force-dynamic";
 
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const teamId = Number(id);
+  if (!Number.isFinite(teamId)) return {};
+  const supabase = await createClient();
+  const { data: team } = await supabase
+    .from("teams")
+    .select("school, mascot")
+    .eq("id", teamId)
+    .maybeSingle<{ school: string; mascot: string | null }>();
+  if (!team) return {};
+  return {
+    title: team.school,
+    description: `${team.school}${team.mascot ? ` ${team.mascot}` : ""} — rating breakdown, schedule map, and the verdict on The CFB Slate.`,
+  };
+}
+
 interface ComponentsRow {
   final_prev_rating: number | null;
   talent_baseline: number | null;
@@ -145,7 +162,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
   return (
     <>
       <AppNav />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
+      <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
         {/* Header */}
         <section className="card mb-4 flex items-center gap-4 p-4">
           {team.logo_url && (

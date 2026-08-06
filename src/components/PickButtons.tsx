@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { makePick, removePick } from "../app/actions/picks";
 import { fmtSpread } from "../lib/slate";
@@ -12,6 +13,7 @@ interface Props {
   currentSpread: number | null;
   myPick: { side: string; line_at_pick: number } | null;
   kickoffPassed: boolean;
+  signedIn: boolean;
 }
 
 export function PickButtons({
@@ -21,9 +23,21 @@ export function PickButtons({
   currentSpread,
   myPick,
   kickoffPassed,
+  signedIn,
 }: Props) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  if (!signedIn) {
+    return (
+      <p className="text-sm text-dim">
+        <Link href="/login" className="font-medium text-accent underline-offset-2 hover:underline">
+          Sign in
+        </Link>{" "}
+        to make your pick — the line snapshots the moment you tap.
+      </p>
+    );
+  }
 
   if (kickoffPassed) {
     return myPick ? (

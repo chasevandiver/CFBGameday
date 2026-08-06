@@ -8,6 +8,8 @@ import { createServiceClient } from "../../lib/supabase/service";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = { title: "Crew" };
+
 interface Row {
   name: string;
   wins: number;
@@ -123,7 +125,7 @@ export default async function CrewPage() {
   return (
     <>
       <AppNav />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
+      <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
         <h1 className="mb-6 text-2xl">Crew</h1>
         <div className="overflow-x-auto rounded border border-chalk/10 bg-surface">
           <table className="stats w-full text-sm">

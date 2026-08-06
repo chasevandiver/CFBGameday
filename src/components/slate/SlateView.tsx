@@ -288,7 +288,8 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 py-2.5">
           <WeekSelect week={week} currentWeek={currentWeek} onChange={changeWeek} />
 
-          <div className="flex items-center gap-1" role="tablist" aria-label="Day">
+          {/* toggle buttons, not ARIA tabs — no tabpanel/arrow-key contract here */}
+          <div className="flex items-center gap-1" aria-label="Filter by day">
             <DayTab label="All" active={day === "all"} onClick={() => setDay("all")} />
             {dayTabs.map(([k, label]) => (
               <DayTab key={k} label={label} active={day === k} onClick={() => setDay(k)} />
@@ -485,7 +486,7 @@ function WeekSelect({
         onChange={(e) => onChange(Number(e.target.value))}
         className="display h-8 appearance-none rounded-lg border border-chalk/12 bg-surface pl-3 pr-8 text-base text-chalk focus:border-accent/60 focus:outline-none"
       >
-        {Array.from({ length: 15 }, (_, i) => i + 1).map((w) => (
+        {Array.from({ length: 16 }, (_, i) => i + 1).map((w) => (
           <option key={w} value={w}>
             Week {w}
             {w === currentWeek ? " ·" : ""}
@@ -504,8 +505,7 @@ function WeekSelect({
 function DayTab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
-      role="tab"
-      aria-selected={active}
+      aria-pressed={active}
       onClick={onClick}
       className={`rounded-lg px-2.5 py-1 text-sm font-medium transition-colors ${
         active ? "bg-accent text-accent-ink" : "text-dim hover:bg-surface hover:text-chalk"

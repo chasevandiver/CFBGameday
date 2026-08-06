@@ -30,7 +30,7 @@ export function LoginForm({ linkFailed }: { linkFailed: boolean }) {
   }
 
   return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-6 px-6 py-16 text-center">
+    <main id="main" className="flex flex-1 flex-col items-center justify-center gap-6 px-6 py-16 text-center">
       <p className="stat text-sm tracking-[0.3em] text-gold uppercase">2026 season</p>
       <h1 className="text-4xl sm:text-5xl">The CFB Slate</h1>
 

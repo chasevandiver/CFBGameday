@@ -5,6 +5,8 @@ import { createClient } from "../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = { title: "Slate" };
+
 export default async function SlatePage({
   searchParams,
 }: {
@@ -29,7 +31,7 @@ export default async function SlatePage({
   return (
     <>
       <AppNav />
-      <main className="w-full flex-1 px-4">
+      <main id="main" className="w-full flex-1 px-4">
         <SlateView initial={initial} currentWeek={currentWeek} />
       </main>
     </>

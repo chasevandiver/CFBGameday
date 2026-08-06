@@ -238,7 +238,7 @@ export function SlatePreviewClient() {
   return (
     <>
       <AppNav />
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-16">
+      <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-4 pb-16">
         <div className="mb-6 mt-6">
           <h1 className="text-2xl text-chalk">Card states preview</h1>
           <p className="mt-1 text-sm text-dim">
