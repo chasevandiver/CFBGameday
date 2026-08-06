@@ -51,6 +51,17 @@ export interface LineSnapshotRow {
   captured_at: string;
 }
 
+/** One row per game from the line_consensus view (migration 0015). */
+export interface LineConsensusRow {
+  game_id: number;
+  spread: number | null;
+  spread_open: number | null;
+  total: number | null;
+  total_open: number | null;
+  ml_home: number | null;
+  ml_away: number | null;
+}
+
 export interface PredictionRow {
   id: number;
   game_id: number;

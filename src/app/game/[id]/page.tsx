@@ -145,7 +145,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
 
   const snapshots = (linesRes.data ?? []) as LineSnapshotRow[];
   const consensus = consensusFromSnapshots(snapshots);
-  const history = consensusHistory(snapshots);
+  const history = consensusHistory(snapshots, consensus.open);
   const predictions = (predRes.data ?? []) as PredictionRow[];
   const prediction = predictions.find((p) => p.frozen) ?? predictions[0] ?? null;
   const picks = (picksRes.data ?? []) as PickRow[]; // crew picks are never hidden (0010)
