@@ -206,6 +206,31 @@ export interface CfbdRankingWeek {
   }>;
 }
 
+/**
+ * One season of a coach's tenure. CFBD has been inconsistent about casing on
+ * this endpoint across versions, so the raw shape is normalized in
+ * scripts/lib/coaching.ts rather than trusted here.
+ */
+export interface CfbdCoachSeason {
+  school: string;
+  year: number;
+  games: number | null;
+  wins: number | null;
+  losses: number | null;
+  srs: number | null;
+  spOverall: number | null;
+  spOffense: number | null;
+  spDefense: number | null;
+  preseasonRank: number | null;
+  postseasonRank: number | null;
+}
+
+export interface CfbdCoach {
+  firstName: string | null;
+  lastName: string | null;
+  seasons: CfbdCoachSeason[];
+}
+
 export interface CfbdScoreboardGame {
   id: number;
   startDate: string;
@@ -250,6 +275,21 @@ export const cfbd = {
   fpiRatings: (year: number) => get<CfbdFpiRating[]>("/ratings/fpi", { year }),
 
   portal: (year: number) => get<CfbdPortalEntry[]>("/player/portal", { year }),
+
+  /**
+   * Coaching histories — head coach per school-season with that season's
+   * record and SP+ splits. One call with a minYear/maxYear window returns the
+   * whole history, which is what the preseason coaching adjustment needs.
+   */
+  coaches: (
+    opts: { year?: number; minYear?: number; maxYear?: number; team?: string } = {},
+  ) =>
+    get<CfbdCoach[]>("/coaches", {
+      year: opts.year,
+      minYear: opts.minYear,
+      maxYear: opts.maxYear,
+      team: opts.team,
+    }),
 
   /** Human polls (AP / Coaches / CFP). Returns school NAMES, not team ids. */
   rankings: (year: number, opts: { week?: number; seasonType?: string } = {}) =>

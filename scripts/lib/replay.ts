@@ -255,6 +255,35 @@ export function chainPriors(finals: Map<number, number>): Map<number, number> {
   return priors;
 }
 
+/** Hard bound on a seeded preseason tilt. A tilt of 10 means an offense 20
+ *  points better than its own defense relative to even — past anything real,
+ *  so a bad chain or a stray SP+ row can't produce a nonsense total. */
+export const MAX_TILT = 10;
+
+/**
+ * Carry off-vs-def SHAPE into next season, regressed by lambda. Separate from
+ * chainPriors because the two answer different questions: chainPriors decides
+ * how good a team will be, chainTilts decides whether that goodness is on
+ * offense or defense. Overall ratings are untouched (off+def ≡ prior), so this
+ * can only move totals, never margins.
+ */
+export function chainTilts(finalTilts: Map<number, number>, lambda: number): Map<number, number> {
+  const tilts = new Map<number, number>();
+  for (const [teamId, tilt] of finalTilts) {
+    tilts.set(teamId, Math.max(-MAX_TILT, Math.min(MAX_TILT, lambda * tilt)));
+  }
+  return tilts;
+}
+
+/** Same bound applied to SP+-derived shape (subTiltsFromSp), scaled by s. */
+export function scaleTilts(tilts: Map<number, number>, scale: number): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const [teamId, tilt] of tilts) {
+    out.set(teamId, Math.max(-MAX_TILT, Math.min(MAX_TILT, scale * tilt)));
+  }
+  return out;
+}
+
 export function teamIdsByNameFrom(seasons: SeasonData[]): Map<string, number> {
   const map = new Map<string, number>();
   for (const s of seasons) {

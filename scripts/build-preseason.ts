@@ -6,17 +6,24 @@
  * Rating = 0.70×final_2025 (from the tuned replay chain over 2023–2025)
  *        + 0.30×talent_baseline
  *        + churn (returning production, QB proxy, portal stars)
- *        + coaching (0 for v1 — admin adjustments handle known changes)
+ *        + coaching (CFBD /coaches: new-HC detection × the incoming coach's
+ *          historical over-performance; zero for everyone until the tuner
+ *          fits newHcIntercept/newHcSlope — see scripts/lib/coaching.ts)
  *        + luck (2025 actual vs second-order wins + one-score record)
  *
  * Also emits: teams, venues, 2026 games, week-1 line snapshots, team HFA
  * (2015–2024 quick estimate), week-0 ratings, preseason components, and
  * frozen week-1 predictions.
  *
+ * Those week-1 predictions are a FALLBACK receipt: the Thursday freeze job
+ * re-prices the same slate against live lines and real system-consensus
+ * inputs, and since predictions is append-only and read latest-first, the
+ * freeze batch supersedes this one on its own. Both are kept on purpose.
+ *
  * Output: files named NN-<table>-<chunk>.json in --out (default .preseason-json/),
  * each a plain JSON array of row objects for that table, load in filename order.
  * Data-quality proxies (v1, noted in detail JSON): OL share=0.5 (no data),
- * turnover margin=0 (not pulled), coaching=intact for all teams.
+ * turnover margin=0 (not pulled).
  *
  * Usage: npx tsx scripts/build-preseason.ts [--out DIR]
  */
@@ -29,14 +36,19 @@ import {
   MODEL_VERSION,
   churnAdjustment,
   clamp,
+  coachingAdjustmentContinuous,
   luckCorrection,
+  paramsForWeek,
   preseasonRating,
   priceGame,
+  splitInformative,
   type TeamRating,
 } from "../src/model/ratings";
+import { buildCoachTransitions } from "./lib/coaching";
 import {
   cached,
   chainPriors,
+  chainTilts,
   consensusLine,
   loadSeason,
   priorsFromSp,
@@ -47,6 +59,18 @@ import {
 const SEASON = 2026;
 const REPLAY_SEASONS = [2023, 2024, 2025];
 const CHUNK = 250;
+
+/**
+ * How much off/def SHAPE carries from the previous season into the preseason
+ * halves. 0 = even split (offense = defense = overall/2), which makes every
+ * week-0/1 projected total the same constant and is why totals are withheld
+ * until results differentiate the halves.
+ *
+ * Non-zero only once `backtest.ts --tune-preseason-tilts` clears its decision
+ * rule (weeks 1–2 totals MAE better by ≥0.15 with weeks 1–4 no worse than
+ * 0.05). Env-tunable so the fitted value can be tried without a code change.
+ */
+const TILT_CARRY = Number(process.env.PRESEASON_TILT_CARRY ?? 0);
 
 type Row = Record<string, string | number | boolean | null | object>;
 
@@ -75,11 +99,17 @@ async function main() {
   const idsByName = teamIdsByNameFrom(seasons);
 
   let priors = priorsFromSp(seasons[0].prevSp, idsByName);
+  let tilts: Map<number, number> | undefined;
   let replayFinals = new Map<number, number>();
+  let replayTilts = new Map<number, number>();
   for (const season of seasons) {
-    const { finalRatings } = replaySeason(season, priors, DEFAULT_PARAMS);
+    const { finalRatings, finalTilts } = replaySeason(season, priors, DEFAULT_PARAMS, tilts);
     replayFinals = finalRatings;
+    replayTilts = finalTilts;
     priors = chainPriors(finalRatings);
+    // Shape carries only when the tuner has earned it; at 0 this is the even
+    // split production has always shipped.
+    tilts = TILT_CARRY ? chainTilts(finalTilts, TILT_CARRY) : undefined;
   }
 
   // Prior-year baseline: 50/50 our replay and final SP+ (--tune-sp-blend).
@@ -108,6 +138,15 @@ async function main() {
     cached(`returning-${SEASON}`, () => cfbd.returningProduction(SEASON), true),
     cached(`portal-${SEASON}`, () => cfbd.portal(SEASON), true),
   ]);
+  // Coaching histories: one call covers every school-season we need for both
+  // change detection and the incoming coach's track record.
+  const coachRows = await cached(
+    `coaches-${SEASON}`,
+    () => cfbd.coaches({ minYear: 2001, maxYear: SEASON }),
+    true,
+  );
+  const transitions = buildCoachTransitions(coachRows, SEASON);
+
   let talent = await cached(`talent-${SEASON}`, () => cfbd.talent(SEASON), true);
   if (talent.length === 0) {
     console.log("  no 2026 talent yet — falling back to 2025");
@@ -197,11 +236,14 @@ async function main() {
     talent: number;
     churn: number;
     coaching: number;
+    coach: string | null;
+    overPerf: number | null;
     luckCorr: number;
     retOff: number | null;
     retDef: number | null;
   }
   const preseason: Preseason[] = [];
+  const missingCoachData: string[] = [];
   for (const team of fbs) {
     const finalPrev = finals.get(team.id) ?? null;
     const tal = talentBaseline.get(team.id) ?? -8;
@@ -229,11 +271,24 @@ async function main() {
         })
       : 0;
 
+    // Coaching: a real signal now, but zero for everyone until the tuner fits
+    // newHcIntercept/newHcSlope. A school CFBD has no 2026 row for is treated
+    // as intact and reported, never guessed at.
+    const transition = transitions.get(team.school);
+    if (!transition || transition.coach === null) missingCoachData.push(team.school);
+    const coaching = coachingAdjustmentContinuous(
+      {
+        newHc: transition?.newHc ?? false,
+        overPerf: transition?.overPerf ?? null,
+      },
+      DEFAULT_PARAMS,
+    );
+
     const rating = preseasonRating({
       finalPrevRating: finalPrev,
       talentBaseline: tal,
       churnAdjustment: churn,
-      coachingAdjustment: 0, // manual/admin in v1 — no data source
+      coachingAdjustment: coaching,
       luckCorrection: luckCorr,
     });
 
@@ -243,11 +298,25 @@ async function main() {
       finalPrev,
       talent: tal,
       churn,
-      coaching: 0,
+      coaching,
+      coach: transition?.newHc ? transition.coach : null,
+      overPerf: transition?.newHc ? transition.overPerf : null,
       luckCorr,
       retOff: retOverall,
       retDef: ret?.usage ?? null,
     });
+  }
+  const newHires = preseason.filter((p) => p.coach !== null).length;
+  console.log(
+    `  coaching: ${newHires} new head coaches detected` +
+      `${DEFAULT_PARAMS.newHcIntercept === 0 && DEFAULT_PARAMS.newHcSlope === 0 ? " (adjustment 0 — tuner has not fit newHc params yet)" : ""}`,
+  );
+  if (missingCoachData.length > 0) {
+    console.log(
+      `  WARNING: no ${SEASON} coach row for ${missingCoachData.length} team(s), treated as intact: ` +
+        missingCoachData.slice(0, 10).join(", ") +
+        (missingCoachData.length > 10 ? ", …" : ""),
+    );
   }
   preseason.sort((a, b) => b.rating - a.rating);
   const top5 = preseason
@@ -381,24 +450,34 @@ async function main() {
   }
   await emit("team_hfa", hfaRows);
 
-  await emit(
-    "ratings",
-    // Even week-0 halves: the tilt-scale sweep in the calibration backtest
-    // showed SP+ shape does not beat an even split (weeks 1–4 totals MAE
-    // 13.33 at scale 0 vs 13.36+ at any positive scale), so preseason halves
-    // stay uninformative and totals stay null until real results arrive.
-    preseason.map((p) => ({
+  // Week-0 halves. off+def must equal overall EXACTLY (to the cent): the
+  // ratings-update job carries these halves all season and the model's
+  // invariant is overall ≡ offense + defense, so any rounding gap here would
+  // compound into margins. Tilt is applied then the halves are re-derived
+  // from the rounded overall so the sum is exact by construction.
+  const preseasonTilts = TILT_CARRY ? chainTilts(replayTilts, TILT_CARRY) : new Map<number, number>();
+  const ratingRows = preseason.map((p) => {
+    const overall = r2(p.rating);
+    const tilt = r2(preseasonTilts.get(p.teamId) ?? 0);
+    const offense = r2(overall / 2 + tilt);
+    return {
       season_id: SEASON,
       team_id: p.teamId,
       week: 0,
-      overall: r2(p.rating),
-      offense: r2(p.rating / 2),
-      defense: r2(p.rating / 2),
+      overall,
+      offense,
+      defense: r2(overall - offense),
       tempo: 70,
       prior_weight: 1,
       model_version: MODEL_VERSION,
-    })),
-  );
+    };
+  });
+  for (const r of ratingRows) {
+    if (Math.abs((r.offense as number) + (r.defense as number) - (r.overall as number)) > 1e-9) {
+      throw new Error(`week-0 halves do not sum to overall for team ${r.team_id}`);
+    }
+  }
+  await emit("ratings", ratingRows);
 
   await emit(
     "preseason_components",
@@ -412,7 +491,15 @@ async function main() {
       luck_correction: r2(p.luckCorr),
       returning_prod_off: p.retOff !== null ? r2(p.retOff) : null,
       returning_prod_def: p.retDef !== null ? r2(p.retDef) : null,
-      detail: { proxies: ["ol_share=0.5", "turnover_margin=0", "coaching=intact"] },
+      detail: {
+        proxies: ["ol_share=0.5", "turnover_margin=0"],
+        // Auditability: what the coaching number was derived from, even when
+        // the fitted params make it 0.
+        new_hc: p.coach !== null,
+        coach: p.coach,
+        coach_over_perf: p.overPerf !== null ? r2(p.overPerf) : null,
+        tilt_carry: TILT_CARRY,
+      },
     })),
   );
 
@@ -422,38 +509,65 @@ async function main() {
   const linesById = new Map(lines2026.map((l) => [l.id, l]));
   const week1 = (games2026 as CfbdGame[]).filter((g) => g.week === 1 && g.seasonType === "regular");
 
+  // Price week 1 off the SAME halves that were just written to ratings, so
+  // this batch and the ratings-update job start from identical state.
+  const halvesById = new Map(
+    ratingRows.map((r) => [
+      r.team_id as number,
+      { offense: r.offense as number, defense: r.defense as number },
+    ]),
+  );
+  // Totals are real only when the halves carry information; a pure even split
+  // prices every game at the league baseline (exactly 57.0 at tempo 70), which
+  // is a constant, not a prediction. Same gate the freeze job uses.
+  const totalsAreReal = splitInformative([...halvesById.values()]);
+  // Week-1 uncertainty: identity until priorSigmaExtra is fit, then wider.
+  const week1Params = paramsForWeek(1, DEFAULT_PARAMS);
+  console.log(
+    `  totals ${totalsAreReal ? "priced (informative off/def split)" : "withheld (even split — would be a constant)"}`,
+  );
+
   const predRows: Row[] = [];
   for (const g of week1) {
     const homeR = ratingById.get(g.homeId);
     const awayR = ratingById.get(g.awayId);
     if (homeR === undefined && awayR === undefined) continue; // non-FBS matchup
-    const rating = (overall: number | undefined): TeamRating => ({
-      overall: overall ?? -30,
-      offense: (overall ?? -30) / 2,
-      defense: (overall ?? -30) / 2,
-      tempo: 70,
-    });
+    const rating = (teamId: number, overall: number | undefined): TeamRating => {
+      if (overall === undefined) {
+        return { overall: -30, offense: -15, defense: -15, tempo: 70 };
+      }
+      const halves = halvesById.get(teamId);
+      return {
+        overall,
+        offense: halves?.offense ?? overall / 2,
+        defense: halves?.defense ?? overall / 2,
+        tempo: 70,
+      };
+    };
     const vegasRaw = consensusLine(linesById.get(g.id));
     const vegas = vegasRaw !== null ? Math.round(vegasRaw * 10) / 10 : null;
     const price = priceGame(
       {
-        home: rating(homeR),
-        away: rating(awayR),
+        home: rating(g.homeId, homeR),
+        away: rating(g.awayId, awayR),
         homeTeamHfa: hfaById.get(g.homeId) ?? DEFAULT_PARAMS.baseHfa,
         neutralSite: g.neutralSite,
         situationalPoints: 0,
         vegasSpread: vegas,
       },
-      DEFAULT_PARAMS,
+      week1Params,
     );
     predRows.push({
       game_id: g.id,
+      // Receipts filters on season_id; rows without it silently vanish from
+      // the page (migration 0014 backfilled the old nulls exactly once).
+      season_id: SEASON,
       model_version: MODEL_VERSION,
       frozen: true,
       spread: Math.round(price.spread * 10) / 10,
-      total: Math.round(price.projectedTotal * 10) / 10,
-      home_score: Math.round(price.projectedHomeScore * 10) / 10,
-      away_score: Math.round(price.projectedAwayScore * 10) / 10,
+      total: totalsAreReal ? Math.round(price.projectedTotal * 10) / 10 : null,
+      home_score: totalsAreReal ? Math.round(price.projectedHomeScore * 10) / 10 : null,
+      away_score: totalsAreReal ? Math.round(price.projectedAwayScore * 10) / 10 : null,
       home_win_prob: Math.round(price.homeWinProb * 10000) / 10000,
       cover_prob: price.homeCoverProb !== null ? Math.round(price.homeCoverProb * 10000) / 10000 : null,
       vegas_spread: vegas,
@@ -461,6 +575,12 @@ async function main() {
       edge_flag: price.edgeFlag,
       consensus_flag: price.consensusFlag,
     });
+  }
+  // Invariant: a stored total is only ever a real projection. If the halves
+  // are even, every total must be null — never a constant dressed as one.
+  const storedTotals = predRows.filter((r) => r.total !== null).length;
+  if (!totalsAreReal && storedTotals > 0) {
+    throw new Error(`${storedTotals} predictions carry a total from an uninformative off/def split`);
   }
   await emit("predictions", predRows);
 

@@ -13,11 +13,22 @@ on:
         description: "Also grid-search K/HFA and fit sigma"
         type: boolean
         default: false
+      experiment:
+        description: "Run one tuner instead of the report"
+        type: choice
+        default: none
+        options:
+          - none
+          - tune-sigma
+          - tune-preseason-tilts
+          - tune-coaching
+          - tune-anchors
   pull_request:
     paths:
       - "src/model/**"
       - "scripts/backtest.ts"
       - "scripts/lib/replay.ts"
+      - "scripts/lib/coaching.ts"
       - ".github/workflows/backtest.yml"
 
 jobs:
@@ -35,7 +46,10 @@ jobs:
       - run: npm ci
       - name: Run backtest
         run: |
-          if [ "${{ inputs.tune || 'false' }}" = "true" ]; then
+          EXPERIMENT="${{ inputs.experiment || 'none' }}"
+          if [ "$EXPERIMENT" != "none" ] && [ -n "$EXPERIMENT" ]; then
+            npx tsx scripts/backtest.ts "--$EXPERIMENT"
+          elif [ "${{ inputs.tune || 'false' }}" = "true" ]; then
             npx tsx scripts/backtest.ts --tune
           else
             npx tsx scripts/backtest.ts

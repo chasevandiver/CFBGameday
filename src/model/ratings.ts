@@ -15,6 +15,14 @@
 // tilt from prior-season SP+ off/def — totals are real predictions from this
 // version on (2023–25 calibration: model MAE 13.09 vs constant 13.72).
 // Pre-2026.3.0 rows priced totals as a constant; the UI must never show them.
+//
+// Unreleased (bump to 2026.4.0 when the first of these earns a value): the
+// week-aware sigma schedule (paramsForWeek/priorSigmaExtra), the continuous
+// coaching adjustment (coachingAdjustmentContinuous/newHc*), and preseason
+// off/def tilt seeding all landed as machinery with IDENTITY defaults — every
+// one of them reproduces 2026.3.0 pricing exactly until its backtest tuner
+// fits it under the decision rule recorded in docs/SPEC.md §2.5. The version
+// tracks shipped math, so it does not move for machinery alone.
 export const MODEL_VERSION = "2026.3.0";
 
 /**
@@ -53,6 +61,22 @@ export interface ModelParams {
   /** Generic FCS opponent ratings vs average FBS */
   fcsTopRating: number;
   fcsOtherRating: number;
+  /**
+   * Extra margin uncertainty carried by the preseason prior, points. Total
+   * sigma at a given week is sqrt(marginSigma² + priorSigmaExtra²·w²) where w
+   * is that week's prior weight — see paramsForWeek. 0 = flat sigma (the
+   * behavior every version through 2026.3.0 shipped); fit by
+   * `backtest.ts --tune-sigma`.
+   */
+  priorSigmaExtra: number;
+  /**
+   * Continuous coaching adjustment (coachingAdjustmentContinuous):
+   * year-one install cost for ANY new head coach, and how much of it a proven
+   * hire claws back per point of historical over-performance. Both 0 = no
+   * coaching signal (the v1 behavior); fit by `backtest.ts --tune-coaching`.
+   */
+  newHcIntercept: number;
+  newHcSlope: number;
 }
 
 export const DEFAULT_PARAMS: ModelParams = {
@@ -74,6 +98,12 @@ export const DEFAULT_PARAMS: ModelParams = {
   bigEdgeThreshold: 4,
   fcsTopRating: -25,
   fcsOtherRating: -35,
+  // Identity defaults: each of these reproduces the 2026.3.0 math exactly.
+  // They stay 0 until the corresponding backtest tuner earns a value under
+  // its pre-registered decision rule (docs/SPEC.md §2.5).
+  priorSigmaExtra: 0,
+  newHcIntercept: 0,
+  newHcSlope: 0,
 };
 
 export interface TeamRating {
@@ -151,6 +181,43 @@ export function coachingAdjustment(change: CoachingChange): number {
     case "new_coordinator":
       return change.count === 1 ? -0.75 : -1.5;
   }
+}
+
+export interface CoachTransitionInputs {
+  /** Did the head coach change from last season? */
+  newHc: boolean;
+  /**
+   * How much the incoming coach's past teams beat the baseline of the programs
+   * he ran, in SP+ points (games-weighted). null = no prior HC history (a
+   * first-time head coach), which carries the install cost but no quality
+   * signal. Built by scripts/lib/coaching.ts from CFBD /coaches.
+   */
+  overPerf: number | null;
+}
+
+/**
+ * Coaching adjustment from the incoming coach's own record (§2.1).
+ *
+ * A new head coach costs something in year one regardless of pedigree
+ * (newHcIntercept — scheme install, staff turnover, roster fit); a coach whose
+ * teams have historically outrun their program's baseline claws some of that
+ * back (newHcSlope × overPerf). Deliberately a 2-parameter clamped linear
+ * model: there are only ~20-30 FBS head-coach changes a year, so anything
+ * richer would fit noise.
+ *
+ * Both parameters are 0 by default, making this a no-op until
+ * `backtest.ts --tune-coaching` fits them — the v1 behavior was a hardcoded 0
+ * for every team.
+ */
+export function coachingAdjustmentContinuous(
+  c: CoachTransitionInputs,
+  p: ModelParams = DEFAULT_PARAMS,
+): number {
+  if (!c.newHc) return 0;
+  // Clamp the quality signal before it is scaled: one outlier tenure (a coach
+  // who lapped a bad program) must not swing a preseason rating on its own.
+  const quality = c.overPerf === null ? 0 : clamp(c.overPerf, -8, 8);
+  return clamp(p.newHcIntercept + p.newHcSlope * quality, -4, 3);
 }
 
 export interface LuckInputs {
@@ -266,6 +333,31 @@ export function priorWeight(week: number, p: ModelParams = DEFAULT_PARAMS): numb
   return knots[knots.length - 1][1];
 }
 
+/**
+ * Margin uncertainty is not constant across a season (§2.3). In week 1 the
+ * rating IS the preseason prior — an estimate of a team that has not played —
+ * so the spread of actual margins around our prediction is wider than the
+ * pooled full-season sigma the params carry. Treating them as equal is the
+ * model claiming it knows as much on opening weekend as it does in November,
+ * and it makes early win/cover probabilities overconfident (which flows
+ * straight into ¼-Kelly stake sizing via cover_prob).
+ *
+ * Model: the prior contributes an independent error term that decays exactly
+ * as the prior's own weight does, so
+ *   σ(week)² = marginSigma² + priorSigmaExtra² · priorWeight(week)²
+ * and the logistic slope stays tied to it by the usual logistic≈normal rule
+ * (1.7/σ, the same relation backtest.ts uses when it refits).
+ *
+ * With priorSigmaExtra = 0 this returns the params unchanged — an exact
+ * identity, so every pre-existing caller and test is unaffected.
+ */
+export function paramsForWeek(week: number, p: ModelParams = DEFAULT_PARAMS): ModelParams {
+  if (!p.priorSigmaExtra) return p;
+  const w = priorWeight(week, p);
+  const sigma = Math.sqrt(p.marginSigma ** 2 + (p.priorSigmaExtra * w) ** 2);
+  return { ...p, marginSigma: sigma, winProbSlope: 1.7 / sigma };
+}
+
 /** Blend the preseason prior with the results-to-date rating at a given week. */
 export function blendWithPrior(
   preseason: number,
@@ -315,6 +407,31 @@ export interface GamePrice {
 }
 
 export const FBS_AVG_POINTS = 28.5; // average team points/game baseline for projections
+
+/** Below this, a team's off/def halves are "even" for totals purposes. */
+export const SPLIT_EPSILON = 0.01;
+
+/**
+ * Do these ratings carry a real off/def split?
+ *
+ * priceGame's projected total is
+ *   (28.5 + homeOff − awayDef + 28.5 + awayOff − homeDef) × tempoFactor
+ * and with a pure even split (offense = defense = overall/2) every one of
+ * those team terms cancels: the total collapses to 2 × 28.5 × tempoFactor —
+ * exactly 57.0 at tempo 70 — for every game on the board, regardless of who
+ * is playing. That is a constant, not a prediction, so callers must store
+ * null instead of dressing it up as one (audit bug #4).
+ *
+ * Shared by freezeJob and the preseason builder so the two paths can't drift.
+ */
+export function splitInformative(
+  ratings: Iterable<{ offense: number; defense: number }>,
+): boolean {
+  for (const r of ratings) {
+    if (Math.abs(r.offense - r.defense) > SPLIT_EPSILON) return true;
+  }
+  return false;
+}
 
 export function priceGame(inp: PricingInputs, p: ModelParams = DEFAULT_PARAMS): GamePrice {
   const hfa = inp.neutralSite ? 0 : inp.homeTeamHfa;

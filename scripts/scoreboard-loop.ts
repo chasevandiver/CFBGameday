@@ -22,6 +22,7 @@
 
 import { cfbdCallCount } from "../src/lib/cfbd";
 import { createServiceClient } from "../src/lib/supabase/service";
+import { idleSkip, envDays } from "./lib/idle";
 import { SEASON, logCfbdCalls, scoreboardJob } from "./lib/jobs-core";
 
 const MONTHLY_BUDGET = Number(process.env.CFBD_MONTHLY_BUDGET ?? 30_000);
@@ -77,6 +78,20 @@ async function main() {
     Number(process.env.SCOREBOARD_INTERVAL_SECONDS ?? 30),
   );
   const db = createServiceClient();
+
+  // Nothing within two days: don't hold a runner for an hour to re-ask our own
+  // database every 60s. (This loop already makes zero CFBD calls when idle —
+  // what it burns offseason is Actions minutes.)
+  if (
+    await idleSkip(db, {
+      job: "scoreboard-loop",
+      season: SEASON,
+      horizonDays: envDays("SCOREBOARD_IDLE_DAYS", 2),
+    })
+  ) {
+    return;
+  }
+
   const deadline = Date.now() + minutes * 60_000;
 
   // Budget posture for this run: past 95% stop entirely, past 80% run at
