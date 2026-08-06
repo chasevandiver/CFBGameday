@@ -62,6 +62,34 @@ export function SlateView({
   const [sort, setSort] = useState<SortKey>("kickoff");
   const [query, setQuery] = useState("");
 
+  /* ---- URL state: filters are shareable and survive refresh ------------- */
+
+  // Apply ?conf=&tv=&spread=&ranked=&mine=&sort=&q=&day= once after mount
+  // (SSR renders defaults; the URL wins a beat later), then mirror every
+  // change back into the query string.
+  const urlReady = useRef(false);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const sp = new URLSearchParams(window.location.search);
+      const conf = sp.get("conf");
+      if (conf) setConference(conf);
+      const net = sp.get("tv");
+      if (net) setNetwork(net);
+      const spr = sp.get("spread");
+      if (spr && SPREAD_RANGES.some((r) => r.key === spr)) setSpreadRange(spr);
+      if (sp.get("ranked") === "1") setRankedOnly(true);
+      if (sp.get("mine") === "1") setMyPicksOnly(true);
+      const s = sp.get("sort");
+      if (s && SORTS.some((x) => x.key === s)) setSort(s as SortKey);
+      const q = sp.get("q");
+      if (q) setQuery(q);
+      const d = sp.get("day");
+      if (d) setDay(d);
+      urlReady.current = true;
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
+
   /* ---- data refresh ---------------------------------------------------- */
 
   const week = data.week;
@@ -173,13 +201,27 @@ export function SlateView({
     weekRef.current = w;
     setData((d) => ({ ...d, week: w, seasonType: st, games: [] }));
     setDay("all");
-    window.history.replaceState(
-      null,
-      "",
-      post ? "/slate?st=post" : w === currentWeek ? "/slate" : `/slate?week=${w}`,
-    );
+    // the URL-sync effect below rewrites the query string
     void refresh(w, true, st);
   };
+
+  // mirror week + filters into the query string (replaceState — no history spam)
+  useEffect(() => {
+    if (!urlReady.current) return;
+    const sp = new URLSearchParams();
+    if (seasonType === "postseason") sp.set("st", "post");
+    else if (week !== currentWeek) sp.set("week", String(week));
+    if (conference !== "all") sp.set("conf", conference);
+    if (network !== "all") sp.set("tv", network);
+    if (spreadRange !== "any") sp.set("spread", spreadRange);
+    if (rankedOnly) sp.set("ranked", "1");
+    if (myPicksOnly) sp.set("mine", "1");
+    if (sort !== "kickoff") sp.set("sort", sort);
+    if (query.trim()) sp.set("q", query.trim());
+    if (day !== "all") sp.set("day", day);
+    const qs = sp.toString();
+    window.history.replaceState(null, "", qs ? `/slate?${qs}` : "/slate");
+  }, [week, seasonType, currentWeek, conference, network, spreadRange, rankedOnly, myPicksOnly, sort, query, day]);
 
   /* ---- derived --------------------------------------------------------- */
 

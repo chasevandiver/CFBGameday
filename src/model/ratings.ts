@@ -185,6 +185,56 @@ export function updateFromResult(g: GameResultInput, p: ModelParams = DEFAULT_PA
   return { homeDelta: delta / 2, awayDelta: -delta / 2 };
 }
 
+export interface SubRatingUpdateInput {
+  homeOffense: number;
+  homeDefense: number;
+  awayOffense: number;
+  awayDefense: number;
+  homePoints: number;
+  awayPoints: number;
+  /** Home team's HFA; ignored when neutralSite */
+  hfa: number;
+  neutralSite: boolean;
+}
+
+export interface SubRatingUpdate {
+  homeOffDelta: number;
+  homeDefDelta: number;
+  awayOffDelta: number;
+  awayDefDelta: number;
+}
+
+/**
+ * Off/def sub-rating update from points scored/allowed vs opponent-adjusted
+ * expectation (§2.2). Each scoring error splits between the offense that
+ * produced it and the defense that allowed it, at half the overall K (so
+ * off+def moves in step with the overall update). Errors are capped like
+ * margins so one 70-burger doesn't rewrite a season.
+ *
+ * GROUNDWORK (audit #33): the pricing pipeline still gates totals/projected
+ * scores off until these deltas are wired into the replay AND the projected
+ * totals survive a calibration backtest against stored lines. Do not surface
+ * model totals before that run.
+ */
+export function updateSubRatings(
+  inp: SubRatingUpdateInput,
+  p: ModelParams = DEFAULT_PARAMS,
+): SubRatingUpdate {
+  const hfa = inp.neutralSite ? 0 : inp.hfa;
+  const expHome = FBS_AVG_POINTS + inp.homeOffense - inp.awayDefense + hfa / 2;
+  const expAway = FBS_AVG_POINTS + inp.awayOffense - inp.homeDefense - hfa / 2;
+  const cap = p.marginCap;
+  const errHome = clamp(inp.homePoints - expHome, -cap, cap);
+  const errAway = clamp(inp.awayPoints - expAway, -cap, cap);
+  const k = p.kFactor / 2;
+  return {
+    homeOffDelta: (k * errHome) / 2,
+    awayDefDelta: -(k * errHome) / 2,
+    awayOffDelta: (k * errAway) / 2,
+    homeDefDelta: -(k * errAway) / 2,
+  };
+}
+
 /** Piecewise-linear prior weight for a given week (§2.2 decay schedule). */
 export function priorWeight(week: number, p: ModelParams = DEFAULT_PARAMS): number {
   const knots = p.priorDecayKnots;
@@ -248,7 +298,7 @@ export interface GamePrice {
   consensusFlag: boolean;
 }
 
-const FBS_AVG_POINTS = 28.5; // average team points/game baseline for projections
+export const FBS_AVG_POINTS = 28.5; // average team points/game baseline for projections
 
 export function priceGame(inp: PricingInputs, p: ModelParams = DEFAULT_PARAMS): GamePrice {
   const hfa = inp.neutralSite ? 0 : inp.homeTeamHfa;

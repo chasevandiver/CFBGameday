@@ -14,6 +14,7 @@ import {
   updateFromResult,
   type PricingInputs,
   type TeamRating,
+  updateSubRatings,
 } from "./ratings";
 
 const avgTeam: TeamRating = { overall: 0, offense: 0, defense: 0, tempo: 70 };
@@ -231,5 +232,48 @@ describe("normal CDF", () => {
   it("matches known values", () => {
     expect(normalCdf(0)).toBeCloseTo(0.5);
     expect(normalCdf(1.96)).toBeCloseTo(0.975, 3);
+  });
+});
+
+describe("updateSubRatings (spec §2.2 groundwork — display stays gated until backtested)", () => {
+  const base = {
+    homeOffense: 5,
+    homeDefense: 5,
+    awayOffense: 0,
+    awayDefense: 0,
+    hfa: 2,
+    neutralSite: false,
+  };
+  // expected home = 28.5 + 5 − 0 + 1 = 34.5; expected away = 28.5 + 0 − 5 − 1 = 22.5
+
+  it("no movement when both teams hit expectation", () => {
+    const upd = updateSubRatings({ ...base, homePoints: 34.5, awayPoints: 22.5 });
+    expect(upd).toEqual({ homeOffDelta: 0, awayDefDelta: -0, awayOffDelta: 0, homeDefDelta: -0 });
+  });
+
+  it("outscoring expectation credits the offense and debits the opposing defense equally", () => {
+    const upd = updateSubRatings({ ...base, homePoints: 44.5, awayPoints: 22.5 });
+    expect(upd.homeOffDelta).toBeGreaterThan(0);
+    expect(upd.awayDefDelta).toBeCloseTo(-upd.homeOffDelta, 10);
+    expect(upd.awayOffDelta).toBeCloseTo(0, 10);
+    // off+def total change per team stays consistent with half the overall K
+    expect(upd.homeOffDelta).toBeCloseTo((0.3 / 2) * 10 * 0.5, 10);
+  });
+
+  it("caps blowout scoring errors at the margin cap", () => {
+    const capped = updateSubRatings({ ...base, homePoints: 100, awayPoints: 22.5 });
+    const atCap = updateSubRatings({ ...base, homePoints: 34.5 + 28, awayPoints: 22.5 });
+    expect(capped.homeOffDelta).toBeCloseTo(atCap.homeOffDelta, 10);
+  });
+
+  it("neutral sites drop the HFA split from expectations", () => {
+    const neutral = updateSubRatings({
+      ...base,
+      neutralSite: true,
+      homePoints: 33.5, // hits the neutral expectation exactly (28.5 + 5)
+      awayPoints: 23.5,
+    });
+    expect(neutral.homeOffDelta).toBeCloseTo(0, 10);
+    expect(neutral.awayOffDelta).toBeCloseTo(0, 10);
   });
 });
