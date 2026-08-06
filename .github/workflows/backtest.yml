@@ -1,6 +1,8 @@
-# On-demand backtest (docs/SPEC.md §2.5) with the repo's CFBD key — the
-# honesty gate for re-enabling model totals: the calibration report in the
-# logs decides whether projected totals ship. ~10 CFBD calls per cold run.
+# Backtest (docs/SPEC.md §2.5) with the repo's CFBD key — the honesty gate
+# for model changes: the calibration report in the logs decides whether
+# projected totals (and future model tweaks) ship. ~10 CFBD calls per run.
+# Runs automatically on PRs that touch the model or replay so no calibration
+# regression lands unseen, and on demand via workflow_dispatch.
 
 name: backtest
 
@@ -11,6 +13,12 @@ on:
         description: "Also grid-search K/HFA and fit sigma"
         type: boolean
         default: false
+  pull_request:
+    paths:
+      - "src/model/**"
+      - "scripts/backtest.ts"
+      - "scripts/lib/replay.ts"
+      - ".github/workflows/backtest.yml"
 
 jobs:
   backtest:
@@ -27,7 +35,7 @@ jobs:
       - run: npm ci
       - name: Run backtest
         run: |
-          if [ "${{ inputs.tune }}" = "true" ]; then
+          if [ "${{ inputs.tune || 'false' }}" = "true" ]; then
             npx tsx scripts/backtest.ts --tune
           else
             npx tsx scripts/backtest.ts
