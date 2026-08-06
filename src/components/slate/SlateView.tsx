@@ -39,7 +39,16 @@ const SPREAD_RANGES = [
   { key: "14", label: "≤ 14", max: 14 },
 ] as const;
 
-export function SlateView({ initial, currentWeek }: { initial: SlateData; currentWeek: number }) {
+export function SlateView({
+  initial,
+  currentWeek,
+  favoriteTeamIds = [],
+}: {
+  initial: SlateData;
+  currentWeek: number;
+  /** Server-side favorites (/me) — pinned like local stars, roam across devices */
+  favoriteTeamIds?: number[];
+}) {
   const [data, setData] = useState<SlateData>(initial);
   const [loading, setLoading] = useState(false);
   const tz = useViewerTz(DEFAULT_TZ);
@@ -220,7 +229,7 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
   }, [games, day, conference, network, rankedOnly, myPicksOnly, spreadRange, query, tz]);
 
   const sorted = useMemo(() => {
-    const starredSet = new Set(starred);
+    const starredSet = new Set([...starred, ...favoriteTeamIds]);
     const isPinned = (g: GameView) => starredSet.has(g.home.id) || starredSet.has(g.away.id);
     const cmp = (a: GameView, b: GameView): number => {
       switch (sort) {
@@ -246,7 +255,7 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
       if (dead !== 0) return dead;
       return cmp(a, b);
     });
-  }, [filtered, sort, starred]);
+  }, [filtered, sort, starred, favoriteTeamIds]);
 
   const noFilters =
     day === "all" &&

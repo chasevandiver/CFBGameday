@@ -2,7 +2,7 @@ import { AppNav } from "../../components/AppNav";
 import { BetForm, type BetFormGame } from "../../components/BetForm";
 import { LiveStatusChip } from "../../components/slate/chips";
 import { VoidBetButton } from "../../components/VoidBetButton";
-import { REASON_TAG_LABELS, type BetRow, type TeamRow } from "../../lib/db-types";
+import { REASON_TAGS, REASON_TAG_LABELS, type BetRow, type TeamRow } from "../../lib/db-types";
 import { kickParts, DEFAULT_TZ } from "../../lib/kick";
 import { statusForBet, type LiveBetStatus } from "../../lib/live-status";
 import { fetchBetFormGames, fetchCurrentSeasonWeek } from "../../lib/queries";
@@ -120,6 +120,35 @@ export default async function LedgerPage() {
   const avgClv =
     withClv.length > 0 ? withClv.reduce((a, b) => a + (b.clv as number), 0) / withClv.length : null;
 
+  // Reason-tag audit (spec §5.3): W-L, units, ROI, CLV by tag — most bettors
+  // have one profitable angle and four leaks. The ledger's marquee feature.
+  const tagRows = REASON_TAGS.map((tag) => {
+    const mine = graded.filter((b) => b.reason_tag === tag);
+    if (mine.length === 0) return null;
+    const w = mine.filter((b) => b.result === "win").length;
+    const l = mine.filter((b) => b.result === "loss").length;
+    const u = mine.reduce((a, b) => a + (b.payout_units ?? 0), 0);
+    const st = mine.filter((b) => b.result !== "push").reduce((a, b) => a + b.units, 0);
+    const clvs = mine.filter((b) => b.clv !== null).map((b) => Number(b.clv));
+    return {
+      tag,
+      w,
+      l,
+      units: u,
+      roi: st > 0 ? u / st : null,
+      avgClv: clvs.length ? clvs.reduce((a, b) => a + b, 0) / clvs.length : null,
+    };
+  }).filter((r): r is NonNullable<typeof r> => r !== null);
+  tagRows.sort((a, b) => b.units - a.units);
+
+  // cumulative units, oldest → newest, for the season curve
+  const curve = [...graded]
+    .sort((a, b) => a.placed_at.localeCompare(b.placed_at))
+    .reduce<number[]>((acc, b) => {
+      acc.push((acc[acc.length - 1] ?? 0) + (b.payout_units ?? 0));
+      return acc;
+    }, []);
+
   return (
     <>
       <AppNav />
@@ -152,17 +181,88 @@ export default async function LedgerPage() {
           />
         </section>
 
+        {/* Season curve */}
+        {curve.length >= 2 && (
+          <section className="card mb-6 p-4">
+            <h2 className="mb-2 text-sm text-accent">Season curve</h2>
+            <UnitsCurve points={curve} />
+            <p className="mt-1.5 text-[10.5px] text-dim">
+              Cumulative units, bet by bet, oldest to newest.
+            </p>
+          </section>
+        )}
+
+        {/* Reason-tag audit (spec §5.3) */}
+        {tagRows.length > 0 && (
+          <section className="card mb-6 overflow-x-auto">
+            <h2 className="border-b border-chalk/8 px-4 py-2.5 text-sm text-accent">
+              Where your edge actually is
+            </h2>
+            <table className="stats w-full text-sm">
+              <thead>
+                <tr className="text-left text-[10.5px] uppercase tracking-wider text-chalk/55">
+                  <th className="py-2 pl-4 pr-3 font-semibold">Tag</th>
+                  <th className="px-3 py-2 text-right font-semibold">Record</th>
+                  <th className="px-3 py-2 text-right font-semibold">Units</th>
+                  <th className="px-3 py-2 text-right font-semibold">ROI</th>
+                  <th className="py-2 pl-3 pr-4 text-right font-semibold">CLV</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tagRows.map((r) => (
+                  <tr key={r.tag} className="border-t border-chalk/5">
+                    <td className="py-2 pl-4 pr-3 font-sans text-chalk">
+                      {REASON_TAG_LABELS[r.tag]}
+                    </td>
+                    <td className="px-3 py-2 text-right text-chalk/80">
+                      {r.w}-{r.l}
+                    </td>
+                    <td
+                      className={`px-3 py-2 text-right ${r.units > 0 ? "text-win" : r.units < 0 ? "text-loss" : ""}`}
+                    >
+                      {r.units >= 0 ? "+" : ""}
+                      {r.units.toFixed(1)}
+                    </td>
+                    <td className="px-3 py-2 text-right text-chalk/80">
+                      {r.roi === null ? "–" : `${(r.roi * 100).toFixed(0)}%`}
+                    </td>
+                    <td
+                      className={`py-2 pl-3 pr-4 text-right ${
+                        r.avgClv === null
+                          ? ""
+                          : r.avgClv > 0
+                            ? "text-win"
+                            : r.avgClv < 0
+                              ? "text-loss"
+                              : ""
+                      }`}
+                    >
+                      {r.avgClv === null
+                        ? "–"
+                        : `${r.avgClv > 0 ? "+" : ""}${r.avgClv.toFixed(2)}`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="px-4 py-2 text-[10.5px] text-dim">
+              Positive CLV with a losing record is variance; negative CLV with a winning record
+              is luck on a timer. Trust the CLV column.
+            </p>
+          </section>
+        )}
+
         {/* Entry */}
-        <section className="mb-8 rounded border border-chalk/10 bg-surface p-4">
-          <h2 className="mb-3 text-sm text-gold">Log a bet</h2>
+        <section className="card mb-8 p-4">
+          <h2 className="mb-3 text-sm text-accent">Log a bet</h2>
           <BetForm seasonId={seasonId} games={formGames} />
         </section>
 
         {/* History */}
-        <section className="overflow-x-auto rounded border border-chalk/10 bg-surface">
+        <section className="card overflow-x-auto">
           <table className="stats w-full text-sm">
             <thead>
-              <tr className="border-b border-chalk/20 text-left text-xs uppercase text-chalk/50">
+              <tr className="border-b border-chalk/20 text-left text-xs uppercase text-chalk/55">
                 <th className="px-3 py-2">Bet</th>
                 <th className="px-3 py-2">Tag</th>
                 <th className="px-3 py-2 text-right">Line</th>
@@ -228,11 +328,46 @@ export default async function LedgerPage() {
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: "gold" | "flag" }) {
   return (
-    <div className="rounded border border-chalk/10 bg-surface p-3">
-      <p className="text-xs uppercase text-chalk/50">{label}</p>
-      <p className={`stat mt-1 text-xl ${tone === "gold" ? "text-gold" : tone === "flag" ? "text-flag" : ""}`}>
+    <div className="card p-3">
+      <p className="text-xs uppercase text-chalk/55">{label}</p>
+      <p className={`stat mt-1 text-xl ${tone === "gold" ? "text-win" : tone === "flag" ? "text-loss" : ""}`}>
         {value}
       </p>
     </div>
+  );
+}
+
+/** Cumulative-units line, server-rendered SVG — no chart lib, no client JS. */
+function UnitsCurve({ points }: { points: number[] }) {
+  const w = 320;
+  const h = 64;
+  const pad = 4;
+  const all = [0, ...points];
+  const min = Math.min(...all);
+  const max = Math.max(...all);
+  const span = max - min || 1;
+  const x = (i: number) => pad + (i / (all.length - 1)) * (w - pad * 2);
+  const y = (v: number) => pad + (1 - (v - min) / span) * (h - pad * 2);
+  const d = all.map((v, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const last = points[points.length - 1];
+  return (
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      preserveAspectRatio="none"
+      className="h-16 w-full"
+      role="img"
+      aria-label={`Cumulative units over ${points.length} graded bets, currently ${last >= 0 ? "+" : ""}${last.toFixed(1)}`}
+    >
+      <line x1={pad} x2={w - pad} y1={y(0)} y2={y(0)} stroke="var(--line-strong)" strokeWidth="1" strokeDasharray="3 3" />
+      <path
+        d={d}
+        fill="none"
+        stroke={last >= 0 ? "var(--win)" : "var(--loss)"}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
   );
 }

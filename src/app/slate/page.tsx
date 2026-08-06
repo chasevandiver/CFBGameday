@@ -26,13 +26,23 @@ export default async function SlatePage({
   // follows the calendar into the postseason (bowls are the current slate).
   const st = hasWeekParam ? "regular" : seasonType;
 
-  const initial = await fetchSlateView(supabase, seasonId, week, user?.id ?? null, st);
+  const [initial, favRes] = await Promise.all([
+    fetchSlateView(supabase, seasonId, week, user?.id ?? null, st),
+    user
+      ? supabase.from("profiles").select("favorite_team_ids").eq("id", user.id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  const favoriteTeamIds: number[] = favRes.data?.favorite_team_ids ?? [];
 
   return (
     <>
       <AppNav />
       <main id="main" className="w-full flex-1 px-4">
-        <SlateView initial={initial} currentWeek={currentWeek} />
+        <SlateView
+          initial={initial}
+          currentWeek={currentWeek}
+          favoriteTeamIds={favoriteTeamIds}
+        />
       </main>
     </>
   );

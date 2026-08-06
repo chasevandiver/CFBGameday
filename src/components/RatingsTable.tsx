@@ -93,7 +93,7 @@ export function RatingsTable({ rows }: { rows: RatingRow[] }) {
                   <button
                     onClick={() => toggleSort(c.key)}
                     title={c.title}
-                    className={`uppercase ${sortKey === c.key ? "text-gold" : "hover:text-chalk"}`}
+                    className={`uppercase ${sortKey === c.key ? "text-accent" : "hover:text-chalk"}`}
                   >
                     {c.label}
                     {sortKey === c.key ? (descending ? " ↓" : " ↑") : ""}
@@ -129,9 +129,9 @@ export function RatingsTable({ rows }: { rows: RatingRow[] }) {
                   {r.delta === null ? (
                     <span className="text-chalk/30">—</span>
                   ) : r.delta > 0 ? (
-                    <span className="text-gold">▲{r.delta.toFixed(1)}</span>
+                    <span className="text-win">▲{r.delta.toFixed(1)}</span>
                   ) : r.delta < 0 ? (
-                    <span className="text-flag">▼{Math.abs(r.delta).toFixed(1)}</span>
+                    <span className="text-loss">▼{Math.abs(r.delta).toFixed(1)}</span>
                   ) : (
                     <span className="text-chalk/40">·</span>
                   )}
@@ -166,7 +166,7 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
       onClick={onClick}
       className={`rounded-full border px-2.5 py-1 text-xs ${
         active
-          ? "border-gold bg-gold/15 text-gold"
+          ? "border-accent bg-accent/15 text-accent"
           : "border-chalk/20 text-chalk/70 hover:border-chalk/50"
       }`}
     >

@@ -13,7 +13,7 @@ export function VoidBetButton({ betId }: { betId: number }) {
           startTransition(() => voidBet(betId).then(() => undefined));
         }
       }}
-      className="text-xs text-chalk/40 underline hover:text-flag disabled:opacity-50"
+      className="text-xs text-chalk/40 underline hover:text-loss disabled:opacity-50"
     >
       void
     </button>

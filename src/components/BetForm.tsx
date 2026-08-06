@@ -24,6 +24,10 @@ export interface BetFormGame {
   awayAbbr: string;
 }
 
+/**
+ * Manual ledger entry with real labels — the old form was placeholder-only
+ * (labels vanish the moment you type; classic form a11y failure, audit §17).
+ */
 export function BetForm({ seasonId, games = [] }: { seasonId: number; games?: BetFormGame[] }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
@@ -40,12 +44,13 @@ export function BetForm({ seasonId, games = [] }: { seasonId: number; games?: Be
         formRef.current?.reset();
         setBetType("spread");
         setGameId("");
+        setMessage("Logged ✓");
       }
     });
   }
 
   const input =
-    "rounded border border-chalk/25 bg-field-deep px-3 py-2 text-sm text-chalk placeholder:text-chalk/40 focus:border-gold focus:outline-none";
+    "w-full rounded-lg border border-chalk/12 bg-elev px-3 py-2 text-sm text-chalk placeholder:text-chalk/35 focus:border-accent/60 focus:outline-none";
 
   const game = games.find((g) => String(g.id) === gameId) ?? null;
   const sideOptions: Array<[string, string]> = TEAM_SIDED.has(betType)
@@ -63,91 +68,154 @@ export function BetForm({ seasonId, games = [] }: { seasonId: number; games?: Be
   return (
     <form ref={formRef} action={submit} className="flex flex-col gap-3">
       <input type="hidden" name="season_id" value={seasonId} />
-      <input
-        name="description"
-        required
-        placeholder="Michigan -3.5 vs Ohio State"
-        className={input}
-      />
+
+      <Field label="Bet" htmlFor="bet-description">
+        <input
+          id="bet-description"
+          name="description"
+          required
+          placeholder="Michigan -3.5 vs Ohio State"
+          className={input}
+        />
+      </Field>
+
       {games.length > 0 && (
-        <select
-          name="game_id"
-          value={gameId}
-          onChange={(e) => setGameId(e.target.value)}
-          className={input}
-          aria-label="Game (links the bet for grading and live tracking)"
-        >
-          <option value="">No game — future / other</option>
-          {games.map((g) => (
-            <option key={g.id} value={g.id}>
-              {g.label}
-            </option>
-          ))}
-        </select>
+        <Field label="Game" htmlFor="bet-game" hint="linking enables auto-grading + live tracking">
+          <select
+            id="bet-game"
+            name="game_id"
+            value={gameId}
+            onChange={(e) => setGameId(e.target.value)}
+            className={input}
+          >
+            <option value="">No game — future / other</option>
+            {games.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.label}
+              </option>
+            ))}
+          </select>
+        </Field>
       )}
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <select
-          name="bet_type"
-          value={betType}
-          onChange={(e) => setBetType(e.target.value)}
-          className={input}
-        >
-          {BET_TYPES.map(([v, label]) => (
-            <option key={v} value={v}>
-              {label}
-            </option>
-          ))}
-        </select>
-        {sideOptions.length > 0 && (
-          <select name="side" className={input} defaultValue="" aria-label="Side">
-            <option value="">Side…</option>
-            {sideOptions.map(([v, label]) => (
+        <Field label="Type" htmlFor="bet-type">
+          <select
+            id="bet-type"
+            name="bet_type"
+            value={betType}
+            onChange={(e) => setBetType(e.target.value)}
+            className={input}
+          >
+            {BET_TYPES.map(([v, label]) => (
               <option key={v} value={v}>
                 {label}
               </option>
             ))}
           </select>
+        </Field>
+        {sideOptions.length > 0 && (
+          <Field label="Side" htmlFor="bet-side">
+            <select id="bet-side" name="side" className={input} defaultValue="">
+              <option value="">Side…</option>
+              {sideOptions.map(([v, label]) => (
+                <option key={v} value={v}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </Field>
         )}
-        <input name="line_taken" inputMode="decimal" placeholder="Line (-3.5)" className={input} />
-        <input
-          name="odds"
-          inputMode="numeric"
-          placeholder="Odds (-110)"
-          defaultValue={-110}
-          className={input}
-        />
-        <input
-          name="units"
-          required
-          inputMode="decimal"
-          placeholder="Units"
-          className={input}
-        />
+        <Field label="Line" htmlFor="bet-line">
+          <input
+            id="bet-line"
+            name="line_taken"
+            inputMode="decimal"
+            pattern="-?[0-9]+(\.[05])?"
+            title="Half-point increments, e.g. -3.5 or 48.5"
+            placeholder="-3.5"
+            className={input}
+          />
+        </Field>
+        <Field label="Odds" htmlFor="bet-odds">
+          <input
+            id="bet-odds"
+            name="odds"
+            inputMode="numeric"
+            pattern="[+-]?[0-9]{3,4}"
+            title="American odds, e.g. -110 or +145"
+            placeholder="-110"
+            defaultValue={-110}
+            className={input}
+          />
+        </Field>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <select name="reason_tag" required className={input} defaultValue="">
-          <option value="" disabled>
-            Reason tag…
-          </option>
-          {REASON_TAGS.map((tag) => (
-            <option key={tag} value={tag}>
-              {REASON_TAG_LABELS[tag]}
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <Field label="Units" htmlFor="bet-units">
+          <input
+            id="bet-units"
+            name="units"
+            required
+            inputMode="decimal"
+            pattern="[0-9]+(\.[0-9]+)?"
+            title="Units staked, e.g. 1 or 0.5"
+            placeholder="1"
+            className={input}
+          />
+        </Field>
+        <Field label="Why" htmlFor="bet-reason">
+          <select id="bet-reason" name="reason_tag" required className={input} defaultValue="">
+            <option value="" disabled>
+              Reason tag…
             </option>
-          ))}
-        </select>
-        <input name="book" placeholder="Book (optional)" className={input} />
+            {REASON_TAGS.map((tag) => (
+              <option key={tag} value={tag}>
+                {REASON_TAG_LABELS[tag]}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Book" htmlFor="bet-book" hint="optional">
+          <input id="bet-book" name="book" placeholder="DK, FD…" className={input} />
+        </Field>
       </div>
+
       <button
         type="submit"
         disabled={pending}
-        className="rounded bg-gold px-4 py-2 text-sm font-semibold text-field-deep disabled:opacity-60"
+        className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink transition-opacity disabled:opacity-60"
       >
         {pending ? "Logging…" : "Log bet"}
       </button>
-      <p className="text-xs text-chalk/40">
-        Linking a game lets Sunday grading and the live scoreboard track this bet automatically.
-      </p>
-      {message && <p className="text-xs text-flag">{message}</p>}
+      {message && (
+        <p className={`text-xs ${message === "Logged ✓" ? "text-win" : "text-loss"}`}>{message}</p>
+      )}
     </form>
+  );
+}
+
+function Field({
+  label,
+  htmlFor,
+  hint,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <label
+        htmlFor={htmlFor}
+        className="text-[10.5px] font-semibold uppercase tracking-wider text-chalk/55"
+      >
+        {label}
+        {hint && <span className="ml-1.5 font-normal normal-case tracking-normal text-chalk/40">{hint}</span>}
+      </label>
+      {children}
+    </div>
   );
 }

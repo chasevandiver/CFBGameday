@@ -201,7 +201,7 @@ export default async function CrewPage() {
           </section>
         )}
 
-        <div className="overflow-x-auto rounded border border-chalk/10 bg-surface">
+        <div className="card overflow-x-auto">
           <table className="stats w-full text-sm">
             <thead>
               <tr className="border-b border-chalk/20 text-left text-xs uppercase text-chalk/50">
@@ -223,7 +223,7 @@ export default async function CrewPage() {
                     {r.pushes > 0 ? `-${r.pushes}` : ""}
                   </td>
                   <td
-                    className={`px-3 py-2 text-right ${r.units > 0 ? "text-gold" : r.units < 0 ? "text-flag" : ""}`}
+                    className={`px-3 py-2 text-right ${r.units > 0 ? "text-win" : r.units < 0 ? "text-loss" : ""}`}
                   >
                     {r.units >= 0 ? "+" : ""}
                     {r.units.toFixed(1)}
@@ -244,8 +244,8 @@ export default async function CrewPage() {
         </p>
 
         {me?.is_admin && (
-          <section className="mt-8 rounded border border-chalk/10 bg-surface p-4">
-            <h2 className="mb-1 text-sm text-gold">Invite the crew</h2>
+          <section className="card mt-8 p-4">
+            <h2 className="mb-1 text-sm text-accent">Invite the crew</h2>
             <p className="mb-3 text-xs text-chalk/60">
               Commissioner only. Enter an email, get a one-tap sign-in link to text them — no
               email delivery needed.
@@ -256,7 +256,7 @@ export default async function CrewPage() {
                 {invited.map((i) => (
                   <li key={i.email} className="stat flex justify-between text-xs">
                     <span className="text-chalk/80">{i.email}</span>
-                    <span className={i.joined ? "text-gold" : "text-chalk/40"}>
+                    <span className={i.joined ? "text-win" : "text-chalk/40"}>
                       {i.joined ? "joined" : "invited"}
                     </span>
                   </li>
@@ -267,8 +267,8 @@ export default async function CrewPage() {
         )}
 
         {me?.is_admin && (
-          <section className="mt-6 rounded border border-chalk/10 bg-surface p-4">
-            <h2 className="mb-1 text-sm text-gold">Rating adjustments</h2>
+          <section className="card mt-6 p-4">
+            <h2 className="mb-1 text-sm text-accent">Rating adjustments</h2>
             <p className="mb-3 text-xs text-chalk/60">
               Dock or credit a team before Thursday&apos;s freeze — QB out, suspension, chaos.
               Active adjustments are added to that team&apos;s rating when predictions are priced.
