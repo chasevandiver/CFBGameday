@@ -1,12 +1,11 @@
-import { ArrowLeft, CloudRain, Thermometer, Tv, Wind } from "lucide-react";
+import { ArrowLeft, CloudRain, Thermometer, Wind } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppNav } from "../../../components/AppNav";
+import { GameHeader } from "../../../components/game/GameHeader";
 import { PickButtons } from "../../../components/PickButtons";
-import { ConsensusChip, EdgeChip, LiveBadge, LiveStatusChip } from "../../../components/slate/chips";
+import { ConsensusChip, EdgeChip } from "../../../components/slate/chips";
 import { Sparkline } from "../../../components/slate/Sparkline";
-import { TeamMark } from "../../../components/slate/TeamMark";
-import { WinProbBar } from "../../../components/slate/WinProbBar";
 import type {
   BetRow,
   GameRow,
@@ -16,8 +15,6 @@ import type {
   ProfileRow,
   TeamRow,
 } from "../../../lib/db-types";
-import { kickDateLong, kickParts, periodLabel, tzLabel, DEFAULT_TZ } from "../../../lib/kick";
-import { statusForBet, statusForPick } from "../../../lib/live-status";
 import { pickPollRanks, pollShortName } from "../../../lib/rankings";
 import {
   consensusFromSnapshots,
@@ -30,11 +27,10 @@ import {
   fmtPct,
   fmtSpread,
   fmtTotal,
-  isRedZone,
   stakeForPrediction,
+  type MyBetView,
   type TeamView,
 } from "../../../lib/slate";
-import { liveWinProb } from "../../../model/live";
 import { createClient } from "../../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -172,62 +168,18 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   const myPick = user ? (picks.find((p) => p.user_id === user.id) ?? null) : null;
   const crewPicks = picks.filter((p) => p.user_id !== user?.id);
 
-  const live = game.status === "in_progress";
-  const final = game.status === "final";
-  const showScore = live || final;
-  const tz = DEFAULT_TZ;
-  const homeColor = home.color ?? "#5b6472";
-  const awayColor = away.color ?? "#5b6472";
-
-  // live layer: situation, red zone, in-game win prob, pick/bet cover status
-  const redZone =
-    live &&
-    isRedZone({
-      status: game.status,
-      possession: game.possession,
-      situation: game.current_situation,
-      home,
-      away,
-    });
-  const posAbbr =
-    game.possession === "home" ? home.abbr : game.possession === "away" ? away.abbr : null;
-  const liveProb = live
-    ? liveWinProb({
-        pregameMargin: prediction ? -Number(prediction.spread) : 0,
-        homePoints: game.home_points ?? 0,
-        awayPoints: game.away_points ?? 0,
-        period: game.current_period,
-        clock: game.current_clock,
-      })
-    : null;
-  const hPts = game.home_points ?? 0;
-  const aPts = game.away_points ?? 0;
-  const myPickStatus =
-    live && myPick ? statusForPick(myPick.side, Number(myPick.line_at_pick), hPts, aPts) : null;
+  // The live layer (score, situation, win prob, your-action chips) renders in
+  // the GameHeader client island, which streams realtime updates and polls as
+  // a fallback — this page used to be the only live surface that never moved.
   const openBets = (betsRes.data ?? []) as Array<
     Pick<BetRow, "id" | "bet_type" | "side" | "line_taken">
   >;
-  const myBetStatuses = live
-    ? openBets
-        .map((b) => ({
-          bet: b,
-          status: statusForBet(
-            {
-              id: b.id,
-              betType: b.bet_type,
-              side: b.side,
-              line: b.line_taken === null ? null : Number(b.line_taken),
-            },
-            hPts,
-            aPts,
-          ),
-        }))
-        .filter((x) => x.status !== null)
-    : [];
-  const homeLost =
-    final && game.home_points !== null && game.away_points !== null && game.home_points < game.away_points;
-  const awayLost =
-    final && game.home_points !== null && game.away_points !== null && game.away_points < game.home_points;
+  const myBets: MyBetView[] = openBets.map((b) => ({
+    id: b.id,
+    betType: b.bet_type,
+    side: b.side,
+    line: b.line_taken === null ? null : Number(b.line_taken),
+  }));
 
   const modelEdge = prediction?.edge === null || prediction === null ? null : Number(prediction.edge);
   const stake = prediction
@@ -251,128 +203,34 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
           <ArrowLeft size={13} aria-hidden /> Back to slate
         </Link>
 
-        {/* Broadcast header */}
-        <section className={`card relative overflow-hidden ${live ? "card-live" : ""}`}>
-          <div
-            aria-hidden
-            className="absolute inset-0 opacity-[0.16]"
-            style={{
-              background: `linear-gradient(105deg, ${awayColor} 0%, ${awayColor} 38%, transparent 50%, ${homeColor} 62%, ${homeColor} 100%)`,
-            }}
-          />
-          <div aria-hidden className="absolute inset-x-0 top-0 flex h-1">
-            <span className="flex-1" style={{ background: awayColor }} />
-            <span className="flex-1" style={{ background: homeColor }} />
-          </div>
-
-          <div className="relative px-4 py-4 sm:px-6">
-            <div className="flex items-center justify-between gap-2 text-xs text-dim">
-              <span className="stat">
-                {live ? (
-                  <span className="flex items-center gap-2">
-                    <LiveBadge />
-                    <span className="font-semibold text-chalk">
-                      {periodLabel(game.current_period)}
-                      {game.current_clock ? ` · ${game.current_clock}` : ""}
-                    </span>
-                  </span>
-                ) : final ? (
-                  <span className="font-semibold uppercase">
-                    Final
-                    {game.current_period !== null && game.current_period > 4
-                      ? ` / ${periodLabel(game.current_period)}`
-                      : ""}
-                  </span>
-                ) : game.start_ts ? (
-                  `${kickDateLong(game.start_ts, tz)} · ${kickParts(game.start_ts, tz).time} ${tzLabel(tz)}`
-                ) : (
-                  "Kickoff TBD"
-                )}
-              </span>
-              {game.tv && (
-                <span className="stat flex items-center gap-1">
-                  <Tv size={12} aria-hidden />
-                  {game.tv}
-                </span>
-              )}
-            </div>
-
-            <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6">
-              <HeaderTeam team={away} points={game.away_points} showScore={showScore} lost={awayLost} align="left" hasBall={live && game.possession === "away"} />
-              <span className="scorebug text-lg text-chalk/35">{game.neutral_site ? "vs" : "@"}</span>
-              <HeaderTeam team={home} points={game.home_points} showScore={showScore} lost={homeLost} align="right" hasBall={live && game.possession === "home"} />
-            </div>
-
-            {live && game.current_situation && (
-              <p className="stat mt-3 flex flex-wrap items-center justify-center gap-1.5 text-center text-sm text-chalk">
-                <span>
-                  {posAbbr ? `${posAbbr} ball · ` : ""}
-                  {game.current_situation}
-                </span>
-                {redZone && <span className="chip bg-loss/15 text-loss">Red zone</span>}
-              </p>
-            )}
-
-            {(prediction || liveProb !== null) && (
-              <div className="mx-auto mt-4 max-w-md">
-                <WinProbBar
-                  home={home}
-                  away={away}
-                  homeWinProb={liveProb ?? Number(prediction!.home_win_prob)}
-                  height={7}
-                />
-                {liveProb !== null && (
-                  <p className="stat mt-1.5 text-center text-[10.5px] leading-none text-dim">
-                    Live win probability
-                    {prediction && (
-                      <>
-                        {" · pregame "}
-                        <span className="text-chalk">
-                          {fmtPct(Number(prediction.home_win_prob))} {home.abbr}
-                        </span>
-                      </>
-                    )}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {(myPickStatus || myBetStatuses.length > 0) && (
-              <div className="mt-4 border-t border-chalk/10 pt-3">
-                <p className="mb-1.5 text-center text-[10px] font-semibold uppercase tracking-wider text-chalk/40">
-                  Your action
-                </p>
-                <div className="flex flex-wrap items-center justify-center gap-1.5">
-                  {myPickStatus && myPick && (
-                    <LiveStatusChip
-                      prefix={`Pick ${
-                        myPick.side === "home"
-                          ? `${home.abbr} ${fmtSpread(Number(myPick.line_at_pick))}`
-                          : myPick.side === "away"
-                            ? `${away.abbr} ${fmtSpread(Number(myPick.line_at_pick))}`
-                            : `${myPick.side === "over" ? "O" : "U"} ${fmtTotal(Number(myPick.line_at_pick))}`
-                      }`}
-                      status={myPickStatus}
-                    />
-                  )}
-                  {myBetStatuses.map(({ bet, status }) => (
-                    <LiveStatusChip
-                      key={bet.id}
-                      prefix={
-                        bet.bet_type === "spread"
-                          ? `${(bet.side === "home" ? home : away).abbr} ${fmtSpread(bet.line_taken === null ? null : Number(bet.line_taken))}`
-                          : bet.bet_type === "total"
-                            ? `${bet.side === "over" ? "O" : "U"} ${fmtTotal(bet.line_taken === null ? null : Number(bet.line_taken))}`
-                            : `${(bet.side === "home" ? home : away).abbr} ML`
-                      }
-                      status={status!}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
+        {/* Broadcast header — live island (realtime + poll heal) */}
+        <GameHeader
+          gameId={game.id}
+          week={game.week}
+          seasonId={game.season_id}
+          neutralSite={game.neutral_site}
+          tv={game.tv}
+          startTs={game.start_ts}
+          home={home}
+          away={away}
+          prediction={
+            prediction
+              ? { spread: Number(prediction.spread), homeWinProb: Number(prediction.home_win_prob) }
+              : null
+          }
+          myPick={myPick ? { side: myPick.side, line: Number(myPick.line_at_pick) } : null}
+          myBets={myBets}
+          initial={{
+            status: game.status,
+            homePoints: game.home_points,
+            awayPoints: game.away_points,
+            period: game.current_period,
+            clock: game.current_clock,
+            situation: game.current_situation,
+            lastPlay: game.last_play,
+            possession: game.possession,
+          }}
+        />
 
         {/* Pick'em + crew — up top, never hidden */}
         <section className="card mt-4 px-4 py-4">
@@ -581,56 +439,6 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
 
       </main>
     </>
-  );
-}
-
-function HeaderTeam({
-  team,
-  points,
-  showScore,
-  lost,
-  align,
-  hasBall = false,
-}: {
-  team: TeamView;
-  points: number | null;
-  showScore: boolean;
-  lost: boolean;
-  align: "left" | "right";
-  hasBall?: boolean;
-}) {
-  const right = align === "right";
-  const ball = hasBall && (
-    <span
-      role="img"
-      aria-label={`${team.school} has possession`}
-      title="Possession"
-      className="inline-block h-2 w-2 rounded-full bg-accent"
-    />
-  );
-  return (
-    <div className={`flex items-center gap-3 ${right ? "flex-row-reverse" : ""} ${lost ? "opacity-50" : ""}`}>
-      <TeamMark team={team} size={48} glow />
-      <div className={`min-w-0 ${right ? "text-right" : ""}`}>
-        <p className="scorebug truncate text-lg leading-tight text-chalk sm:text-xl">{team.school}</p>
-        <p className="stat text-[10.5px] text-dim">
-          {[team.conference, team.pollRank !== null && team.poll ? `#${team.pollRank} ${team.poll}` : null]
-            .filter(Boolean)
-            .join(" · ")}
-        </p>
-        {showScore && (
-          <p
-            className={`scorebug flex items-center gap-2 text-4xl leading-none ${
-              right ? "justify-end" : ""
-            } ${lost ? "text-dim" : "text-chalk"}`}
-          >
-            {!right && ball}
-            {points ?? 0}
-            {right && ball}
-          </p>
-        )}
-      </div>
-    </div>
   );
 }
 
