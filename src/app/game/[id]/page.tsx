@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppNav } from "../../../components/AppNav";
 import { GameHeader } from "../../../components/game/GameHeader";
+import { MovementChart } from "../../../components/game/MovementChart";
 import { PickButtons } from "../../../components/PickButtons";
 import { ConsensusChip, EdgeChip } from "../../../components/slate/chips";
 import { Sparkline } from "../../../components/slate/Sparkline";
@@ -389,6 +390,8 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
               </tbody>
             </table>
           </div>
+          {/* movement over time, stepped with a real axis (audit #27) */}
+          <MovementChart points={history} />
         </section>
 
         {/* Model projection */}

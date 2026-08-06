@@ -2,7 +2,7 @@
 
 import { ChevronDown, RefreshCw, Search, SearchX } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useStarred, useViewerTz } from "../../lib/client-store";
+import { useFocusedGames, useStarred, useViewerTz } from "../../lib/client-store";
 import type { GameRow } from "../../lib/db-types";
 import { clockTime, dayKey, dayTabLabel, kickSlot, DEFAULT_TZ, tzLabel } from "../../lib/kick";
 import { liveUrgency } from "../../lib/live-status";
@@ -53,6 +53,7 @@ export function SlateView({
   const [loading, setLoading] = useState(false);
   const tz = useViewerTz(DEFAULT_TZ);
   const [starred, toggleStar] = useStarred();
+  const [focusedIds, toggleFocus] = useFocusedGames();
   const [day, setDay] = useState<string>("all");
   const [conference, setConference] = useState("all");
   const [network, setNetwork] = useState("all");
@@ -356,12 +357,24 @@ export function SlateView({
   const record = weekModelRecord(games);
   const finals = games.filter(isFinal).length;
 
+  // multi-game focus: pinned games ride above everything, unfiltered —
+  // you pinned them, you get them (kickoff order, live first)
+  const focusedGames = useMemo(() => {
+    const set = new Set(focusedIds);
+    return games
+      .filter((g) => set.has(g.id))
+      .sort((a, b) => Number(isLive(b)) - Number(isLive(a)) || (a.startTs ?? "").localeCompare(b.startTs ?? ""));
+  }, [games, focusedIds]);
+
   /* ---- render ---------------------------------------------------------- */
 
   return (
     <>
-      {/* sticky control bar */}
-      <div className="sticky top-[49px] z-10 -mx-4 border-b border-chalk/10 bg-background/85 px-4 backdrop-blur-md">
+      {/* sticky control bar — offsets below the nav plus the (dynamic) ticker */}
+      <div
+        className="sticky z-10 -mx-4 border-b border-chalk/10 bg-background/85 px-4 backdrop-blur-md"
+        style={{ top: "calc(3rem + var(--ticker-h, 0px))" }}
+      >
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 py-2.5">
           <WeekSelect
             week={week}
@@ -457,6 +470,29 @@ export function SlateView({
 
       {/* slate */}
       <div className="mx-auto mt-4 max-w-7xl pb-12">
+        {focusedGames.length > 0 && !loading && (
+          <section aria-label="Focused games" className="mb-7">
+            <SectionHeader
+              title="Focus"
+              count={focusedGames.length}
+              live={focusedGames.some(isLive)}
+            />
+            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              {focusedGames.map((g, i) => (
+                <GameCard
+                  key={`focus-${g.id}`}
+                  game={g}
+                  tz={tz}
+                  starred={starred}
+                  onStar={toggleStar}
+                  index={i}
+                  focused
+                  onFocus={toggleFocus}
+                />
+              ))}
+            </div>
+          </section>
+        )}
         {loading ? (
           <SkeletonSlate />
         ) : games.length === 0 ? (
@@ -479,6 +515,8 @@ export function SlateView({
                 starred={starred}
                 onStar={toggleStar}
                 featuredId={featuredId}
+                focusedIds={focusedIds}
+                onFocus={toggleFocus}
               />
             </section>
           ))
@@ -489,6 +527,8 @@ export function SlateView({
             starred={starred}
             onStar={toggleStar}
             featuredId={featuredId}
+            focusedIds={focusedIds}
+            onFocus={toggleFocus}
           />
         )}
       </div>
@@ -506,12 +546,16 @@ function CardGrid({
   starred,
   onStar,
   featuredId,
+  focusedIds,
+  onFocus,
 }: {
   games: GameView[];
   tz: string;
   starred: number[];
   onStar: (teamId: number) => void;
   featuredId: number | null;
+  focusedIds: number[];
+  onFocus: (gameId: number) => void;
 }) {
   return (
     <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
@@ -524,6 +568,8 @@ function CardGrid({
           onStar={onStar}
           index={i}
           featured={g.id === featuredId}
+          focused={focusedIds.includes(g.id)}
+          onFocus={onFocus}
         />
       ))}
     </div>

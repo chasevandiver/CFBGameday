@@ -1,20 +1,37 @@
 "use client";
 
 /**
- * Slim gameday score strip under the nav (docs/SPEC.md §7). Renders nothing
- * outside game windows — /api/ticker only returns live games, recent finals,
- * and imminent kickoffs. Polls every 60s and rides the realtime channel for
- * instant score updates while anything is live.
+ * Slim gameday score strip, sticky under the nav (docs/SPEC.md §7). Renders
+ * nothing outside game windows — /api/ticker only returns live games, recent
+ * finals, and imminent kickoffs. Polls every 60s and rides the realtime
+ * channel for instant score updates while anything is live.
  */
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { periodLabel } from "../lib/kick";
 import type { TickerData } from "../lib/ticker";
 import { useGamesRealtime } from "../lib/use-games-realtime";
 
 export function ScoreTicker() {
   const [data, setData] = useState<TickerData | null>(null);
+  const stripRef = useRef<HTMLDivElement>(null);
+
+  // The ticker is sticky under the nav; anything else sticky (the slate's
+  // control bar) offsets below it via --ticker-h, which tracks the ticker's
+  // real height and drops to 0 when it hides (audit #17: the control bar
+  // used to assume no ticker and sandwich it).
+  const visible = (data?.games.length ?? 0) > 0;
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty(
+      "--ticker-h",
+      visible ? `${stripRef.current?.offsetHeight ?? 30}px` : "0px",
+    );
+    return () => {
+      root.style.setProperty("--ticker-h", "0px");
+    };
+  }, [visible]);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,7 +86,10 @@ export function ScoreTicker() {
   if (!data || data.games.length === 0) return null;
 
   return (
-    <div className="border-b border-chalk/10 bg-background/85 backdrop-blur-md">
+    <div
+      ref={stripRef}
+      className="sticky top-12 z-[15] border-b border-chalk/10 bg-background/85 backdrop-blur-md"
+    >
       <div className="scroll-thin mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 py-1">
         {data.games.map((g) => {
           const live = g.status === "in_progress";

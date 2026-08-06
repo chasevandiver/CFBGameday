@@ -23,8 +23,8 @@ export function AppNav() {
           <ThemeToggle />
         </div>
       </header>
-      {/* below the sticky header so it scrolls away and the slate's sticky
-          control bar keeps its top offset */}
+      {/* sticky under the header; publishes --ticker-h so other sticky bars
+          offset below it */}
       <ScoreTicker />
     </>
   );

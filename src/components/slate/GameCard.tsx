@@ -1,6 +1,6 @@
 "use client";
 
-import { CloudRain, Snowflake, Star, Tv, Wind } from "lucide-react";
+import { CloudRain, Pin, Snowflake, Star, Tv, Wind } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { inSlip, useBetSlip, type SlipSelection } from "../../lib/bet-slip-store";
@@ -45,6 +45,9 @@ interface Props {
   index?: number;
   /** Game of the Week — accent ring + chip, otherwise a normal card */
   featured?: boolean;
+  /** Multi-game focus mode: pinned to the Focus row at the top of the slate */
+  focused?: boolean;
+  onFocus?: (gameId: number) => void;
 }
 
 const DOWN = ["", "1st", "2nd", "3rd", "4th"];
@@ -55,7 +58,16 @@ function underTwo(period: number | null, clock: string | null): boolean {
   return m !== null && Number(m[1]) < 2;
 }
 
-export function GameCard({ game, tz, starred, onStar, index = 0, featured = false }: Props) {
+export function GameCard({
+  game,
+  tz,
+  starred,
+  onStar,
+  index = 0,
+  featured = false,
+  focused = false,
+  onFocus,
+}: Props) {
   const live = isLive(game);
   const final = isFinal(game);
   const dead = isDead(game);
@@ -109,7 +121,16 @@ export function GameCard({ game, tz, starred, onStar, index = 0, featured = fals
       <div
         className={`pointer-events-none relative z-10 flex h-full flex-col p-3.5 ${cover ? "pt-2.5" : "pt-4"}`}
       >
-        <CardHeader game={game} tz={tz} live={live} final={final} dead={dead} featured={featured} />
+        <CardHeader
+          game={game}
+          tz={tz}
+          live={live}
+          final={final}
+          dead={dead}
+          featured={featured}
+          focused={focused}
+          onFocus={onFocus}
+        />
 
         {/* score changes on games you have action on are announced to screen
             readers; this region persists across score re-renders */}
@@ -184,6 +205,8 @@ function CardHeader({
   final,
   dead,
   featured,
+  focused,
+  onFocus,
 }: {
   game: GameView;
   tz: string;
@@ -191,6 +214,8 @@ function CardHeader({
   final: boolean;
   dead: boolean;
   featured: boolean;
+  focused: boolean;
+  onFocus?: (gameId: number) => void;
 }) {
   const u2m = live && underTwo(game.period, game.clock);
   return (
@@ -227,6 +252,23 @@ function CardHeader({
             <Tv size={11} aria-hidden />
             {game.tv}
           </span>
+        )}
+        {onFocus && !final && !dead && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onFocus(game.id);
+            }}
+            aria-label={focused ? "Remove from focus row" : "Pin to focus row"}
+            aria-pressed={focused}
+            title={focused ? "Unpin from Focus" : "Pin to Focus (max 4)"}
+            className={`pointer-events-auto -m-1 shrink-0 rounded p-1 transition-colors ${
+              focused ? "text-accent" : "text-chalk/25 hover:text-chalk/60"
+            }`}
+          >
+            <Pin size={13} fill={focused ? "currentColor" : "none"} aria-hidden />
+          </button>
         )}
       </div>
     </div>
