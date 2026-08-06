@@ -11,7 +11,8 @@
  * Usage: npx tsx scripts/refresh-lines.ts [--dry-run] [--burst] [--week N]
  */
 
-import { cfbd } from "../src/lib/cfbd";
+import { cfbd, cfbdCallCount } from "../src/lib/cfbd";
+import { logCfbdCalls } from "./lib/jobs-core";
 import { SEASON, chunk, createSink } from "./lib/ingest";
 
 const BURST_WINDOW_MIN = 100;
@@ -71,6 +72,7 @@ async function main() {
     );
 
   for (const batch of chunk(rows, 500)) await sink.insert("line_snapshots", batch);
+  if (db) await logCfbdCalls(db, burst ? "refresh-lines-burst" : "refresh-lines", cfbdCallCount());
   console.log(`  ${rows.length} snapshots appended`);
 }
 

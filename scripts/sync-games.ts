@@ -6,11 +6,12 @@
  * Usage: npx tsx scripts/sync-games.ts [--dry-run] [--week N]
  */
 
-import { cfbd } from "../src/lib/cfbd";
+import { cfbd, cfbdCallCount } from "../src/lib/cfbd";
+import { logCfbdCalls } from "./lib/jobs-core";
 import { SEASON, chunk, createSink } from "./lib/ingest";
 
 async function main() {
-  const { sink } = createSink();
+  const { sink, db } = createSink();
   const weekArg = process.argv.indexOf("--week");
   const week = weekArg > -1 ? Number(process.argv[weekArg + 1]) : undefined;
 
@@ -42,6 +43,7 @@ async function main() {
   }));
 
   for (const batch of chunk(rows, 500)) await sink.upsert("games", batch);
+  if (db) await logCfbdCalls(db, "sync-games", cfbdCallCount());
   console.log(`  ${rows.length} games upserted`);
 }
 

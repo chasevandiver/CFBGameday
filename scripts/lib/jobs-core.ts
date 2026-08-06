@@ -41,6 +41,22 @@ interface Snapshot {
 const consensus = (snapshots: Snapshot[], before?: string) =>
   consensusFromSnapshots(snapshots, before);
 
+/**
+ * Meter CFBD usage into api_call_log (one row per call — the table existed
+ * since 0001 but nothing ever wrote it). The scoreboard loop throttles and
+ * stops off this table, and the Crew admin panel shows the month's total.
+ */
+export async function logCfbdCalls(
+  db: SupabaseClient,
+  job: string,
+  calls: number,
+): Promise<void> {
+  if (calls <= 0) return;
+  const rows = Array.from({ length: calls }, () => ({ source: "cfbd", endpoint: job }));
+  const { error } = await db.from("api_call_log").insert(rows);
+  if (error) console.error(`api_call_log insert failed: ${error.message}`);
+}
+
 // ---------------------------------------------------------------------------
 
 /** Live scoreboard poll → games status/points/period/clock (slate live states). */

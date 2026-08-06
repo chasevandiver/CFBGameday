@@ -24,6 +24,7 @@ on:
           - sync-rankings
           - sync-systems
           - scoreboard
+          - scoreboard-loop
           - weather
           - ratings-update
           - freeze
@@ -39,12 +40,15 @@ on:
     - cron: "*/10 0-3 * * 0"
     # Games sync daily
     - cron: "0 9 * * *"
-    # Scoreboard: Sat daytime + Thu/Fri/Sat nights (CT evenings = 0-4 UTC).
-    # Every 5 min in the Saturday windows — realtime pushes these writes to
-    # browsers the moment they land, so job cadence is the freshness ceiling.
-    - cron: "*/5 16-23 * * 6"
-    - cron: "*/5 0-4 * * 0"
-    - cron: "*/15 0-3 * * 5,6"
+    # Scoreboard: hourly launches of a continuous polling loop (Actions cron
+    # can't fire sub-5-minute reliably). Each run polls every 30s while games
+    # are live, 120s around kickoffs, and makes zero CFBD calls when idle;
+    # realtime pushes every write to browsers instantly, so ~30s is the
+    # score-freshness ceiling. Runs overlap by ~3 min and the concurrency
+    # group cancels the old run for a seamless handoff.
+    - cron: "0 15-23 * * 6"
+    - cron: "0 0-4 * * 0"
+    - cron: "0 0-3 * * 5,6"
     # Weather Saturday mornings
     - cron: "0 10 * * 6"
     # Sunday ratings update + grading (8am ET)
@@ -57,12 +61,13 @@ on:
 
 concurrency:
   group: jobs-${{ github.event.schedule || inputs.task }}
-  cancel-in-progress: false
+  # the hourly scoreboard loops overlap by design; the new run replaces the old
+  cancel-in-progress: true
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 75
     env:
       CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -82,7 +87,7 @@ jobs:
             "0 3,12,17,22 * * *"|"0 13-23 * * 6") echo "task=refresh-lines" >> "$GITHUB_OUTPUT" ;;
             "*/10 15-23 * * 6"|"*/10 0-3 * * 0") echo "task=refresh-lines-burst" >> "$GITHUB_OUTPUT" ;;
             "0 9 * * *") echo "task=sync-games" >> "$GITHUB_OUTPUT" ;;
-            "*/5 16-23 * * 6"|"*/5 0-4 * * 0"|"*/15 0-3 * * 5,6") echo "task=scoreboard" >> "$GITHUB_OUTPUT" ;;
+            "0 15-23 * * 6"|"0 0-4 * * 0"|"0 0-3 * * 5,6") echo "task=scoreboard-loop" >> "$GITHUB_OUTPUT" ;;
             "0 10 * * 6") echo "task=weather" >> "$GITHUB_OUTPUT" ;;
             "0 13 * * 0") echo "task=ratings-update" >> "$GITHUB_OUTPUT" ;;
             "0 3 * * 5") echo "task=freeze" >> "$GITHUB_OUTPUT" ;;
@@ -97,6 +102,7 @@ jobs:
             refresh-lines-burst) npx tsx scripts/refresh-lines.ts --burst ;;
             # daily slot also refreshes poll rankings (AP Sun, CFP Tue — 1 call/day)
             sync-games) npx tsx scripts/sync-games.ts && npx tsx scripts/run-job.ts sync-rankings && npx tsx scripts/run-job.ts sync-systems ;;
+            scoreboard-loop) npx tsx scripts/scoreboard-loop.ts --minutes 63 ;;
             sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
             questions|verdicts)
               if [ -z "$ANTHROPIC_API_KEY" ]; then

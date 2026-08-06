@@ -491,6 +491,21 @@ export async function fetchBetFormGames(
   return { data: data ?? [] };
 }
 
+/**
+ * CFBD calls metered so far this calendar month (UTC), from api_call_log.
+ * Service-role only — the table is deny-all under RLS.
+ */
+export async function fetchCfbdCallsThisMonth(service: SupabaseClient): Promise<number> {
+  const monthStart = new Date();
+  monthStart.setUTCDate(1);
+  monthStart.setUTCHours(0, 0, 0, 0);
+  const { count } = await service
+    .from("api_call_log")
+    .select("id", { count: "exact", head: true })
+    .gte("called_at", monthStart.toISOString());
+  return count ?? 0;
+}
+
 export async function fetchProfiles(supabase: SupabaseClient): Promise<ProfileRow[]> {
   const { data } = await supabase.from("profiles").select("*").order("display_name");
   return (data ?? []) as ProfileRow[];

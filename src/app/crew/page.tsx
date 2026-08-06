@@ -3,7 +3,7 @@ import { AdjustmentsPanel, type AdjustmentView } from "../../components/Adjustme
 import { AppNav } from "../../components/AppNav";
 import { InviteForm } from "../../components/InviteForm";
 import type { PickRow, ProfileRow } from "../../lib/db-types";
-import { fetchCurrentSeasonWeek, fetchProfiles } from "../../lib/queries";
+import { fetchCfbdCallsThisMonth, fetchCurrentSeasonWeek, fetchProfiles } from "../../lib/queries";
 import { createClient } from "../../lib/supabase/server";
 import { createServiceClient } from "../../lib/supabase/service";
 
@@ -33,9 +33,10 @@ export default async function CrewPage() {
   let invited: Array<{ email: string; joined: boolean }> = [];
   let ratedTeams: Array<{ id: number; school: string }> = [];
   let adjustments: AdjustmentView[] = [];
+  let cfbdCalls: number | null = null;
   if (me?.is_admin) {
     const service = createServiceClient();
-    const [{ data: allowlist }, { data: joinedUsers }, { data: ratingRows }, { data: adjRows }] =
+    const [{ data: allowlist }, { data: joinedUsers }, { data: ratingRows }, { data: adjRows }, callCount] =
       await Promise.all([
         service.from("invite_allowlist").select("email").order("created_at"),
         service.auth.admin.listUsers({ perPage: 100 }),
@@ -45,7 +46,9 @@ export default async function CrewPage() {
           .select("id, team_id, points, reason, source, confirmed_at")
           .eq("season_id", seasonId)
           .order("proposed_at", { ascending: false }),
+        fetchCfbdCallsThisMonth(service),
       ]);
+    cfbdCalls = callCount;
     const joinedEmails = new Set(
       (joinedUsers?.users ?? []).map((u) => u.email?.toLowerCase()).filter(Boolean),
     );
@@ -263,6 +266,28 @@ export default async function CrewPage() {
                 ))}
               </ul>
             )}
+          </section>
+        )}
+
+        {me?.is_admin && cfbdCalls !== null && (
+          <section className="card mt-6 flex items-center justify-between p-4">
+            <div>
+              <h2 className="text-sm text-accent">CFBD budget</h2>
+              <p className="mt-1 text-xs text-dim">
+                Metered API calls this month. The scoreboard loop throttles at 80% and stops at
+                95% on its own.
+              </p>
+            </div>
+            <p className="stat text-right text-xl font-semibold">
+              <span
+                className={
+                  cfbdCalls >= 27_000 ? "text-loss" : cfbdCalls >= 22_500 ? "text-edge" : "text-chalk"
+                }
+              >
+                {cfbdCalls.toLocaleString()}
+              </span>
+              <span className="text-sm text-dim"> / 30,000</span>
+            </p>
           </section>
         )}
 
