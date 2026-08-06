@@ -319,10 +319,36 @@ async function main() {
     );
   }
   preseason.sort((a, b) => b.rating - a.rating);
-  const top5 = preseason
-    .slice(0, 5)
-    .map((p) => `${fbs.find((t) => t.id === p.teamId)?.school} ${p.rating.toFixed(1)}`);
-  console.log(`  top 5: ${top5.join(", ")}`);
+
+  // Ranking table with the component breakdown. The backtest validates the
+  // model against 2023–25; only an eyeball against a real preseason poll
+  // catches a 2026-specific data failure (a talent join that silently missed,
+  // a returning-production name mismatch), because a broken input still
+  // produces a confident-looking number.
+  const topArg = process.argv.indexOf("--top");
+  const topN = topArg > -1 ? Number(process.argv[topArg + 1]) : 25;
+  const schoolOf = new Map(fbs.map((t) => [t.id, t.school]));
+  console.log(`\n  === ${SEASON} preseason ratings, top ${topN} ===`);
+  console.log("  rk  team                     rating   prev  talent  churn  coach   luck");
+  for (const [i, p] of preseason.slice(0, topN).entries()) {
+    console.log(
+      `  ${String(i + 1).padStart(2)}  ${(schoolOf.get(p.teamId) ?? "?").padEnd(24)} ` +
+        `${p.rating.toFixed(1).padStart(6)}  ${(p.finalPrev ?? 0).toFixed(1).padStart(5)}  ` +
+        `${p.talent.toFixed(1).padStart(6)}  ${p.churn.toFixed(1).padStart(5)}  ` +
+        `${p.coaching.toFixed(1).padStart(5)}  ${p.luckCorr.toFixed(1).padStart(5)}`,
+    );
+  }
+  const ratingVals = preseason.map((p) => p.rating);
+  console.log(
+    `  ${preseason.length} FBS teams | range ${Math.min(...ratingVals).toFixed(1)} to ` +
+      `${Math.max(...ratingVals).toFixed(1)} | median ` +
+      `${ratingVals.slice().sort((a, b) => a - b)[Math.floor(ratingVals.length / 2)].toFixed(1)}`,
+  );
+  // Inputs that silently defaulted are the failure mode worth naming out loud.
+  const noPrev = preseason.filter((p) => p.finalPrev === null).length;
+  const noRet = preseason.filter((p) => p.retOff === null).length;
+  if (noPrev > 0) console.log(`  note: ${noPrev} team(s) had no prior-season rating (talent only)`);
+  if (noRet > 0) console.log(`  note: ${noRet} team(s) had no returning-production match`);
 
   // ---- 7. Team HFA quick estimate (2015–2024) -------------------------------
   console.log("Estimating team HFA from 2015–2024…");

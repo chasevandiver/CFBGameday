@@ -30,6 +30,10 @@ on:
           - freeze
           - questions
           - verdicts
+          # Read-only preview: builds the preseason ratings and prints the
+          # ranking table to the log. Writes JSON to a scratch dir that is
+          # thrown away with the runner — nothing reaches the database.
+          - preseason-preview
   schedule:
     # Lines 4x daily (8am/1pm/6pm/11pm ET)
     - cron: "0 3,12,17,22 * * *"
@@ -104,6 +108,8 @@ jobs:
             sync-games) npx tsx scripts/sync-games.ts && npx tsx scripts/run-job.ts sync-rankings && npx tsx scripts/run-job.ts sync-systems ;;
             scoreboard-loop) npx tsx scripts/scoreboard-loop.ts --minutes 63 ;;
             sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
+            # Preview only — the JSON goes to a scratch dir and is discarded.
+            preseason-preview) npx tsx scripts/build-preseason.ts --out "$RUNNER_TEMP/preseason" --top 40 ;;
             questions|verdicts)
               if [ -z "$ANTHROPIC_API_KEY" ]; then
                 echo "ANTHROPIC_API_KEY not set — skipping LLM generation"
