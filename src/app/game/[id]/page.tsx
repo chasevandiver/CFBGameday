@@ -33,6 +33,7 @@ import {
   type TeamView,
 } from "../../../lib/slate";
 import { createClient } from "../../../lib/supabase/server";
+import { hasCalibratedTotals } from "../../../model/ratings";
 
 export const dynamic = "force-dynamic";
 
@@ -157,7 +158,12 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   const consensus = consensusFromSnapshots(snapshots);
   const history = consensusHistory(snapshots, consensus.open);
   const predictions = (predRes.data ?? []) as PredictionRow[];
-  const prediction = predictions.find((p) => p.frozen) ?? predictions[0] ?? null;
+  let prediction = predictions.find((p) => p.frozen) ?? predictions[0] ?? null;
+  // append-only history: rows from pre-2026.3.0 versions priced totals as a
+  // constant — never render those fields (audit #4)
+  if (prediction && !hasCalibratedTotals(prediction.model_version)) {
+    prediction = { ...prediction, total: null, home_score: null, away_score: null };
+  }
   const picks = (picksRes.data ?? []) as PickRow[]; // crew picks are never hidden (0010)
   const profiles = new Map(((profilesRes.data ?? []) as ProfileRow[]).map((p) => [p.id, p]));
   const weather = weatherRes.data as {

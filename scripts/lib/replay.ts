@@ -87,18 +87,25 @@ export function replaySeason(
   data: SeasonData,
   priors: Map<number, number>,
   params: ModelParams,
-): { predictions: ReplayPrediction[]; finalRatings: Map<number, number> } {
+  /** Per-team off-vs-def tilt: off = prior/2 + tilt, def = prior/2 − tilt.
+   *  Leaves margins untouched (off+def ≡ prior) but makes preseason totals
+   *  informative from week 1. Seed from SP+ via subTiltsFromSp. */
+  tilts?: Map<number, number>,
+): {
+  predictions: ReplayPrediction[];
+  finalRatings: Map<number, number>;
+  finalTilts: Map<number, number>;
+} {
   // Off/def carry the season (§2.2): overall ≡ off + def by construction, and
   // updateSubRatings preserves the overall margin update exactly (its off+def
   // deltas sum to the updateFromResult delta), so margins reproduce the tuned
-  // behavior while totals gain real matchup signal. Priors split evenly —
-  // week 1 totals start at the league baseline and differentiate as results
-  // arrive, which the by-week calibration report makes visible.
+  // behavior while totals gain real matchup signal.
+  const tiltOf = (id: number) => tilts?.get(id) ?? 0;
   const offense = new Map<number, number>();
   const defense = new Map<number, number>();
   for (const [id, prior] of priors) {
-    offense.set(id, prior / 2);
-    defense.set(id, prior / 2);
+    offense.set(id, prior / 2 + tiltOf(id));
+    defense.set(id, prior / 2 - tiltOf(id));
   }
   const predictions: ReplayPrediction[] = [];
   const linesById = new Map(data.lines.map((l) => [l.id, l]));
@@ -119,8 +126,10 @@ export function replaySeason(
         const prior = priors.get(teamId);
         if (prior === undefined)
           return { overall: FCS_RATING, offense: FCS_RATING / 2, defense: FCS_RATING / 2, tempo: 70 };
-        const off = blendWithPrior(prior / 2, offense.get(teamId) ?? prior / 2, week, params);
-        const def = blendWithPrior(prior / 2, defense.get(teamId) ?? prior / 2, week, params);
+        const pOff = prior / 2 + tiltOf(teamId);
+        const pDef = prior / 2 - tiltOf(teamId);
+        const off = blendWithPrior(pOff, offense.get(teamId) ?? pOff, week, params);
+        const def = blendWithPrior(pDef, defense.get(teamId) ?? pDef, week, params);
         return { overall: off + def, offense: off, defense: def, tempo: 70 };
       };
       const home = blended(g.homeId);
@@ -190,10 +199,40 @@ export function replaySeason(
   }
 
   const finalRatings = new Map<number, number>();
+  const finalTilts = new Map<number, number>();
   for (const [id] of priors) {
-    finalRatings.set(id, (offense.get(id) ?? 0) + (defense.get(id) ?? 0));
+    const off = offense.get(id) ?? 0;
+    const def = defense.get(id) ?? 0;
+    finalRatings.set(id, off + def);
+    finalTilts.set(id, (off - def) / 2);
   }
-  return { predictions, finalRatings };
+  return { predictions, finalRatings, finalTilts };
+}
+
+/**
+ * Off-vs-def tilt from SP+ sub-ratings, mean-centered per side so the tilt is
+ * pure shape: a team's overall prior is untouched (off+def still sums to it),
+ * only how it splits changes. SP+ defense is lower-is-better, hence the flip.
+ */
+export function subTiltsFromSp(
+  sp: CfbdSpRating[],
+  teamIdsByName: Map<string, number>,
+): Map<number, number> {
+  const rows = sp.filter(
+    (r) => r.team !== "nationalAverages" && r.offense !== null && r.defense !== null,
+  );
+  if (rows.length === 0) return new Map();
+  const meanOff = rows.reduce((a, r) => a + (r.offense as { rating: number }).rating, 0) / rows.length;
+  const meanDef = rows.reduce((a, r) => a + (r.defense as { rating: number }).rating, 0) / rows.length;
+  const tilts = new Map<number, number>();
+  for (const r of rows) {
+    const id = teamIdsByName.get(r.team);
+    if (id === undefined) continue;
+    const rawOff = (r.offense as { rating: number }).rating - meanOff;
+    const rawDef = meanDef - (r.defense as { rating: number }).rating;
+    tilts.set(id, (rawOff - rawDef) / 2);
+  }
+  return tilts;
 }
 
 export function priorsFromSp(

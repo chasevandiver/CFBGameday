@@ -86,10 +86,8 @@ async function main() {
   // SP+'s opponent adjustment corrects G5 schedule-pocket inflation that a
   // pure margin replay can't see.
   const REPLAY_SHARE = 0.5;
-  const sp2025 = priorsFromSp(
-    await cached("sp-2025", () => cfbd.spRatings(2025), true),
-    idsByName,
-  );
+  const sp2025Rows = await cached("sp-2025", () => cfbd.spRatings(2025), true);
+  const sp2025 = priorsFromSp(sp2025Rows, idsByName);
   const finals = new Map<number, number>();
   for (const [teamId, replayRating] of replayFinals) {
     const sp = sp2025.get(teamId);
@@ -385,6 +383,10 @@ async function main() {
 
   await emit(
     "ratings",
+    // Even week-0 halves: the tilt-scale sweep in the calibration backtest
+    // showed SP+ shape does not beat an even split (weeks 1–4 totals MAE
+    // 13.33 at scale 0 vs 13.36+ at any positive scale), so preseason halves
+    // stay uninformative and totals stay null until real results arrive.
     preseason.map((p) => ({
       season_id: SEASON,
       team_id: p.teamId,

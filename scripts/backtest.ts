@@ -24,6 +24,7 @@ import {
   loadSeason,
   priorsFromSp,
   replaySeason,
+  subTiltsFromSp,
   teamIdsByNameFrom,
   type ReplayPrediction,
   type SeasonData,
@@ -62,12 +63,16 @@ function report(predictions: ReplayPrediction[], params: ModelParams): string {
     const constErr = withTotal.map((p) => p.actualTotal - 57);
     lines.push("\n== Totals calibration (vs games with a stored total) ==");
     lines.push(`model MAE ${mae(modelErr).toFixed(2)}   market MAE ${mae(marketErr).toFixed(2)}   constant-57 MAE ${mae(constErr).toFixed(2)}   n=${withTotal.length}`);
-    const late = withTotal.filter((p) => p.week >= 5);
-    if (late.length > 0) {
+    for (const [label, filter] of [
+      ["weeks 1–4", (p: ReplayPrediction) => p.week <= 4],
+      ["weeks 5+ ", (p: ReplayPrediction) => p.week >= 5],
+    ] as const) {
+      const seg = withTotal.filter(filter);
+      if (seg.length === 0) continue;
       lines.push(
-        `weeks 5+:  model MAE ${mae(late.map((p) => p.actualTotal - p.projectedTotal)).toFixed(2)}   ` +
-          `market MAE ${mae(late.map((p) => p.actualTotal - (p.vegasTotal as number))).toFixed(2)}   ` +
-          `constant-57 MAE ${mae(late.map((p) => p.actualTotal - 57)).toFixed(2)}   n=${late.length}`,
+        `${label}: model MAE ${mae(seg.map((p) => p.actualTotal - p.projectedTotal)).toFixed(2)}   ` +
+          `market MAE ${mae(seg.map((p) => p.actualTotal - (p.vegasTotal as number))).toFixed(2)}   ` +
+          `constant-57 MAE ${mae(seg.map((p) => p.actualTotal - 57)).toFixed(2)}   n=${seg.length}`,
       );
     }
     for (const min of [2, 4]) {
@@ -256,6 +261,9 @@ async function main() {
   }
 
   const run = (params: ModelParams): ReplayPrediction[] => {
+    // No preseason tilt — matches production, where week-0 halves are even.
+    // The tilt-scale sweep below is the standing check that this stays the
+    // right call (scale 0 won: weeks 1–4 totals MAE 13.33 vs 15.06 at 1.0).
     let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
     const all: ReplayPrediction[] = [];
     for (const season of seasons) {
@@ -269,6 +277,34 @@ async function main() {
   if (!tune) {
     const predictions = run(DEFAULT_PARAMS);
     console.log(report(predictions, DEFAULT_PARAMS));
+
+    // Tilt-scale sweep: how much (if any) of the SP+ preseason shape helps
+    // totals? scale 0 = pure even split. Decides what production seeds.
+    const baseTilts = subTiltsFromSp(seasons[0].prevSp, teamIdsByName);
+    const maeOf = (xs: number[]) => xs.reduce((a, e) => a + Math.abs(e), 0) / xs.length;
+    console.log("\n== Preseason tilt-scale sweep (totals MAE) ==");
+    console.log("scale   weeks 1–4      weeks 5+       all");
+    for (const scale of [0, 0.25, 0.5, 0.75, 1]) {
+      let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
+      let tilts = new Map([...baseTilts].map(([id, t]) => [id, t * scale]));
+      const all: ReplayPrediction[] = [];
+      for (const season of seasons) {
+        const { predictions: p, finalRatings, finalTilts } = replaySeason(
+          season,
+          priors,
+          DEFAULT_PARAMS,
+          tilts,
+        );
+        all.push(...p.filter((x) => x.vegasTotal !== null));
+        priors = chainPriors(finalRatings);
+        tilts = new Map([...finalTilts].map(([id, t]) => [id, 0.7 * t]));
+      }
+      const seg = (f: (p: ReplayPrediction) => boolean) =>
+        maeOf(all.filter(f).map((p) => p.actualTotal - p.projectedTotal)).toFixed(2);
+      console.log(
+        `${scale.toFixed(2)}    ${seg((p) => p.week <= 4)}          ${seg((p) => p.week >= 5)}          ${seg(() => true)}`,
+      );
+    }
     return;
   }
 
