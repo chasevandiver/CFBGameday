@@ -10,8 +10,6 @@ export interface RatingRow {
   color: string | null;
   logoUrl: string | null;
   overall: number;
-  offense: number;
-  defense: number;
   /** vs previous week; null preseason */
   delta: number | null;
   churn: number | null;
@@ -21,12 +19,13 @@ export interface RatingRow {
   poll: string | null;
 }
 
-type SortKey = "overall" | "offense" | "defense" | "delta" | "churn" | "luck";
+// Off/Def columns removed: the in-season pipeline only tracks overall, so the
+// stored sub-ratings are overall/2 twice — presenting them as independent
+// numbers was dishonest (audit #11). They return with real sub-ratings.
+type SortKey = "overall" | "delta" | "churn" | "luck";
 
 const COLUMNS: Array<{ key: SortKey; label: string; title: string }> = [
   { key: "overall", label: "Rating", title: "Points vs average FBS team, neutral field" },
-  { key: "offense", label: "Off", title: "Offense sub-rating" },
-  { key: "defense", label: "Def", title: "Defense sub-rating" },
   { key: "delta", label: "Δwk", title: "Movement vs last week" },
   { key: "churn", label: "Churn", title: "Preseason roster churn adjustment" },
   { key: "luck", label: "Luck", title: "Preseason luck regression (negative = was overachieving)" },
@@ -75,18 +74,26 @@ export function RatingsTable({ rows }: { rows: RatingRow[] }) {
         ))}
       </div>
 
-      <div className="overflow-x-auto rounded border border-chalk/10 bg-surface">
+      {/* scrollable panel so the header can stick — 136 rows without it lose
+          the column labels three flicks in */}
+      <div className="max-h-[75vh] overflow-auto rounded border border-chalk/10 bg-surface">
         <table className="stats w-full text-sm">
-          <thead>
-            <tr className="border-b border-chalk/20 text-left text-xs uppercase text-chalk/50">
+          <thead className="sticky top-0 z-10 bg-surface">
+            <tr className="border-b border-chalk/20 text-left text-xs uppercase text-chalk/60">
               <th className="px-2 py-2">#</th>
               <th className="px-2 py-2">Team</th>
               {COLUMNS.map((c) => (
-                <th key={c.key} className="px-2 py-2 text-right">
+                <th
+                  key={c.key}
+                  className="px-2 py-2 text-right"
+                  aria-sort={
+                    sortKey === c.key ? (descending ? "descending" : "ascending") : "none"
+                  }
+                >
                   <button
                     onClick={() => toggleSort(c.key)}
                     title={c.title}
-                    className={`uppercase ${sortKey === c.key ? "text-gold" : "hover:text-chalk"}`}
+                    className={`uppercase ${sortKey === c.key ? "text-accent" : "hover:text-chalk"}`}
                   >
                     {c.label}
                     {sortKey === c.key ? (descending ? " ↓" : " ↑") : ""}
@@ -118,15 +125,13 @@ export function RatingsTable({ rows }: { rows: RatingRow[] }) {
                   </span>
                 </td>
                 <NumCell value={r.overall} strong />
-                <NumCell value={r.offense} />
-                <NumCell value={r.defense} />
                 <td className="px-2 py-1.5 text-right">
                   {r.delta === null ? (
                     <span className="text-chalk/30">—</span>
                   ) : r.delta > 0 ? (
-                    <span className="text-gold">▲{r.delta.toFixed(1)}</span>
+                    <span className="text-win">▲{r.delta.toFixed(1)}</span>
                   ) : r.delta < 0 ? (
-                    <span className="text-flag">▼{Math.abs(r.delta).toFixed(1)}</span>
+                    <span className="text-loss">▼{Math.abs(r.delta).toFixed(1)}</span>
                   ) : (
                     <span className="text-chalk/40">·</span>
                   )}
@@ -161,7 +166,7 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
       onClick={onClick}
       className={`rounded-full border px-2.5 py-1 text-xs ${
         active
-          ? "border-gold bg-gold/15 text-gold"
+          ? "border-accent bg-accent/15 text-accent"
           : "border-chalk/20 text-chalk/70 hover:border-chalk/50"
       }`}
     >

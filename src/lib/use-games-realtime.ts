@@ -31,7 +31,9 @@ export function useGamesRealtime({
 }): { connected: boolean } {
   const [connected, setConnected] = useState(false);
   const onUpdateRef = useRef(onGameUpdate);
-  onUpdateRef.current = onGameUpdate;
+  useEffect(() => {
+    onUpdateRef.current = onGameUpdate;
+  }, [onGameUpdate]);
 
   useEffect(() => {
     if (!enabled) return;

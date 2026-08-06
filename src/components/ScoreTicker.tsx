@@ -1,37 +1,59 @@
 "use client";
 
 /**
- * Slim gameday score strip under the nav (docs/SPEC.md §7). Renders nothing
- * outside game windows — /api/ticker only returns live games, recent finals,
- * and imminent kickoffs. Polls every 60s and rides the realtime channel for
- * instant score updates while anything is live.
+ * Slim gameday score strip, sticky under the nav (docs/SPEC.md §7). Renders
+ * nothing outside game windows — /api/ticker only returns live games, recent
+ * finals, and imminent kickoffs. Polls every 60s and rides the realtime
+ * channel for instant score updates while anything is live.
  */
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { periodLabel } from "../lib/kick";
 import type { TickerData } from "../lib/ticker";
 import { useGamesRealtime } from "../lib/use-games-realtime";
 
 export function ScoreTicker() {
   const [data, setData] = useState<TickerData | null>(null);
+  const stripRef = useRef<HTMLDivElement>(null);
 
-  const refresh = useCallback(async () => {
-    try {
-      const res = await fetch("/api/ticker", { cache: "no-store" });
-      if (res.ok) setData((await res.json()) as TickerData);
-    } catch {
-      /* transient network error — next poll retries */
-    }
-  }, []);
+  // The ticker is sticky under the nav; anything else sticky (the slate's
+  // control bar) offsets below it via --ticker-h, which tracks the ticker's
+  // real height and drops to 0 when it hides (audit #17: the control bar
+  // used to assume no ticker and sandwich it).
+  const visible = (data?.games.length ?? 0) > 0;
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty(
+      "--ticker-h",
+      visible ? `${stripRef.current?.offsetHeight ?? 30}px` : "0px",
+    );
+    return () => {
+      root.style.setProperty("--ticker-h", "0px");
+    };
+  }, [visible]);
 
   useEffect(() => {
-    void refresh();
+    let cancelled = false;
+    // async subscription to an external system: state updates land in the
+    // fetch callback, never synchronously in the effect body
+    const load = () =>
+      fetch("/api/ticker", { cache: "no-store" })
+        .then(async (res) => {
+          if (res.ok && !cancelled) setData((await res.json()) as TickerData);
+        })
+        .catch(() => {
+          /* transient network error — next poll retries */
+        });
+    void load();
     const id = setInterval(() => {
-      if (document.visibilityState === "visible") void refresh();
+      if (document.visibilityState === "visible") void load();
     }, 60_000);
-    return () => clearInterval(id);
-  }, [refresh]);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   const anyLive = data?.games.some((g) => g.status === "in_progress") ?? false;
   useGamesRealtime({
@@ -64,7 +86,10 @@ export function ScoreTicker() {
   if (!data || data.games.length === 0) return null;
 
   return (
-    <div className="border-b border-chalk/10 bg-background/85 backdrop-blur-md">
+    <div
+      ref={stripRef}
+      className="sticky top-12 z-[15] border-b border-chalk/10 bg-background/85 backdrop-blur-md"
+    >
       <div className="scroll-thin mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 py-1">
         {data.games.map((g) => {
           const live = g.status === "in_progress";

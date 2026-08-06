@@ -2,9 +2,9 @@
 
 import { ChevronDown, RefreshCw, Search, SearchX } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useStarred, useViewerTz } from "../../lib/client-store";
+import { useFocusedGames, useStarred, useViewerTz } from "../../lib/client-store";
 import type { GameRow } from "../../lib/db-types";
-import { clockTime, dayKey, dayTabLabel, DEFAULT_TZ, tzLabel } from "../../lib/kick";
+import { clockTime, dayKey, dayTabLabel, kickSlot, DEFAULT_TZ, tzLabel } from "../../lib/kick";
 import { liveUrgency } from "../../lib/live-status";
 import { useGamesRealtime } from "../../lib/use-games-realtime";
 import {
@@ -13,6 +13,7 @@ import {
   isFinal,
   isLive,
   pickHero,
+  watchability,
   weekModelRecord,
   type GameView,
   type SlateData,
@@ -23,6 +24,7 @@ import { SkeletonCard } from "./SkeletonCard";
 
 const SORTS = [
   { key: "kickoff", label: "Kickoff" },
+  { key: "watch", label: "Watchability" },
   { key: "spread-big", label: "Biggest spread" },
   { key: "spread-close", label: "Closest spread" },
   { key: "total", label: "Highest total" },
@@ -37,11 +39,21 @@ const SPREAD_RANGES = [
   { key: "14", label: "≤ 14", max: 14 },
 ] as const;
 
-export function SlateView({ initial, currentWeek }: { initial: SlateData; currentWeek: number }) {
+export function SlateView({
+  initial,
+  currentWeek,
+  favoriteTeamIds = [],
+}: {
+  initial: SlateData;
+  currentWeek: number;
+  /** Server-side favorites (/me) — pinned like local stars, roam across devices */
+  favoriteTeamIds?: number[];
+}) {
   const [data, setData] = useState<SlateData>(initial);
   const [loading, setLoading] = useState(false);
   const tz = useViewerTz(DEFAULT_TZ);
   const [starred, toggleStar] = useStarred();
+  const [focusedIds, toggleFocus] = useFocusedGames();
   const [day, setDay] = useState<string>("all");
   const [conference, setConference] = useState("all");
   const [network, setNetwork] = useState("all");
@@ -50,6 +62,34 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
   const [myPicksOnly, setMyPicksOnly] = useState(false);
   const [sort, setSort] = useState<SortKey>("kickoff");
   const [query, setQuery] = useState("");
+
+  /* ---- URL state: filters are shareable and survive refresh ------------- */
+
+  // Apply ?conf=&tv=&spread=&ranked=&mine=&sort=&q=&day= once after mount
+  // (SSR renders defaults; the URL wins a beat later), then mirror every
+  // change back into the query string.
+  const urlReady = useRef(false);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const sp = new URLSearchParams(window.location.search);
+      const conf = sp.get("conf");
+      if (conf) setConference(conf);
+      const net = sp.get("tv");
+      if (net) setNetwork(net);
+      const spr = sp.get("spread");
+      if (spr && SPREAD_RANGES.some((r) => r.key === spr)) setSpreadRange(spr);
+      if (sp.get("ranked") === "1") setRankedOnly(true);
+      if (sp.get("mine") === "1") setMyPicksOnly(true);
+      const s = sp.get("sort");
+      if (s && SORTS.some((x) => x.key === s)) setSort(s as SortKey);
+      const q = sp.get("q");
+      if (q) setQuery(q);
+      const d = sp.get("day");
+      if (d) setDay(d);
+      urlReady.current = true;
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
 
   /* ---- data refresh ---------------------------------------------------- */
 
@@ -61,11 +101,14 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
   // started before an event never rolls a fresher score back
   const liveEventAt = useRef(new Map<number, number>());
 
-  const refresh = useCallback(async (targetWeek: number, showSkeleton: boolean) => {
+  const seasonType = data.seasonType;
+  const refresh = useCallback(async (targetWeek: number, showSkeleton: boolean, st?: string) => {
     if (showSkeleton) setLoading(true);
     const fetchStart = Date.now();
     try {
-      const res = await fetch(`/api/slate?week=${targetWeek}`, { cache: "no-store" });
+      const res = await fetch(`/api/slate?week=${targetWeek}&st=${st ?? "regular"}`, {
+        cache: "no-store",
+      });
       if (res.ok) {
         const next = (await res.json()) as SlateData;
         if (next.week === weekRef.current) {
@@ -122,19 +165,19 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
 
   const anyLive = data.games.some(isLive);
   // realtime only for the current week when games are live or kicking off soon;
-  // off-week browsing costs nothing
-  const anyImminent = useMemo(
-    () =>
-      data.games.some((g) => {
-        if (isLive(g)) return true;
-        if (g.status !== "scheduled" || !g.startTs) return false;
-        const dt = Date.parse(g.startTs) - Date.now();
-        return dt > -3 * 3600_000 && dt < 6 * 3600_000;
-      }),
-    [data.games],
-  );
+  // off-week browsing costs nothing. "Now" is the fetch stamp — deterministic
+  // per payload, and every poll refreshes it.
+  const anyImminent = useMemo(() => {
+    const now = Date.parse(data.fetchedAt);
+    return data.games.some((g) => {
+      if (isLive(g)) return true;
+      if (g.status !== "scheduled" || !g.startTs) return false;
+      const dt = Date.parse(g.startTs) - now;
+      return dt > -3 * 3600_000 && dt < 6 * 3600_000;
+    });
+  }, [data.games, data.fetchedAt]);
   const { connected } = useGamesRealtime({
-    enabled: week === currentWeek && anyImminent,
+    enabled: (seasonType === "postseason" || week === currentWeek) && anyImminent,
     week,
     seasonId: data.seasonId,
     onGameUpdate: handleGameUpdate,
@@ -145,19 +188,41 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
     // events and refreshes lines/predictions
     const ms = connected ? 180_000 : anyLive ? 30_000 : 90_000;
     const id = setInterval(() => {
-      if (document.visibilityState === "visible") void refresh(weekRef.current, false);
+      if (document.visibilityState === "visible")
+        void refresh(weekRef.current, false, seasonType);
     }, ms);
     return () => clearInterval(id);
-  }, [anyLive, connected, refresh]);
+  }, [anyLive, connected, refresh, seasonType]);
 
-  const changeWeek = (w: number) => {
-    if (w === week) return;
+  const changeWeek = (sel: number | "post") => {
+    const post = sel === "post";
+    const w = post ? 1 : sel;
+    const st = post ? "postseason" : "regular";
+    if (w === week && st === seasonType) return;
     weekRef.current = w;
-    setData((d) => ({ ...d, week: w, games: [] }));
+    setData((d) => ({ ...d, week: w, seasonType: st, games: [] }));
     setDay("all");
-    window.history.replaceState(null, "", w === currentWeek ? "/slate" : `/slate?week=${w}`);
-    void refresh(w, true);
+    // the URL-sync effect below rewrites the query string
+    void refresh(w, true, st);
   };
+
+  // mirror week + filters into the query string (replaceState — no history spam)
+  useEffect(() => {
+    if (!urlReady.current) return;
+    const sp = new URLSearchParams();
+    if (seasonType === "postseason") sp.set("st", "post");
+    else if (week !== currentWeek) sp.set("week", String(week));
+    if (conference !== "all") sp.set("conf", conference);
+    if (network !== "all") sp.set("tv", network);
+    if (spreadRange !== "any") sp.set("spread", spreadRange);
+    if (rankedOnly) sp.set("ranked", "1");
+    if (myPicksOnly) sp.set("mine", "1");
+    if (sort !== "kickoff") sp.set("sort", sort);
+    if (query.trim()) sp.set("q", query.trim());
+    if (day !== "all") sp.set("day", day);
+    const qs = sp.toString();
+    window.history.replaceState(null, "", qs ? `/slate?${qs}` : "/slate");
+  }, [week, seasonType, currentWeek, conference, network, spreadRange, rankedOnly, myPicksOnly, sort, query, day]);
 
   /* ---- derived --------------------------------------------------------- */
 
@@ -214,10 +279,12 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
   }, [games, day, conference, network, rankedOnly, myPicksOnly, spreadRange, query, tz]);
 
   const sorted = useMemo(() => {
-    const starredSet = new Set(starred);
+    const starredSet = new Set([...starred, ...favoriteTeamIds]);
     const isPinned = (g: GameView) => starredSet.has(g.home.id) || starredSet.has(g.away.id);
     const cmp = (a: GameView, b: GameView): number => {
       switch (sort) {
+        case "watch":
+          return (watchability(b) ?? -1) - (watchability(a) ?? -1);
         case "spread-big":
           return absOr(b.lines.spread, -1) - absOr(a.lines.spread, -1);
         case "spread-close":
@@ -238,7 +305,7 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
       if (dead !== 0) return dead;
       return cmp(a, b);
     });
-  }, [filtered, sort, starred]);
+  }, [filtered, sort, starred, favoriteTeamIds]);
 
   const noFilters =
     day === "all" &&
@@ -255,36 +322,69 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
     [sorted, sort, noFilters],
   );
 
-  // High-powered day structure: live games lead, then pregame, then finals.
+  // High-powered day structure: live games lead, then pregame by kickoff
+  // slot (Noon / Afternoon / Primetime / Late — spec §7), then finals.
   // Only when sorted by kickoff — explicit sorts stay a flat grid.
   const sections = useMemo(() => {
     if (sort !== "kickoff") return null;
     // within Live, the sweats lead: bubble picks, then losing, covering, no pick
     const liveGames = [...sorted.filter(isLive)].sort((a, b) => liveUrgency(a) - liveUrgency(b));
     const finalGames = sorted.filter(isFinal);
-    if (liveGames.length === 0 && finalGames.length === 0) return null;
     const upcoming = sorted.filter((g) => !isLive(g) && !isFinal(g));
+    // big slates get the broadcast-window structure; small ones stay one block
+    const slotted: Array<{ key: string; title: string; games: GameView[] }> = [];
+    if (upcoming.length >= 8) {
+      for (const g of upcoming) {
+        const title = g.startTs
+          ? `${dayTabLabel(g.startTs, tz)} · ${kickSlot(g.startTs)}`
+          : "Kickoff TBD";
+        const last = slotted[slotted.length - 1];
+        if (last && last.title === title) last.games.push(g);
+        else slotted.push({ key: `pre-${slotted.length}`, title, games: [g] });
+      }
+    } else if (upcoming.length > 0) {
+      slotted.push({ key: "pregame", title: "Pregame", games: upcoming });
+    }
+    if (liveGames.length === 0 && finalGames.length === 0 && slotted.length <= 1) return null;
     return [
       { key: "live", title: "Live", games: liveGames },
-      { key: "pregame", title: "Pregame", games: upcoming },
+      ...slotted,
       { key: "final", title: "Final", games: finalGames },
     ].filter((s) => s.games.length > 0);
-  }, [sorted, sort]);
+  }, [sorted, sort, tz]);
 
   const rankedCount = games.filter(isRankedMatchup).length;
   const record = weekModelRecord(games);
   const finals = games.filter(isFinal).length;
 
+  // multi-game focus: pinned games ride above everything, unfiltered —
+  // you pinned them, you get them (kickoff order, live first)
+  const focusedGames = useMemo(() => {
+    const set = new Set(focusedIds);
+    return games
+      .filter((g) => set.has(g.id))
+      .sort((a, b) => Number(isLive(b)) - Number(isLive(a)) || (a.startTs ?? "").localeCompare(b.startTs ?? ""));
+  }, [games, focusedIds]);
+
   /* ---- render ---------------------------------------------------------- */
 
   return (
     <>
-      {/* sticky control bar */}
-      <div className="sticky top-[49px] z-10 -mx-4 border-b border-chalk/10 bg-background/85 px-4 backdrop-blur-md">
+      {/* sticky control bar — offsets below the nav plus the (dynamic) ticker */}
+      <div
+        className="sticky z-10 -mx-4 border-b border-chalk/10 bg-background/85 px-4 backdrop-blur-md"
+        style={{ top: "calc(3rem + var(--ticker-h, 0px))" }}
+      >
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 py-2.5">
-          <WeekSelect week={week} currentWeek={currentWeek} onChange={changeWeek} />
+          <WeekSelect
+            week={week}
+            seasonType={seasonType}
+            currentWeek={currentWeek}
+            onChange={changeWeek}
+          />
 
-          <div className="flex items-center gap-1" role="tablist" aria-label="Day">
+          {/* toggle buttons, not ARIA tabs — no tabpanel/arrow-key contract here */}
+          <div className="flex items-center gap-1" aria-label="Filter by day">
             <DayTab label="All" active={day === "all"} onClick={() => setDay("all")} />
             {dayTabs.map(([k, label]) => (
               <DayTab key={k} label={label} active={day === k} onClick={() => setDay(k)} />
@@ -370,6 +470,29 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
 
       {/* slate */}
       <div className="mx-auto mt-4 max-w-7xl pb-12">
+        {focusedGames.length > 0 && !loading && (
+          <section aria-label="Focused games" className="mb-7">
+            <SectionHeader
+              title="Focus"
+              count={focusedGames.length}
+              live={focusedGames.some(isLive)}
+            />
+            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              {focusedGames.map((g, i) => (
+                <GameCard
+                  key={`focus-${g.id}`}
+                  game={g}
+                  tz={tz}
+                  starred={starred}
+                  onStar={toggleStar}
+                  index={i}
+                  focused
+                  onFocus={toggleFocus}
+                />
+              ))}
+            </div>
+          </section>
+        )}
         {loading ? (
           <SkeletonSlate />
         ) : games.length === 0 ? (
@@ -392,6 +515,8 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
                 starred={starred}
                 onStar={toggleStar}
                 featuredId={featuredId}
+                focusedIds={focusedIds}
+                onFocus={toggleFocus}
               />
             </section>
           ))
@@ -402,6 +527,8 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
             starred={starred}
             onStar={toggleStar}
             featuredId={featuredId}
+            focusedIds={focusedIds}
+            onFocus={toggleFocus}
           />
         )}
       </div>
@@ -419,12 +546,16 @@ function CardGrid({
   starred,
   onStar,
   featuredId,
+  focusedIds,
+  onFocus,
 }: {
   games: GameView[];
   tz: string;
   starred: number[];
   onStar: (teamId: number) => void;
   featuredId: number | null;
+  focusedIds: number[];
+  onFocus: (gameId: number) => void;
 }) {
   return (
     <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
@@ -437,6 +568,8 @@ function CardGrid({
           onStar={onStar}
           index={i}
           featured={g.id === featuredId}
+          focused={focusedIds.includes(g.id)}
+          onFocus={onFocus}
         />
       ))}
     </div>
@@ -466,27 +599,32 @@ function absOr(v: number | null, fallback: number): number {
 
 function WeekSelect({
   week,
+  seasonType,
   currentWeek,
   onChange,
 }: {
   week: number;
+  seasonType: "regular" | "postseason";
   currentWeek: number;
-  onChange: (w: number) => void;
+  onChange: (w: number | "post") => void;
 }) {
   return (
     <label className="relative shrink-0">
       <span className="sr-only">Week</span>
       <select
-        value={week}
-        onChange={(e) => onChange(Number(e.target.value))}
+        value={seasonType === "postseason" ? "post" : week}
+        onChange={(e) =>
+          onChange(e.target.value === "post" ? "post" : Number(e.target.value))
+        }
         className="display h-8 appearance-none rounded-lg border border-chalk/12 bg-surface pl-3 pr-8 text-base text-chalk focus:border-accent/60 focus:outline-none"
       >
-        {Array.from({ length: 15 }, (_, i) => i + 1).map((w) => (
+        {Array.from({ length: 16 }, (_, i) => i + 1).map((w) => (
           <option key={w} value={w}>
             Week {w}
-            {w === currentWeek ? " ·" : ""}
+            {w === currentWeek && seasonType === "regular" ? " ·" : ""}
           </option>
         ))}
+        <option value="post">Bowls &amp; CFP</option>
       </select>
       <ChevronDown
         size={14}
@@ -500,8 +638,7 @@ function WeekSelect({
 function DayTab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
-      role="tab"
-      aria-selected={active}
+      aria-pressed={active}
       onClick={onClick}
       className={`rounded-lg px-2.5 py-1 text-sm font-medium transition-colors ${
         active ? "bg-accent text-accent-ink" : "text-dim hover:bg-surface hover:text-chalk"

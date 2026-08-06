@@ -1,7 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "../../src/lib/supabase/service";
 
-export const SEASON = 2026;
+/** Season being ingested — env-overridable so the site rolls to 2027 without
+ *  a code hunt (audit #13: 2026 was hardcoded in a dozen places). */
+export const SEASON = Number(process.env.CFB_SEASON ?? 2026);
 
 export function isDryRun(): boolean {
   return process.argv.includes("--dry-run");

@@ -185,6 +185,57 @@ export function updateFromResult(g: GameResultInput, p: ModelParams = DEFAULT_PA
   return { homeDelta: delta / 2, awayDelta: -delta / 2 };
 }
 
+export interface SubRatingUpdateInput {
+  homeOffense: number;
+  homeDefense: number;
+  awayOffense: number;
+  awayDefense: number;
+  homePoints: number;
+  awayPoints: number;
+  /** Home team's HFA; ignored when neutralSite */
+  hfa: number;
+  neutralSite: boolean;
+}
+
+export interface SubRatingUpdate {
+  homeOffDelta: number;
+  homeDefDelta: number;
+  awayOffDelta: number;
+  awayDefDelta: number;
+}
+
+/**
+ * Off/def sub-rating update from points scored/allowed vs opponent-adjusted
+ * expectation (§2.2). Each scoring error splits between the offense that
+ * produced it and the defense that allowed it.
+ *
+ * Invariant: a team's off+def deltas sum to exactly its overall delta from
+ * updateFromResult whenever the caps don't bind — homeOff + homeDef moves by
+ * K·(errHome − errAway)/2, the overall update's K·marginError/2. So a replay
+ * can carry ONLY off/def (overall ≡ off + def) and reproduce the margin
+ * behavior the backtest already tuned, while totals gain real signal.
+ * Scoring errors cap at marginCap/2 per side so the summed cap matches the
+ * overall margin cap.
+ */
+export function updateSubRatings(
+  inp: SubRatingUpdateInput,
+  p: ModelParams = DEFAULT_PARAMS,
+): SubRatingUpdate {
+  const hfa = inp.neutralSite ? 0 : inp.hfa;
+  const expHome = FBS_AVG_POINTS + inp.homeOffense - inp.awayDefense + hfa / 2;
+  const expAway = FBS_AVG_POINTS + inp.awayOffense - inp.homeDefense - hfa / 2;
+  const cap = p.marginCap / 2;
+  const errHome = clamp(inp.homePoints - expHome, -cap, cap);
+  const errAway = clamp(inp.awayPoints - expAway, -cap, cap);
+  const k = p.kFactor;
+  return {
+    homeOffDelta: (k * errHome) / 2,
+    awayDefDelta: -(k * errHome) / 2,
+    awayOffDelta: (k * errAway) / 2,
+    homeDefDelta: -(k * errAway) / 2,
+  };
+}
+
 /** Piecewise-linear prior weight for a given week (§2.2 decay schedule). */
 export function priorWeight(week: number, p: ModelParams = DEFAULT_PARAMS): number {
   const knots = p.priorDecayKnots;
@@ -248,7 +299,7 @@ export interface GamePrice {
   consensusFlag: boolean;
 }
 
-const FBS_AVG_POINTS = 28.5; // average team points/game baseline for projections
+export const FBS_AVG_POINTS = 28.5; // average team points/game baseline for projections
 
 export function priceGame(inp: PricingInputs, p: ModelParams = DEFAULT_PARAMS): GamePrice {
   const hfa = inp.neutralSite ? 0 : inp.homeTeamHfa;

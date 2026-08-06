@@ -93,16 +93,30 @@ Deno.serve(async (req: Request) => {
 // helpers
 // ---------------------------------------------------------------------------
 
-async function currentWeek(db: SupabaseClient): Promise<number | undefined> {
-  const { data } = await db
+// Mirrors src/lib/season.ts fetchCurrentSlate: the slate of the next kickoff
+// (or the latest final), never pinned by a postponed-and-rescheduled game.
+async function currentSlate(
+  db: SupabaseClient,
+): Promise<{ week: number; seasonType: string } | undefined> {
+  const cutoff = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
+  const { data: next } = await db
     .from("games")
-    .select("week")
+    .select("week, season_type")
     .eq("season_id", SEASON)
-    .eq("status", "scheduled")
-    .order("week")
+    .or(`status.eq.in_progress,and(status.eq.scheduled,start_ts.gte.${cutoff})`)
+    .order("start_ts", { ascending: true, nullsFirst: false })
     .limit(1)
     .maybeSingle();
-  return data?.week;
+  if (next) return { week: next.week, seasonType: next.season_type };
+  const { data: last } = await db
+    .from("games")
+    .select("week, season_type")
+    .eq("season_id", SEASON)
+    .eq("status", "final")
+    .order("start_ts", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return last ? { week: last.week, seasonType: last.season_type } : undefined;
 }
 
 interface Snapshot {
@@ -140,8 +154,12 @@ function consensus(
 // ---------------------------------------------------------------------------
 
 async function refreshLines(db: SupabaseClient, burst: boolean): Promise<Json> {
-  const week = await currentWeek(db);
-  const lines = await cfbd.lines(SEASON, { week });
+  const slate = await currentSlate(db);
+  const week = slate?.week;
+  const lines = await cfbd.lines(SEASON, {
+    week,
+    seasonType: slate?.seasonType === "postseason" ? "postseason" : undefined,
+  });
 
   let kickWindow: Set<number> | null = null;
   if (burst) {
@@ -181,7 +199,12 @@ async function refreshLines(db: SupabaseClient, burst: boolean): Promise<Json> {
 }
 
 async function syncGames(db: SupabaseClient): Promise<Json> {
-  const games = await cfbd.games(SEASON);
+  // Regular season AND postseason — bowls/CFP were never ingested (audit #1)
+  const [regular, postseason] = await Promise.all([
+    cfbd.games(SEASON),
+    cfbd.games(SEASON, { seasonType: "postseason" }),
+  ]);
+  const games = [...regular, ...postseason];
   const rows = games.map((g) => ({
     id: g.id,
     season_id: SEASON,
@@ -566,7 +589,8 @@ async function ratingsUpdate(db: SupabaseClient): Promise<Json> {
 
 /** Thursday job: freeze predictions for the upcoming week (receipts). */
 async function freeze(db: SupabaseClient): Promise<Json> {
-  const week = await currentWeek(db);
+  const slate = await currentSlate(db);
+  const week = slate?.week;
   if (week === undefined) return { note: "no scheduled games" };
 
   const { data: gameRows } = await db
@@ -574,6 +598,7 @@ async function freeze(db: SupabaseClient): Promise<Json> {
     .select("id, home_team_id, away_team_id, neutral_site, status")
     .eq("season_id", SEASON)
     .eq("week", week)
+    .eq("season_type", slate?.seasonType ?? "regular")
     .eq("status", "scheduled");
   const games = (gameRows ?? []) as Array<{
     id: number;
@@ -652,12 +677,14 @@ async function freeze(db: SupabaseClient): Promise<Json> {
     );
     rows.push({
       game_id: g.id,
+      season_id: SEASON,
       model_version: MODEL_VERSION,
       frozen: true,
       spread: Math.round(price.spread * 10) / 10,
-      total: Math.round(price.projectedTotal * 10) / 10,
-      home_score: Math.round(price.projectedHomeScore * 10) / 10,
-      away_score: Math.round(price.projectedAwayScore * 10) / 10,
+      // constant-total guard: no totals until real sub-ratings exist (audit #4)
+      total: null,
+      home_score: null,
+      away_score: null,
       home_win_prob: Math.round(price.homeWinProb * 10000) / 10000,
       cover_prob: price.homeCoverProb !== null ? Math.round(price.homeCoverProb * 10000) / 10000 : null,
       vegas_spread: vegas.spread,

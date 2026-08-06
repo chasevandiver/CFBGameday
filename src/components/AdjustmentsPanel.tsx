@@ -56,7 +56,7 @@ export function AdjustmentsPanel({
           name="team_id"
           required
           defaultValue=""
-          className="min-w-40 flex-1 rounded border border-chalk/25 bg-field-deep px-3 py-2 text-sm text-chalk focus:border-gold focus:outline-none"
+          className="min-w-40 flex-1 rounded-lg border border-chalk/25 bg-elev px-3 py-2 text-sm text-chalk focus:border-accent focus:outline-none"
         >
           <option value="" disabled>
             Team…
@@ -75,24 +75,24 @@ export function AdjustmentsPanel({
           max="14"
           required
           placeholder="±pts"
-          className="w-24 rounded border border-chalk/25 bg-field-deep px-3 py-2 text-sm text-chalk placeholder:text-chalk/40 focus:border-gold focus:outline-none"
+          className="w-24 rounded-lg border border-chalk/25 bg-elev px-3 py-2 text-sm text-chalk placeholder:text-chalk/40 focus:border-accent focus:outline-none"
         />
         <input
           name="reason"
           type="text"
           required
           placeholder="Reason (QB out, suspension…)"
-          className="min-w-52 flex-[2] rounded border border-chalk/25 bg-field-deep px-3 py-2 text-sm text-chalk placeholder:text-chalk/40 focus:border-gold focus:outline-none"
+          className="min-w-52 flex-[2] rounded-lg border border-chalk/25 bg-elev px-3 py-2 text-sm text-chalk placeholder:text-chalk/40 focus:border-accent focus:outline-none"
         />
         <button
           type="submit"
           disabled={pending}
-          className="rounded bg-gold px-4 py-2 text-sm font-semibold text-field-deep disabled:opacity-60"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink disabled:opacity-60"
         >
           {pending ? "Saving…" : "Apply"}
         </button>
       </form>
-      {error && <p className="text-xs text-flag">{error}</p>}
+      {error && <p className="text-xs text-loss">{error}</p>}
 
       {adjustments.length > 0 && (
         <ul className="flex flex-col gap-1.5">
@@ -100,7 +100,7 @@ export function AdjustmentsPanel({
             <li key={a.id} className="stat flex items-center gap-3 text-xs">
               <span className="w-36 shrink-0 truncate text-chalk/80">{a.school}</span>
               <span
-                className={`w-12 shrink-0 text-right font-semibold ${a.points > 0 ? "text-gold" : "text-flag"}`}
+                className={`w-12 shrink-0 text-right font-semibold ${a.points > 0 ? "text-accent" : "text-loss"}`}
               >
                 {a.points > 0 ? "+" : ""}
                 {a.points.toFixed(1)}
@@ -112,7 +112,7 @@ export function AdjustmentsPanel({
                 <button
                   onClick={() => act(confirmAdjustment, a.id)}
                   disabled={pending}
-                  className="shrink-0 rounded border border-gold/50 px-2 py-0.5 text-gold hover:bg-gold/10 disabled:opacity-60"
+                  className="shrink-0 rounded-lg border border-accent/50 px-2 py-0.5 text-accent hover:bg-accent/10 disabled:opacity-60"
                 >
                   Confirm
                 </button>
@@ -120,7 +120,7 @@ export function AdjustmentsPanel({
               <button
                 onClick={() => act(removeAdjustment, a.id)}
                 disabled={pending}
-                className="shrink-0 rounded border border-chalk/25 px-2 py-0.5 text-chalk/60 hover:border-flag hover:text-flag disabled:opacity-60"
+                className="shrink-0 rounded-lg border border-chalk/25 px-2 py-0.5 text-chalk/60 hover:border-loss hover:text-loss disabled:opacity-60"
               >
                 Remove
               </button>

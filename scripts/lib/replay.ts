@@ -9,7 +9,7 @@ import { cfbd, type CfbdGame, type CfbdLine, type CfbdSpRating } from "../../src
 import {
   blendWithPrior,
   priceGame,
-  updateFromResult,
+  updateSubRatings,
   type ModelParams,
   type TeamRating,
 } from "../../src/model/ratings";
@@ -63,6 +63,10 @@ export interface ReplayPrediction {
   actualMargin: number;
   favoriteWon: boolean | null;
   favWinProb: number;
+  /** Off/def-driven projected total (§2.2 sub-ratings; tempo held at avg) */
+  projectedTotal: number;
+  vegasTotal: number | null;
+  actualTotal: number;
 }
 
 export function consensusLine(lines: CfbdLine | undefined): number | null {
@@ -72,12 +76,30 @@ export function consensusLine(lines: CfbdLine | undefined): number | null {
   return spreads.reduce((a, b) => a + b, 0) / spreads.length;
 }
 
+export function consensusTotal(lines: CfbdLine | undefined): number | null {
+  if (!lines || lines.lines.length === 0) return null;
+  const totals = lines.lines.map((l) => l.overUnder).filter((t): t is number => t !== null);
+  if (totals.length === 0) return null;
+  return totals.reduce((a, b) => a + b, 0) / totals.length;
+}
+
 export function replaySeason(
   data: SeasonData,
   priors: Map<number, number>,
   params: ModelParams,
 ): { predictions: ReplayPrediction[]; finalRatings: Map<number, number> } {
-  const results = new Map<number, number>(priors);
+  // Off/def carry the season (§2.2): overall ≡ off + def by construction, and
+  // updateSubRatings preserves the overall margin update exactly (its off+def
+  // deltas sum to the updateFromResult delta), so margins reproduce the tuned
+  // behavior while totals gain real matchup signal. Priors split evenly —
+  // week 1 totals start at the league baseline and differentiate as results
+  // arrive, which the by-week calibration report makes visible.
+  const offense = new Map<number, number>();
+  const defense = new Map<number, number>();
+  for (const [id, prior] of priors) {
+    offense.set(id, prior / 2);
+    defense.set(id, prior / 2);
+  }
   const predictions: ReplayPrediction[] = [];
   const linesById = new Map(data.lines.map((l) => [l.id, l]));
 
@@ -87,26 +109,27 @@ export function replaySeason(
       .filter((g) => g.week === week && g.homePoints !== null && g.awayPoints !== null)
       .sort((a, b) => a.id - b.id);
 
-    const weekPredictions: Array<{ game: CfbdGame; margin: number }> = [];
+    const weekPredictions: Array<{
+      game: CfbdGame;
+      home: TeamRating;
+      away: TeamRating;
+    }> = [];
     for (const g of weekGames) {
-      const blendedRating = (teamId: number): number => {
+      const blended = (teamId: number): TeamRating => {
         const prior = priors.get(teamId);
-        if (prior === undefined) return FCS_RATING;
-        return blendWithPrior(prior, results.get(teamId) ?? prior, week, params);
+        if (prior === undefined)
+          return { overall: FCS_RATING, offense: FCS_RATING / 2, defense: FCS_RATING / 2, tempo: 70 };
+        const off = blendWithPrior(prior / 2, offense.get(teamId) ?? prior / 2, week, params);
+        const def = blendWithPrior(prior / 2, defense.get(teamId) ?? prior / 2, week, params);
+        return { overall: off + def, offense: off, defense: def, tempo: 70 };
       };
-      const home = blendedRating(g.homeId);
-      const away = blendedRating(g.awayId);
+      const home = blended(g.homeId);
+      const away = blended(g.awayId);
 
-      const rating = (overall: number): TeamRating => ({
-        overall,
-        offense: overall / 2,
-        defense: overall / 2,
-        tempo: 70,
-      });
       const price = priceGame(
         {
-          home: rating(home),
-          away: rating(away),
+          home,
+          away,
           homeTeamHfa: params.baseHfa,
           neutralSite: g.neutralSite,
           situationalPoints: 0,
@@ -132,27 +155,45 @@ export function replaySeason(
         actualMargin,
         favoriteWon,
         favWinProb,
+        projectedTotal: price.projectedTotal,
+        vegasTotal: consensusTotal(linesById.get(g.id)),
+        actualTotal: (g.homePoints as number) + (g.awayPoints as number),
       });
-      weekPredictions.push({ game: g, margin: price.margin });
+      weekPredictions.push({ game: g, home, away });
     }
 
-    for (const { game: g, margin } of weekPredictions) {
-      const actual = (g.homePoints as number) - (g.awayPoints as number);
-      const upd = updateFromResult(
+    for (const { game: g, home, away } of weekPredictions) {
+      // errors are measured against the BLENDED prediction (same reference the
+      // old overall update used), then applied to the unblended running state
+      const upd = updateSubRatings(
         {
-          homeRating: results.get(g.homeId) ?? FCS_RATING,
-          awayRating: results.get(g.awayId) ?? FCS_RATING,
-          predictedMargin: margin,
-          actualHomeMargin: actual,
+          homeOffense: home.offense,
+          homeDefense: home.defense,
+          awayOffense: away.offense,
+          awayDefense: away.defense,
+          homePoints: g.homePoints as number,
+          awayPoints: g.awayPoints as number,
+          hfa: params.baseHfa,
+          neutralSite: g.neutralSite,
         },
         params,
       );
-      if (priors.has(g.homeId)) results.set(g.homeId, (results.get(g.homeId) ?? 0) + upd.homeDelta);
-      if (priors.has(g.awayId)) results.set(g.awayId, (results.get(g.awayId) ?? 0) + upd.awayDelta);
+      if (priors.has(g.homeId)) {
+        offense.set(g.homeId, (offense.get(g.homeId) ?? 0) + upd.homeOffDelta);
+        defense.set(g.homeId, (defense.get(g.homeId) ?? 0) + upd.homeDefDelta);
+      }
+      if (priors.has(g.awayId)) {
+        offense.set(g.awayId, (offense.get(g.awayId) ?? 0) + upd.awayOffDelta);
+        defense.set(g.awayId, (defense.get(g.awayId) ?? 0) + upd.awayDefDelta);
+      }
     }
   }
 
-  return { predictions, finalRatings: results };
+  const finalRatings = new Map<number, number>();
+  for (const [id] of priors) {
+    finalRatings.set(id, (offense.get(id) ?? 0) + (defense.get(id) ?? 0));
+  }
+  return { predictions, finalRatings };
 }
 
 export function priorsFromSp(

@@ -12,7 +12,10 @@ import {
   parseSituation,
   pickHero,
   spreadMove,
+  spreadMoveRead,
   stakeForPrediction,
+  upsetAlert,
+  watchability,
   weekModelRecord,
   type GameView,
   type TeamView,
@@ -67,6 +70,7 @@ const game = (overrides: Partial<GameView> = {}): GameView => ({
   ...overrides,
 });
 
+// frozen: true — weekModelRecord only grades receipts rows (audit #12)
 const prediction = (overrides = {}) => ({
   spread: -9,
   total: 52.5,
@@ -78,7 +82,7 @@ const prediction = (overrides = {}) => ({
   edge: -2.5,
   edgeFlag: "EDGE" as const,
   consensus: false,
-  frozen: false,
+  frozen: true,
   ...overrides,
 });
 
@@ -163,6 +167,8 @@ describe("weekModelRecord", () => {
       game({ id: 3, homePoints: 27, awayPoints: 20, prediction: prediction({ vegasSpread: -7 }) }), // push
       game({ id: 4, status: "scheduled", homePoints: null, awayPoints: null, prediction: prediction() }),
       game({ id: 5 }), // no prediction — skipped
+      // unfrozen prices never count toward the report card (audit #12)
+      game({ id: 6, prediction: prediction({ frozen: false }) }),
     ];
     expect(weekModelRecord(games)).toEqual({ wins: 1, losses: 1, pushes: 1 });
   });
@@ -330,5 +336,62 @@ describe("formatting & movement", () => {
   it("spreadMove is signed vs open and null when flat", () => {
     expect(spreadMove(game())).toBeCloseTo(0.5); // -6.5 vs open -7
     expect(spreadMove(game({ lines: { ...game().lines, spreadOpen: -6.5 } }))).toBeNull();
+  });
+});
+
+describe("spreadMoveRead", () => {
+  it("neutral for small moves, colored vs the model side for 1.5+", () => {
+    // fixture opens -7 → now -6.5: a half-point drift stays neutral
+    const small = game({ status: "scheduled", prediction: prediction() });
+    expect(spreadMoveRead(small)).toEqual({ delta: 0.5, vsModel: null });
+
+    const g = game({
+      status: "scheduled",
+      lines: { ...game().lines, spread: -8, spreadOpen: -6 },
+      prediction: prediction({ edge: -2.5 }), // model likes home
+    });
+    // spread dropped toward home by 2 → toward the model's side
+    expect(spreadMoveRead(g)).toEqual({ delta: -2, vsModel: "toward" });
+
+    const away = game({
+      status: "scheduled",
+      lines: { ...game().lines, spread: -4, spreadOpen: -6 },
+      prediction: prediction({ edge: -2.5 }),
+    });
+    expect(spreadMoveRead(away)).toEqual({ delta: 2, vsModel: "away" });
+  });
+});
+
+describe("watchability", () => {
+  it("ranked close games beat unranked blowouts; dead games are null", () => {
+    const marquee = game({
+      status: "scheduled",
+      home: team(1, 2),
+      away: team(2, 5),
+      lines: { ...game().lines, spread: -2.5, total: 62 },
+    });
+    const dud = game({
+      status: "scheduled",
+      lines: { ...game().lines, spread: -24, total: 41 },
+    });
+    expect(watchability(marquee)!).toBeGreaterThan(watchability(dud)!);
+    expect(watchability(marquee)!).toBeGreaterThanOrEqual(80);
+    expect(watchability(game({ status: "postponed" }))).toBeNull();
+  });
+});
+
+describe("upsetAlert", () => {
+  it("fires for a top-10 team trailing an unranked team in the 2nd half", () => {
+    const g = game({
+      status: "in_progress",
+      period: 3,
+      home: team(1, null),
+      away: team(2, 4),
+      homePoints: 24,
+      awayPoints: 17,
+    });
+    expect(upsetAlert(g)).toBe(true);
+    expect(upsetAlert({ ...g, period: 2 })).toBe(false);
+    expect(upsetAlert({ ...g, homePoints: 10 })).toBe(false);
   });
 });

@@ -5,7 +5,7 @@ export default function SlateLoading() {
   return (
     <>
       <AppNav />
-      <main className="w-full flex-1 px-4">
+      <main id="main" className="w-full flex-1 px-4">
         <div className="mx-auto flex max-w-7xl items-center gap-3 py-3">
           <span className="skeleton h-8 w-28" />
           <span className="skeleton h-8 w-40" />

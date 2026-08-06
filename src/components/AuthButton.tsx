@@ -1,13 +1,15 @@
 "use client";
 
+import { UserRound } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createClient } from "../lib/supabase/client";
 
 /**
- * "Sign in" nav button, shown only to signed-out visitors. The site is public
- * to browse; an account is just for saving picks and logging bets. Renders
- * nothing until the session is known so members never see a sign-in flash.
+ * Session-aware nav button: signed-out visitors get "Sign in" (the site is
+ * public to browse; an account saves picks and bets), members get the
+ * Account page (display name, favorites, sign out). Renders nothing until
+ * the session is known so neither state flashes.
  */
 export function AuthButton() {
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
@@ -23,13 +25,26 @@ export function AuthButton() {
     };
   }, []);
 
-  if (signedIn !== false) return null;
+  if (signedIn === null) return null;
+
+  if (!signedIn) {
+    return (
+      <Link
+        href="/login"
+        className="shrink-0 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink transition-opacity hover:opacity-90"
+      >
+        Sign in
+      </Link>
+    );
+  }
+
   return (
     <Link
-      href="/login"
-      className="shrink-0 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink transition-opacity hover:opacity-90"
+      href="/me"
+      className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-chalk/10 px-2.5 text-xs font-medium text-dim transition-colors hover:border-chalk/25 hover:text-chalk"
     >
-      Sign in
+      <UserRound size={13} aria-hidden />
+      Account
     </Link>
   );
 }

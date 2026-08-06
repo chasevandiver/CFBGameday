@@ -8,12 +8,12 @@ import { createClient } from "../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = { title: "Ratings" };
+
 interface DbRating {
   team_id: number;
   week: number;
   overall: number;
-  offense: number;
-  defense: number;
 }
 
 interface DbComponents {
@@ -28,7 +28,7 @@ export default async function RatingsPage() {
 
   const { data: allRatings } = await supabase
     .from("ratings")
-    .select("team_id, week, overall, offense, defense")
+    .select("team_id, week, overall")
     .eq("season_id", seasonId)
     .order("week", { ascending: false });
   const ratings = (allRatings ?? []) as DbRating[];
@@ -76,8 +76,6 @@ export default async function RatingsPage() {
         color: team.color,
         logoUrl: team.logo_url,
         overall: Number(r.overall),
-        offense: Number(r.offense),
-        defense: Number(r.defense),
         delta: prev ? Number(r.overall) - Number(prev.overall) : null,
         churn: comp?.churn_adjustment !== null && comp ? Number(comp.churn_adjustment) : null,
         luck: comp?.luck_correction !== null && comp ? Number(comp.luck_correction) : null,
@@ -90,7 +88,7 @@ export default async function RatingsPage() {
   return (
     <>
       <AppNav />
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">
+      <main id="main" className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">
         <div className="mb-6 flex items-baseline justify-between">
           <h1 className="text-2xl">Ratings</h1>
           <p className="stat text-xs text-chalk/50">

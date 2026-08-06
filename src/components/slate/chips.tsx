@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, Check, Minus, X } from "lucide-react";
 import type { LiveBetStatus } from "../../lib/live-status";
-import { fmtSpread } from "../../lib/slate";
+import { fmtSpread, type MoveRead } from "../../lib/slate";
 
 export function LiveBadge() {
   return (
@@ -101,19 +101,35 @@ export function LiveStatusChip({ prefix, status }: { prefix: string; status: Liv
   );
 }
 
-/** Line movement: arrow + delta vs open. Down = toward home, up = away. */
-export function MoveIndicator({ move, open }: { move: number | null; open: number | null }) {
+/**
+ * Line movement: arrow + delta vs open. Neutral by default — color appears
+ * only when the move is ≥1.5 pts relative to the model's side (spec §4):
+ * green = market steaming toward the model, red = away from it. The old
+ * version painted every drift green/red on direction alone, which read as a
+ * value judgment that meant nothing (audit).
+ */
+export function MoveIndicator({ move, open }: { move: MoveRead | null; open: number | null }) {
   if (move === null) return null;
-  const toward = move < 0; // spread dropped → market moved toward the home side
+  const toward = move.delta < 0; // spread dropped → market moved toward the home side
+  const tone =
+    move.vsModel === "toward" ? "text-win" : move.vsModel === "away" ? "text-loss" : "text-dim";
+  const title = [
+    open !== null ? `Opened ${fmtSpread(open)}` : null,
+    move.vsModel === "toward"
+      ? "Market moving toward the model's side"
+      : move.vsModel === "away"
+        ? "Market moving away from the model's side"
+        : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <span
-      className={`stat inline-flex items-center gap-0.5 text-[10.5px] font-medium ${
-        toward ? "text-win" : "text-loss"
-      }`}
-      title={open !== null ? `Opened ${fmtSpread(open)}` : undefined}
+      className={`stat inline-flex items-center gap-0.5 text-[10.5px] font-medium ${tone}`}
+      title={title || undefined}
     >
       {toward ? <ArrowDown size={11} aria-hidden /> : <ArrowUp size={11} aria-hidden />}
-      {Math.abs(move)}
+      {Math.abs(move.delta)}
     </span>
   );
 }

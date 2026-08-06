@@ -107,6 +107,7 @@ export interface GameView {
 export interface SlateData {
   seasonId: number;
   week: number;
+  seasonType: "regular" | "postseason";
   fetchedAt: string;
   games: GameView[];
 }
@@ -322,10 +323,15 @@ export interface WeekRecord {
   pushes: number;
 }
 
-/** Model ATS record across a slate's final games ("ATS 9-4"). */
+/**
+ * Model ATS record across a slate's final games ("ATS 9-4").
+ * Frozen predictions only — the report card grades receipts, never a number
+ * that could have been re-priced after the fact (audit bug #12).
+ */
 export function weekModelRecord(games: GameView[]): WeekRecord {
   const rec = { wins: 0, losses: 0, pushes: 0 };
   for (const g of games) {
+    if (!g.prediction?.frozen) continue;
     const picks = modelPicks(g);
     if (!picks.atsSide || !isFinal(g)) continue;
     const marketSpread = g.prediction?.vegasSpread ?? g.lines.spread;
@@ -441,4 +447,73 @@ export function spreadMove(g: GameView): number | null {
   if (spread === null || spreadOpen === null) return null;
   const d = Math.round((spread - spreadOpen) * 10) / 10;
   return d === 0 ? null : d;
+}
+
+export interface MoveRead {
+  /** Signed move from open (home perspective) */
+  delta: number;
+  /** Set when the move is ≥1.5 pts and the model has a side: is the market
+   *  steaming toward or away from the model's pick? (spec §4) */
+  vsModel: "toward" | "away" | null;
+}
+
+/**
+ * Line movement read against the model's side. Color only means something
+ * when the model has a lean and the move is material — everything else is
+ * neutral (the old indicator painted every drift green/red for no reason).
+ */
+export function spreadMoveRead(g: GameView): MoveRead | null {
+  const delta = spreadMove(g);
+  if (delta === null) return null;
+  const edge = g.prediction?.edge ?? null;
+  let vsModel: MoveRead["vsModel"] = null;
+  if (edge !== null && edge !== 0 && Math.abs(delta) >= 1.5) {
+    const modelSide = edge < 0 ? "home" : "away"; // same rule as modelPicks
+    const marketToward = delta < 0 ? "home" : "away"; // spread dropped → toward home
+    vsModel = marketToward === modelSide ? "toward" : "away";
+  }
+  return { delta, vsModel };
+}
+
+/* ---- watchability (spec §7) -------------------------------------------- */
+
+/**
+ * Watchability 0–100 (spec §7 defines the formula shape; weights tuned by
+ * feel): closeness of spread + combined team quality (poll/model rank as the
+ * available proxy for ratings) + expected points, on a base of 10.
+ * Null for dead games. Rivalry/stakes terms join when that data exists.
+ */
+export function watchability(g: GameView): number | null {
+  if (isDead(g)) return null;
+  let score = 10;
+  // closeness: PK → +35, 24+ point spread → +0
+  score +=
+    g.lines.spread === null ? 12 : Math.max(0, 35 - (Math.abs(g.lines.spread) * 35) / 24);
+  // quality: each side rank 1 → +17.5 … rank 25 → ~+0.7; unranked → +2
+  const q = (r: number | null) =>
+    r === null || r > 25 ? 2 : (17.5 * (26 - r)) / 25;
+  score += q(displayRank(g.home)) + q(displayRank(g.away));
+  // shootout potential: total 38 → +0 … 75+ → +20
+  score +=
+    g.lines.total === null
+      ? 8
+      : Math.max(0, Math.min(1, (g.lines.total - 38) / 37)) * 20;
+  return Math.round(Math.min(score, 100));
+}
+
+/**
+ * Upset alert: a top-10 team trailing in the second half to a team ranked
+ * 20+ spots worse (or unranked).
+ */
+export function upsetAlert(g: GameView): boolean {
+  if (!isLive(g) || g.period === null || g.period < 3) return false;
+  if (g.homePoints === null || g.awayPoints === null || g.homePoints === g.awayPoints)
+    return false;
+  const hr = displayRank(g.home);
+  const ar = displayRank(g.away);
+  const leadingIsHome = g.homePoints > g.awayPoints;
+  const trailingRank = leadingIsHome ? ar : hr;
+  const leadingRank = leadingIsHome ? hr : ar;
+  if (trailingRank === null || trailingRank > 10) return false;
+  return leadingRank === null || leadingRank - trailingRank >= 20;
 }

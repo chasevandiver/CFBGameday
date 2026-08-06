@@ -4,8 +4,17 @@
  * (refresh-lines and sync-games have their own scripts with extra flags.)
  */
 
+import { cfbdCallCount } from "../src/lib/cfbd";
 import { createServiceClient } from "../src/lib/supabase/service";
-import { freezeJob, ratingsUpdateJob, scoreboardJob, syncRankingsJob, weatherJob } from "./lib/jobs-core";
+import {
+  freezeJob,
+  logCfbdCalls,
+  ratingsUpdateJob,
+  scoreboardJob,
+  syncRankingsJob,
+  syncSystemsJob,
+  weatherJob,
+} from "./lib/jobs-core";
 
 async function main() {
   const task = process.argv[2];
@@ -16,10 +25,12 @@ async function main() {
     "ratings-update": ratingsUpdateJob,
     freeze: freezeJob,
     "sync-rankings": syncRankingsJob,
+    "sync-systems": syncSystemsJob,
   } as const;
   const job = jobs[task as keyof typeof jobs];
   if (!job) throw new Error(`unknown task "${task}" (${Object.keys(jobs).join("|")})`);
   const result = await job(db);
+  await logCfbdCalls(db, task, cfbdCallCount());
   console.log(task, JSON.stringify(result));
 }
 

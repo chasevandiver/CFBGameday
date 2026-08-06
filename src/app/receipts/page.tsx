@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { AppNav } from "../../components/AppNav";
 import type { GameRow, PredictionRow, TeamRow } from "../../lib/db-types";
-import { DEFAULT_TZ, kickDateLong, kickParts } from "../../lib/kick";
+import { DEFAULT_TZ, kickDateLong, kickParts, tzLabel } from "../../lib/kick";
+import { fetchCurrentSeasonWeek } from "../../lib/queries";
 import { createClient } from "../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -22,11 +24,15 @@ interface Receipt {
 
 export default async function ReceiptsPage() {
   const supabase = await createClient();
+  const { seasonId } = await fetchCurrentSeasonWeek(supabase);
 
+  // Scoped to the current season (audit bug #7: this used to fetch every
+  // frozen prediction ever and merge same-numbered weeks across seasons).
   const { data: predRows } = await supabase
     .from("predictions")
     .select("*")
     .eq("frozen", true)
+    .eq("season_id", seasonId)
     .order("created_at", { ascending: false });
   const frozen = (predRows ?? []) as PredictionRow[];
 
@@ -101,8 +107,16 @@ export default async function ReceiptsPage() {
   return (
     <>
       <AppNav />
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">
-        <h1 className="text-2xl">Receipts</h1>
+      <main id="main" className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h1 className="text-2xl">Receipts</h1>
+          <Link
+            href="/recap"
+            className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+          >
+            Week in review →
+          </Link>
+        </div>
         <p className="mb-5 mt-1 text-sm text-dim">
           Every prediction frozen Thursday night, timestamped, never edited. The model answers
           for its number here.
@@ -150,8 +164,8 @@ export default async function ReceiptsPage() {
                 <h2 className="text-sm text-accent">Week {w}</h2>
                 {stamp && (
                   <span className="stat text-xs text-dim">
-                    frozen {kickDateLong(stamp, DEFAULT_TZ)} {kickParts(stamp, DEFAULT_TZ).time} CT
-                    · {rows[0].pred.model_version}
+                    frozen {kickDateLong(stamp, DEFAULT_TZ)} {kickParts(stamp, DEFAULT_TZ).time}{" "}
+                    {tzLabel(DEFAULT_TZ)} · {rows[0].pred.model_version}
                   </span>
                 )}
               </header>
@@ -194,9 +208,12 @@ function ReceiptRow({ r }: { r: Receipt }) {
   return (
     <tr className="border-t border-chalk/5">
       <td className="py-2 pl-4 pr-3">
-        <span className="font-sans text-chalk">
+        <Link
+          href={`/game/${g.id}`}
+          className="font-sans text-chalk underline-offset-2 hover:text-accent hover:underline"
+        >
           {away.abbreviation ?? away.school} @ {home.abbreviation ?? home.school}
-        </span>
+        </Link>
       </td>
       <td className="py-2 pr-3 text-right text-chalk">
         {home.abbreviation ?? home.school} {fmtLine(Number(pred.spread))}

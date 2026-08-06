@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   BetRow,
   GameRow,
+  LineConsensusRow,
   LineSnapshotRow,
   PickRow,
   PredictionRow,
@@ -9,62 +10,35 @@ import type {
   TeamRow,
 } from "./db-types";
 import { pickPollRanks, pollShortName } from "./rankings";
+import { fetchCurrentSlate, type SeasonType } from "./season";
 import { atsRecord, ouRecord } from "./slate";
 import type { CrewPickView, GameView, LinePoint, MyBetView, SlateData, TeamView } from "./slate";
 
-/** Books only hang lines in half-point increments, so consensus must land on one. */
-export function snapToHalf(v: number): number {
-  return Math.round(v * 2) / 2;
-}
+// Consensus math lives in ./consensus (single shared implementation for app +
+// jobs); re-exported here for existing importers.
+import { consensusFromSnapshots, snapToHalf } from "./consensus";
 
-/**
- * Consensus of the most recent snapshot per provider. Pass `before` (usually
- * kickoff) to get the closing consensus — the same cutoff the grading job
- * uses — instead of the latest one.
- */
-export function consensusFromSnapshots(snapshots: LineSnapshotRow[], before?: string): {
+export { consensusFromSnapshots, snapToHalf };
+
+/** The columns the sparkline actually needs — keeps the wire payload small. */
+export interface HistorySnapshot {
+  provider: string;
   spread: number | null;
-  open: number | null;
-  total: number | null;
-  totalOpen: number | null;
-  mlHome: number | null;
-  mlAway: number | null;
-} {
-  const latestByProvider = new Map<string, LineSnapshotRow>();
-  for (const s of snapshots) {
-    if (before !== undefined && s.captured_at >= before) continue;
-    const prev = latestByProvider.get(s.provider);
-    if (!prev || s.captured_at > prev.captured_at) latestByProvider.set(s.provider, s);
-  }
-  const latest = [...latestByProvider.values()];
-  const mean = (vals: Array<number | null>): number | null => {
-    const nums = vals.filter((v): v is number => v !== null);
-    return nums.length === 0 ? null : nums.reduce((a, b) => a + b, 0) / nums.length;
-  };
-  const line = (vals: Array<number | null>): number | null => {
-    const m = mean(vals);
-    return m === null ? null : snapToHalf(m);
-  };
-  const price = (vals: Array<number | null>): number | null => {
-    const m = mean(vals);
-    return m === null ? null : Math.round(m);
-  };
-  return {
-    spread: line(latest.map((s) => s.spread)),
-    open: line(latest.map((s) => s.spread_open ?? s.spread)),
-    total: line(latest.map((s) => s.total)),
-    totalOpen: line(latest.map((s) => s.total_open ?? s.total)),
-    mlHome: price(latest.map((s) => s.ml_home)),
-    mlAway: price(latest.map((s) => s.ml_away)),
-  };
+  captured_at: string;
+  spread_open?: number | null;
 }
 
 /**
  * Consensus spread over time for the movement sparkline: walk snapshots in
  * capture order, keep each provider's latest, emit a point whenever the
  * cross-provider average changes. Capped to the trailing 24 points.
+ * Pass `open` (from line_consensus) to seed a start point for games with a
+ * single observed value.
  */
-export function consensusHistory(snapshots: LineSnapshotRow[]): LinePoint[] {
+export function consensusHistory(
+  snapshots: HistorySnapshot[],
+  open?: number | null,
+): LinePoint[] {
   const sorted = [...snapshots].sort((a, b) => a.captured_at.localeCompare(b.captured_at));
   const latestByProvider = new Map<string, number>();
   const points: LinePoint[] = [];
@@ -79,10 +53,20 @@ export function consensusHistory(snapshots: LineSnapshotRow[]): LinePoint[] {
   }
   // seed with the open so a single-snapshot game still shows a start point
   if (points.length === 1) {
-    const open = consensusFromSnapshots(snapshots).open;
-    if (open !== null && open !== points[0].v) points.unshift({ t: points[0].t, v: open });
+    const seed =
+      open !== undefined
+        ? open
+        : mean(sorted.map((s) => s.spread_open ?? s.spread ?? null));
+    const snapped = seed === null ? null : snapToHalf(seed);
+    if (snapped !== null && snapped !== points[0].v)
+      points.unshift({ t: points[0].t, v: snapped });
   }
   return points.slice(-24);
+}
+
+function mean(vals: Array<number | null>): number | null {
+  const nums = vals.filter((v): v is number => v !== null);
+  return nums.length === 0 ? null : nums.reduce((a, b) => a + b, 0) / nums.length;
 }
 
 function toTeamView(
@@ -115,6 +99,7 @@ export async function fetchSlateView(
   seasonId: number,
   week: number,
   userId: string | null,
+  seasonType: SeasonType = "regular",
 ): Promise<SlateData> {
   const fetchedAt = new Date().toISOString();
   const { data: games, error } = await supabase
@@ -122,19 +107,32 @@ export async function fetchSlateView(
     .select("*")
     .eq("season_id", seasonId)
     .eq("week", week)
+    .eq("season_type", seasonType)
     .order("start_ts", { ascending: true });
   if (error) throw error;
-  if (!games || games.length === 0) return { seasonId, week, fetchedAt, games: [] };
+  if (!games || games.length === 0)
+    return { seasonId, week, seasonType, fetchedAt, games: [] };
 
   const gameRows = games as GameRow[];
   const gameIds = gameRows.map((g) => g.id);
   const teamIds = [...new Set(gameRows.flatMap((g) => [g.home_team_id, g.away_team_id]))];
   const venueIds = [...new Set(gameRows.map((g) => g.venue_id).filter((v): v is number => v !== null))];
 
-  const [teamsRes, linesRes, predsRes, picksRes, betsRes, weatherRes, venuesRes, seasonGamesRes, ratingsRes, pollsRes, crewPicksRes, profilesRes] =
+  // History window: the sparkline shows the trailing 24 consensus changes;
+  // a week of snapshots more than covers it and bounds the row count.
+  const historyStart = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+
+  const [teamsRes, consensusRes, historyRes, predsRes, picksRes, betsRes, weatherRes, venuesRes, seasonGamesRes, ratingsRes, pollsRes, crewPicksRes, profilesRes] =
     await Promise.all([
       supabase.from("teams").select("*").in("id", teamIds),
-      supabase.from("line_snapshots").select("*").in("game_id", gameIds),
+      // one consensus row per game, reduced in Postgres (migration 0015) —
+      // not the full snapshot history (audit §8)
+      supabase.from("line_consensus").select("*").in("game_id", gameIds),
+      supabase
+        .from("line_snapshots")
+        .select("game_id, provider, spread, captured_at")
+        .in("game_id", gameIds)
+        .gte("captured_at", historyStart),
       supabase
         .from("predictions")
         .select("*")
@@ -162,7 +160,7 @@ export async function fetchSlateView(
         .eq("season_id", seasonId)
         .eq("status", "final"),
       supabase
-        .from("ratings")
+        .from("latest_ratings")
         .select("team_id, week, overall")
         .eq("season_id", seasonId),
       supabase
@@ -181,11 +179,14 @@ export async function fetchSlateView(
 
   const teams = new Map(((teamsRes.data ?? []) as TeamRow[]).map((t) => [t.id, t]));
 
-  const linesByGame = new Map<number, LineSnapshotRow[]>();
-  for (const s of (linesRes.data ?? []) as LineSnapshotRow[]) {
-    const arr = linesByGame.get(s.game_id) ?? [];
+  const consensusByGame = new Map(
+    ((consensusRes.data ?? []) as LineConsensusRow[]).map((c) => [c.game_id, c]),
+  );
+  const historyByGame = new Map<number, Array<HistorySnapshot & { game_id: number }>>();
+  for (const s of (historyRes.data ?? []) as Array<HistorySnapshot & { game_id: number }>) {
+    const arr = historyByGame.get(s.game_id) ?? [];
     arr.push(s);
-    linesByGame.set(s.game_id, arr);
+    historyByGame.set(s.game_id, arr);
   }
 
   // newest prediction wins; prefer frozen (Thursday receipts) rows
@@ -280,17 +281,15 @@ export async function fetchSlateView(
     records.set(loser, l);
   }
 
-  // model ranks from the latest ratings week
+  // model ranks from each team's latest ratings row (latest_ratings view)
   const allRatings = (ratingsRes.data ?? []) as Array<{
     team_id: number;
     week: number;
     overall: number;
   }>;
-  const latestRatingWeek = allRatings.length > 0 ? Math.max(...allRatings.map((r) => r.week)) : -1;
   const ranks = new Map<number, number>();
-  allRatings
-    .filter((r) => r.week === latestRatingWeek)
-    .sort((a, b) => b.overall - a.overall)
+  [...allRatings]
+    .sort((a, b) => Number(b.overall) - Number(a.overall))
     .forEach((r, i) => ranks.set(r.team_id, i + 1));
 
   // human-poll ranks: latest week, CFP > AP > Coaches
@@ -299,12 +298,28 @@ export async function fetchSlateView(
   );
   const pollName = pollShortName(poll);
 
+  const nullConsensus: LineConsensusRow = {
+    game_id: 0,
+    spread: null,
+    spread_open: null,
+    total: null,
+    total_open: null,
+    ml_home: null,
+    ml_away: null,
+  };
   const views: GameView[] = gameRows.flatMap((game) => {
     const home = teams.get(game.home_team_id);
     const away = teams.get(game.away_team_id);
     if (!home || !away) return [];
-    const snapshots = linesByGame.get(game.id) ?? [];
-    const consensus = consensusFromSnapshots(snapshots);
+    const c = consensusByGame.get(game.id) ?? nullConsensus;
+    const consensus = {
+      spread: c.spread === null ? null : Number(c.spread),
+      open: c.spread_open === null ? null : Number(c.spread_open),
+      total: c.total === null ? null : Number(c.total),
+      totalOpen: c.total_open === null ? null : Number(c.total_open),
+      mlHome: c.ml_home === null ? null : Number(c.ml_home),
+      mlAway: c.ml_away === null ? null : Number(c.ml_away),
+    };
     const pred = predByGame.get(game.id) ?? null;
     const pick = pickByGame.get(game.id) ?? null;
     const weather = weatherByGame.get(game.id) ?? null;
@@ -333,7 +348,7 @@ export async function fetchSlateView(
           mlHome: consensus.mlHome,
           mlAway: consensus.mlAway,
         },
-        spreadHistory: consensusHistory(snapshots),
+        spreadHistory: consensusHistory(historyByGame.get(game.id) ?? [], consensus.open),
         prediction: pred
           ? {
               spread: Number(pred.spread),
@@ -360,7 +375,7 @@ export async function fetchSlateView(
     ];
   });
 
-  return { seasonId, week, fetchedAt, games: views };
+  return { seasonId, week, seasonType, fetchedAt, games: views };
 }
 
 export interface TeamAtsSummary {
@@ -442,18 +457,53 @@ export async function fetchTeamAtsSeason(
 
 export async function fetchCurrentSeasonWeek(
   supabase: SupabaseClient,
-): Promise<{ seasonId: number; week: number }> {
+): Promise<{ seasonId: number; week: number; seasonType: SeasonType }> {
   const { data: season } = await supabase
     .from("seasons")
-    .select("id, week0_start")
+    .select("id")
     .eq("is_current", true)
     .maybeSingle();
-  if (!season) return { seasonId: 2026, week: 1 };
+  if (!season) throw new Error("No current season configured — seed the seasons table.");
 
-  const week0 = new Date(`${season.week0_start}T00:00:00Z`).getTime();
-  const elapsedWeeks = Math.floor((Date.now() - week0) / (7 * 24 * 60 * 60 * 1000));
-  // CFBD numbers the opening slate week 1; clamp pre-season to week 1 too
-  return { seasonId: season.id, week: Math.min(Math.max(elapsedWeeks + 1, 1), 15) };
+  const pointer = await fetchCurrentSlate(supabase, season.id);
+  return { seasonId: season.id, ...pointer };
+}
+
+/**
+ * Games for the ledger's bet form: a rolling now−3d…now+9d window rather than
+ * "this week", so a bet can still be attached to last night's game after the
+ * current-week pointer rolls over (audit #18).
+ */
+export async function fetchBetFormGames(
+  supabase: SupabaseClient,
+  seasonId: number,
+): Promise<{
+  data: Array<{ id: number; start_ts: string | null; home_team_id: number; away_team_id: number }>;
+}> {
+  const now = Date.now();
+  const { data } = await supabase
+    .from("games")
+    .select("id, start_ts, home_team_id, away_team_id")
+    .eq("season_id", seasonId)
+    .gte("start_ts", new Date(now - 3 * 24 * 3600 * 1000).toISOString())
+    .lte("start_ts", new Date(now + 9 * 24 * 3600 * 1000).toISOString())
+    .order("start_ts", { ascending: true });
+  return { data: data ?? [] };
+}
+
+/**
+ * CFBD calls metered so far this calendar month (UTC), from api_call_log.
+ * Service-role only — the table is deny-all under RLS.
+ */
+export async function fetchCfbdCallsThisMonth(service: SupabaseClient): Promise<number> {
+  const monthStart = new Date();
+  monthStart.setUTCDate(1);
+  monthStart.setUTCHours(0, 0, 0, 0);
+  const { count } = await service
+    .from("api_call_log")
+    .select("id", { count: "exact", head: true })
+    .gte("called_at", monthStart.toISOString());
+  return count ?? 0;
 }
 
 export async function fetchProfiles(supabase: SupabaseClient): Promise<ProfileRow[]> {

@@ -75,6 +75,49 @@ export function useStarred(): [number[], (teamId: number) => void] {
   return [starred, toggle];
 }
 
+/* ---- focused games (multi-game focus mode) ------------------------------ */
+
+const FOCUS_KEY = "slate-focused";
+const FOCUS_CAP = 4;
+let focusCache: number[] | null = null;
+const focusListeners = new Set<() => void>();
+const subscribeFocus = (cb: () => void) => {
+  focusListeners.add(cb);
+  return () => focusListeners.delete(cb);
+};
+
+function readFocused(): number[] {
+  if (focusCache === null) {
+    try {
+      // sessionStorage: focus is a this-Saturday tool, not a preference
+      const raw = sessionStorage.getItem(FOCUS_KEY);
+      const parsed: unknown = raw ? JSON.parse(raw) : [];
+      focusCache = Array.isArray(parsed) ? parsed.filter((v) => typeof v === "number") : [];
+    } catch {
+      focusCache = [];
+    }
+  }
+  return focusCache;
+}
+
+/** Pin up to four games to a Focus row at the top of the slate. */
+export function useFocusedGames(): [number[], (gameId: number) => void] {
+  const focused = useSyncExternalStore(subscribeFocus, readFocused, () => EMPTY);
+  const toggle = useCallback((gameId: number) => {
+    const prev = readFocused();
+    focusCache = prev.includes(gameId)
+      ? prev.filter((id) => id !== gameId)
+      : [...prev, gameId].slice(-FOCUS_CAP);
+    try {
+      sessionStorage.setItem(FOCUS_KEY, JSON.stringify(focusCache));
+    } catch {
+      /* private mode */
+    }
+    focusListeners.forEach((l) => l());
+  }, []);
+  return [focused, toggle];
+}
+
 /* ---- viewer timezone ---------------------------------------------------- */
 
 let tzCache: string | null = null;

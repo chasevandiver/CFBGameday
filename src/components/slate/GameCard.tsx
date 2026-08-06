@@ -1,6 +1,6 @@
 "use client";
 
-import { CloudRain, Snowflake, Star, Tv, Wind } from "lucide-react";
+import { CloudRain, Pin, Snowflake, Star, Tv, Wind } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { inSlip, useBetSlip, type SlipSelection } from "../../lib/bet-slip-store";
@@ -23,7 +23,9 @@ import {
   modelPicks,
   ouResult,
   parseSituation,
-  spreadMove,
+  spreadMoveRead,
+  upsetAlert,
+  watchability,
   type FieldPosition,
   type GameView,
   type MyBetView,
@@ -43,6 +45,9 @@ interface Props {
   index?: number;
   /** Game of the Week — accent ring + chip, otherwise a normal card */
   featured?: boolean;
+  /** Multi-game focus mode: pinned to the Focus row at the top of the slate */
+  focused?: boolean;
+  onFocus?: (gameId: number) => void;
 }
 
 const DOWN = ["", "1st", "2nd", "3rd", "4th"];
@@ -53,7 +58,16 @@ function underTwo(period: number | null, clock: string | null): boolean {
   return m !== null && Number(m[1]) < 2;
 }
 
-export function GameCard({ game, tz, starred, onStar, index = 0, featured = false }: Props) {
+export function GameCard({
+  game,
+  tz,
+  starred,
+  onStar,
+  index = 0,
+  featured = false,
+  focused = false,
+  onFocus,
+}: Props) {
   const live = isLive(game);
   const final = isFinal(game);
   const dead = isDead(game);
@@ -107,7 +121,25 @@ export function GameCard({ game, tz, starred, onStar, index = 0, featured = fals
       <div
         className={`pointer-events-none relative z-10 flex h-full flex-col p-3.5 ${cover ? "pt-2.5" : "pt-4"}`}
       >
-        <CardHeader game={game} tz={tz} live={live} final={final} dead={dead} featured={featured} />
+        <CardHeader
+          game={game}
+          tz={tz}
+          live={live}
+          final={final}
+          dead={dead}
+          featured={featured}
+          focused={focused}
+          onFocus={onFocus}
+        />
+
+        {/* score changes on games you have action on are announced to screen
+            readers; this region persists across score re-renders */}
+        {live && game.myPick && (
+          <p className="sr-only" aria-live="polite">
+            {game.away.abbr} {game.awayPoints ?? 0}, {game.home.abbr} {game.homePoints ?? 0},{" "}
+            {periodLabel(game.period)}
+          </p>
+        )}
 
         <div key={game.status} className="fade-swap flex flex-1 flex-col">
           {!live && !final && !dead && <OddsColumnLabels game={game} />}
@@ -173,6 +205,8 @@ function CardHeader({
   final,
   dead,
   featured,
+  focused,
+  onFocus,
 }: {
   game: GameView;
   tz: string;
@@ -180,6 +214,8 @@ function CardHeader({
   final: boolean;
   dead: boolean;
   featured: boolean;
+  focused: boolean;
+  onFocus?: (gameId: number) => void;
 }) {
   const u2m = live && underTwo(game.period, game.clock);
   return (
@@ -193,6 +229,9 @@ function CardHeader({
               {periodLabel(game.period)}
               {game.clock ? ` · ${game.clock}` : ""}
             </span>
+            {upsetAlert(game) && (
+              <span className="chip live-dot bg-loss/15 text-loss">Upset alert</span>
+            )}
           </>
         ) : final ? (
           <span className="stat text-xs font-semibold uppercase tracking-wide text-dim">
@@ -213,6 +252,23 @@ function CardHeader({
             <Tv size={11} aria-hidden />
             {game.tv}
           </span>
+        )}
+        {onFocus && !final && !dead && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onFocus(game.id);
+            }}
+            aria-label={focused ? "Remove from focus row" : "Pin to focus row"}
+            aria-pressed={focused}
+            title={focused ? "Unpin from Focus" : "Pin to Focus (max 4)"}
+            className={`pointer-events-auto -m-1 shrink-0 rounded p-1 transition-colors ${
+              focused ? "text-accent" : "text-chalk/25 hover:text-chalk/60"
+            }`}
+          >
+            <Pin size={13} fill={focused ? "currentColor" : "none"} aria-hidden />
+          </button>
         )}
       </div>
     </div>
@@ -327,11 +383,11 @@ function TeamRow({
           }}
           aria-label={isStarred ? `Unstar ${team.school}` : `Star ${team.school}`}
           aria-pressed={isStarred}
-          className={`pointer-events-auto shrink-0 rounded p-0.5 transition-colors ${
-            isStarred ? "text-accent" : "text-chalk/20 hover:text-chalk/60"
+          className={`pointer-events-auto -m-1.5 shrink-0 rounded p-1.5 transition-colors ${
+            isStarred ? "text-accent" : "text-chalk/25 hover:text-chalk/60"
           }`}
         >
-          <Star size={12} fill={isStarred ? "currentColor" : "none"} aria-hidden />
+          <Star size={13} fill={isStarred ? "currentColor" : "none"} aria-hidden />
         </button>
       </div>
 
@@ -404,7 +460,7 @@ function LiveSituation({ game }: { game: GameView }) {
       {pos && <FieldStrip game={game} pos={pos} redZone={redZone} />}
       {game.lastPlay && (
         <p className="mt-1.5 truncate text-[11px] leading-snug text-dim">
-          <span className="stat mr-1 text-[9px] font-semibold uppercase tracking-widest text-chalk/35">
+          <span className="stat mr-1 text-[9px] font-semibold uppercase tracking-widest text-chalk/55">
             Last
           </span>
           {game.lastPlay}
@@ -481,7 +537,7 @@ function CrewLine({ game }: { game: GameView }) {
           : `${withMe.map((c) => `${c.name}${c.record ? ` ${c.record}` : ""}`).join(" · ")} with you`}
       </span>
       {against.length > 0 && (
-        <span className="ml-auto shrink-0 truncate text-chalk/35">
+        <span className="ml-auto shrink-0 truncate text-chalk/55">
           {against.map((c) => `${c.name} ${sideLabel(game, c.side)}`).join(", ")}
         </span>
       )}
@@ -517,9 +573,9 @@ function OddsColumnLabels({ game }: { game: GameView }) {
   const { spread, total, mlHome, mlAway } = game.lines;
   if (spread === null && total === null && mlHome === null && mlAway === null) return null;
   return (
-    <div className="mt-2 flex justify-end gap-1 text-[9px] font-semibold uppercase tracking-wider text-chalk/30">
-      <span className="min-w-10 text-center">Spread</span>
-      <span className="min-w-10 text-center">Total</span>
+    <div className="mt-2 flex justify-end gap-1 text-[10px] font-semibold uppercase tracking-wider text-chalk/45">
+      <span className="min-w-11 text-center">Spread</span>
+      <span className="min-w-11 text-center">Total</span>
       <span className="min-w-12 text-center">Money</span>
     </div>
   );
@@ -617,8 +673,8 @@ function OddsCell({
       disabled={disabled}
       aria-label={aria}
       aria-pressed={active}
-      className={`stat pointer-events-auto flex h-7 items-center justify-center rounded-md px-1 text-[11px] font-medium transition-colors ${
-        wide ? "min-w-12" : "min-w-10"
+      className={`stat pointer-events-auto flex h-8 items-center justify-center rounded-md px-1 text-[11px] font-medium transition-colors ${
+        wide ? "min-w-12" : "min-w-11"
       } ${
         active
           ? "bg-accent text-accent-ink ring-1 ring-inset ring-accent"
@@ -663,7 +719,8 @@ function betPrefix(g: GameView, b: MyBetView): string {
 function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
   const p = game.prediction;
   const picks = modelPicks(game);
-  const move = spreadMove(game);
+  const move = spreadMoveRead(game);
+  const watch = live ? null : watchability(game);
 
   const liveProb = live ? liveHomeWinProb(game) : null;
   const h = game.homePoints ?? 0;
@@ -685,6 +742,14 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
           {game.myPick && !live && <CrewSplit game={game} />}
         </div>
         <div className="flex items-center gap-1.5 text-dim">
+          {watch !== null && (
+            <span
+              className="stat text-[10.5px] font-medium text-chalk/55"
+              title="Watchability 0–100: closeness + team quality + expected points"
+            >
+              watch {watch}
+            </span>
+          )}
           <MoveIndicator move={move} open={game.lines.spreadOpen} />
           <Sparkline points={game.spreadHistory} />
         </div>
@@ -719,13 +784,13 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
                 )}
               </>
             ) : (
+              /* Spread + ATS side only — model totals and projected scores are
+                 hidden until real off/def/tempo sub-ratings ship (audit #4). */
               <>
                 {"Model: "}
-                {p!.homeScore !== null && p!.awayScore !== null && (
-                  <span className="text-chalk">
-                    {game.home.abbr} {Math.round(p!.homeScore)}–{Math.round(p!.awayScore)}
-                  </span>
-                )}
+                <span className="text-chalk">
+                  {game.home.abbr} {fmtSpread(Math.round(p!.spread * 10) / 10)}
+                </span>
                 {picks.atsSide && (
                   <>
                     {" · "}
@@ -734,14 +799,7 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
                     </span>
                   </>
                 )}
-                {picks.ouLean && (
-                  <>
-                    {" · "}
-                    <span className="text-chalk">
-                      {picks.ouLean === "over" ? "Over" : "Under"} lean
-                    </span>
-                  </>
-                )}
+                {!p!.frozen && <span className="text-chalk/40"> · unfrozen</span>}
               </>
             )}
           </p>
@@ -753,7 +811,11 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
 
 function FinalFooter({ game }: { game: GameView }) {
   const ou = ouResult(game);
-  const grade = gradeModel(game);
+  // The model only answers for frozen (receipts) rows — an unfrozen price can
+  // move after the fact and grading it would be revisionism (audit #12).
+  const grade = game.prediction?.frozen
+    ? gradeModel(game)
+    : { winner: null, ats: null, total: null };
   const { spread } = game.lines;
 
   // the viewer's pick, resolved: if-the-game-ended-now at the final score IS the result
@@ -805,8 +867,7 @@ function FinalFooter({ game }: { game: GameView }) {
     );
   if (grade.ats !== null)
     gradeChips.push(<ResultChip key="a" label="ATS" result={grade.ats ? "pass" : "fail"} />);
-  if (grade.total !== null)
-    gradeChips.push(<ResultChip key="t" label="O/U" result={grade.total ? "pass" : "fail"} />);
+  // No model O/U chip: the model doesn't price totals yet (audit #4).
 
   if (chips.length === 0 && gradeChips.length === 0) return null;
 
