@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AppNav } from "../../components/AppNav";
 import { ConsensusChip, EdgeChip } from "../../components/slate/chips";
-import { kickParts, DEFAULT_TZ } from "../../lib/kick";
+import { kickParts, tzLabel, DEFAULT_TZ } from "../../lib/kick";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../lib/queries";
 import {
   fmtPct,
@@ -26,8 +26,8 @@ export default async function EdgesPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const { seasonId, week } = await fetchCurrentSeasonWeek(supabase);
-  const data = await fetchSlateView(supabase, seasonId, week, user?.id ?? null);
+  const { seasonId, week, seasonType } = await fetchCurrentSeasonWeek(supabase);
+  const data = await fetchSlateView(supabase, seasonId, week, user?.id ?? null, seasonType);
 
   const flagged = data.games
     .filter((g) => g.prediction?.edgeFlag && !isDead(g) && !isFinal(g))
@@ -93,7 +93,7 @@ function EdgeRow({ game }: { game: GameView }) {
             {game.away.school} @ {game.home.school}
           </p>
           <p className="stat mt-0.5 text-[11px] text-dim">
-            {kick ? `${kick.day} ${kick.time} CT` : "TBD"}
+            {kick ? `${kick.day} ${kick.time} ${tzLabel(DEFAULT_TZ)}` : "TBD"}
             {game.tv ? ` · ${game.tv}` : ""}
             {p.frozen ? " · frozen" : " · unfrozen"}
           </p>

@@ -9,6 +9,7 @@ import type {
   TeamRow,
 } from "./db-types";
 import { pickPollRanks, pollShortName } from "./rankings";
+import { fetchCurrentSlate, type SeasonType } from "./season";
 import { atsRecord, ouRecord } from "./slate";
 import type { CrewPickView, GameView, LinePoint, MyBetView, SlateData, TeamView } from "./slate";
 
@@ -115,6 +116,7 @@ export async function fetchSlateView(
   seasonId: number,
   week: number,
   userId: string | null,
+  seasonType: SeasonType = "regular",
 ): Promise<SlateData> {
   const fetchedAt = new Date().toISOString();
   const { data: games, error } = await supabase
@@ -122,9 +124,11 @@ export async function fetchSlateView(
     .select("*")
     .eq("season_id", seasonId)
     .eq("week", week)
+    .eq("season_type", seasonType)
     .order("start_ts", { ascending: true });
   if (error) throw error;
-  if (!games || games.length === 0) return { seasonId, week, fetchedAt, games: [] };
+  if (!games || games.length === 0)
+    return { seasonId, week, seasonType, fetchedAt, games: [] };
 
   const gameRows = games as GameRow[];
   const gameIds = gameRows.map((g) => g.id);
@@ -360,7 +364,7 @@ export async function fetchSlateView(
     ];
   });
 
-  return { seasonId, week, fetchedAt, games: views };
+  return { seasonId, week, seasonType, fetchedAt, games: views };
 }
 
 export interface TeamAtsSummary {
@@ -442,18 +446,38 @@ export async function fetchTeamAtsSeason(
 
 export async function fetchCurrentSeasonWeek(
   supabase: SupabaseClient,
-): Promise<{ seasonId: number; week: number }> {
+): Promise<{ seasonId: number; week: number; seasonType: SeasonType }> {
   const { data: season } = await supabase
     .from("seasons")
-    .select("id, week0_start")
+    .select("id")
     .eq("is_current", true)
     .maybeSingle();
-  if (!season) return { seasonId: 2026, week: 1 };
+  if (!season) throw new Error("No current season configured — seed the seasons table.");
 
-  const week0 = new Date(`${season.week0_start}T00:00:00Z`).getTime();
-  const elapsedWeeks = Math.floor((Date.now() - week0) / (7 * 24 * 60 * 60 * 1000));
-  // CFBD numbers the opening slate week 1; clamp pre-season to week 1 too
-  return { seasonId: season.id, week: Math.min(Math.max(elapsedWeeks + 1, 1), 15) };
+  const pointer = await fetchCurrentSlate(supabase, season.id);
+  return { seasonId: season.id, ...pointer };
+}
+
+/**
+ * Games for the ledger's bet form: a rolling now−3d…now+9d window rather than
+ * "this week", so a bet can still be attached to last night's game after the
+ * current-week pointer rolls over (audit #18).
+ */
+export async function fetchBetFormGames(
+  supabase: SupabaseClient,
+  seasonId: number,
+): Promise<{
+  data: Array<{ id: number; start_ts: string | null; home_team_id: number; away_team_id: number }>;
+}> {
+  const now = Date.now();
+  const { data } = await supabase
+    .from("games")
+    .select("id, start_ts, home_team_id, away_team_id")
+    .eq("season_id", seasonId)
+    .gte("start_ts", new Date(now - 3 * 24 * 3600 * 1000).toISOString())
+    .lte("start_ts", new Date(now + 9 * 24 * 3600 * 1000).toISOString())
+    .order("start_ts", { ascending: true });
+  return { data: data ?? [] };
 }
 
 export async function fetchProfiles(supabase: SupabaseClient): Promise<ProfileRow[]> {

@@ -18,8 +18,9 @@ export function LoginForm({ linkFailed }: { linkFailed: boolean }) {
     });
     if (error) {
       setStatus("error");
+      // Supabase phrases allowlist rejections as "Signups not allowed…"
       setMessage(
-        error.message.includes("invite")
+        /invite|signup|not allowed|not authorized/i.test(error.message)
           ? "This site is invite-only — ask the commissioner to add your email."
           : error.message,
       );

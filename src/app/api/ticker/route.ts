@@ -15,17 +15,15 @@ const SOON_MS = 4 * 3600 * 1000;
  */
 export async function GET() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const { seasonId, week } = await fetchCurrentSeasonWeek(supabase);
+  // Public — the ticker is read-only scores (audit bug #5: used to 401 anon).
+  const { seasonId, week, seasonType } = await fetchCurrentSeasonWeek(supabase);
   const { data } = await supabase
     .from("games")
     .select("id, status, start_ts, current_period, current_clock, home_points, away_points, home_team_id, away_team_id")
     .eq("season_id", seasonId)
     .eq("week", week)
+    .eq("season_type", seasonType)
     .order("start_ts", { ascending: true });
 
   type Row = Pick<

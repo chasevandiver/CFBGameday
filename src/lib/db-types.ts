@@ -54,6 +54,7 @@ export interface LineSnapshotRow {
 export interface PredictionRow {
   id: number;
   game_id: number;
+  season_id: number | null;
   model_version: string;
   frozen: boolean;
   spread: number;

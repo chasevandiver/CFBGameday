@@ -8,7 +8,7 @@
  */
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { periodLabel } from "../lib/kick";
 import type { TickerData } from "../lib/ticker";
 import { useGamesRealtime } from "../lib/use-games-realtime";
@@ -16,22 +16,27 @@ import { useGamesRealtime } from "../lib/use-games-realtime";
 export function ScoreTicker() {
   const [data, setData] = useState<TickerData | null>(null);
 
-  const refresh = useCallback(async () => {
-    try {
-      const res = await fetch("/api/ticker", { cache: "no-store" });
-      if (res.ok) setData((await res.json()) as TickerData);
-    } catch {
-      /* transient network error — next poll retries */
-    }
-  }, []);
-
   useEffect(() => {
-    void refresh();
+    let cancelled = false;
+    // async subscription to an external system: state updates land in the
+    // fetch callback, never synchronously in the effect body
+    const load = () =>
+      fetch("/api/ticker", { cache: "no-store" })
+        .then(async (res) => {
+          if (res.ok && !cancelled) setData((await res.json()) as TickerData);
+        })
+        .catch(() => {
+          /* transient network error — next poll retries */
+        });
+    void load();
     const id = setInterval(() => {
-      if (document.visibilityState === "visible") void refresh();
+      if (document.visibilityState === "visible") void load();
     }, 60_000);
-    return () => clearInterval(id);
-  }, [refresh]);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   const anyLive = data?.games.some((g) => g.status === "in_progress") ?? false;
   useGamesRealtime({

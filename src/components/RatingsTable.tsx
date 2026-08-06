@@ -10,8 +10,6 @@ export interface RatingRow {
   color: string | null;
   logoUrl: string | null;
   overall: number;
-  offense: number;
-  defense: number;
   /** vs previous week; null preseason */
   delta: number | null;
   churn: number | null;
@@ -21,12 +19,13 @@ export interface RatingRow {
   poll: string | null;
 }
 
-type SortKey = "overall" | "offense" | "defense" | "delta" | "churn" | "luck";
+// Off/Def columns removed: the in-season pipeline only tracks overall, so the
+// stored sub-ratings are overall/2 twice — presenting them as independent
+// numbers was dishonest (audit #11). They return with real sub-ratings.
+type SortKey = "overall" | "delta" | "churn" | "luck";
 
 const COLUMNS: Array<{ key: SortKey; label: string; title: string }> = [
   { key: "overall", label: "Rating", title: "Points vs average FBS team, neutral field" },
-  { key: "offense", label: "Off", title: "Offense sub-rating" },
-  { key: "defense", label: "Def", title: "Defense sub-rating" },
   { key: "delta", label: "Δwk", title: "Movement vs last week" },
   { key: "churn", label: "Churn", title: "Preseason roster churn adjustment" },
   { key: "luck", label: "Luck", title: "Preseason luck regression (negative = was overachieving)" },
@@ -118,8 +117,6 @@ export function RatingsTable({ rows }: { rows: RatingRow[] }) {
                   </span>
                 </td>
                 <NumCell value={r.overall} strong />
-                <NumCell value={r.offense} />
-                <NumCell value={r.defense} />
                 <td className="px-2 py-1.5 text-right">
                   {r.delta === null ? (
                     <span className="text-chalk/30">—</span>

@@ -719,13 +719,13 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
                 )}
               </>
             ) : (
+              /* Spread + ATS side only — model totals and projected scores are
+                 hidden until real off/def/tempo sub-ratings ship (audit #4). */
               <>
                 {"Model: "}
-                {p!.homeScore !== null && p!.awayScore !== null && (
-                  <span className="text-chalk">
-                    {game.home.abbr} {Math.round(p!.homeScore)}–{Math.round(p!.awayScore)}
-                  </span>
-                )}
+                <span className="text-chalk">
+                  {game.home.abbr} {fmtSpread(Math.round(p!.spread * 10) / 10)}
+                </span>
                 {picks.atsSide && (
                   <>
                     {" · "}
@@ -734,14 +734,7 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
                     </span>
                   </>
                 )}
-                {picks.ouLean && (
-                  <>
-                    {" · "}
-                    <span className="text-chalk">
-                      {picks.ouLean === "over" ? "Over" : "Under"} lean
-                    </span>
-                  </>
-                )}
+                {!p!.frozen && <span className="text-chalk/40"> · unfrozen</span>}
               </>
             )}
           </p>
@@ -753,7 +746,11 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
 
 function FinalFooter({ game }: { game: GameView }) {
   const ou = ouResult(game);
-  const grade = gradeModel(game);
+  // The model only answers for frozen (receipts) rows — an unfrozen price can
+  // move after the fact and grading it would be revisionism (audit #12).
+  const grade = game.prediction?.frozen
+    ? gradeModel(game)
+    : { winner: null, ats: null, total: null };
   const { spread } = game.lines;
 
   // the viewer's pick, resolved: if-the-game-ended-now at the final score IS the result
@@ -805,8 +802,7 @@ function FinalFooter({ game }: { game: GameView }) {
     );
   if (grade.ats !== null)
     gradeChips.push(<ResultChip key="a" label="ATS" result={grade.ats ? "pass" : "fail"} />);
-  if (grade.total !== null)
-    gradeChips.push(<ResultChip key="t" label="O/U" result={grade.total ? "pass" : "fail"} />);
+  // No model O/U chip: the model doesn't price totals yet (audit #4).
 
   if (chips.length === 0 && gradeChips.length === 0) return null;
 

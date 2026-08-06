@@ -7,6 +7,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cfbd } from "../../src/lib/cfbd";
 import { buildTeamNameIndex } from "../../src/lib/rankings";
+import { fetchCurrentSlate } from "../../src/lib/season";
 import {
   DEFAULT_PARAMS,
   MODEL_VERSION,
@@ -22,17 +23,9 @@ const FCS_RATING = -30;
 
 type Json = Record<string, unknown>;
 
-async function currentWeek(db: SupabaseClient): Promise<number | undefined> {
-  const { data } = await db
-    .from("games")
-    .select("week")
-    .eq("season_id", SEASON)
-    .eq("status", "scheduled")
-    .order("week")
-    .limit(1)
-    .maybeSingle();
-  return data?.week;
-}
+// Current slate derived from kickoffs (src/lib/season.ts) — the old
+// min-scheduled-week query here could be pinned forever by one postponed-and-
+// rescheduled early-season game (audit bug #8).
 
 interface Snapshot {
   game_id: number;
@@ -434,14 +427,14 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
  * with current ratings + team HFA + admin-CONFIRMED rating adjustments.
  */
 export async function freezeJob(db: SupabaseClient): Promise<Json> {
-  const week = await currentWeek(db);
-  if (week === undefined) return { note: "no scheduled games" };
+  const { week, seasonType } = await fetchCurrentSlate(db, SEASON);
 
   const { data: gameRows } = await db
     .from("games")
     .select("id, home_team_id, away_team_id, neutral_site, status")
     .eq("season_id", SEASON)
     .eq("week", week)
+    .eq("season_type", seasonType)
     .eq("status", "scheduled");
   const games = (gameRows ?? []) as Array<{
     id: number;
@@ -522,12 +515,17 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
     );
     rows.push({
       game_id: g.id,
+      season_id: SEASON,
       model_version: MODEL_VERSION,
       frozen: true,
       spread: Math.round(price.spread * 10) / 10,
-      total: Math.round(price.projectedTotal * 10) / 10,
-      home_score: Math.round(price.projectedHomeScore * 10) / 10,
-      away_score: Math.round(price.projectedAwayScore * 10) / 10,
+      // Totals + projected scores stay null until real off/def/tempo
+      // sub-ratings exist: with the overall/2 split every projected total is
+      // exactly 57.0 (audit bug #4). Storing a constant as a "prediction"
+      // would poison the receipts.
+      total: null,
+      home_score: null,
+      away_score: null,
       home_win_prob: Math.round(price.homeWinProb * 10000) / 10000,
       cover_prob:
         price.homeCoverProb !== null ? Math.round(price.homeCoverProb * 10000) / 10000 : null,

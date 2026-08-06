@@ -5,7 +5,7 @@ import { VoidBetButton } from "../../components/VoidBetButton";
 import { REASON_TAG_LABELS, type BetRow, type TeamRow } from "../../lib/db-types";
 import { kickParts, DEFAULT_TZ } from "../../lib/kick";
 import { statusForBet, type LiveBetStatus } from "../../lib/live-status";
-import { fetchCurrentSeasonWeek } from "../../lib/queries";
+import { fetchBetFormGames, fetchCurrentSeasonWeek } from "../../lib/queries";
 import { createClient } from "../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +18,7 @@ export default async function LedgerPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const { seasonId, week } = await fetchCurrentSeasonWeek(supabase);
+  const { seasonId } = await fetchCurrentSeasonWeek(supabase);
 
   const [{ data }, { data: weekGames }] = await Promise.all([
     supabase
@@ -27,12 +27,7 @@ export default async function LedgerPage() {
       .eq("season_id", seasonId)
       .eq("user_id", user?.id ?? "")
       .order("placed_at", { ascending: false }),
-    supabase
-      .from("games")
-      .select("id, start_ts, home_team_id, away_team_id")
-      .eq("season_id", seasonId)
-      .eq("week", week)
-      .order("start_ts", { ascending: true }),
+    fetchBetFormGames(supabase, seasonId),
   ]);
   const bets = (data ?? []) as BetRow[];
 

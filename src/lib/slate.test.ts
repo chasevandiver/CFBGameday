@@ -67,6 +67,7 @@ const game = (overrides: Partial<GameView> = {}): GameView => ({
   ...overrides,
 });
 
+// frozen: true — weekModelRecord only grades receipts rows (audit #12)
 const prediction = (overrides = {}) => ({
   spread: -9,
   total: 52.5,
@@ -78,7 +79,7 @@ const prediction = (overrides = {}) => ({
   edge: -2.5,
   edgeFlag: "EDGE" as const,
   consensus: false,
-  frozen: false,
+  frozen: true,
   ...overrides,
 });
 
@@ -163,6 +164,8 @@ describe("weekModelRecord", () => {
       game({ id: 3, homePoints: 27, awayPoints: 20, prediction: prediction({ vegasSpread: -7 }) }), // push
       game({ id: 4, status: "scheduled", homePoints: null, awayPoints: null, prediction: prediction() }),
       game({ id: 5 }), // no prediction — skipped
+      // unfrozen prices never count toward the report card (audit #12)
+      game({ id: 6, prediction: prediction({ frozen: false }) }),
     ];
     expect(weekModelRecord(games)).toEqual({ wins: 1, losses: 1, pushes: 1 });
   });

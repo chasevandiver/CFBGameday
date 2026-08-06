@@ -61,11 +61,14 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
   // started before an event never rolls a fresher score back
   const liveEventAt = useRef(new Map<number, number>());
 
-  const refresh = useCallback(async (targetWeek: number, showSkeleton: boolean) => {
+  const seasonType = data.seasonType;
+  const refresh = useCallback(async (targetWeek: number, showSkeleton: boolean, st?: string) => {
     if (showSkeleton) setLoading(true);
     const fetchStart = Date.now();
     try {
-      const res = await fetch(`/api/slate?week=${targetWeek}`, { cache: "no-store" });
+      const res = await fetch(`/api/slate?week=${targetWeek}&st=${st ?? "regular"}`, {
+        cache: "no-store",
+      });
       if (res.ok) {
         const next = (await res.json()) as SlateData;
         if (next.week === weekRef.current) {
@@ -122,17 +125,17 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
 
   const anyLive = data.games.some(isLive);
   // realtime only for the current week when games are live or kicking off soon;
-  // off-week browsing costs nothing
-  const anyImminent = useMemo(
-    () =>
-      data.games.some((g) => {
-        if (isLive(g)) return true;
-        if (g.status !== "scheduled" || !g.startTs) return false;
-        const dt = Date.parse(g.startTs) - Date.now();
-        return dt > -3 * 3600_000 && dt < 6 * 3600_000;
-      }),
-    [data.games],
-  );
+  // off-week browsing costs nothing. "Now" is the fetch stamp — deterministic
+  // per payload, and every poll refreshes it.
+  const anyImminent = useMemo(() => {
+    const now = Date.parse(data.fetchedAt);
+    return data.games.some((g) => {
+      if (isLive(g)) return true;
+      if (g.status !== "scheduled" || !g.startTs) return false;
+      const dt = Date.parse(g.startTs) - now;
+      return dt > -3 * 3600_000 && dt < 6 * 3600_000;
+    });
+  }, [data.games, data.fetchedAt]);
   const { connected } = useGamesRealtime({
     enabled: week === currentWeek && anyImminent,
     week,
@@ -145,18 +148,19 @@ export function SlateView({ initial, currentWeek }: { initial: SlateData; curren
     // events and refreshes lines/predictions
     const ms = connected ? 180_000 : anyLive ? 30_000 : 90_000;
     const id = setInterval(() => {
-      if (document.visibilityState === "visible") void refresh(weekRef.current, false);
+      if (document.visibilityState === "visible")
+        void refresh(weekRef.current, false, seasonType);
     }, ms);
     return () => clearInterval(id);
-  }, [anyLive, connected, refresh]);
+  }, [anyLive, connected, refresh, seasonType]);
 
   const changeWeek = (w: number) => {
     if (w === week) return;
     weekRef.current = w;
-    setData((d) => ({ ...d, week: w, games: [] }));
+    setData((d) => ({ ...d, week: w, seasonType: "regular", games: [] }));
     setDay("all");
     window.history.replaceState(null, "", w === currentWeek ? "/slate" : `/slate?week=${w}`);
-    void refresh(w, true);
+    void refresh(w, true, "regular");
   };
 
   /* ---- derived --------------------------------------------------------- */

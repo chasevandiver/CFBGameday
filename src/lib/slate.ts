@@ -107,6 +107,7 @@ export interface GameView {
 export interface SlateData {
   seasonId: number;
   week: number;
+  seasonType: "regular" | "postseason";
   fetchedAt: string;
   games: GameView[];
 }
@@ -322,10 +323,15 @@ export interface WeekRecord {
   pushes: number;
 }
 
-/** Model ATS record across a slate's final games ("ATS 9-4"). */
+/**
+ * Model ATS record across a slate's final games ("ATS 9-4").
+ * Frozen predictions only — the report card grades receipts, never a number
+ * that could have been re-priced after the fact (audit bug #12).
+ */
 export function weekModelRecord(games: GameView[]): WeekRecord {
   const rec = { wins: 0, losses: 0, pushes: 0 };
   for (const g of games) {
+    if (!g.prediction?.frozen) continue;
     const picks = modelPicks(g);
     if (!picks.atsSide || !isFinal(g)) continue;
     const marketSpread = g.prediction?.vegasSpread ?? g.lines.spread;
