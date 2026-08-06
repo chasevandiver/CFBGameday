@@ -29,6 +29,7 @@ export interface GameRow {
   home_points: number | null;
   away_points: number | null;
   status: string;
+  conference_game?: boolean;
   current_period: number | null;
   current_clock: string | null;
   current_situation: string | null;

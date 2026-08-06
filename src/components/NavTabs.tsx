@@ -6,11 +6,13 @@ import { usePathname } from "next/navigation";
 const TABS: Array<{ label: string; href: string; also?: string[] }> = [
   { label: "Slate", href: "/slate", also: ["/game"] },
   { label: "Edges", href: "/edges" },
+  { label: "Rankings", href: "/rankings" },
   { label: "Ratings", href: "/ratings" },
+  { label: "Standings", href: "/standings" },
   { label: "Teams", href: "/teams", also: ["/team"] },
   { label: "Ledger", href: "/ledger" },
-  { label: "Crew", href: "/crew" },
-  { label: "Receipts", href: "/receipts" },
+  { label: "Crew", href: "/crew", also: ["/rules"] },
+  { label: "Receipts", href: "/receipts", also: ["/recap"] },
 ];
 
 /** Primary nav with the current page marked (aria-current + accent). */

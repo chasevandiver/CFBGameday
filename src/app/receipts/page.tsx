@@ -108,7 +108,15 @@ export default async function ReceiptsPage() {
     <>
       <AppNav />
       <main id="main" className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">
-        <h1 className="text-2xl">Receipts</h1>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h1 className="text-2xl">Receipts</h1>
+          <Link
+            href="/recap"
+            className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+          >
+            Week in review →
+          </Link>
+        </div>
         <p className="mb-5 mt-1 text-sm text-dim">
           Every prediction frozen Thursday night, timestamped, never edited. The model answers
           for its number here.
