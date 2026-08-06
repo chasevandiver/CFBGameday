@@ -31,8 +31,15 @@ export async function addAdjustment(
   }
   if (!reason.trim()) return { ok: false, message: "A reason is required — receipts culture" };
 
+  const { data: season } = await supabase
+    .from("seasons")
+    .select("id")
+    .eq("is_current", true)
+    .maybeSingle();
+  if (!season) return { ok: false, message: "No current season configured" };
+
   const { error } = await supabase.from("rating_adjustments").insert({
-    season_id: 2026,
+    season_id: season.id,
     team_id: teamId,
     game_id: null,
     points,

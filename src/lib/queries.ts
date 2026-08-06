@@ -14,52 +14,11 @@ import { fetchCurrentSlate, type SeasonType } from "./season";
 import { atsRecord, ouRecord } from "./slate";
 import type { CrewPickView, GameView, LinePoint, MyBetView, SlateData, TeamView } from "./slate";
 
-/** Books only hang lines in half-point increments, so consensus must land on one. */
-export function snapToHalf(v: number): number {
-  return Math.round(v * 2) / 2;
-}
+// Consensus math lives in ./consensus (single shared implementation for app +
+// jobs); re-exported here for existing importers.
+import { consensusFromSnapshots, snapToHalf } from "./consensus";
 
-/**
- * Consensus of the most recent snapshot per provider. Pass `before` (usually
- * kickoff) to get the closing consensus — the same cutoff the grading job
- * uses — instead of the latest one.
- */
-export function consensusFromSnapshots(snapshots: LineSnapshotRow[], before?: string): {
-  spread: number | null;
-  open: number | null;
-  total: number | null;
-  totalOpen: number | null;
-  mlHome: number | null;
-  mlAway: number | null;
-} {
-  const latestByProvider = new Map<string, LineSnapshotRow>();
-  for (const s of snapshots) {
-    if (before !== undefined && s.captured_at >= before) continue;
-    const prev = latestByProvider.get(s.provider);
-    if (!prev || s.captured_at > prev.captured_at) latestByProvider.set(s.provider, s);
-  }
-  const latest = [...latestByProvider.values()];
-  const mean = (vals: Array<number | null>): number | null => {
-    const nums = vals.filter((v): v is number => v !== null);
-    return nums.length === 0 ? null : nums.reduce((a, b) => a + b, 0) / nums.length;
-  };
-  const line = (vals: Array<number | null>): number | null => {
-    const m = mean(vals);
-    return m === null ? null : snapToHalf(m);
-  };
-  const price = (vals: Array<number | null>): number | null => {
-    const m = mean(vals);
-    return m === null ? null : Math.round(m);
-  };
-  return {
-    spread: line(latest.map((s) => s.spread)),
-    open: line(latest.map((s) => s.spread_open ?? s.spread)),
-    total: line(latest.map((s) => s.total)),
-    totalOpen: line(latest.map((s) => s.total_open ?? s.total)),
-    mlHome: price(latest.map((s) => s.ml_home)),
-    mlAway: price(latest.map((s) => s.ml_away)),
-  };
-}
+export { consensusFromSnapshots, snapToHalf };
 
 /** The columns the sparkline actually needs — keeps the wire payload small. */
 export interface HistorySnapshot {

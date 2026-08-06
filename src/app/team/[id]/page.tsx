@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { AppNav } from "../../../components/AppNav";
 import type { GameRow, TeamRow } from "../../../lib/db-types";
 import { DEFAULT_TZ, kickDateLong } from "../../../lib/kick";
+import { fetchCurrentSeasonWeek } from "../../../lib/queries";
 import { pickPollRanks, pollShortName } from "../../../lib/rankings";
 import { createClient } from "../../../lib/supabase/server";
 import {
@@ -55,6 +56,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
   if (!Number.isFinite(teamId)) notFound();
 
   const supabase = await createClient();
+  const { seasonId } = await fetchCurrentSeasonWeek(supabase);
   const { data: team } = await supabase
     .from("teams")
     .select("*")
@@ -63,42 +65,40 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
   if (!team) notFound();
 
   const [ratingsRes, compsRes, hfaRes, gamesRes, verdictRes, pollsRes] = await Promise.all([
-    supabase
-      .from("ratings")
-      .select("team_id, week, overall")
-      .eq("season_id", 2026)
-      .order("week", { ascending: false }),
+    supabase.from("latest_ratings").select("team_id, overall").eq("season_id", seasonId),
     supabase
       .from("preseason_components")
       .select("final_prev_rating, talent_baseline, churn_adjustment, coaching_adjustment, luck_correction, detail")
-      .eq("season_id", 2026)
+      .eq("season_id", seasonId)
       .eq("team_id", teamId)
       .maybeSingle<ComponentsRow>(),
     supabase.from("team_hfa").select("team_id, blended_hfa"),
     supabase
       .from("games")
       .select("*")
-      .eq("season_id", 2026)
+      .eq("season_id", seasonId)
       .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
       .order("start_ts"),
     supabase
       .from("team_verdicts")
       .select("verdict, model")
-      .eq("season_id", 2026)
+      .eq("season_id", seasonId)
       .eq("team_id", teamId)
       .maybeSingle<VerdictRow>(),
     supabase
       .from("poll_rankings")
       .select("week, poll, team_id, rank")
-      .eq("season_id", 2026)
+      .eq("season_id", seasonId)
       .eq("season_type", "regular"),
   ]);
 
   // Latest rating per team + this team's rank
-  const latest = new Map<number, number>();
-  for (const r of ratingsRes.data ?? []) {
-    if (!latest.has(r.team_id)) latest.set(r.team_id, Number(r.overall));
-  }
+  const latest = new Map<number, number>(
+    (ratingsRes.data ?? []).map((r: { team_id: number; overall: number }) => [
+      r.team_id,
+      Number(r.overall),
+    ]),
+  );
   const rating = latest.get(teamId);
   const rank =
     rating !== undefined
@@ -226,7 +226,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
         {/* Schedule map */}
         <section className="card p-4">
           <div className="mb-3 flex items-baseline justify-between">
-            <h2 className="text-sm text-accent">2026 Schedule</h2>
+            <h2 className="text-sm text-accent">{seasonId} Schedule</h2>
             <p className="stat text-xs text-dim">
               projected {projectedWins.toFixed(1)}–{(schedule.length - projectedWins).toFixed(1)}
             </p>

@@ -15,7 +15,13 @@ async function main() {
   const week = weekArg > -1 ? Number(process.argv[weekArg + 1]) : undefined;
 
   console.log(`Games ${SEASON}${week ? ` week ${week}` : ""}…`);
-  const games = await cfbd.games(SEASON, { week });
+  // Regular season AND postseason — championship week, bowls, and the CFP were
+  // never ingested before (audit #1: "the season ends in November").
+  const [regular, postseason] = await Promise.all([
+    cfbd.games(SEASON, { week }),
+    week === undefined ? cfbd.games(SEASON, { seasonType: "postseason" }) : Promise.resolve([]),
+  ]);
+  const games = [...regular, ...postseason];
 
   const rows = games.map((g) => ({
     id: g.id,

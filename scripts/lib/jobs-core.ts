@@ -6,6 +6,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cfbd } from "../../src/lib/cfbd";
+import { consensusFromSnapshots } from "../../src/lib/consensus";
 import { buildTeamNameIndex } from "../../src/lib/rankings";
 import { fetchCurrentSlate } from "../../src/lib/season";
 import {
@@ -18,7 +19,7 @@ import {
   type TeamRating,
 } from "../../src/model/ratings";
 
-export const SEASON = 2026;
+export const SEASON = Number(process.env.CFB_SEASON ?? 2026);
 const FCS_RATING = -30;
 
 type Json = Record<string, unknown>;
@@ -35,29 +36,10 @@ interface Snapshot {
   captured_at: string;
 }
 
-/**
- * Latest snapshot per provider (optionally before a cutoff), averaged and
- * snapped to the half point — books only hang lines in 0.5 increments.
- */
-function consensus(
-  snapshots: Snapshot[],
-  before?: string,
-): { spread: number | null; total: number | null } {
-  const latest = new Map<string, Snapshot>();
-  for (const s of snapshots) {
-    if (before && s.captured_at >= before) continue;
-    const prev = latest.get(s.provider);
-    if (!prev || s.captured_at > prev.captured_at) latest.set(s.provider, s);
-  }
-  const avg = (vals: Array<number | null>) => {
-    const nums = vals.filter((v): v is number => v !== null);
-    return nums.length
-      ? Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 2) / 2
-      : null;
-  };
-  const rows = [...latest.values()];
-  return { spread: avg(rows.map((s) => s.spread)), total: avg(rows.map((s) => s.total)) };
-}
+/** Shared consensus (src/lib/consensus.ts) — no more drift between the jobs'
+ *  copy and the app's copy (audit #43). */
+const consensus = (snapshots: Snapshot[], before?: string) =>
+  consensusFromSnapshots(snapshots, before);
 
 // ---------------------------------------------------------------------------
 
@@ -139,6 +121,54 @@ export async function syncRankingsJob(db: SupabaseClient): Promise<Json> {
     if (error) throw new Error(error.message);
   }
   return { rows: rows.length, unmatched: [...unmatched] };
+}
+
+/**
+ * Weekly SP+ / FPI / Elo snapshot → system_ratings (spec §2.4). Persisted so
+ * the freeze job can compute a real consensus flag and the game page can show
+ * the systems side by side — both previously impossible (audit #28).
+ */
+export async function syncSystemsJob(db: SupabaseClient): Promise<Json> {
+  const { week } = await fetchCurrentSlate(db, SEASON);
+  const [sp, fpi, elo, { data: teamRows }] = await Promise.all([
+    cfbd.spRatings(SEASON),
+    cfbd.fpiRatings(SEASON),
+    cfbd.eloRatings(SEASON),
+    db.from("teams").select("id, school, alt_names"),
+  ]);
+  const nameIndex = buildTeamNameIndex(
+    (teamRows ?? []) as Array<{ id: number; school: string; alt_names: string[] | null }>,
+  );
+
+  const rows: Json[] = [];
+  const unmatched = new Set<string>();
+  const push = (system: string, school: string, value: number | null | undefined) => {
+    if (value === null || value === undefined) return;
+    const teamId = nameIndex.get(school.toLowerCase());
+    if (teamId === undefined) {
+      unmatched.add(school);
+      return;
+    }
+    rows.push({
+      season_id: SEASON,
+      team_id: teamId,
+      system,
+      week,
+      value,
+      fetched_at: new Date().toISOString(),
+    });
+  };
+  for (const r of sp) push("sp", r.team, r.rating);
+  for (const r of fpi) push("fpi", r.team, r.fpi);
+  for (const r of elo) push("elo", r.team, r.elo);
+
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await db.from("system_ratings").upsert(rows.slice(i, i + 500), {
+      onConflict: "season_id,system,week,team_id",
+    });
+    if (error) throw new Error(error.message);
+  }
+  return { week, rows: rows.length, unmatched: [...unmatched] };
 }
 
 /** Open-Meteo forecasts for outdoor games in the next 7 days. */
@@ -454,21 +484,27 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
     if (!latest.has(r.team_id)) latest.set(r.team_id, Number(r.overall));
   }
 
-  const [{ data: hfaRows }, { data: adjRows }, { data: snaps }] = await Promise.all([
-    db.from("team_hfa").select("team_id, blended_hfa"),
-    db
-      .from("rating_adjustments")
-      .select("team_id, game_id, points")
-      .eq("season_id", SEASON)
-      .not("confirmed_at", "is", null),
-    db
-      .from("line_snapshots")
-      .select("game_id, provider, spread, total, captured_at")
-      .in(
-        "game_id",
-        games.map((g) => g.id),
-      ),
-  ]);
+  const [{ data: hfaRows }, { data: adjRows }, { data: snaps }, { data: systemRows }] =
+    await Promise.all([
+      db.from("team_hfa").select("team_id, blended_hfa"),
+      db
+        .from("rating_adjustments")
+        .select("team_id, game_id, points")
+        .eq("season_id", SEASON)
+        .not("confirmed_at", "is", null),
+      db
+        .from("line_snapshots")
+        .select("game_id, provider, spread, total, captured_at")
+        .in(
+          "game_id",
+          games.map((g) => g.id),
+        ),
+      db
+        .from("system_ratings")
+        .select("team_id, system, week, value")
+        .eq("season_id", SEASON)
+        .order("week", { ascending: false }),
+    ]);
   const hfa = new Map<number, number>(
     (hfaRows ?? []).map((r: { team_id: number; blended_hfa: number }) => [
       r.team_id,
@@ -488,6 +524,20 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
           a.team_id === teamId && (a.game_id === null || a.game_id === gameId),
       )
       .reduce((s: number, a: { points: number }) => s + Number(a.points), 0);
+
+  // latest system value per (system, team) → margins for the consensus flag
+  const systems = new Map<string, number>();
+  for (const r of (systemRows ?? []) as Array<{ team_id: number; system: string; value: number }>) {
+    const key = `${r.system}:${r.team_id}`;
+    if (!systems.has(key)) systems.set(key, Number(r.value));
+  }
+  const sysMargin = (system: "sp" | "fpi" | "elo", homeId: number, awayId: number): number | null => {
+    const h = systems.get(`${system}:${homeId}`);
+    const a = systems.get(`${system}:${awayId}`);
+    if (h === undefined || a === undefined) return null;
+    // Elo is not points-scale; ~25 Elo ≈ 1 point of margin
+    return system === "elo" ? (h - a) / 25 : h - a;
+  };
 
   const rows: Json[] = [];
   for (const g of games) {
@@ -510,6 +560,11 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
         neutralSite: g.neutral_site,
         situationalPoints: situational,
         vegasSpread: vegas.spread,
+        // real inputs for the consensus flag (spec §2.4) — previously never
+        // passed, so the flag could only ever be false
+        spPlusMargin: sysMargin("sp", g.home_team_id, g.away_team_id),
+        fpiMargin: sysMargin("fpi", g.home_team_id, g.away_team_id),
+        eloMargin: sysMargin("elo", g.home_team_id, g.away_team_id),
       },
       DEFAULT_PARAMS,
     );

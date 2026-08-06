@@ -22,6 +22,7 @@ on:
           - refresh-lines-burst
           - sync-games
           - sync-rankings
+          - sync-systems
           - scoreboard
           - weather
           - ratings-update
@@ -95,8 +96,8 @@ jobs:
             refresh-lines) npx tsx scripts/refresh-lines.ts ;;
             refresh-lines-burst) npx tsx scripts/refresh-lines.ts --burst ;;
             # daily slot also refreshes poll rankings (AP Sun, CFP Tue — 1 call/day)
-            sync-games) npx tsx scripts/sync-games.ts && npx tsx scripts/run-job.ts sync-rankings ;;
-            sync-rankings|scoreboard|weather|ratings-update|freeze) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
+            sync-games) npx tsx scripts/sync-games.ts && npx tsx scripts/run-job.ts sync-rankings && npx tsx scripts/run-job.ts sync-systems ;;
+            sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
             questions|verdicts)
               if [ -z "$ANTHROPIC_API_KEY" ]; then
                 echo "ANTHROPIC_API_KEY not set — skipping LLM generation"

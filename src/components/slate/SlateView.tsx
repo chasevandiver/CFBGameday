@@ -148,7 +148,7 @@ export function SlateView({
     });
   }, [data.games, data.fetchedAt]);
   const { connected } = useGamesRealtime({
-    enabled: week === currentWeek && anyImminent,
+    enabled: (seasonType === "postseason" || week === currentWeek) && anyImminent,
     week,
     seasonId: data.seasonId,
     onGameUpdate: handleGameUpdate,
@@ -165,13 +165,20 @@ export function SlateView({
     return () => clearInterval(id);
   }, [anyLive, connected, refresh, seasonType]);
 
-  const changeWeek = (w: number) => {
-    if (w === week) return;
+  const changeWeek = (sel: number | "post") => {
+    const post = sel === "post";
+    const w = post ? 1 : sel;
+    const st = post ? "postseason" : "regular";
+    if (w === week && st === seasonType) return;
     weekRef.current = w;
-    setData((d) => ({ ...d, week: w, seasonType: "regular", games: [] }));
+    setData((d) => ({ ...d, week: w, seasonType: st, games: [] }));
     setDay("all");
-    window.history.replaceState(null, "", w === currentWeek ? "/slate" : `/slate?week=${w}`);
-    void refresh(w, true, "regular");
+    window.history.replaceState(
+      null,
+      "",
+      post ? "/slate?st=post" : w === currentWeek ? "/slate" : `/slate?week=${w}`,
+    );
+    void refresh(w, true, st);
   };
 
   /* ---- derived --------------------------------------------------------- */
@@ -314,7 +321,12 @@ export function SlateView({
       {/* sticky control bar */}
       <div className="sticky top-[49px] z-10 -mx-4 border-b border-chalk/10 bg-background/85 px-4 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 py-2.5">
-          <WeekSelect week={week} currentWeek={currentWeek} onChange={changeWeek} />
+          <WeekSelect
+            week={week}
+            seasonType={seasonType}
+            currentWeek={currentWeek}
+            onChange={changeWeek}
+          />
 
           {/* toggle buttons, not ARIA tabs — no tabpanel/arrow-key contract here */}
           <div className="flex items-center gap-1" aria-label="Filter by day">
@@ -499,27 +511,32 @@ function absOr(v: number | null, fallback: number): number {
 
 function WeekSelect({
   week,
+  seasonType,
   currentWeek,
   onChange,
 }: {
   week: number;
+  seasonType: "regular" | "postseason";
   currentWeek: number;
-  onChange: (w: number) => void;
+  onChange: (w: number | "post") => void;
 }) {
   return (
     <label className="relative shrink-0">
       <span className="sr-only">Week</span>
       <select
-        value={week}
-        onChange={(e) => onChange(Number(e.target.value))}
+        value={seasonType === "postseason" ? "post" : week}
+        onChange={(e) =>
+          onChange(e.target.value === "post" ? "post" : Number(e.target.value))
+        }
         className="display h-8 appearance-none rounded-lg border border-chalk/12 bg-surface pl-3 pr-8 text-base text-chalk focus:border-accent/60 focus:outline-none"
       >
         {Array.from({ length: 16 }, (_, i) => i + 1).map((w) => (
           <option key={w} value={w}>
             Week {w}
-            {w === currentWeek ? " ·" : ""}
+            {w === currentWeek && seasonType === "regular" ? " ·" : ""}
           </option>
         ))}
+        <option value="post">Bowls &amp; CFP</option>
       </select>
       <ChevronDown
         size={14}

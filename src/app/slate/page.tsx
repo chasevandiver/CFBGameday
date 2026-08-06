@@ -10,7 +10,7 @@ export const metadata = { title: "Slate" };
 export default async function SlatePage({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string }>;
+  searchParams: Promise<{ week?: string; st?: string }>;
 }) {
   const supabase = await createClient();
   const {
@@ -18,13 +18,21 @@ export default async function SlatePage({
   } = await supabase.auth.getUser();
   const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(supabase);
 
-  const { week: weekParam } = await searchParams;
+  const { week: weekParam, st: stParam } = await searchParams;
   const parsed = Number(weekParam);
   const hasWeekParam = Number.isInteger(parsed) && parsed >= 1 && parsed <= 20;
-  const week = hasWeekParam ? parsed : currentWeek;
-  // An explicit ?week= always means the regular season; the default view
-  // follows the calendar into the postseason (bowls are the current slate).
-  const st = hasWeekParam ? "regular" : seasonType;
+  // ?st=post pins the bowls/CFP view; an explicit ?week= means the regular
+  // season; otherwise the default follows the calendar into the postseason.
+  const st =
+    stParam === "post" ? ("postseason" as const) : hasWeekParam ? ("regular" as const) : seasonType;
+  const week =
+    st === "postseason"
+      ? seasonType === "postseason"
+        ? currentWeek
+        : 1
+      : hasWeekParam
+        ? parsed
+        : currentWeek;
 
   const [initial, favRes] = await Promise.all([
     fetchSlateView(supabase, seasonId, week, user?.id ?? null, st),

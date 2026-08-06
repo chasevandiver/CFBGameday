@@ -97,7 +97,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     .maybeSingle<GameRow>();
   if (!game) notFound();
 
-  const [teamsRes, linesRes, predRes, picksRes, betsRes, profilesRes, weatherRes, questionsRes, pollsRes] = await Promise.all([
+  const [teamsRes, linesRes, predRes, picksRes, betsRes, profilesRes, weatherRes, questionsRes, pollsRes, systemsRes, rivalryRes] = await Promise.all([
     supabase.from("teams").select("*").in("id", [game.home_team_id, game.away_team_id]),
     supabase.from("line_snapshots").select("*").eq("game_id", gameId),
     supabase
@@ -126,6 +126,19 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
       .select("week, poll, team_id, rank")
       .eq("season_id", game.season_id)
       .eq("season_type", "regular"),
+    supabase
+      .from("system_ratings")
+      .select("team_id, system, week, value")
+      .eq("season_id", game.season_id)
+      .in("team_id", [game.home_team_id, game.away_team_id])
+      .order("week", { ascending: false }),
+    supabase
+      .from("rivalries")
+      .select("name, trophy")
+      .or(
+        `and(team_a_id.eq.${game.home_team_id},team_b_id.eq.${game.away_team_id}),and(team_a_id.eq.${game.away_team_id},team_b_id.eq.${game.home_team_id})`,
+      )
+      .maybeSingle(),
   ]);
 
   const teams = new Map(((teamsRes.data ?? []) as TeamRow[]).map((t) => [t.id, t]));
@@ -181,6 +194,27 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     line: b.line_taken === null ? null : Number(b.line_taken),
   }));
 
+  // systems side-by-side (spec §2.4): latest value per system per team
+  const sysLatest = new Map<string, number>();
+  for (const r of (systemsRes.data ?? []) as Array<{
+    team_id: number;
+    system: string;
+    value: number;
+  }>) {
+    const key = `${r.system}:${r.team_id}`;
+    if (!sysLatest.has(key)) sysLatest.set(key, Number(r.value));
+  }
+  const systemRows = (["sp", "fpi", "elo"] as const)
+    .map((system) => {
+      const h = sysLatest.get(`${system}:${game.home_team_id}`);
+      const a = sysLatest.get(`${system}:${game.away_team_id}`);
+      if (h === undefined || a === undefined) return null;
+      const margin = system === "elo" ? (h - a) / 25 : h - a;
+      return { system, home: h, away: a, margin };
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null);
+  const rivalry = rivalryRes.data as { name: string | null; trophy: string | null } | null;
+
   const modelEdge = prediction?.edge === null || prediction === null ? null : Number(prediction.edge);
   const stake = prediction
     ? stakeForPrediction({
@@ -231,6 +265,13 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             possession: game.possession,
           }}
         />
+
+        {rivalry?.name && (
+          <p className="stat mt-2 text-center text-xs text-dim">
+            <span className="font-semibold text-accent">{rivalry.name}</span>
+            {rivalry.trophy ? ` · ${rivalry.trophy}` : ""}
+          </p>
+        )}
 
         {/* Pick'em + crew — up top, never hidden */}
         <section className="card mt-4 px-4 py-4">
@@ -389,6 +430,58 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                 <span className="ml-1.5 text-[10.5px] text-dim">¼ Kelly, 2u cap</span>
               </p>
             )}
+          </section>
+        )}
+
+        {/* Systems side-by-side (spec §2.4) */}
+        {systemRows.length > 0 && (
+          <section className="card mt-4 overflow-hidden">
+            <h2 className="border-b border-chalk/8 px-4 py-2.5 text-sm text-accent">Systems</h2>
+            <table className="stats w-full border-collapse text-sm">
+              <thead>
+                <tr className="text-left text-[10.5px] uppercase tracking-wider text-chalk/55">
+                  <th className="py-2 pl-4 pr-3 font-semibold">&nbsp;</th>
+                  <th className="px-3 py-2 text-right font-semibold">{away.abbr}</th>
+                  <th className="px-3 py-2 text-right font-semibold">{home.abbr}</th>
+                  <th className="py-2 pl-3 pr-4 text-right font-semibold" title="Implied margin, home perspective">
+                    Margin
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {systemRows.map((r) => (
+                  <tr key={r.system} className="border-t border-chalk/5">
+                    <td className="py-2 pl-4 pr-3 font-sans text-chalk">
+                      {r.system === "sp" ? "SP+" : r.system === "fpi" ? "FPI" : "Elo"}
+                    </td>
+                    <td className="px-3 py-2 text-right text-chalk/80">
+                      {r.system === "elo" ? Math.round(r.away) : r.away.toFixed(1)}
+                    </td>
+                    <td className="px-3 py-2 text-right text-chalk/80">
+                      {r.system === "elo" ? Math.round(r.home) : r.home.toFixed(1)}
+                    </td>
+                    <td className="py-2 pl-3 pr-4 text-right text-chalk">
+                      {home.abbr} {fmtSpread(Math.round(-r.margin * 10) / 10)}
+                    </td>
+                  </tr>
+                ))}
+                {prediction && (
+                  <tr className="border-t border-chalk/8 text-xs">
+                    <td className="py-2 pl-4 pr-3 text-accent">Model</td>
+                    <td className="px-3 py-2 text-right text-dim">–</td>
+                    <td className="px-3 py-2 text-right text-dim">–</td>
+                    <td className="py-2 pl-3 pr-4 text-right text-chalk">
+                      {home.abbr} {fmtSpread(Number(prediction.spread))}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+            <p className="px-4 py-2 text-[10.5px] text-dim">
+              Margins in the market&rsquo;s convention (negative = {home.abbr} favored); Elo
+              margin approximated at 25 Elo per point. Consensus flags fire when every system
+              disagrees with the line the same way.
+            </p>
           </section>
         )}
 
