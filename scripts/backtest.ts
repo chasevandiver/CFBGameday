@@ -278,6 +278,34 @@ async function main() {
   if (!tune) {
     const predictions = run(DEFAULT_PARAMS);
     console.log(report(predictions, DEFAULT_PARAMS));
+
+    // Tilt-scale sweep: how much (if any) of the SP+ preseason shape helps
+    // totals? scale 0 = pure even split. Decides what production seeds.
+    const baseTilts = subTiltsFromSp(seasons[0].prevSp, teamIdsByName);
+    const maeOf = (xs: number[]) => xs.reduce((a, e) => a + Math.abs(e), 0) / xs.length;
+    console.log("\n== Preseason tilt-scale sweep (totals MAE) ==");
+    console.log("scale   weeks 1–4      weeks 5+       all");
+    for (const scale of [0, 0.25, 0.5, 0.75, 1]) {
+      let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
+      let tilts = new Map([...baseTilts].map(([id, t]) => [id, t * scale]));
+      const all: ReplayPrediction[] = [];
+      for (const season of seasons) {
+        const { predictions: p, finalRatings, finalTilts } = replaySeason(
+          season,
+          priors,
+          DEFAULT_PARAMS,
+          tilts,
+        );
+        all.push(...p.filter((x) => x.vegasTotal !== null));
+        priors = chainPriors(finalRatings);
+        tilts = new Map([...finalTilts].map(([id, t]) => [id, 0.7 * t]));
+      }
+      const seg = (f: (p: ReplayPrediction) => boolean) =>
+        maeOf(all.filter(f).map((p) => p.actualTotal - p.projectedTotal)).toFixed(2);
+      console.log(
+        `${scale.toFixed(2)}    ${seg((p) => p.week <= 4)}          ${seg((p) => p.week >= 5)}          ${seg(() => true)}`,
+      );
+    }
     return;
   }
 
