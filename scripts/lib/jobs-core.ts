@@ -9,7 +9,6 @@ import { cfbd } from "../../src/lib/cfbd";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
 import { buildTeamNameIndex } from "../../src/lib/rankings";
 import { fetchCurrentSlate } from "../../src/lib/season";
-import { subTiltsFromSp } from "./replay";
 import {
   DEFAULT_PARAMS,
   MODEL_VERSION,
@@ -186,63 +185,7 @@ export async function syncSystemsJob(db: SupabaseClient): Promise<Json> {
     if (error) throw new Error(error.message);
   }
 
-  // Preseason off/def tilt backfill (2026.3.0): while ONLY week-0 ratings
-  // exist and their halves are still even, split them by prev-season SP+
-  // shape (validated in the calibration backtest). Overall is untouched;
-  // never runs once in-season rows exist or a tilt is already present, so a
-  // rebuilt preseason or live season can't be clobbered.
-  let tilted = 0;
-  const { data: inSeason } = await db
-    .from("ratings")
-    .select("week")
-    .eq("season_id", SEASON)
-    .gt("week", 0)
-    .limit(1);
-  if ((inSeason ?? []).length === 0) {
-    const { data: wk0 } = await db
-      .from("ratings")
-      .select("team_id, overall, offense, defense")
-      .eq("season_id", SEASON)
-      .eq("week", 0);
-    const stillEven = ((wk0 ?? []) as Array<{
-      team_id: number;
-      overall: number;
-      offense: number | null;
-      defense: number | null;
-    }>).filter(
-      (r) => Math.abs(Number(r.offense ?? 0) - Number(r.defense ?? 0)) < 0.005,
-    );
-    if (stillEven.length > 0) {
-      const prevSp = await cfbd.spRatings(SEASON - 1);
-      const tilts = subTiltsFromSp(prevSp, nameIndex);
-      const updates = stillEven
-        .filter((r) => (tilts.get(r.team_id) ?? 0) !== 0)
-        .map((r) => {
-          const tilt = tilts.get(r.team_id) as number;
-          const overall = Number(r.overall);
-          return {
-            season_id: SEASON,
-            team_id: r.team_id,
-            week: 0,
-            overall,
-            offense: Math.round((overall / 2 + tilt) * 100) / 100,
-            defense: Math.round((overall / 2 - tilt) * 100) / 100,
-            tempo: 70,
-            prior_weight: 1,
-            model_version: MODEL_VERSION,
-          };
-        });
-      for (let i = 0; i < updates.length; i += 500) {
-        const { error } = await db
-          .from("ratings")
-          .upsert(updates.slice(i, i + 500), { onConflict: "season_id,team_id,week" });
-        if (error) throw new Error(error.message);
-      }
-      tilted = updates.length;
-    }
-  }
-
-  return { week, rows: rows.length, tilted, unmatched: [...unmatched] };
+  return { week, rows: rows.length, unmatched: [...unmatched] };
 }
 
 /** Open-Meteo forecasts for outdoor games in the next 7 days. */
@@ -326,8 +269,8 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
     .eq("week", 0);
   if (!priorRows || priorRows.length === 0) throw new Error("no week-0 priors");
   const priors = new Map<number, number>();
-  // preseason halves as stored — carries the SP+ off/def tilt when the
-  // preseason build wrote one (even split otherwise)
+  // preseason halves as stored (even split until results move them — the
+  // tilt-scale sweep in the calibration backtest ruled out SP+ shape seeding)
   const priorOff = new Map<number, number>();
   const priorDef = new Map<number, number>();
   for (const r of priorRows as Array<{
@@ -679,7 +622,7 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
       spread: Math.round(price.spread * 10) / 10,
       // Totals are real when the off/def split carries information (2023–25
       // calibration: model MAE 13.09 vs constant 13.72). With a pure even
-      // split (no SP+ tilt loaded, no results yet) every total is the league
+      // split (preseason, no results yet) every total is the league
       // baseline — store null rather than a constant dressed as a prediction.
       // O/U leans stay unflagged either way (50.8%/51.9% < the 52.4% vig).
       total: splitInformative ? Math.round(price.projectedTotal * 10) / 10 : null,

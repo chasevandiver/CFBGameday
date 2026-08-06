@@ -261,16 +261,15 @@ async function main() {
   }
 
   const run = (params: ModelParams): ReplayPrediction[] => {
+    // No preseason tilt — matches production, where week-0 halves are even.
+    // The tilt-scale sweep below is the standing check that this stays the
+    // right call (scale 0 won: weeks 1–4 totals MAE 13.33 vs 15.06 at 1.0).
     let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
-    // preseason off/def tilt from SP+ sub-ratings; chained seasons carry the
-    // replay's own final tilt, regressed like the overall prior
-    let tilts = subTiltsFromSp(seasons[0].prevSp, teamIdsByName);
     const all: ReplayPrediction[] = [];
     for (const season of seasons) {
-      const { predictions, finalRatings, finalTilts } = replaySeason(season, priors, params, tilts);
+      const { predictions, finalRatings } = replaySeason(season, priors, params);
       all.push(...predictions);
       priors = chainPriors(finalRatings);
-      tilts = new Map([...finalTilts].map(([id, t]) => [id, 0.7 * t]));
     }
     return all;
   };
