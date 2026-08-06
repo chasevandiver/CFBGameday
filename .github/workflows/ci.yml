@@ -23,6 +23,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      # generate Next's route types (LayoutProps etc.) before typechecking
+      - run: npx next typegen
       - run: npx tsc --noEmit
       - run: npm test
       - run: npm run build
