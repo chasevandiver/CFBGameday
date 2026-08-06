@@ -59,6 +59,14 @@ export interface MyBetView {
   line: number | null;
 }
 
+/** A crew mate's pick on this game (the viewer's own pick lives in myPick). */
+export interface CrewPickView {
+  name: string;
+  side: string;
+  /** Their season pick'em record, e.g. "12-8"; null before any graded picks */
+  record: string | null;
+}
+
 export interface GameView {
   id: number;
   week: number;
@@ -68,6 +76,8 @@ export interface GameView {
   clock: string | null;
   /** Verbatim CFBD situation string while live, e.g. "2nd & 10 at OSU 34" */
   situation: string | null;
+  /** One-line last play while live, so a reopened app shows what just changed */
+  lastPlay: string | null;
   possession: "home" | "away" | null;
   tv: string | null;
   neutralSite: boolean;
@@ -88,6 +98,8 @@ export interface GameView {
   myPick: { side: string; line: number } | null;
   /** The viewer's open (ungraded, unvoided) bets on this game */
   myBets: MyBetView[];
+  /** Everyone else's picks on this game — who's riding which side */
+  crewPicks: CrewPickView[];
   weather: { tempF: number | null; windMph: number | null; precipProb: number | null } | null;
   dome: boolean;
 }

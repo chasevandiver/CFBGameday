@@ -12,7 +12,7 @@ import { BetSlip } from "../../../components/slate/BetSlip";
 import { GameCard } from "../../../components/slate/GameCard";
 import { SkeletonCard } from "../../../components/slate/SkeletonCard";
 import { DEFAULT_TZ } from "../../../lib/kick";
-import type { GameView, MyBetView, TeamView } from "../../../lib/slate";
+import type { CrewPickView, GameView, MyBetView, TeamView } from "../../../lib/slate";
 
 const logo = (id: number) => `https://a.espncdn.com/i/teamlogos/ncaa/500-dark/${id}.png`;
 
@@ -61,7 +61,9 @@ const base = {
   dome: false,
   myPick: null,
   myBets: [] as MyBetView[],
+  crewPicks: [] as CrewPickView[],
   situation: null as string | null,
+  lastPlay: null as string | null,
   possession: null as "home" | "away" | null,
   weather: null,
 };
@@ -94,6 +96,11 @@ const PREGAME: GameView = {
     frozen: false,
   },
   myPick: { side: "home", line: -1.5 },
+  crewPicks: [
+    { name: "Jake", side: "home", record: "12-8" },
+    { name: "Mo", side: "home", record: "10-10" },
+    { name: "Sam", side: "away", record: "9-11" },
+  ],
   weather: { tempF: 44, windMph: 18, precipProb: 20 },
 };
 
@@ -105,6 +112,7 @@ const LIVE: GameView = {
   period: 3,
   clock: "8:42",
   situation: "2nd & 8 at MICH 14",
+  lastPlay: "Henderson rush up the middle for 12 yds to the MICH 14",
   possession: "away",
   tv: "FOX",
   homePoints: 24,
@@ -113,6 +121,11 @@ const LIVE: GameView = {
   away: OHIO_STATE,
   myPick: { side: "away", line: 3.5 },
   myBets: [{ id: 1, betType: "total", side: "over", line: 44.5 }],
+  crewPicks: [
+    { name: "Jake", side: "away", record: "12-8" },
+    { name: "Ty", side: "away", record: "15-5" },
+    { name: "Sam", side: "home", record: "9-11" },
+  ],
   lines: { spread: 3.5, spreadOpen: 2.5, total: 44.5, totalOpen: 45.5, mlHome: 150, mlAway: -175 },
   spreadHistory: hist([2.5, 3, 3, 3.5]),
   prediction: {

@@ -131,6 +131,7 @@ export function GameCard({ game, tz, starred, onStar, index = 0, featured = fals
           </div>
 
           {live && <LiveSituation game={game} />}
+          {live && <CrewLine game={game} />}
 
           <div className="mt-auto">
             {dead ? null : final ? (
@@ -401,6 +402,89 @@ function LiveSituation({ game }: { game: GameView }) {
         {redZone && <span className="chip bg-loss/15 text-loss">Red zone</span>}
       </div>
       {pos && <FieldStrip game={game} pos={pos} redZone={redZone} />}
+      {game.lastPlay && (
+        <p className="mt-1.5 truncate text-[11px] leading-snug text-dim">
+          <span className="stat mr-1 text-[9px] font-semibold uppercase tracking-widest text-chalk/35">
+            Last
+          </span>
+          {game.lastPlay}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/* ---- crew standing ------------------------------------------------------ */
+
+/** "OSU" / "MICH" / "Over" / "Under" for a pick side on this game. */
+function sideLabel(g: GameView, side: string): string {
+  if (side === "home") return g.home.abbr;
+  if (side === "away") return g.away.abbr;
+  return side === "over" ? "Over" : "Under";
+}
+
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+/**
+ * Who else is riding this game, and how their week is going. With a pick of
+ * your own, the line splits into "with you" and the fade; without one it
+ * shows the crew's split.
+ */
+function CrewLine({ game }: { game: GameView }) {
+  const crew = game.crewPicks;
+  if (crew.length === 0) return null;
+  const my = game.myPick;
+
+  if (!my) {
+    const counts = new Map<string, number>();
+    for (const c of crew) counts.set(c.side, (counts.get(c.side) ?? 0) + 1);
+    return (
+      <div className="mt-2 flex items-center gap-1.5 border-t border-chalk/8 pt-2 text-[11px] text-dim">
+        <span className="stat truncate">
+          Crew: {[...counts.entries()].map(([s, n]) => `${n} ${sideLabel(game, s)}`).join(" · ")}
+        </span>
+      </div>
+    );
+  }
+
+  const pickTeam = my.side === "home" ? game.home : my.side === "away" ? game.away : null;
+  const withMe = crew.filter((c) => c.side === my.side);
+  const against = crew.filter((c) => c.side !== my.side);
+  return (
+    <div className="mt-2 flex items-center gap-1.5 border-t border-chalk/8 pt-2 text-[11px] text-dim">
+      {withMe.length > 0 && (
+        <span className="flex shrink-0" aria-hidden>
+          {withMe.map((c) => (
+            <span
+              key={c.name}
+              title={c.record ? `${c.name} ${c.record}` : c.name}
+              className="stat -ml-1 flex h-[18px] w-[18px] items-center justify-center rounded-full border text-[8px] font-bold text-chalk first:ml-0"
+              style={{
+                background: `color-mix(in srgb, ${pickTeam?.color ?? "#5b6472"} 32%, var(--elev))`,
+                borderColor: `color-mix(in srgb, ${pickTeam?.color ?? "#5b6472"} 60%, transparent)`,
+              }}
+            >
+              {initials(c.name)}
+            </span>
+          ))}
+        </span>
+      )}
+      <span className="truncate">
+        {withMe.length === 0
+          ? "Only you on this side"
+          : `${withMe.map((c) => `${c.name}${c.record ? ` ${c.record}` : ""}`).join(" · ")} with you`}
+      </span>
+      {against.length > 0 && (
+        <span className="ml-auto shrink-0 truncate text-chalk/35">
+          {against.map((c) => `${c.name} ${sideLabel(game, c.side)}`).join(", ")}
+        </span>
+      )}
     </div>
   );
 }
@@ -546,6 +630,19 @@ function OddsCell({
   );
 }
 
+/** Pregame crew split, shown once the viewer has locked a pick of their own. */
+function CrewSplit({ game }: { game: GameView }) {
+  const counts = new Map<string, number>();
+  for (const c of game.crewPicks) counts.set(c.side, (counts.get(c.side) ?? 0) + 1);
+  if (game.myPick) counts.set(game.myPick.side, (counts.get(game.myPick.side) ?? 0) + 1);
+  if (game.crewPicks.length === 0) return null;
+  return (
+    <span className="stat min-w-0 truncate text-[10.5px] text-dim">
+      {[...counts.entries()].map(([s, n]) => `${n} ${sideLabel(game, s)}`).join(" · ")}
+    </span>
+  );
+}
+
 /* ---- footers ----------------------------------------------------------- */
 
 /** "OSU -3.5" / "O 54.5" for the viewer's pick chip. */
@@ -585,6 +682,7 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
           <EdgeChip flag={p?.edgeFlag ?? null} edge={p?.edge ?? null} />
           <ConsensusChip on={p?.consensus ?? false} />
           {game.myPick && !live && <PickedChip />}
+          {game.myPick && !live && <CrewSplit game={game} />}
         </div>
         <div className="flex items-center gap-1.5 text-dim">
           <MoveIndicator move={move} open={game.lines.spreadOpen} />

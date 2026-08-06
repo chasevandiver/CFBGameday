@@ -223,6 +223,7 @@ async function scoreboard(db: SupabaseClient): Promise<Json> {
         current_clock: g.clock,
         // nulled once final so finished games never show a stale down-and-distance
         current_situation: inProgress ? g.situation : null,
+        last_play: inProgress ? (g.lastPlay ?? null) : null,
         possession:
           inProgress && (g.possession === "home" || g.possession === "away")
             ? g.possession
