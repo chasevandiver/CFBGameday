@@ -784,13 +784,21 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
                 )}
               </>
             ) : (
-              /* Spread + ATS side only — model totals and projected scores are
-                 hidden until real off/def/tempo sub-ratings ship (audit #4). */
+              /* Totals display re-enabled after the 2023–25 calibration run
+                 (model MAE 13.09 vs constant 13.72). O/U leans stay off —
+                 50.8%/51.9% doesn't clear the 52.4% vig, so the total is
+                 information, never a recommendation. */
               <>
                 {"Model: "}
                 <span className="text-chalk">
                   {game.home.abbr} {fmtSpread(Math.round(p!.spread * 10) / 10)}
                 </span>
+                {p!.total !== null && (
+                  <>
+                    {" · "}
+                    <span className="text-chalk">total {fmtTotal(Math.round(p!.total * 2) / 2)}</span>
+                  </>
+                )}
                 {picks.atsSide && (
                   <>
                     {" · "}

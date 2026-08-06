@@ -11,7 +11,7 @@ import {
   blendWithPrior,
   priceGame,
   priorWeight,
-  updateFromResult,
+  updateSubRatings,
   type TeamRating,
 } from "./ratings.ts";
 
@@ -420,60 +420,62 @@ async function ratingsUpdate(db: SupabaseClient): Promise<Json> {
   );
 
   // Stateless replay of the season so far
-  const results = new Map<number, number>(priors);
+  // Off/def carry the replay (§2.2) — mirrors scripts/lib/jobs-core.ts; the
+  // 2023–25 backtest validated totals (MAE 13.09 vs constant 13.72) while
+  // preserving the tuned margin behavior.
+  const offense = new Map<number, number>();
+  const defense = new Map<number, number>();
+  for (const [id, prior] of priors) {
+    offense.set(id, prior / 2);
+    defense.set(id, prior / 2);
+  }
   const weeksPlayed = [...new Set(finals.map((g) => g.week))].sort((a, b) => a - b);
   const ratingRows: Json[] = [];
   for (const week of weeksPlayed) {
     for (const g of finals.filter((x) => x.week === week)) {
-      const blended = (teamId: number): number => {
+      const blended = (teamId: number): TeamRating => {
         const prior = priors.get(teamId);
-        if (prior === undefined) return FCS_RATING;
-        return blendWithPrior(prior, results.get(teamId) ?? prior, week, DEFAULT_PARAMS);
+        if (prior === undefined)
+          return { overall: FCS_RATING, offense: FCS_RATING / 2, defense: FCS_RATING / 2, tempo: 70 };
+        const off = blendWithPrior(prior / 2, offense.get(teamId) ?? prior / 2, week, DEFAULT_PARAMS);
+        const def = blendWithPrior(prior / 2, defense.get(teamId) ?? prior / 2, week, DEFAULT_PARAMS);
+        return { overall: off + def, offense: off, defense: def, tempo: 70 };
       };
-      const rating = (overall: number): TeamRating => ({
-        overall,
-        offense: overall / 2,
-        defense: overall / 2,
-        tempo: 70,
-      });
-      const price = priceGame(
+      const home = blended(g.home_team_id);
+      const away = blended(g.away_team_id);
+      const upd = updateSubRatings(
         {
-          home: rating(blended(g.home_team_id)),
-          away: rating(blended(g.away_team_id)),
-          homeTeamHfa: hfa.get(g.home_team_id) ?? DEFAULT_PARAMS.baseHfa,
+          homeOffense: home.offense,
+          homeDefense: home.defense,
+          awayOffense: away.offense,
+          awayDefense: away.defense,
+          homePoints: g.home_points as number,
+          awayPoints: g.away_points as number,
+          hfa: hfa.get(g.home_team_id) ?? DEFAULT_PARAMS.baseHfa,
           neutralSite: g.neutral_site,
-          situationalPoints: 0,
-          vegasSpread: null,
-        },
-        DEFAULT_PARAMS,
-      );
-      const upd = updateFromResult(
-        {
-          homeRating: results.get(g.home_team_id) ?? FCS_RATING,
-          awayRating: results.get(g.away_team_id) ?? FCS_RATING,
-          predictedMargin: price.margin,
-          actualHomeMargin: (g.home_points as number) - (g.away_points as number),
         },
         DEFAULT_PARAMS,
       );
       if (priors.has(g.home_team_id)) {
-        results.set(g.home_team_id, (results.get(g.home_team_id) ?? 0) + upd.homeDelta);
+        offense.set(g.home_team_id, (offense.get(g.home_team_id) ?? 0) + upd.homeOffDelta);
+        defense.set(g.home_team_id, (defense.get(g.home_team_id) ?? 0) + upd.homeDefDelta);
       }
       if (priors.has(g.away_team_id)) {
-        results.set(g.away_team_id, (results.get(g.away_team_id) ?? 0) + upd.awayDelta);
+        offense.set(g.away_team_id, (offense.get(g.away_team_id) ?? 0) + upd.awayOffDelta);
+        defense.set(g.away_team_id, (defense.get(g.away_team_id) ?? 0) + upd.awayDefDelta);
       }
     }
-    // "as of before week+1" blended rating rows
     const nextWeek = week + 1;
     for (const [teamId, prior] of priors) {
-      const blended = blendWithPrior(prior, results.get(teamId) ?? prior, nextWeek, DEFAULT_PARAMS);
+      const off = blendWithPrior(prior / 2, offense.get(teamId) ?? prior / 2, nextWeek, DEFAULT_PARAMS);
+      const def = blendWithPrior(prior / 2, defense.get(teamId) ?? prior / 2, nextWeek, DEFAULT_PARAMS);
       ratingRows.push({
         season_id: SEASON,
         team_id: teamId,
         week: nextWeek,
-        overall: Math.round(blended * 100) / 100,
-        offense: Math.round((blended / 2) * 100) / 100,
-        defense: Math.round((blended / 2) * 100) / 100,
+        overall: Math.round((off + def) * 100) / 100,
+        offense: Math.round(off * 100) / 100,
+        defense: Math.round(def * 100) / 100,
         tempo: 70,
         prior_weight: Math.round(priorWeight(nextWeek, DEFAULT_PARAMS) * 1000) / 1000,
         model_version: MODEL_VERSION,
@@ -611,12 +613,18 @@ async function freeze(db: SupabaseClient): Promise<Json> {
   // Latest ratings row per team
   const { data: ratingRows } = await db
     .from("ratings")
-    .select("team_id, week, overall")
+    .select("team_id, week, overall, offense, defense")
     .eq("season_id", SEASON)
     .order("week", { ascending: false });
-  const latest = new Map<number, number>();
+  const latest = new Map<number, { overall: number; offense: number; defense: number }>();
   for (const r of ratingRows ?? []) {
-    if (!latest.has(r.team_id)) latest.set(r.team_id, Number(r.overall));
+    if (!latest.has(r.team_id)) {
+      latest.set(r.team_id, {
+        overall: Number(r.overall),
+        offense: Number(r.offense ?? Number(r.overall) / 2),
+        defense: Number(r.defense ?? Number(r.overall) / 2),
+      });
+    }
   }
 
   const [{ data: hfaRows }, { data: adjRows }, { data: snaps }] = await Promise.all([
@@ -656,10 +664,10 @@ async function freeze(db: SupabaseClient): Promise<Json> {
     const homeR = latest.get(g.home_team_id);
     const awayR = latest.get(g.away_team_id);
     if (homeR === undefined && awayR === undefined) continue;
-    const rating = (overall: number | undefined): TeamRating => ({
-      overall: overall ?? FCS_RATING,
-      offense: (overall ?? FCS_RATING) / 2,
-      defense: (overall ?? FCS_RATING) / 2,
+    const rating = (r: { overall: number; offense: number; defense: number } | undefined): TeamRating => ({
+      overall: r?.overall ?? FCS_RATING,
+      offense: r?.offense ?? FCS_RATING / 2,
+      defense: r?.defense ?? FCS_RATING / 2,
       tempo: 70,
     });
     const situational = adjFor(g.home_team_id, g.id) - adjFor(g.away_team_id, g.id);
@@ -681,10 +689,10 @@ async function freeze(db: SupabaseClient): Promise<Json> {
       model_version: MODEL_VERSION,
       frozen: true,
       spread: Math.round(price.spread * 10) / 10,
-      // constant-total guard: no totals until real sub-ratings exist (audit #4)
-      total: null,
-      home_score: null,
-      away_score: null,
+      // totals validated by the 2023–25 calibration backtest (display-grade)
+      total: Math.round(price.projectedTotal * 10) / 10,
+      home_score: Math.round(price.projectedHomeScore * 10) / 10,
+      away_score: Math.round(price.projectedAwayScore * 10) / 10,
       home_win_prob: Math.round(price.homeWinProb * 10000) / 10000,
       cover_prob: price.homeCoverProb !== null ? Math.round(price.homeCoverProb * 10000) / 10000 : null,
       vegas_spread: vegas.spread,

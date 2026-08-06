@@ -382,8 +382,11 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                     <td className="py-2 pr-3 text-chalk">
                       {home.abbr} {fmtSpread(Number(prediction.spread))}
                     </td>
-                    {/* No model total until real sub-ratings exist (audit #4) */}
-                    <td className="py-2 pr-3 text-dim">–</td>
+                    <td className="py-2 pr-3 text-chalk">
+                      {prediction.total === null
+                        ? "–"
+                        : fmtTotal(Math.round(Number(prediction.total) * 2) / 2)}
+                    </td>
                     <td className="py-2 pr-4 text-chalk">{fmtPct(Number(prediction.home_win_prob))}</td>
                   </tr>
                 )}
@@ -404,17 +407,30 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                 <ConsensusChip on={prediction.consensus_flag} />
               </span>
             </div>
-            <p className="scorebug mt-3 text-center text-3xl text-chalk">
-              {home.abbr} {fmtSpread(Number(prediction.spread))}
-            </p>
-            {/* Model totals / projected scores return once real off/def/tempo
-                sub-ratings exist and survive a backtest (audit #4). */}
-            <div className="stat mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+            {prediction.home_score !== null && prediction.away_score !== null ? (
+              <p className="scorebug mt-3 text-center text-3xl text-chalk">
+                {home.abbr} {Math.round(Number(prediction.home_score))}
+                <span className="mx-2 text-chalk/30">–</span>
+                {away.abbr} {Math.round(Number(prediction.away_score))}
+              </p>
+            ) : (
+              <p className="scorebug mt-3 text-center text-3xl text-chalk">
+                {home.abbr} {fmtSpread(Number(prediction.spread))}
+              </p>
+            )}
+            {/* Totals calibrated on 2023–25 (MAE 13.09 vs constant 13.72) —
+                displayed as projection only; O/U leans never clear the vig. */}
+            <div className="stat mt-3 grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-4">
               <ProjStat label="Win prob" value={fmtPct(Number(prediction.home_win_prob))} sub={home.abbr} />
               <ProjStat
                 label="Cover prob"
                 value={prediction.cover_prob === null ? "–" : fmtPct(Number(prediction.cover_prob))}
                 sub={`vs ${fmtSpread(prediction.vegas_spread === null ? null : Number(prediction.vegas_spread))}`}
+              />
+              <ProjStat
+                label="Model total"
+                value={prediction.total === null ? "–" : fmtTotal(Math.round(Number(prediction.total) * 2) / 2)}
+                sub={consensus.total !== null ? `market ${fmtTotal(consensus.total)}` : ""}
               />
               <ProjStat
                 label="Edge"
