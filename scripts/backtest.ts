@@ -24,6 +24,7 @@ import {
   loadSeason,
   priorsFromSp,
   replaySeason,
+  subTiltsFromSp,
   teamIdsByNameFrom,
   type ReplayPrediction,
   type SeasonData,
@@ -62,12 +63,16 @@ function report(predictions: ReplayPrediction[], params: ModelParams): string {
     const constErr = withTotal.map((p) => p.actualTotal - 57);
     lines.push("\n== Totals calibration (vs games with a stored total) ==");
     lines.push(`model MAE ${mae(modelErr).toFixed(2)}   market MAE ${mae(marketErr).toFixed(2)}   constant-57 MAE ${mae(constErr).toFixed(2)}   n=${withTotal.length}`);
-    const late = withTotal.filter((p) => p.week >= 5);
-    if (late.length > 0) {
+    for (const [label, filter] of [
+      ["weeks 1–4", (p: ReplayPrediction) => p.week <= 4],
+      ["weeks 5+ ", (p: ReplayPrediction) => p.week >= 5],
+    ] as const) {
+      const seg = withTotal.filter(filter);
+      if (seg.length === 0) continue;
       lines.push(
-        `weeks 5+:  model MAE ${mae(late.map((p) => p.actualTotal - p.projectedTotal)).toFixed(2)}   ` +
-          `market MAE ${mae(late.map((p) => p.actualTotal - (p.vegasTotal as number))).toFixed(2)}   ` +
-          `constant-57 MAE ${mae(late.map((p) => p.actualTotal - 57)).toFixed(2)}   n=${late.length}`,
+        `${label}: model MAE ${mae(seg.map((p) => p.actualTotal - p.projectedTotal)).toFixed(2)}   ` +
+          `market MAE ${mae(seg.map((p) => p.actualTotal - (p.vegasTotal as number))).toFixed(2)}   ` +
+          `constant-57 MAE ${mae(seg.map((p) => p.actualTotal - 57)).toFixed(2)}   n=${seg.length}`,
       );
     }
     for (const min of [2, 4]) {
@@ -257,11 +262,15 @@ async function main() {
 
   const run = (params: ModelParams): ReplayPrediction[] => {
     let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
+    // preseason off/def tilt from SP+ sub-ratings; chained seasons carry the
+    // replay's own final tilt, regressed like the overall prior
+    let tilts = subTiltsFromSp(seasons[0].prevSp, teamIdsByName);
     const all: ReplayPrediction[] = [];
     for (const season of seasons) {
-      const { predictions, finalRatings } = replaySeason(season, priors, params);
+      const { predictions, finalRatings, finalTilts } = replaySeason(season, priors, params, tilts);
       all.push(...predictions);
       priors = chainPriors(finalRatings);
+      tilts = new Map([...finalTilts].map(([id, t]) => [id, 0.7 * t]));
     }
     return all;
   };

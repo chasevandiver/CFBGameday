@@ -11,7 +11,22 @@
 // teams), prior-year baseline blends replay finals 50/50 with final SP+
 // (--tune-sp-blend): opponent adjustment fixes G5 schedule-pocket inflation.
 // Both experiments re-validated with talent flowing; carryover optimum 0.70.
-export const MODEL_VERSION = "2026.2.0";
+// 2026.3.0: off/def sub-ratings carry the replay (§2.2) and preseason halves
+// tilt from prior-season SP+ off/def — totals are real predictions from this
+// version on (2023–25 calibration: model MAE 13.09 vs constant 13.72).
+// Pre-2026.3.0 rows priced totals as a constant; the UI must never show them.
+export const MODEL_VERSION = "2026.3.0";
+
+/**
+ * Did this model version price totals for real? Rows frozen before 2026.3.0
+ * stored the degenerate constant-57 total (audit bug #4) — those are history,
+ * kept append-only, but their totals must not render as predictions.
+ */
+export function hasCalibratedTotals(modelVersion: string): boolean {
+  const [y, major] = modelVersion.split(".").map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(major)) return false;
+  return y > 2026 || (y === 2026 && major >= 3);
+}
 
 export interface ModelParams {
   /** Elo-style learning rate on capped margin error */

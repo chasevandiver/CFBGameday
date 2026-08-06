@@ -14,6 +14,7 @@ import {
   updateFromResult,
   type PricingInputs,
   type TeamRating,
+  hasCalibratedTotals,
   updateSubRatings,
 } from "./ratings";
 
@@ -282,5 +283,16 @@ describe("updateSubRatings (spec §2.2 groundwork — display stays gated until 
     });
     expect(neutral.homeOffDelta).toBeCloseTo(0, 10);
     expect(neutral.awayOffDelta).toBeCloseTo(0, 10);
+  });
+});
+
+describe("hasCalibratedTotals", () => {
+  it("gates totals to 2026.3.0+ — earlier versions priced a constant", () => {
+    expect(hasCalibratedTotals("2026.3.0")).toBe(true);
+    expect(hasCalibratedTotals("2026.4.1")).toBe(true);
+    expect(hasCalibratedTotals("2027.0.0")).toBe(true);
+    expect(hasCalibratedTotals("2026.2.0")).toBe(false);
+    expect(hasCalibratedTotals("2026.1.0")).toBe(false);
+    expect(hasCalibratedTotals("garbage")).toBe(false);
   });
 });

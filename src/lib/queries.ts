@@ -9,6 +9,7 @@ import type {
   ProfileRow,
   TeamRow,
 } from "./db-types";
+import { hasCalibratedTotals } from "../model/ratings";
 import { pickPollRanks, pollShortName } from "./rankings";
 import { fetchCurrentSlate, type SeasonType } from "./season";
 import { atsRecord, ouRecord } from "./slate";
@@ -352,9 +353,20 @@ export async function fetchSlateView(
         prediction: pred
           ? {
               spread: Number(pred.spread),
-              total: pred.total === null ? null : Number(pred.total),
-              homeScore: pred.home_score === null ? null : Number(pred.home_score),
-              awayScore: pred.away_score === null ? null : Number(pred.away_score),
+              // frozen rows are append-only history; totals from versions
+              // that priced them as a constant must never render (audit #4)
+              total:
+                pred.total === null || !hasCalibratedTotals(pred.model_version)
+                  ? null
+                  : Number(pred.total),
+              homeScore:
+                pred.home_score === null || !hasCalibratedTotals(pred.model_version)
+                  ? null
+                  : Number(pred.home_score),
+              awayScore:
+                pred.away_score === null || !hasCalibratedTotals(pred.model_version)
+                  ? null
+                  : Number(pred.away_score),
               homeWinProb: Number(pred.home_win_prob),
               coverProb: pred.cover_prob === null ? null : Number(pred.cover_prob),
               vegasSpread: pred.vegas_spread === null ? null : snapToHalf(Number(pred.vegas_spread)),

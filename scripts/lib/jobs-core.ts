@@ -9,6 +9,7 @@ import { cfbd } from "../../src/lib/cfbd";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
 import { buildTeamNameIndex } from "../../src/lib/rankings";
 import { fetchCurrentSlate } from "../../src/lib/season";
+import { subTiltsFromSp } from "./replay";
 import {
   DEFAULT_PARAMS,
   MODEL_VERSION,
@@ -184,7 +185,64 @@ export async function syncSystemsJob(db: SupabaseClient): Promise<Json> {
     });
     if (error) throw new Error(error.message);
   }
-  return { week, rows: rows.length, unmatched: [...unmatched] };
+
+  // Preseason off/def tilt backfill (2026.3.0): while ONLY week-0 ratings
+  // exist and their halves are still even, split them by prev-season SP+
+  // shape (validated in the calibration backtest). Overall is untouched;
+  // never runs once in-season rows exist or a tilt is already present, so a
+  // rebuilt preseason or live season can't be clobbered.
+  let tilted = 0;
+  const { data: inSeason } = await db
+    .from("ratings")
+    .select("week")
+    .eq("season_id", SEASON)
+    .gt("week", 0)
+    .limit(1);
+  if ((inSeason ?? []).length === 0) {
+    const { data: wk0 } = await db
+      .from("ratings")
+      .select("team_id, overall, offense, defense")
+      .eq("season_id", SEASON)
+      .eq("week", 0);
+    const stillEven = ((wk0 ?? []) as Array<{
+      team_id: number;
+      overall: number;
+      offense: number | null;
+      defense: number | null;
+    }>).filter(
+      (r) => Math.abs(Number(r.offense ?? 0) - Number(r.defense ?? 0)) < 0.005,
+    );
+    if (stillEven.length > 0) {
+      const prevSp = await cfbd.spRatings(SEASON - 1);
+      const tilts = subTiltsFromSp(prevSp, nameIndex);
+      const updates = stillEven
+        .filter((r) => (tilts.get(r.team_id) ?? 0) !== 0)
+        .map((r) => {
+          const tilt = tilts.get(r.team_id) as number;
+          const overall = Number(r.overall);
+          return {
+            season_id: SEASON,
+            team_id: r.team_id,
+            week: 0,
+            overall,
+            offense: Math.round((overall / 2 + tilt) * 100) / 100,
+            defense: Math.round((overall / 2 - tilt) * 100) / 100,
+            tempo: 70,
+            prior_weight: 1,
+            model_version: MODEL_VERSION,
+          };
+        });
+      for (let i = 0; i < updates.length; i += 500) {
+        const { error } = await db
+          .from("ratings")
+          .upsert(updates.slice(i, i + 500), { onConflict: "season_id,team_id,week" });
+        if (error) throw new Error(error.message);
+      }
+      tilted = updates.length;
+    }
+  }
+
+  return { week, rows: rows.length, tilted, unmatched: [...unmatched] };
 }
 
 /** Open-Meteo forecasts for outdoor games in the next 7 days. */
@@ -263,13 +321,26 @@ export async function weatherJob(db: SupabaseClient): Promise<Json> {
 export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
   const { data: priorRows } = await db
     .from("ratings")
-    .select("team_id, overall")
+    .select("team_id, overall, offense, defense")
     .eq("season_id", SEASON)
     .eq("week", 0);
   if (!priorRows || priorRows.length === 0) throw new Error("no week-0 priors");
-  const priors = new Map<number, number>(
-    priorRows.map((r: { team_id: number; overall: number }) => [r.team_id, Number(r.overall)]),
-  );
+  const priors = new Map<number, number>();
+  // preseason halves as stored — carries the SP+ off/def tilt when the
+  // preseason build wrote one (even split otherwise)
+  const priorOff = new Map<number, number>();
+  const priorDef = new Map<number, number>();
+  for (const r of priorRows as Array<{
+    team_id: number;
+    overall: number;
+    offense: number | null;
+    defense: number | null;
+  }>) {
+    const overall = Number(r.overall);
+    priors.set(r.team_id, overall);
+    priorOff.set(r.team_id, r.offense === null ? overall / 2 : Number(r.offense));
+    priorDef.set(r.team_id, r.defense === null ? overall / 2 : Number(r.defense));
+  }
 
   const { data: gameRows } = await db
     .from("games")
@@ -306,12 +377,8 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
   // totals MAE beat the constant baseline (13.09 vs 13.72 over 2023–25) while
   // margins reproduced the tuned behavior (updateSubRatings' off+def deltas
   // sum to the old overall delta). Priors split evenly; results differentiate.
-  const offense = new Map<number, number>();
-  const defense = new Map<number, number>();
-  for (const [id, prior] of priors) {
-    offense.set(id, prior / 2);
-    defense.set(id, prior / 2);
-  }
+  const offense = new Map<number, number>(priorOff);
+  const defense = new Map<number, number>(priorDef);
   const weeksPlayed = [...new Set(finals.map((g) => g.week))].sort((a, b) => a - b);
   const ratingRows: Json[] = [];
   for (const week of weeksPlayed) {
@@ -320,8 +387,10 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
         const prior = priors.get(teamId);
         if (prior === undefined)
           return { overall: FCS_RATING, offense: FCS_RATING / 2, defense: FCS_RATING / 2, tempo: 70 };
-        const off = blendWithPrior(prior / 2, offense.get(teamId) ?? prior / 2, week, DEFAULT_PARAMS);
-        const def = blendWithPrior(prior / 2, defense.get(teamId) ?? prior / 2, week, DEFAULT_PARAMS);
+        const pOff = priorOff.get(teamId) ?? prior / 2;
+        const pDef = priorDef.get(teamId) ?? prior / 2;
+        const off = blendWithPrior(pOff, offense.get(teamId) ?? pOff, week, DEFAULT_PARAMS);
+        const def = blendWithPrior(pDef, defense.get(teamId) ?? pDef, week, DEFAULT_PARAMS);
         return { overall: off + def, offense: off, defense: def, tempo: 70 };
       };
       const home = blended(g.home_team_id);
@@ -350,18 +419,10 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
     }
     const nextWeek = week + 1;
     for (const [teamId, prior] of priors) {
-      const off = blendWithPrior(
-        prior / 2,
-        offense.get(teamId) ?? prior / 2,
-        nextWeek,
-        DEFAULT_PARAMS,
-      );
-      const def = blendWithPrior(
-        prior / 2,
-        defense.get(teamId) ?? prior / 2,
-        nextWeek,
-        DEFAULT_PARAMS,
-      );
+      const pOff = priorOff.get(teamId) ?? prior / 2;
+      const pDef = priorDef.get(teamId) ?? prior / 2;
+      const off = blendWithPrior(pOff, offense.get(teamId) ?? pOff, nextWeek, DEFAULT_PARAMS);
+      const def = blendWithPrior(pDef, defense.get(teamId) ?? pDef, nextWeek, DEFAULT_PARAMS);
       ratingRows.push({
         season_id: SEASON,
         team_id: teamId,
@@ -575,6 +636,12 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
     return system === "elo" ? (h - a) / 25 : h - a;
   };
 
+  // A pure even off/def split prices every total at the league baseline —
+  // only store totals when at least some teams carry a real split.
+  const splitInformative = [...latest.values()].some(
+    (r) => Math.abs(r.offense - r.defense) > 0.01,
+  );
+
   const rows: Json[] = [];
   for (const g of games) {
     const homeR = latest.get(g.home_team_id);
@@ -610,12 +677,14 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
       model_version: MODEL_VERSION,
       frozen: true,
       spread: Math.round(price.spread * 10) / 10,
-      // Totals are real again: the off/def replay beat the constant-total
-      // baseline in the 2023–25 calibration backtest (display-grade; O/U
-      // leans stay unflagged — 50.8%/51.9% doesn't clear the 52.4% vig).
-      total: Math.round(price.projectedTotal * 10) / 10,
-      home_score: Math.round(price.projectedHomeScore * 10) / 10,
-      away_score: Math.round(price.projectedAwayScore * 10) / 10,
+      // Totals are real when the off/def split carries information (2023–25
+      // calibration: model MAE 13.09 vs constant 13.72). With a pure even
+      // split (no SP+ tilt loaded, no results yet) every total is the league
+      // baseline — store null rather than a constant dressed as a prediction.
+      // O/U leans stay unflagged either way (50.8%/51.9% < the 52.4% vig).
+      total: splitInformative ? Math.round(price.projectedTotal * 10) / 10 : null,
+      home_score: splitInformative ? Math.round(price.projectedHomeScore * 10) / 10 : null,
+      away_score: splitInformative ? Math.round(price.projectedAwayScore * 10) / 10 : null,
       home_win_prob: Math.round(price.homeWinProb * 10000) / 10000,
       cover_prob:
         price.homeCoverProb !== null ? Math.round(price.homeCoverProb * 10000) / 10000 : null,

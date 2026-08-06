@@ -41,6 +41,7 @@ import {
   loadSeason,
   priorsFromSp,
   replaySeason,
+  subTiltsFromSp,
   teamIdsByNameFrom,
 } from "./lib/replay";
 
@@ -86,10 +87,12 @@ async function main() {
   // SP+'s opponent adjustment corrects G5 schedule-pocket inflation that a
   // pure margin replay can't see.
   const REPLAY_SHARE = 0.5;
-  const sp2025 = priorsFromSp(
-    await cached("sp-2025", () => cfbd.spRatings(2025), true),
-    idsByName,
-  );
+  const sp2025Rows = await cached("sp-2025", () => cfbd.spRatings(2025), true);
+  const sp2025 = priorsFromSp(sp2025Rows, idsByName);
+  // Off-vs-def tilt from SP+ sub-ratings (2026.3.0): overall priors are
+  // untouched, but the week-0 halves split by shape so preseason totals carry
+  // information from the first freeze instead of pricing every game at 57.
+  const spTilts = subTiltsFromSp(sp2025Rows, idsByName);
   const finals = new Map<number, number>();
   for (const [teamId, replayRating] of replayFinals) {
     const sp = sp2025.get(teamId);
@@ -385,17 +388,20 @@ async function main() {
 
   await emit(
     "ratings",
-    preseason.map((p) => ({
-      season_id: SEASON,
-      team_id: p.teamId,
-      week: 0,
-      overall: r2(p.rating),
-      offense: r2(p.rating / 2),
-      defense: r2(p.rating / 2),
-      tempo: 70,
-      prior_weight: 1,
-      model_version: MODEL_VERSION,
-    })),
+    preseason.map((p) => {
+      const tilt = spTilts.get(p.teamId) ?? 0;
+      return {
+        season_id: SEASON,
+        team_id: p.teamId,
+        week: 0,
+        overall: r2(p.rating),
+        offense: r2(p.rating / 2 + tilt),
+        defense: r2(p.rating / 2 - tilt),
+        tempo: 70,
+        prior_weight: 1,
+        model_version: MODEL_VERSION,
+      };
+    }),
   );
 
   await emit(
