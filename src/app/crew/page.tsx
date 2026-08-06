@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { AdjustmentsPanel, type AdjustmentView } from "../../components/AdjustmentsPanel";
 import { AppNav } from "../../components/AppNav";
 import { InviteForm } from "../../components/InviteForm";
@@ -22,7 +23,7 @@ interface Row {
 
 export default async function CrewPage() {
   const supabase = await createClient();
-  const { seasonId } = await fetchCurrentSeasonWeek(supabase);
+  const { seasonId, week } = await fetchCurrentSeasonWeek(supabase);
   const profiles = await fetchProfiles(supabase);
 
   const {
@@ -81,13 +82,45 @@ export default async function CrewPage() {
     );
   }
 
-  // RLS limits visible picks to own + post-kickoff; graded picks are all post-kickoff.
   const { data } = await supabase
     .from("picks")
     .select("*")
     .eq("season_id", seasonId)
     .not("result", "is", null);
   const picks = (data ?? []) as PickRow[];
+
+  // week of each graded pick → weekly winners strip
+  const pickGameIds = [...new Set(picks.map((p) => p.game_id))];
+  const { data: pickGames } = pickGameIds.length
+    ? await supabase.from("games").select("id, week").in("id", pickGameIds)
+    : { data: [] };
+  const weekByGame = new Map(
+    ((pickGames ?? []) as Array<{ id: number; week: number }>).map((g) => [g.id, g.week]),
+  );
+  const nameById = new Map(profiles.map((p) => [p.id, p.display_name]));
+  const weeklyWins = new Map<number, Map<string, { w: number; l: number }>>();
+  for (const p of picks) {
+    if (p.result !== "win" && p.result !== "loss") continue;
+    const wk = weekByGame.get(p.game_id);
+    if (wk === undefined) continue;
+    const users = weeklyWins.get(wk) ?? new Map();
+    const rec = users.get(p.user_id) ?? { w: 0, l: 0 };
+    if (p.result === "win") rec.w += 1;
+    else rec.l += 1;
+    users.set(p.user_id, rec);
+    weeklyWins.set(wk, users);
+  }
+  const weeklyWinners = [...weeklyWins.entries()]
+    .map(([wk, users]) => {
+      const best = Math.max(...[...users.values()].map((r) => r.w));
+      if (best === 0) return null;
+      const names = [...users.entries()]
+        .filter(([, r]) => r.w === best)
+        .map(([uid, r]) => ({ name: nameById.get(uid) ?? "?", rec: r }));
+      return { week: wk, best, names };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null)
+    .sort((a, b) => a.week - b.week);
 
   const rows: Row[] = profiles.map((p: ProfileRow) => {
     const mine = picks.filter((x) => x.user_id === p.id && x.result !== "void");
@@ -126,7 +159,48 @@ export default async function CrewPage() {
     <>
       <AppNav />
       <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
-        <h1 className="mb-6 text-2xl">Crew</h1>
+        <div className="mb-6 flex flex-wrap items-baseline justify-between gap-2">
+          <h1 className="text-2xl">Crew</h1>
+          <p className="flex gap-3 text-xs">
+            <Link
+              href={`/crew/week/${week}`}
+              className="font-medium text-accent underline-offset-2 hover:underline"
+            >
+              Week {week} grid
+            </Link>
+            <Link
+              href="/rules"
+              className="font-medium text-dim underline-offset-2 hover:text-chalk hover:underline"
+            >
+              League rules
+            </Link>
+          </p>
+        </div>
+
+        {weeklyWinners.length > 0 && (
+          <section className="card mb-5 px-4 py-3">
+            <h2 className="mb-2 text-sm text-accent">Weekly winners</h2>
+            <ul className="flex flex-col gap-1">
+              {weeklyWinners.map((w) => (
+                <li key={w.week} className="stat flex justify-between text-sm">
+                  <Link
+                    href={`/crew/week/${w.week}`}
+                    className="text-dim underline-offset-2 hover:text-chalk hover:underline"
+                  >
+                    Week {w.week}
+                  </Link>
+                  <span className="text-chalk">
+                    {w.names.map((n) => n.name).join(" & ")}{" "}
+                    <span className="text-dim">
+                      ({w.best}-{w.names[0].rec.l})
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         <div className="overflow-x-auto rounded border border-chalk/10 bg-surface">
           <table className="stats w-full text-sm">
             <thead>

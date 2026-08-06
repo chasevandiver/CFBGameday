@@ -240,8 +240,19 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             homeLabel={home.abbr}
             awayLabel={away.abbr}
             currentSpread={consensus.spread}
-            myPick={myPick}
+            currentTotal={consensus.total}
+            myPick={
+              myPick
+                ? {
+                    side: myPick.side,
+                    line_at_pick: Number(myPick.line_at_pick),
+                    result: myPick.result,
+                    clv: myPick.clv === null ? null : Number(myPick.clv),
+                  }
+                : null
+            }
             kickoffPassed={kickoffPassed}
+            kickoffTs={game.start_ts}
             signedIn={user !== null}
           />
           <div className="mt-4 border-t border-chalk/8 pt-3">
@@ -256,7 +267,11 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                   <li key={p.id} className="stat flex justify-between text-sm">
                     <span>{profiles.get(p.user_id)?.display_name ?? "?"}</span>
                     <span>
-                      {p.side === "home" ? home.abbr : away.abbr} {fmtSpread(Number(p.line_at_pick))}
+                      {p.side === "home"
+                        ? `${home.abbr} ${fmtSpread(Number(p.line_at_pick))}`
+                        : p.side === "away"
+                          ? `${away.abbr} ${fmtSpread(Number(p.line_at_pick))}`
+                          : `${p.side === "over" ? "O" : "U"} ${fmtTotal(Number(p.line_at_pick))}`}
                       {p.result && (
                         <span
                           className={`ml-2 uppercase ${
