@@ -64,5 +64,5 @@ jobs:
       # TEMPORARY (remove once HFA is settled): the ensemble work found the
       # model under-predicts the home side, and the old --tune grid capped HFA
       # at 2.6 so it could never have found a higher value.
-      - name: Refit K / HFA on the widened grid (one-off)
-        run: npx tsx scripts/backtest.ts --tune || echo "!! tune FAILED"
+      - name: Fit HFA in isolation (one-off)
+        run: npx tsx scripts/backtest.ts --tune-hfa || echo "!! tune-hfa FAILED"

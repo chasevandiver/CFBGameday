@@ -11,6 +11,7 @@
  *   npx tsx scripts/backtest.ts --tune-churn                 # fit returning-production weight + talent reload
  *   npx tsx scripts/backtest.ts --tune-epa                   # ratings from per-play efficiency vs the scoreboard
  *   npx tsx scripts/backtest.ts --tune-ensemble              # blend weekly Elo + prior SP+ into our margin
+ *   npx tsx scripts/backtest.ts --tune-hfa                   # home-field alone, judged on bias + MAE + calibration
  *   npx tsx scripts/backtest.ts --tune-anchors               # week-1 Elo / preseason poll anchor weights
  *
  * Each --tune-* flag prints its own pre-registered decision rule alongside the
@@ -665,6 +666,58 @@ async function tuneCoaching(seasons: SeasonData[], teamIdsByName: Map<string, nu
       );
     }
   }
+}
+
+/**
+ * --tune-hfa: home-field advantage in isolation, K held at its validated 0.3.
+ *
+ * The joint K/HFA refit picked K=0.4 (grid boundary) and HFA=3.6, and that
+ * config bought zero margin MAE while degrading win-prob calibration (the
+ * 0.7–0.8 bucket went from 1.6 points off to 6.2), worsening totals MAE and
+ * flipping the bias to −0.63. NLL is one scalar; the product's claims are
+ * calibration, totals and margin together, and optimizing the first can move
+ * the others the wrong way.
+ *
+ * So: change one thing, and judge it on bias, MAE and calibration at once.
+ * The target is zero bias without giving anything else up.
+ */
+function tuneHfa(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
+  console.log("\n== --tune-hfa ==  K fixed at 0.3; the goal is zero bias, not minimum NLL");
+  console.log("HFA    bias(±SE)      MAE      NLL      worst bucket miss");
+  for (const baseHfa of [2.3, 2.6, 2.8, 3.0, 3.2, 3.6]) {
+    const params: ModelParams = { ...DEFAULT_PARAMS, baseHfa };
+    let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
+    const all: ReplayPrediction[] = [];
+    for (const season of seasons) {
+      const { predictions, finalRatings } = replaySeason(season, priors, params);
+      all.push(...predictions);
+      priors = chainPriors(finalRatings);
+    }
+    const errs = all.map((p) => p.actualMargin - p.margin);
+    const bias = mean(errs);
+    const sigma = Math.sqrt(mean(errs.map((e) => e * e)));
+    const se = sigma / Math.sqrt(errs.length);
+
+    // Largest calibration gap across the win-prob buckets — the thing the
+    // joint refit quietly broke.
+    const graded = all.filter((p) => p.favoriteWon !== null);
+    let worst = 0;
+    for (const [lo, hi] of [[0.5, 0.6], [0.6, 0.7], [0.7, 0.8], [0.8, 0.9], [0.9, 1.01]] as const) {
+      const b = graded.filter((p) => p.favWinProb >= lo && p.favWinProb < hi);
+      if (b.length < 50) continue;
+      const predicted = mean(b.map((p) => p.favWinProb));
+      const actual = b.filter((p) => p.favoriteWon).length / b.length;
+      worst = Math.max(worst, Math.abs(predicted - actual) * 100);
+    }
+    console.log(
+      `${baseHfa.toFixed(1)}    ${bias >= 0 ? "+" : ""}${bias.toFixed(2)} ±${se.toFixed(2)}    ` +
+        `${maeOf(errs).toFixed(3)}   ${nll(all).toFixed(4)}   ${worst.toFixed(1)} pts`,
+    );
+  }
+  console.log(
+    "\nShip a value only if it moves bias toward zero WITHOUT growing MAE or the\n" +
+      "worst bucket miss. A calibration regression is not worth a bias fix.",
+  );
 }
 
 /**
@@ -1475,6 +1528,7 @@ async function main() {
   const tuneChurnFlag = process.argv.includes("--tune-churn");
   const tuneEpaFlag = process.argv.includes("--tune-epa");
   const tuneEnsembleFlag = process.argv.includes("--tune-ensemble");
+  const tuneHfaFlag = process.argv.includes("--tune-hfa");
 
   console.log(`Loading seasons ${SEASONS.join(", ")} ${useCache ? "(cache preferred)" : "(fetching)"}…`);
   const seasons: SeasonData[] = [];
@@ -1512,6 +1566,10 @@ async function main() {
   }
   if (tuneEnsembleFlag) {
     await tuneEnsemble(seasons, teamIdsByName);
+    return;
+  }
+  if (tuneHfaFlag) {
+    tuneHfa(seasons, teamIdsByName);
     return;
   }
 
