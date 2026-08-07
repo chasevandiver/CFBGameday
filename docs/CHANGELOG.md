@@ -254,9 +254,6 @@ npx tsx scripts/build-preseason.ts --check          # readiness; non-zero exit w
 npx tsx scripts/build-preseason.ts --out DIR --top 40
 ```
 
-`--tune-prior`, `--tune-sp-blend` and `--diagnose-edges` are live in `main()` but
-missing from the script's usage header.
-
 **CI** — `backtest.yml` runs the calibration report and `--diagnose-edges` on
 every PR touching `src/model/**`, `scripts/backtest.ts`, `scripts/lib/replay.ts`
 or `scripts/lib/coaching.ts`. `ci.yml` runs lint/typecheck/test/build on every

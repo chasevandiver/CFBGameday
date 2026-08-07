@@ -13,6 +13,9 @@
  *   npx tsx scripts/backtest.ts --tune-ensemble              # blend weekly Elo + prior SP+ into our margin
  *   npx tsx scripts/backtest.ts --tune-hfa                   # home-field alone, judged on bias + MAE + calibration
  *   npx tsx scripts/backtest.ts --tune-anchors               # week-1 Elo / preseason poll anchor weights
+ *   npx tsx scripts/backtest.ts --tune-prior                 # preseason carryover weight
+ *   npx tsx scripts/backtest.ts --tune-sp-blend              # prior-year baseline: replay finals vs final SP+
+ *   npx tsx scripts/backtest.ts --diagnose-edges             # THE EDGE GATE: market MAE + encompassing regression
  *
  * Each --tune-* flag prints its own pre-registered decision rule alongside the
  * grid: a parameter moves off its identity default only when the rule clears.
