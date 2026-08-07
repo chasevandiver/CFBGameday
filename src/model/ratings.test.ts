@@ -119,10 +119,37 @@ describe("churn adjustment", () => {
     expect(bluechip).toBeGreaterThan(g5);
   });
 
-  it("reload strength 0 ignores talent entirely (the pre-fit default)", () => {
-    const withTalent = churnAdjustment({ ...base, returningProduction: 0.3, talentBaseline: 18 });
-    const without = churnAdjustment({ ...base, returningProduction: 0.3, talentBaseline: null });
+  it("reload strength 0 ignores talent entirely", () => {
+    const off = { ...DEFAULT_PARAMS, talentReloadStrength: 0 };
+    const withTalent = churnAdjustment(
+      { ...base, returningProduction: 0.3, talentBaseline: 18 },
+      off,
+    );
+    const without = churnAdjustment(
+      { ...base, returningProduction: 0.3, talentBaseline: null },
+      off,
+    );
     expect(withTalent).toBe(without);
+  });
+
+  it("at the fitted reload of 1, max talent fully neutralizes the penalty", () => {
+    // The reason 1.0 was chosen over the argmin of 2.0: at 1 the most talented
+    // roster stops being punished for lost production; above 1 it would start
+    // being *rewarded* for it, which is not a real mechanism.
+    const maxTalent = churnAdjustment(
+      { ...base, returningProduction: 0.2, talentBaseline: 18 },
+      DEFAULT_PARAMS,
+    );
+    const neutralTalent = churnAdjustment(
+      { ...base, returningProduction: 0.2, talentBaseline: 0 },
+      DEFAULT_PARAMS,
+    );
+    // core term vanishes at max talent, so only QB/OL/portal/freshmen remain
+    expect(maxTalent).toBeGreaterThan(neutralTalent);
+    expect(maxTalent - neutralTalent).toBeCloseTo(
+      (0.2 - 0.6) * -DEFAULT_PARAMS.returningProdWeight,
+      6,
+    );
   });
 });
 

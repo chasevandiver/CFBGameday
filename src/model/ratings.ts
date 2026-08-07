@@ -20,6 +20,13 @@
 // 13.34 vs 13.72 for an even split, weeks 1–4 12.93 vs 13.16). Week-0/1 totals
 // are real predictions from this version rather than the withheld constant.
 // Margins are unchanged — tilt is margin-neutral by construction.
+// 2026.4.0 also restructures churn: the "defense" input was a second, correlated
+// OFFENSE metric (CFBD publishes no defensive returning production), so offense
+// was double-counted at ×5+×5, defense was never modeled, and the ±6 clamp
+// saturated for 28 of 138 teams in the 2026 build. Now one fitted weight plus a
+// talent-reload term, because blue bloods lose the most production and replace
+// it with blue-chips — Alabama carried the second-highest talent in the file and
+// ranked 26th.
 //
 // Three sibling experiments ran and did NOT earn a change. Their machinery
 // stays at identity defaults; recorded here so it isn't re-litigated:
@@ -125,10 +132,24 @@ export const DEFAULT_PARAMS: ModelParams = {
   priorSigmaExtra: 0,
   newHcIntercept: 0,
   newHcSlope: 0,
-  // 10 preserves the old total sensitivity (two ×5 terms) as the starting
-  // point for --tune-churn; reload interaction off until fitted.
-  returningProdWeight: 10,
-  talentReloadStrength: 0,
+  // --tune-churn, NOT the argmin — a deliberate choice, recorded as such.
+  //
+  // The likelihood surface is flat: everything from weight 6–10 × reload 1–2
+  // scores NLL 0.3940–0.3944, and the argmin slid to whichever grid edge it
+  // was given (1.0, then 2.0 when the grid widened). That is an unidentified
+  // parameter, not a signal. The global argmin (weight 10, reload 2) is worse
+  // on two counts anyway: reload > 1 flips the interaction's sign, implying
+  // lost production *helps* a blue blood, and it saturates the ±6 clamp for
+  // 7.1% of teams. 6/1.0 sits in the interior, clamps nobody, is within 0.0004
+  // of the minimum, and means "the most talented roster fully neutralizes the
+  // penalty" rather than reverses it.
+  //
+  // What IS robust: the old setting (effectively weight 10, no reload) scored
+  // 0.3968 — worse than switching churn off entirely at 0.3964. The gain from
+  // fitting is ~0.002 NLL / 0.19 MAE, inside the ~0.25 standard error, so the
+  // defensible claim is "a harmful setting was removed", not "churn improved".
+  returningProdWeight: 6,
+  talentReloadStrength: 1,
 };
 
 export interface TeamRating {
