@@ -25,6 +25,7 @@
  * CLV or line movement — no historical movement data exists.
  */
 
+import { pathToFileURL } from "node:url";
 import {
   DEFAULT_PARAMS,
   coachingAdjustmentContinuous,
@@ -162,28 +163,81 @@ function report(predictions: ReplayPrediction[], params: ModelParams): string {
       `(priorSigmaExtra, fit with --tune-sigma).`,
   );
 
-  lines.push("\n== Edge flags vs stored line (break-even 52.4% at -110) ==");
-  for (const [label, min] of [["EDGE ≥2", params.edgeThreshold], ["BIG ≥4", params.bigEdgeThreshold]] as const) {
+  // Edge-flag ATS. Two things to keep in mind reading this table:
+  //  1. The bet line and the grade line are the SAME number (CFBD's settled
+  //     consensus), so this measures "beat the close" — the hardest possible
+  //     benchmark, and not a wager anyone can place. --diagnose-edges prices
+  //     the same flags against the OPENING line, which is bettable.
+  //  2. Buckets are disjoint. The old table reported "≥2" and "≥4" where the
+  //     first contained the second, so the marginal 2–4pt band — the one that
+  //     decides whether the threshold is set right — was never visible.
+  lines.push("\n== Edge flags vs the CLOSING line (break-even 52.4% at -110) ==");
+  lines.push("bucket        W-L-P        win%     ±1SE     n");
+  const BUCKETS: Array<[string, number, number]> = [
+    ["|edge| 2–3", 2, 3],
+    ["|edge| 3–4", 3, 4],
+    ["|edge| 4–6", 4, 6],
+    ["|edge| 6–10", 6, 10],
+    ["|edge| 10+", 10, Infinity],
+    ["ALL ≥2", 2, Infinity],
+  ];
+  for (const [label, lo, hi] of BUCKETS) {
     const flagged = predictions.filter(
-      (p) => p.edge !== null && Math.abs(p.edge) >= min && p.vegasSpread !== null,
+      (p) =>
+        p.edge !== null &&
+        p.vegasSpread !== null &&
+        Math.abs(p.edge) >= lo &&
+        Math.abs(p.edge) < hi,
     );
-    let wins = 0;
-    let losses = 0;
-    for (const p of flagged) {
-      const likesHome = (p.edge as number) < 0;
-      const coverMargin = p.actualMargin + (p.vegasSpread as number);
-      if (coverMargin === 0) continue;
-      const homeCovered = coverMargin > 0;
-      if (likesHome === homeCovered) wins++;
-      else losses++;
-    }
-    const total = wins + losses;
+    const { wins, losses, pushes } = gradeAts(flagged, (p) => p.vegasSpread);
+    const n = wins + losses;
+    const pct = n ? (wins / n) * 100 : NaN;
+    const se = n ? Math.sqrt(0.25 / n) * 100 : NaN;
     lines.push(
-      `${label}:  ${wins}-${losses}  (${total ? ((wins / total) * 100).toFixed(1) : "–"}%)  n=${total}`,
+      `${label.padEnd(13)} ${`${wins}-${losses}-${pushes}`.padEnd(12)} ` +
+        `${n ? pct.toFixed(1) : "  – "}%   ${n ? se.toFixed(1) : " – "}%    ${n}`,
     );
   }
+  lines.push(
+    "Pushes are now a real third outcome: the consensus is snapped to the half point, " +
+      "so a true push on 3 or 7 is excluded instead of being scored W or L at random.",
+  );
 
   return lines.join("\n");
+}
+
+export interface AtsRecord {
+  wins: number;
+  losses: number;
+  pushes: number;
+}
+
+/**
+ * Grade the model's ATS side for a set of predictions against a chosen line.
+ *
+ * `lineOf` is what makes bet-line vs grade-line separable: pass `vegasSpread`
+ * to ask "did we beat the close", or `vegasOpen` to ask the question a bettor
+ * actually faces. The side is taken from the sign of the edge against the line
+ * being bet, not the stored `edge` field, so the two stay consistent.
+ */
+export function gradeAts(
+  predictions: ReplayPrediction[],
+  lineOf: (p: ReplayPrediction) => number | null,
+): AtsRecord {
+  let wins = 0;
+  let losses = 0;
+  let pushes = 0;
+  for (const p of predictions) {
+    const line = lineOf(p);
+    if (line === null) continue;
+    // model spread (Vegas convention) vs this line; negative edge = likes home
+    const likesHome = -p.margin - line < 0;
+    const coverMargin = p.actualMargin + line;
+    if (coverMargin === 0) pushes++;
+    else if (likesHome === coverMargin > 0) wins++;
+    else losses++;
+  }
+  return { wins, losses, pushes };
 }
 
 /**
@@ -520,9 +574,13 @@ async function tuneCoaching(seasons: SeasonData[], teamIdsByName: Map<string, nu
     return out;
   };
 
+  // Intercept grid runs to −5: the first fit bottomed out AT the −2.5 boundary
+  // with NLL still falling, which means it was unconverged and the reported
+  // optimum was an artifact of where the grid stopped.
   console.log("intercept  slope   early NLL   early MAE");
   let best: { i: number; s: number; nll: number } | null = null;
-  for (const newHcIntercept of [0, -0.5, -1, -1.5, -2, -2.5]) {
+  const grid = new Map<string, number>();
+  for (const newHcIntercept of [0, -0.5, -1, -1.5, -2, -2.5, -3, -3.5, -4, -4.5, -5]) {
     for (const newHcSlope of [0, 0.15, 0.3, 0.45]) {
       const params: ModelParams = { ...DEFAULT_PARAMS, newHcIntercept, newHcSlope };
       let priors = applyCoaching(
@@ -545,6 +603,7 @@ async function tuneCoaching(seasons: SeasonData[], teamIdsByName: Map<string, nu
         priors = applyCoaching(next, season.season + 1, params);
       }
       const n = nll(early);
+      grid.set(`${newHcIntercept}|${newHcSlope}`, n);
       console.log(
         `${newHcIntercept.toFixed(2).padStart(6)}     ${newHcSlope.toFixed(2)}    ${n.toFixed(4)}      ` +
           `${maeOf(early.map((p) => p.actualMargin - p.margin)).toFixed(2)}`,
@@ -559,6 +618,24 @@ async function tuneCoaching(seasons: SeasonData[], teamIdsByName: Map<string, nu
           ? "→ do-nothing wins; leave both at 0."
           : "→ set these in DEFAULT_PARAMS and bump MODEL_VERSION."),
     );
+    if (best.i <= -5) {
+      console.log(
+        "!! WARNING: the intercept is still at the edge of the grid, so this optimum is\n" +
+          "   unconverged. A penalty this large is more likely absorbing something else\n" +
+          "   (new hires follow bad seasons, so the prior may simply be over-carrying)\n" +
+          "   than measuring a real coaching effect. Widen further before shipping it.",
+      );
+    }
+    const zeroSlopeNll = grid.get(`${best.i}|0`);
+    const slopeInert =
+      zeroSlopeNll !== undefined && Math.abs(best.nll - zeroSlopeNll) < 1e-4;
+    if (slopeInert || best.s === 0) {
+      console.log(
+        "Coach QUALITY (slope) earns nothing here: NLL is flat across slope values, and\n" +
+          "every strong hire clamps to the same adjustment. Ship the intercept alone —\n" +
+          "'a new head coach costs points' is supported; 'a better one costs less' is not.",
+      );
+    }
     const top = changes
       .filter((t) => t.overPerf !== null)
       .sort((a, b) => Math.abs((b.overPerf as number)) - Math.abs(a.overPerf as number))
@@ -678,6 +755,192 @@ async function tuneAnchors(seasons: SeasonData[], teamIdsByName: Map<string, num
   }
 }
 
+/**
+ * Ordinary least squares with an intercept, returning coefficients and their
+ * standard errors. Small and explicit rather than pulling in a stats library
+ * for one 3×3 solve.
+ */
+export function ols(y: number[], xs: number[][]): { beta: number[]; se: number[]; n: number } {
+  const n = y.length;
+  const k = xs.length + 1;
+  const X = y.map((_, i) => [1, ...xs.map((col) => col[i])]);
+
+  // normal equations: (X'X) beta = X'y
+  const xtx = Array.from({ length: k }, (_, a) =>
+    Array.from({ length: k }, (_, b) => X.reduce((s, row) => s + row[a] * row[b], 0)),
+  );
+  const xty = Array.from({ length: k }, (_, a) => X.reduce((s, row, i) => s + row[a] * y[i], 0));
+
+  const inv = invert(xtx);
+  const beta = inv.map((row) => row.reduce((s, v, j) => s + v * xty[j], 0));
+
+  const rss = y.reduce((s, yi, i) => {
+    const fit = X[i].reduce((acc, v, j) => acc + v * beta[j], 0);
+    return s + (yi - fit) ** 2;
+  }, 0);
+  const s2 = rss / (n - k);
+  return { beta, se: inv.map((row, a) => Math.sqrt(s2 * row[a])), n };
+}
+
+/** Gauss-Jordan inversion; the matrices here are 3×3 and well conditioned. */
+function invert(m: number[][]): number[][] {
+  const k = m.length;
+  const a = m.map((row, i) => [...row, ...Array.from({ length: k }, (_, j) => (i === j ? 1 : 0))]);
+  for (let col = 0; col < k; col++) {
+    let pivot = col;
+    for (let r = col + 1; r < k; r++) if (Math.abs(a[r][col]) > Math.abs(a[pivot][col])) pivot = r;
+    [a[col], a[pivot]] = [a[pivot], a[col]];
+    const d = a[col][col];
+    if (Math.abs(d) < 1e-12) throw new Error("singular matrix in OLS");
+    for (let j = 0; j < 2 * k; j++) a[col][j] /= d;
+    for (let r = 0; r < k; r++) {
+      if (r === col) continue;
+      const f = a[r][col];
+      for (let j = 0; j < 2 * k; j++) a[r][j] -= f * a[col][j];
+    }
+  }
+  return a.map((row) => row.slice(k));
+}
+
+/**
+ * --diagnose-edges: the gate. Before tuning any threshold or hunting for
+ * situational filters, establish whether the model carries information the
+ * market does not.
+ *
+ * The logic: an "edge" is model − market. If the market is the more accurate
+ * estimator, then a large disagreement is mostly OUR error, and selecting on
+ * it selects the games we are most wrong about — which produces a sub-50% ATS
+ * record no matter how the threshold is set. The encompassing regression
+ * settles it directly.
+ */
+function diagnoseEdges(all: ReplayPrediction[]) {
+  const withLine = all.filter((p) => p.vegasSpread !== null);
+  console.log(`\n== --diagnose-edges ==  n=${withLine.length} games with a stored line`);
+
+  // 1. Whose margin estimate is actually better?
+  const modelErr = withLine.map((p) => p.actualMargin - p.margin);
+  const marketErr = withLine.map((p) => p.actualMargin - -(p.vegasSpread as number));
+  console.log("\n-- Margin accuracy, model vs market --");
+  console.log(`model  MAE ${maeOf(modelErr).toFixed(2)}   RMSE ${rmse(modelErr).toFixed(2)}`);
+  console.log(`market MAE ${maeOf(marketErr).toFixed(2)}   RMSE ${rmse(marketErr).toFixed(2)}`);
+  console.log(
+    maeOf(modelErr) < maeOf(marketErr)
+      ? "→ the model is sharper than the closing line (rare; check for lookahead before believing it)"
+      : "→ the closing line is sharper than the model, so a raw disagreement is mostly our own error",
+  );
+
+  // 2. Encompassing regression: actual ~ a + b1·model + b2·market
+  const { beta, se, n } = ols(
+    withLine.map((p) => p.actualMargin),
+    [withLine.map((p) => p.margin), withLine.map((p) => -(p.vegasSpread as number))],
+  );
+  const [a, b1, b2] = beta;
+  const t1 = b1 / se[1];
+  const t2 = b2 / se[2];
+  console.log("\n-- Encompassing regression: actual_margin ~ a + b1·model + b2·market --");
+  console.log(`a  = ${a.toFixed(3)} (se ${se[0].toFixed(3)})`);
+  console.log(`b1 = ${b1.toFixed(3)} (se ${se[1].toFixed(3)}, t = ${t1.toFixed(2)})   [model]`);
+  console.log(`b2 = ${b2.toFixed(3)} (se ${se[2].toFixed(3)}, t = ${t2.toFixed(2)})   [market]`);
+  console.log(`n = ${n}`);
+  console.log(
+    "Note: model and market both estimate the same quantity, so they are highly\n" +
+      "collinear and both standard errors are inflated. Read b1's t-stat as a floor.",
+  );
+
+  const passesGate = t1 > 2;
+  const w = b1 + b2 > 0 ? Math.max(0, Math.min(1, b1 / (b1 + b2))) : 0;
+  console.log(
+    passesGate
+      ? `\n→ GATE PASSED: the model carries signal the closing line lacks (t=${t1.toFixed(2)}).\n` +
+          `  Honest blend weight on the model: w = ${w.toFixed(3)}. Edges should be priced off\n` +
+          `  fair = ${w.toFixed(3)}·model + ${(1 - w).toFixed(3)}·market, NOT off the raw difference.`
+      : `\n→ GATE FAILED: b1 is not significantly positive (t=${t1.toFixed(2)}, need >2).\n` +
+          "  The model adds nothing beyond the closing line. No threshold, filter or\n" +
+          "  situational slice will produce a real 52.4% against the close — anything that\n" +
+          "  appears to is noise. Recommendation: demote edges to information (plan P5).",
+  );
+
+  // 3. Shrunk fair line — how many flags survive, and do they do better?
+  if (w > 0) {
+    console.log("\n-- Edges repriced off the shrunk fair line --");
+    console.log("threshold   W-L-P        win%     n");
+    for (const thr of [0.5, 1, 1.5, 2, 3]) {
+      const flagged = withLine.filter((p) => {
+        const market = -(p.vegasSpread as number);
+        const fair = w * p.margin + (1 - w) * market;
+        return Math.abs(fair - market) >= thr;
+      });
+      const rec = gradeShrunk(flagged, w);
+      const tot = rec.wins + rec.losses;
+      console.log(
+        `≥${thr.toFixed(1)}         ${`${rec.wins}-${rec.losses}-${rec.pushes}`.padEnd(12)} ` +
+          `${tot ? ((rec.wins / tot) * 100).toFixed(1) : "  – "}%   ${tot}`,
+      );
+    }
+  }
+
+  // 4. The bettable question: does the model beat the OPENING line?
+  const withOpen = withLine.filter((p) => p.vegasOpen !== null);
+  console.log(
+    `\n-- vs the OPENING line (a wager you can actually place) --  n=${withOpen.length} with an opener`,
+  );
+  if (withOpen.length === 0) {
+    console.log("No opening lines in the payload — CFBD did not populate spreadOpen here.");
+  } else {
+    console.log("bucket        W-L-P        win%     ±1SE    avg CLV   n");
+    for (const [label, lo, hi] of [
+      ["|edge| 2–4", 2, 4],
+      ["|edge| 4+", 4, Infinity],
+      ["ALL ≥2", 2, Infinity],
+    ] as Array<[string, number, number]>) {
+      // Flag off the OPENING line: that is the number available when betting.
+      const flagged = withOpen.filter((p) => {
+        const e = -p.margin - (p.vegasOpen as number);
+        return Math.abs(e) >= lo && Math.abs(e) < hi;
+      });
+      const rec = gradeAts(flagged, (p) => p.vegasOpen);
+      const tot = rec.wins + rec.losses;
+      // CLV: did the market move toward our side between open and close?
+      const clv = flagged
+        .filter((p) => p.vegasSpread !== null)
+        .map((p) => {
+          const open = p.vegasOpen as number;
+          const close = p.vegasSpread as number;
+          const likesHome = -p.margin - open < 0;
+          return likesHome ? open - close : close - open;
+        });
+      console.log(
+        `${label.padEnd(13)} ${`${rec.wins}-${rec.losses}-${rec.pushes}`.padEnd(12)} ` +
+          `${tot ? ((rec.wins / tot) * 100).toFixed(1) : "  – "}%   ` +
+          `${tot ? (Math.sqrt(0.25 / tot) * 100).toFixed(1) : " – "}%   ` +
+          `${clv.length ? (clv.reduce((s, v) => s + v, 0) / clv.length).toFixed(2).padStart(6) : "     –"}   ${tot}`,
+      );
+    }
+    console.log(
+      "Positive average CLV means the market moved toward our side after the opener —\n" +
+        "a lower-variance signal of real edge than the ATS record at this sample size.",
+    );
+  }
+}
+
+function gradeShrunk(predictions: ReplayPrediction[], w: number): AtsRecord {
+  let wins = 0;
+  let losses = 0;
+  let pushes = 0;
+  for (const p of predictions) {
+    const line = p.vegasSpread as number;
+    const market = -line;
+    const fair = w * p.margin + (1 - w) * market;
+    const coverMargin = p.actualMargin + line;
+    if (coverMargin === 0) pushes++;
+    else if (fair > market === coverMargin > 0) wins++;
+    else losses++;
+  }
+  return { wins, losses, pushes };
+}
+
+const rmse = (xs: number[]) => Math.sqrt(mean(xs.map((x) => x * x)));
+
 async function main() {
   const useCache = process.argv.includes("--cached");
   const tune = process.argv.includes("--tune");
@@ -687,6 +950,7 @@ async function main() {
   const tuneSigmaFlag = process.argv.includes("--tune-sigma");
   const tuneCoachingFlag = process.argv.includes("--tune-coaching");
   const tuneAnchorsFlag = process.argv.includes("--tune-anchors");
+  const diagnose = process.argv.includes("--diagnose-edges");
 
   console.log(`Loading seasons ${SEASONS.join(", ")} ${useCache ? "(cache preferred)" : "(fetching)"}…`);
   const seasons: SeasonData[] = [];
@@ -735,6 +999,7 @@ async function main() {
     const predictions = run(DEFAULT_PARAMS);
     console.log(report(predictions, DEFAULT_PARAMS));
     if (tuneSigmaFlag) tuneSigma(predictions);
+    if (diagnose) diagnoseEdges(predictions);
     return;
   }
 
@@ -766,7 +1031,11 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// Only run when invoked as a script. `gradeAts` and `ols` are exported for unit
+// tests, and importing this file must not kick off a full backtest.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

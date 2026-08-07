@@ -15,15 +15,24 @@
 // tilt from prior-season SP+ off/def — totals are real predictions from this
 // version on (2023–25 calibration: model MAE 13.09 vs constant 13.72).
 // Pre-2026.3.0 rows priced totals as a constant; the UI must never show them.
+// 2026.4.0: preseason off/def halves carry 40% of the prior season's SHAPE
+// (PRESEASON_TILT_CARRY, fit by --tune-preseason-tilts: weeks 1–2 totals MAE
+// 13.34 vs 13.72 for an even split, weeks 1–4 12.93 vs 13.16). Week-0/1 totals
+// are real predictions from this version rather than the withheld constant.
+// Margins are unchanged — tilt is margin-neutral by construction.
 //
-// Unreleased (bump to 2026.4.0 when the first of these earns a value): the
-// week-aware sigma schedule (paramsForWeek/priorSigmaExtra), the continuous
-// coaching adjustment (coachingAdjustmentContinuous/newHc*), and preseason
-// off/def tilt seeding all landed as machinery with IDENTITY defaults — every
-// one of them reproduces 2026.3.0 pricing exactly until its backtest tuner
-// fits it under the decision rule recorded in docs/SPEC.md §2.5. The version
-// tracks shipped math, so it does not move for machinery alone.
-export const MODEL_VERSION = "2026.3.0";
+// Three sibling experiments ran and did NOT earn a change. Their machinery
+// stays at identity defaults; recorded here so it isn't re-litigated:
+//   - week-aware sigma (paramsForWeek/priorSigmaExtra): flat sigma won. Early
+//     weeks fit a larger sigma only because cupcake blowouts give huge
+//     residuals with near-certain winners — that is not directional
+//     uncertainty, and widening made early-week NLL worse (0.3972 → 0.3992).
+//   - coach QUALITY (newHcSlope): inert. NLL flat across slope values, and
+//     every strong hire clamps to the same adjustment. The new-HC intercept
+//     does help, but its fit was still unconverged at the grid edge.
+//   - preseason anchors (week-1 Elo, preseason AP): ΔNLL 0.0026 vs a
+//     pre-registered bar of 0.003. Missed, so not adopted.
+export const MODEL_VERSION = "2026.4.0";
 
 /**
  * Did this model version price totals for real? Rows frozen before 2026.3.0

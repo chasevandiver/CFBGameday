@@ -62,15 +62,16 @@ const CHUNK = 250;
 
 /**
  * How much off/def SHAPE carries from the previous season into the preseason
- * halves. 0 = even split (offense = defense = overall/2), which makes every
- * week-0/1 projected total the same constant and is why totals are withheld
- * until results differentiate the halves.
+ * halves. 0 = even split, which makes every week-0/1 projected total the same
+ * constant (exactly 57.0 at tempo 70) and forces totals to be withheld.
  *
- * Non-zero only once `backtest.ts --tune-preseason-tilts` clears its decision
- * rule (weeks 1–2 totals MAE better by ≥0.15 with weeks 1–4 no worse than
- * 0.05). Env-tunable so the fitted value can be tried without a code change.
+ * 0.4 is the fitted value from `backtest.ts --tune-preseason-tilts`, which
+ * cleared its pre-registered rule on both arms: weeks 1–2 totals MAE 13.34 vs
+ * 13.72 for no tilt (rule needed ≥0.15), and weeks 1–4 also improved, 12.93 vs
+ * 13.16. Every SP+-shape variant lost badly (up to 16.87) — the earlier sweep
+ * that "ruled out tilts" only ever tested SP+ shape, never carryover.
  */
-const TILT_CARRY = Number(process.env.PRESEASON_TILT_CARRY ?? 0);
+const TILT_CARRY = Number(process.env.PRESEASON_TILT_CARRY ?? 0.4);
 
 type Row = Record<string, string | number | boolean | null | object>;
 

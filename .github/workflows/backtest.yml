@@ -55,13 +55,13 @@ jobs:
             npx tsx scripts/backtest.ts
           fi
 
-      # TEMPORARY (remove before merge): the baseline report cleared the
-      # sigma-schedule decision rule, so run every tuner once to get fitted
-      # values. Informational — a tuner that throws must not fail the gate,
-      # and each is reported separately so one failure can't hide the rest.
-      - name: Fit parameters (one-off)
+      # TEMPORARY (remove before merge): one-off runs to answer open questions.
+      # --diagnose-edges is the gate for the whole edge workstream; the coaching
+      # re-run uses a grid extended to -5 because the first fit bottomed out at
+      # the boundary. Informational — a failure here must not fail the gate.
+      - name: Diagnose edges + refit coaching (one-off)
         run: |
-          for t in tune-sigma tune-preseason-tilts tune-coaching tune-anchors; do
+          for t in diagnose-edges tune-coaching; do
             echo "::group::$t"
             npx tsx scripts/backtest.ts "--$t" || echo "!! $t FAILED"
             echo "::endgroup::"

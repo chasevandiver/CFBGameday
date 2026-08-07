@@ -6,6 +6,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { cfbd, type CfbdGame, type CfbdLine, type CfbdSpRating } from "../../src/lib/cfbd";
+import { snapToHalf } from "../../src/lib/consensus";
 import {
   blendWithPrior,
   priceGame,
@@ -67,20 +68,78 @@ export interface ReplayPrediction {
   projectedTotal: number;
   vegasTotal: number | null;
   actualTotal: number;
+  /**
+   * Market context the payload always carried and the replay used to discard.
+   * Without these no bet filter can be evaluated at all, because the grader
+   * has nothing but the settled line to look at.
+   */
+  /** Consensus of per-book OPENING spreads — the line you could actually bet */
+  vegasOpen: number | null;
+  /** How many books priced the game (thin markets are softer) */
+  bookCount: number;
+  /** max − min across books: disagreement between them */
+  bookSpread: number | null;
+  mlHome: number | null;
+  mlAway: number | null;
+  /** Context for pre-registered situational slices */
+  neutralSite: boolean;
+  conferenceGame: boolean;
+  startDate: string;
+  homeId: number;
+  awayId: number;
 }
 
+const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+
+/**
+ * Books hang lines in half-point increments, so a consensus must land on one.
+ * The replay previously returned a raw multi-book mean (e.g. −6.83) while
+ * production snapped to −7 (src/lib/consensus.ts). That gap was a real
+ * train/serve skew: it made the ≥2 edge threshold trip on lines production
+ * could never produce, and — worse — made `coverMargin === 0` push detection
+ * essentially unreachable, so genuine pushes on 3 and 7 were scored as wins or
+ * losses at random.
+ */
 export function consensusLine(lines: CfbdLine | undefined): number | null {
-  if (!lines || lines.lines.length === 0) return null;
-  const spreads = lines.lines.map((l) => l.spread).filter((s): s is number => s !== null);
-  if (spreads.length === 0) return null;
-  return spreads.reduce((a, b) => a + b, 0) / spreads.length;
+  const spreads = perBook(lines, (l) => l.spread);
+  return spreads.length === 0 ? null : snapToHalf(mean(spreads));
 }
 
 export function consensusTotal(lines: CfbdLine | undefined): number | null {
-  if (!lines || lines.lines.length === 0) return null;
-  const totals = lines.lines.map((l) => l.overUnder).filter((t): t is number => t !== null);
-  if (totals.length === 0) return null;
-  return totals.reduce((a, b) => a + b, 0) / totals.length;
+  const totals = perBook(lines, (l) => l.overUnder);
+  return totals.length === 0 ? null : snapToHalf(mean(totals));
+}
+
+/** Consensus of the per-book OPENING spread. */
+export function consensusOpen(lines: CfbdLine | undefined): number | null {
+  const opens = perBook(lines, (l) => l.spreadOpen);
+  return opens.length === 0 ? null : snapToHalf(mean(opens));
+}
+
+export function bookCountOf(lines: CfbdLine | undefined): number {
+  return perBook(lines, (l) => l.spread).length;
+}
+
+/** Disagreement between books on the spread, in points. */
+export function bookDispersion(lines: CfbdLine | undefined): number | null {
+  const spreads = perBook(lines, (l) => l.spread);
+  return spreads.length < 2 ? null : Math.max(...spreads) - Math.min(...spreads);
+}
+
+export function consensusMoneyline(
+  lines: CfbdLine | undefined,
+  side: "home" | "away",
+): number | null {
+  const mls = perBook(lines, (l) => (side === "home" ? l.homeMoneyline : l.awayMoneyline));
+  return mls.length === 0 ? null : Math.round(mean(mls));
+}
+
+function perBook(
+  lines: CfbdLine | undefined,
+  pick: (l: CfbdLine["lines"][number]) => number | null,
+): number[] {
+  if (!lines || lines.lines.length === 0) return [];
+  return lines.lines.map(pick).filter((v): v is number => v !== null && Number.isFinite(v));
 }
 
 export function replaySeason(
@@ -153,20 +212,31 @@ export function replaySeason(
       const favoriteWon =
         actualMargin === 0 ? null : favIsHome ? actualMargin > 0 : actualMargin < 0;
 
+      const bookLines = linesById.get(g.id);
       predictions.push({
         season: data.season,
         week,
         gameId: g.id,
         margin: price.margin,
         homeWinProb: price.homeWinProb,
-        vegasSpread: consensusLine(linesById.get(g.id)),
+        vegasSpread: consensusLine(bookLines),
         edge: price.edge,
         actualMargin,
         favoriteWon,
         favWinProb,
         projectedTotal: price.projectedTotal,
-        vegasTotal: consensusTotal(linesById.get(g.id)),
+        vegasTotal: consensusTotal(bookLines),
         actualTotal: (g.homePoints as number) + (g.awayPoints as number),
+        vegasOpen: consensusOpen(bookLines),
+        bookCount: bookCountOf(bookLines),
+        bookSpread: bookDispersion(bookLines),
+        mlHome: consensusMoneyline(bookLines, "home"),
+        mlAway: consensusMoneyline(bookLines, "away"),
+        neutralSite: g.neutralSite,
+        conferenceGame: g.conferenceGame,
+        startDate: g.startDate,
+        homeId: g.homeId,
+        awayId: g.awayId,
       });
       weekPredictions.push({ game: g, home, away });
     }
