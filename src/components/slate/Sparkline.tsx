@@ -1,15 +1,29 @@
 import type { LinePoint } from "../../lib/slate";
 
 /**
- * Tiny inline line-movement chart. Stroke turns win/loss colored by whether
- * the line moved toward the home side (down) or away (up) since open.
+ * Tiny inline line-movement chart — the shape of the move, next to
+ * MoveIndicator's arrow and magnitude.
+ *
+ * The stroke inherits `currentColor`, so the caller decides the tone. It used
+ * to be rendered inside a `text-dim` row while its own doc comment claimed it
+ * colored itself win/loss by direction (audit bug #15) — the comment was
+ * wrong AND the chart was invisible.
+ *
+ * Direction alone is deliberately NOT colored. Green for "moved toward home"
+ * would imply a valence that doesn't exist: there is no rooting interest until
+ * the model takes a side. `vsModel` is the read that means something — the same
+ * one MoveIndicator uses — so the pair now agrees instead of one being a
+ * decoration.
  */
 export function Sparkline({
   points,
+  vsModel = null,
   width = 56,
   height = 18,
 }: {
   points: LinePoint[];
+  /** Market steaming toward or away from the model's side; null = no read. */
+  vsModel?: "toward" | "away" | null;
   width?: number;
   height?: number;
 }) {
@@ -26,12 +40,16 @@ export function Sparkline({
     .join(" ");
   const last = points[points.length - 1];
 
+  // No read → chalk, not dim: the shape still has to be legible.
+  const tone =
+    vsModel === "toward" ? "text-win" : vsModel === "away" ? "text-loss" : "text-chalk/55";
+
   return (
     <svg
       width={width}
       height={height}
       viewBox={`0 0 ${width} ${height}`}
-      className="overflow-visible"
+      className={`overflow-visible ${tone}`}
       aria-hidden
     >
       <path d={d} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />

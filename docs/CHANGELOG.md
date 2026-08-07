@@ -141,6 +141,39 @@ shipping it.
 
 ## Log
 
+### Aug 7 — the audit, reconciled
+
+`docs/AUDIT-2026-08.md` had 18 numbered bugs and a 46-item checklist, all showing
+`[ ]` months after most of the work shipped. Each was re-decided by reading the
+code on `main` at `b500309` — not the commit message that claimed to fix it.
+
+**Bugs: 16 of 18 resolved, one open (now fixed), one resolved with a remainder.**
+**Checklist: 36 done, 6 partial, 4 open.**
+
+The partials are the point. Rounding them up to done is how a checklist stops
+being worth reading, so each names the piece that is missing: BetForm has no game
+search (31), `build-preseason.ts` still hardcodes `SEASON = 2026` (36), PWA push
+was never built (38), there are no route smoke tests (42), and no
+`opengraph-image` route exists (46). The four fully open items — futures tracker
+(40), generated db types (44), ⌘K (45), OG images — are additive features, not
+defects.
+
+**Bug #15 was genuinely open and is fixed here.** `Sparkline`'s doc comment
+claimed it colored its stroke win/loss by direction; it used `currentColor` and
+`GameCard` rendered it inside a `text-dim` row, so the movement was invisible and
+the comment was false. It now takes `vsModel` and shares `MoveIndicator`'s tone.
+
+Direction alone is deliberately still not colored. Green for "the line moved
+toward home" would invent a valence that doesn't exist — green has to mean
+*good*, and there is no rooting interest until the model takes a side. `vsModel`
+(is the market steaming toward or away from our lean?) is the read that means
+something, so the sparkline and the arrow beside it now agree instead of one
+being decoration. With no read it renders `text-chalk/55` — legible, uncommitted.
+
+One live remainder worth knowing: dropping the Off/Def columns from `/ratings`
+was right when they were `overall/2`. They have been real since 2026.3.0 and were
+never restored, so the page under-reports what the model knows.
+
 ### Aug 7 — CLV, and a sign that was backwards
 
 The edge investigation demoted the model's leans from bets to information, which
@@ -322,8 +355,12 @@ and signed-error reporting; nine backtest tuners.
   because the openers are Aug 29.
 - **`supabase/functions/jobs/index.ts` is dead and drifted** — never deployed,
   and behind `scripts/lib/jobs-core.ts`. Left untouched deliberately.
-- **Audit statuses unreconciled** — all 46 checklist items in
-  `docs/AUDIT-2026-08.md` are still `[ ]` though most shipped Aug 6.
+- **Four audit items remain open**, all additive: futures tracker with weekly
+  mark-to-market (#40), generated db types (#44), ⌘K quick-switcher (#45), OG
+  share images (#46). Six more are partial — see the status tables in
+  `docs/AUDIT-2026-08.md` for exactly which piece each is missing.
+- **`/ratings` still hides Off/Def.** Dropping the columns was right when they
+  were `overall/2`; they've been real since 2026.3.0 and were never restored.
 - Untested model ideas that remain plausible: pass/rush splits, special teams and
   field position, QB modeling from player PPA (currently one boolean).
 
