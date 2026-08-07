@@ -79,6 +79,12 @@ export interface PredictionRow {
   edge: number | null;
   edge_flag: "EDGE" | "BIG_EDGE" | null;
   consensus_flag: boolean;
+  /** Consensus opener, captured at freeze. Context for the movement, not graded. */
+  open_spread: number | null;
+  /** Consensus at kickoff. Written by the Sunday grader, null until then. */
+  close_spread: number | null;
+  /** Signed value of vegas_spread vs close_spread in the edge's direction. */
+  clv: number | null;
   created_at: string;
 }
 

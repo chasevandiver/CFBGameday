@@ -141,6 +141,57 @@ shipping it.
 
 ## Log
 
+### Aug 7 — CLV, and a sign that was backwards
+
+The edge investigation demoted the model's leans from bets to information, which
+left the product with no in-season scoreboard: the ATS record was the measure
+while the leans were bets, and nothing replaced it. CLV is the replacement, and
+it is the better question anyway — not "did the model win" but "did the market
+come toward the model after it committed". It converges on one season where a
+win rate needs several, and it can express the result the backtest actually
+found: a losing ATS record alongside positive CLV.
+
+**A pre-existing bug, found on the way in.** `jobs-core.ts` stored CLV for user
+picks and bets with the sign inverted — in all four branches (home, away, over,
+under), with no test on any of them. `backtest.ts` had it right, which is how the
+disagreement surfaced. Concretely: bet home −3, line closes −6, you laid three
+where the close lays six — that is +3, and the code stored −3. The Ledger, Crew
+and Recap pages would have rendered a bettor who consistently beat the close in
+red. **No data was corrupted**: zero picks and zero bets had been graded when the
+fix landed, so nothing needs backfilling.
+
+- **`src/lib/clv.ts`** — one implementation, used by picks, bets and the model.
+  Spreads and totals run in opposite directions (a home backer wants the number
+  down, an over backer wants it up), which is exactly how the sign gets lost, so
+  the four cases are each stated in bettor's terms in the tests before the
+  algebra. Negation is `-0`-safe: `-0` reaches Postgres and renders as "−0.00".
+- **`predictions.open_spread` / `close_spread` / `clv`** (migration `0019`).
+  The freeze job captures the opener; the Sunday grader writes the close and the
+  value. Frozen prediction fields are never rewritten — the grader touches only
+  the two columns that did not exist at freeze time. `predictions` stays
+  append-only for users: table-level UPDATE was already revoked, which covers
+  new columns, and that was verified against the live database rather than
+  assumed.
+- **Receipts** gains a CLV stat beside the three calibration stats and a
+  per-game CLV column, with the reason it is the honest measure stated on the
+  page rather than left implicit.
+
+CLV is graded over every lean, not just flagged edges: flagging at |edge| ≥ 2
+discards most of the sample, and CLV is measurable on any disagreement. A game
+with no closing line is left ungraded rather than banked as 0, so a later lines
+backfill can still pick it up — a stored 0 would read as "dead even".
+
+One trap worth naming: `consensusFromSnapshots` computes the opener as
+`spread_open ?? spread`, so a select that forgets `spread_open` does not error —
+it silently reports the current line as the opener and every `open_spread`
+becomes a copy of `vegas_spread`. The column list is now a shared exported
+constant with a test pinning it, and a second test demonstrates the fallback so
+the failure mode is visible rather than folklore.
+
+Not fixed: `supabase/functions/jobs/index.ts` still carries the inverted
+formula. It remains dead, undeployed and drifted, and patching one line would
+imply it is maintained. Noted here so anyone reviving it knows.
+
 ### Aug 7 — the preseason load, automated
 
 Merged PR #12 as `97c5a6a`. A **merge commit, not a squash**: the table below
@@ -257,9 +308,9 @@ and signed-error reporting; nine backtest tuners.
 
 ## Open items
 
-- **CLV tracking on Receipts** — never built. The honest in-season scoreboard:
-  positive CLV with a losing ATS record is a coherent story, and it's what the
-  backtest actually found. Needs `predictions.open_spread` + `clv`.
+- **CLV has no data yet.** Built and migrated, but the first values arrive the
+  Sunday after Week 1 — the grader has nothing to grade until games are final.
+  The path is unexercised against real rows until then.
 - **Production is three model versions behind.** `ratings` in the database are
   `2026.2.0`; the code is `2026.4.0`. Everything since — the tilt carry, the
   churn restructure, `baseHfa` 3.0 — is dark until a rebuild lands.
