@@ -10,6 +10,7 @@
  *   npx tsx scripts/backtest.ts --tune-coaching              # fit newHcIntercept / newHcSlope
  *   npx tsx scripts/backtest.ts --tune-churn                 # fit returning-production weight + talent reload
  *   npx tsx scripts/backtest.ts --tune-epa                   # ratings from per-play efficiency vs the scoreboard
+ *   npx tsx scripts/backtest.ts --tune-ensemble              # blend weekly Elo + prior SP+ into our margin
  *   npx tsx scripts/backtest.ts --tune-anchors               # week-1 Elo / preseason poll anchor weights
  *
  * Each --tune-* flag prints its own pre-registered decision rule alongside the
@@ -657,6 +658,135 @@ async function tuneCoaching(seasons: SeasonData[], teamIdsByName: Map<string, nu
 }
 
 /**
+ * --tune-ensemble: do the published rating systems know things we don't?
+ *
+ * SP+ already is opponent-adjusted play-level efficiency with garbage-time
+ * filtering — the thing --tune-epa failed to reconstruct. Rather than rebuild
+ * it, consume it. Our margin-based Elo and a play-based regression fail in
+ * different ways, and blending models with different error sources is the most
+ * reliable gain available.
+ *
+ * POINT-IN-TIME DISCIPLINE, which shapes the whole test: cfbd.spRatings(year)
+ * returns ONE row per team-year — the FINAL rating. Feeding final-2024 SP+ into
+ * a week-5-2024 prediction is lookahead and would produce a beautiful,
+ * meaningless result. Only two terms are safe on history:
+ *   - weekly Elo, which CFBD genuinely serves per week
+ *   - PRIOR-season final SP+, known before a ball is snapped, decayed across
+ *     the season so it fades as real results accumulate
+ * Same-season SP+/FPI are deliberately absent here; see systemWeights.
+ */
+async function tuneEnsemble(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
+  const { cfbd } = await import("../src/lib/cfbd");
+  const { cached } = await import("./lib/replay");
+
+  // Weekly Elo per season. One call per season-week, disk-cached.
+  const eloBySeasonWeek = new Map<string, Map<number, number>>();
+  for (const season of SEASONS) {
+    for (let week = 1; week <= 15; week++) {
+      const rows = await cached(
+        `elo-${season}-wk${week}`,
+        () => cfbd.eloRatings(season, week),
+        true,
+      ).catch(() => []);
+      const map = new Map<number, number>();
+      for (const r of rows) {
+        const id = teamIdsByName.get(r.team);
+        if (id !== undefined && Number.isFinite(r.elo)) map.set(id, r.elo);
+      }
+      if (map.size > 0) eloBySeasonWeek.set(`${season}|${week}`, map);
+    }
+  }
+
+  // Prior-season final SP+ — legitimately known before the season starts.
+  const priorSp = new Map<number, Map<number, number>>();
+  for (const season of SEASONS) {
+    const rows = await cached(`sp-${season - 1}`, () => cfbd.spRatings(season - 1), true);
+    priorSp.set(season, priorsFromSp(rows, teamIdsByName));
+  }
+
+  // Replay once with production params; the systems are evaluated against the
+  // same predictions the model actually made.
+  let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
+  const all: ReplayPrediction[] = [];
+  for (const season of seasons) {
+    const { predictions, finalRatings } = replaySeason(season, priors, DEFAULT_PARAMS);
+    all.push(...predictions);
+    priors = chainPriors(finalRatings);
+  }
+
+  const rows = all
+    .map((p) => {
+      const elo = eloBySeasonWeek.get(`${p.season}|${p.week}`);
+      const eloH = elo?.get(p.homeId);
+      const eloA = elo?.get(p.awayId);
+      const sp = priorSp.get(p.season);
+      const spH = sp?.get(p.homeId);
+      const spA = sp?.get(p.awayId);
+      if (eloH === undefined || eloA === undefined || spH === undefined || spA === undefined) {
+        return null;
+      }
+      return {
+        p,
+        // 25 Elo ≈ 1 point, the same conversion freezeJob uses for its
+        // consensus flag (jobs-core.ts).
+        eloMargin: (eloH - eloA) / 25,
+        // Decays exactly as the preseason prior does, so a stale anchor stops
+        // mattering once results exist.
+        spMargin: (spH - spA) * priorWeight(p.week, DEFAULT_PARAMS),
+      };
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null);
+
+  console.log(
+    `\n== --tune-ensemble ==  ${rows.length} of ${all.length} games have weekly Elo + prior SP+`,
+  );
+  if (rows.length < 200) {
+    console.log("Too few joined games to fit — check the Elo weekly coverage first.");
+    return;
+  }
+
+  const { beta, se } = ols(
+    rows.map((r) => r.p.actualMargin),
+    [rows.map((r) => r.p.margin), rows.map((r) => r.eloMargin), rows.map((r) => r.spMargin)],
+  );
+  const labels = ["intercept", "ours", "elo (weekly)", "prior SP+ (decayed)"];
+  console.log("term                    coef      se       t");
+  for (let i = 0; i < beta.length; i++) {
+    console.log(
+      `${labels[i].padEnd(22)} ${beta[i].toFixed(3).padStart(7)}  ${se[i].toFixed(3).padStart(6)}  ` +
+        `${(beta[i] / se[i]).toFixed(2).padStart(6)}`,
+    );
+  }
+  console.log(
+    `\nBonferroni over ${ENSEMBLE_TESTS} regressors at α=0.05 → a system earns weight only at |t| > ${TIER_T}`,
+  );
+
+  // Blended prediction vs ours alone, in-sample and on the 2025 holdout.
+  const blended = (r: (typeof rows)[number]) =>
+    beta[0] + beta[1] * r.p.margin + beta[2] * r.eloMargin + beta[3] * r.spMargin;
+  console.log("\nsample        ours MAE   ensemble MAE   delta");
+  for (const [label, keep] of [
+    ["all", () => true],
+    ["2025 holdout", (r: (typeof rows)[number]) => r.p.season === 2025],
+  ] as Array<[string, (r: (typeof rows)[number]) => boolean]>) {
+    const seg = rows.filter(keep);
+    if (seg.length === 0) continue;
+    const ours = maeOf(seg.map((r) => r.p.actualMargin - r.p.margin));
+    const ens = maeOf(seg.map((r) => r.p.actualMargin - blended(r)));
+    console.log(
+      `${label.padEnd(13)} ${ours.toFixed(3)}      ${ens.toFixed(3)}         ${(ours - ens).toFixed(3)}`,
+    );
+  }
+  console.log(
+    `\nDecision rule: ship weights only if a system's t clears ${TIER_T} AND the 2025\n` +
+      "holdout improves by ≥ 0.15 MAE. The EPA change bought 0.010 and was rejected;\n" +
+      "anything of that size here is the same noise wearing a different hat.",
+  );
+}
+
+const ENSEMBLE_TESTS = 3;
+
+/**
  * --tune-epa: should ratings update from per-play efficiency instead of the
  * scoreboard?
  *
@@ -1239,6 +1369,7 @@ async function main() {
   const diagnose = process.argv.includes("--diagnose-edges");
   const tuneChurnFlag = process.argv.includes("--tune-churn");
   const tuneEpaFlag = process.argv.includes("--tune-epa");
+  const tuneEnsembleFlag = process.argv.includes("--tune-ensemble");
 
   console.log(`Loading seasons ${SEASONS.join(", ")} ${useCache ? "(cache preferred)" : "(fetching)"}…`);
   const seasons: SeasonData[] = [];
@@ -1272,6 +1403,10 @@ async function main() {
   }
   if (tuneEpaFlag) {
     tuneEpa(seasons, teamIdsByName);
+    return;
+  }
+  if (tuneEnsembleFlag) {
+    await tuneEnsemble(seasons, teamIdsByName);
     return;
   }
 

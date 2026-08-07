@@ -60,3 +60,9 @@ jobs:
       # Informational — it must not fail the build.
       - name: Diagnose edges
         run: npx tsx scripts/backtest.ts --diagnose-edges || echo "!! diagnose-edges FAILED"
+
+      # TEMPORARY (remove once the weights are decided): do SP+ and Elo carry
+      # information our margin model doesn't? ~45 extra CFBD calls for the
+      # weekly Elo history, all disk-cached after the first run.
+      - name: Fit system ensemble (one-off)
+        run: npx tsx scripts/backtest.ts --tune-ensemble || echo "!! tune-ensemble FAILED"
