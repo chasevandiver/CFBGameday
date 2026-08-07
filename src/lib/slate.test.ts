@@ -13,7 +13,7 @@ import {
   pickHero,
   spreadMove,
   spreadMoveRead,
-  stakeForPrediction,
+  modelSideOf,
   upsetAlert,
   watchability,
   weekModelRecord,
@@ -235,30 +235,24 @@ describe("atsRecord / ouRecord", () => {
   });
 });
 
-describe("stakeForPrediction", () => {
-  it("negative edge → home side at the market line", () => {
-    const s = stakeForPrediction({ edge: -3, edgeFlag: "EDGE", coverProb: 0.58, vegasSpread: -6.5 });
-    expect(s?.side).toBe("home");
-    expect(s?.line).toBe(-6.5);
-    expect(s!.units).toBeGreaterThan(0);
-    expect(s!.units).toBeLessThanOrEqual(2);
+describe("modelSideOf", () => {
+  // Replaced stakeForPrediction: the backtest can't support a unit size, so
+  // the lean is surfaced and the stake is not (see the function's comment).
+  it("negative edge → the model leans home", () => {
+    expect(modelSideOf({ edge: -3, edgeFlag: "EDGE" })).toBe("home");
   });
 
-  it("positive edge → away side with the complementary cover prob", () => {
-    const s = stakeForPrediction({ edge: 3, edgeFlag: "EDGE", coverProb: 0.42, vegasSpread: -6.5 });
-    expect(s?.side).toBe("away");
-    expect(s?.line).toBe(6.5);
-    expect(s!.units).toBeGreaterThan(0);
+  it("positive edge → the model leans away", () => {
+    expect(modelSideOf({ edge: 3, edgeFlag: "BIG_EDGE" })).toBe("away");
   });
 
-  it("a flagged game priced near the breakeven is a pass (0u), not hidden", () => {
-    const s = stakeForPrediction({ edge: -2, edgeFlag: "EDGE", coverProb: 0.5, vegasSpread: -3 });
-    expect(s?.units).toBe(0);
+  it("null when the game carries no flag", () => {
+    expect(modelSideOf({ edge: -4, edgeFlag: null })).toBeNull();
   });
 
-  it("null without a flag or cover probability", () => {
-    expect(stakeForPrediction({ edge: -1, edgeFlag: null, coverProb: 0.6, vegasSpread: -3 })).toBeNull();
-    expect(stakeForPrediction({ edge: -3, edgeFlag: "EDGE", coverProb: null, vegasSpread: -3 })).toBeNull();
+  it("null on an exactly-zero edge, which has no side", () => {
+    expect(modelSideOf({ edge: 0, edgeFlag: "EDGE" })).toBeNull();
+    expect(modelSideOf({ edge: null, edgeFlag: "EDGE" })).toBeNull();
   });
 });
 

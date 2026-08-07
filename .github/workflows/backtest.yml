@@ -55,14 +55,8 @@ jobs:
             npx tsx scripts/backtest.ts
           fi
 
-      # TEMPORARY (remove before merge): one-off runs to answer open questions.
-      # --diagnose-edges is the gate for the whole edge workstream; the coaching
-      # re-run uses a grid extended to -5 because the first fit bottomed out at
-      # the boundary. Informational — a failure here must not fail the gate.
-      - name: Diagnose edges + refit coaching (one-off)
-        run: |
-          for t in diagnose-edges tune-coaching; do
-            echo "::group::$t"
-            npx tsx scripts/backtest.ts "--$t" || echo "!! $t FAILED"
-            echo "::endgroup::"
-          done
+      # The edge gate runs on every model PR: if a change ever makes the model
+      # carry information the closing line lacks, this is where it shows up.
+      # Informational — it must not fail the build.
+      - name: Diagnose edges
+        run: npx tsx scripts/backtest.ts --diagnose-edges || echo "!! diagnose-edges FAILED"

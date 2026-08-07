@@ -8,7 +8,7 @@ import {
   fmtSpread,
   isDead,
   isFinal,
-  stakeForPrediction,
+  modelSideOf,
   type GameView,
 } from "../../lib/slate";
 import { createClient } from "../../lib/supabase/server";
@@ -18,8 +18,13 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Edges" };
 
 /**
- * The soft-market guide (docs/SPEC.md §5.1): this week's flagged games,
- * biggest disagreement with the market first, with the ¼-Kelly stake.
+ * This week's flagged games, biggest disagreement with the market first.
+ *
+ * Presented as information, not as bets. The 2023–25 backtest put these
+ * disagreements at 49.2% against the closing line (52.4% breaks even at −110),
+ * and the encompassing regression showed the model contributes nothing once
+ * the closing line is in the equation (b=0.035, t=0.84, vs the market's 0.987).
+ * The ¼-Kelly stake that used to live here implied an edge that isn't there.
  */
 export default async function EdgesPage() {
   const supabase = await createClient();
@@ -48,10 +53,18 @@ export default async function EdgesPage() {
           <p className="stat text-xs text-chalk/50">week {week}</p>
         </div>
         <p className="mb-5 text-sm text-dim">
-          Games where the model disagrees with the market by 2+ points. Stake is ¼ Kelly on the
-          cover probability, capped at 2u.
+          Games where the model disagrees with the market by 2+ points. These are{" "}
+          <span className="text-chalk/80">information, not recommendations</span> — over 2023–25
+          these disagreements went 49.2% against the closing line, below the 52.4% a −110 bet needs
+          to break even.
           {!anyFrozen && flagged.length > 0 && " Prices are unfrozen until Thursday 10pm CT."}
         </p>
+        {/* Why there is no stake here: the encompassing regression
+            (backtest.ts --diagnose-edges) puts the model's coefficient at 0.035
+            (t=0.84) once the closing line is in the equation, against the
+            market's 0.987 — the close already contains everything we know, so a
+            raw disagreement is mostly our own error. Same standard the O/U
+            leans have always been held to. */}
 
         {flagged.length === 0 ? (
           <div className="card px-6 py-12 text-center">
@@ -75,8 +88,8 @@ export default async function EdgesPage() {
 
 function EdgeRow({ game }: { game: GameView }) {
   const p = game.prediction!;
-  const stake = stakeForPrediction(p);
-  const sideTeam = stake?.side === "home" ? game.home : game.away;
+  const modelSide = modelSideOf(p);
+  const sideTeam = modelSide === null ? null : modelSide === "home" ? game.home : game.away;
   const kick = game.startTs ? kickParts(game.startTs, DEFAULT_TZ) : null;
   const marketSpread = p.vegasSpread ?? game.lines.spread;
 
@@ -109,21 +122,14 @@ function EdgeRow({ game }: { game: GameView }) {
         <EdgeStat
           label="Cover prob"
           value={
-            stake && p.coverProb !== null
-              ? `${fmtPct(stake.side === "home" ? p.coverProb : 1 - p.coverProb)} ${sideTeam?.abbr ?? ""}`
+            modelSide && p.coverProb !== null
+              ? `${fmtPct(modelSide === "home" ? p.coverProb : 1 - p.coverProb)} ${sideTeam?.abbr ?? ""}`
               : "–"
           }
         />
         <EdgeStat
-          label="Stake"
-          value={
-            stake === null
-              ? "–"
-              : stake.units <= 0
-                ? "pass"
-                : `${stake.units}u ${sideTeam?.abbr ?? ""} ${fmtSpread(stake.line)}`
-          }
-          strong
+          label="Model lean"
+          value={sideTeam ? `${sideTeam.abbr} ${fmtSpread(marketSpread)}` : "–"}
         />
       </div>
     </li>
