@@ -103,10 +103,25 @@ export interface ModelParams {
    * than the scoreboard. 0 = scores only, the behavior every version through
    * 2026.4.0 shipped; 1 = the margin signal is entirely efficiency-based.
    *
-   * The final score is a noisy summary of ~150 plays — garbage time, a tipped
-   * interception, one shanked punt. PPA measures the plays. This is the single
-   * largest known gap between this model (margin MAE 13.27) and systems built
-   * on play data. Fit by `--tune-epa`.
+   * TESTED AND REJECTED — stays 0. `--tune-epa` over 2023–25 (PPA present for
+   * ~1500-1650 games/season, so not a coverage problem):
+   *
+   *   weight   margin MAE   NLL      early MAE
+   *   0.00     13.254       0.5005   14.24
+   *   0.30     13.244       0.5013   14.26   ← best MAE
+   *   1.00     13.378       0.5095   14.38
+   *
+   * The best case buys 0.010 points of MAE while NLL degrades monotonically
+   * and early-season MAE gets worse. It fails on every axis that matters.
+   *
+   * Why the obvious idea didn't work: swapping the scoreboard margin for a
+   * PPA-implied margin still feeds ONE noisy per-game number into an Elo update
+   * that already averages over a dozen games. What actually separates SP+ from
+   * a margin model is not "plays instead of points" — it is opponent-adjusted
+   * regression across all plays, garbage-time filtering, and success-rate vs
+   * explosiveness decomposition with special teams modeled separately. That is
+   * a different rating system, not a different input to this one. Building it
+   * is a real option; blending PPA into this update is not the shortcut to it.
    */
   epaWeight: number;
   returningProdWeight: number;
