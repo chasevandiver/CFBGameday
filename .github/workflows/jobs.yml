@@ -38,6 +38,14 @@ on:
           # are falling back, and fails when the data isn't complete enough to
           # build on. Read-only.
           - preseason-check
+          # Rebuild the preseason ratings and load them. Gated on
+          # preseason-check passing, and skips the append-only tables — see
+          # scripts/load-preseason.ts.
+          - preseason-refresh
+          # First load of a new season: the same build, but writes the
+          # append-only tables (line_snapshots, predictions) too. Running this
+          # twice duplicates them, so it is dispatch-only and never scheduled.
+          - preseason-bootstrap
   schedule:
     # Lines 4x daily (8am/1pm/6pm/11pm ET)
     - cron: "0 3,12,17,22 * * *"
@@ -66,6 +74,19 @@ on:
     # Three Questions per game, Friday morning after the freeze (LLM; green
     # no-op until the ANTHROPIC_API_KEY secret exists)
     - cron: "0 9 * * 5"
+    # Preseason refresh, daily at 11am UTC through most of August. CFBD
+    # publishes the preseason inputs (talent, returning production, coach
+    # moves) on its own schedule during the summer, and a rating built before
+    # they land is built on a fallback. Rather than watching for it, this
+    # retries every morning and preseason-check decides: NOT READY loads
+    # nothing, READY loads that day.
+    #
+    # Stops on the 27th: openers are the last weekend of August, and once a
+    # game is final the ratings belong to the Sunday ratings-update job, not to
+    # a preseason rebuild. load-preseason.ts refuses to write a season that has
+    # already played anyway — this window just keeps the job from waking up to
+    # be told no.
+    - cron: "0 11 1-27 8 *"
 
 concurrency:
   group: jobs-${{ github.event.schedule || inputs.task }}
@@ -100,6 +121,7 @@ jobs:
             "0 13 * * 0") echo "task=ratings-update" >> "$GITHUB_OUTPUT" ;;
             "0 3 * * 5") echo "task=freeze" >> "$GITHUB_OUTPUT" ;;
             "0 9 * * 5") echo "task=questions" >> "$GITHUB_OUTPUT" ;;
+            "0 11 1-27 8 *") echo "task=preseason-refresh" >> "$GITHUB_OUTPUT" ;;
             "") echo "task=${{ inputs.task }}" >> "$GITHUB_OUTPUT" ;;
             *) echo "task=unknown" >> "$GITHUB_OUTPUT" ;;
           esac
@@ -115,6 +137,27 @@ jobs:
             # Preview only — the JSON goes to a scratch dir and is discarded.
             preseason-preview) npx tsx scripts/build-preseason.ts --out "$RUNNER_TEMP/preseason" --top 40 ;;
             preseason-check) npx tsx scripts/build-preseason.ts --check --out "$RUNNER_TEMP/preseason-check" ;;
+            # Build, then load. --check is the gate: it exits non-zero when an
+            # input is still falling back, and we stop there rather than
+            # shipping a rating built on last year's talent.
+            #
+            # A declined refresh exits 0 — on the daily August cron "not ready
+            # yet" is the expected answer for most of the month, and a red run
+            # every morning would train everyone to ignore it. The standalone
+            # preseason-check task keeps its non-zero exit for when you ask the
+            # question directly.
+            preseason-refresh|preseason-bootstrap)
+              DIR="$RUNNER_TEMP/preseason"
+              if ! npx tsx scripts/build-preseason.ts --check --out "$DIR-check"; then
+                echo "::notice::preseason inputs not ready — nothing loaded"
+                exit 0
+              fi
+              npx tsx scripts/build-preseason.ts --out "$DIR" --top 40
+              if [ "${{ steps.task.outputs.task }}" = "preseason-bootstrap" ]; then
+                npx tsx scripts/load-preseason.ts --dir "$DIR" --bootstrap
+              else
+                npx tsx scripts/load-preseason.ts --dir "$DIR"
+              fi ;;
             questions|verdicts)
               if [ -z "$ANTHROPIC_API_KEY" ]; then
                 echo "ANTHROPIC_API_KEY not set — skipping LLM generation"
