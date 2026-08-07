@@ -1,6 +1,6 @@
 import { AppNav } from "../../components/AppNav";
 import { RatingsTable, type RatingRow } from "../../components/RatingsTable";
-import { MODEL_VERSION } from "../../model/ratings";
+import { MODEL_VERSION, splitInformative } from "../../model/ratings";
 import type { TeamRow } from "../../lib/db-types";
 import { fetchCurrentSeasonWeek } from "../../lib/queries";
 import { pickPollRanks, pollShortName } from "../../lib/rankings";
@@ -14,6 +14,8 @@ interface DbRating {
   team_id: number;
   week: number;
   overall: number;
+  offense: number | null;
+  defense: number | null;
 }
 
 interface DbComponents {
@@ -28,7 +30,7 @@ export default async function RatingsPage() {
 
   const { data: allRatings } = await supabase
     .from("ratings")
-    .select("team_id, week, overall")
+    .select("team_id, week, overall, offense, defense")
     .eq("season_id", seasonId)
     .order("week", { ascending: false });
   const ratings = (allRatings ?? []) as DbRating[];
@@ -39,6 +41,15 @@ export default async function RatingsPage() {
   const previous = new Map(
     ratings.filter((r) => r.week === latestWeek - 1).map((r) => [r.team_id, r]),
   );
+
+  // The halves are only two measurements when results have differentiated them.
+  // Preseason rows (and anything written before 2026.3.0) carry overall/2 twice
+  // — see SPLIT_COLS in RatingsTable, and audit bug #11.
+  const half = (r: DbRating) => ({
+    offense: r.offense === null ? Number(r.overall) / 2 : Number(r.offense),
+    defense: r.defense === null ? Number(r.overall) / 2 : Number(r.defense),
+  });
+  const showSplit = splitInformative(current.map(half));
 
   const teamIds = current.map((r) => r.team_id);
   const [teamsRes, compsRes, pollsRes] = await Promise.all([
@@ -76,6 +87,7 @@ export default async function RatingsPage() {
         color: team.color,
         logoUrl: team.logo_url,
         overall: Number(r.overall),
+        ...half(r),
         delta: prev ? Number(r.overall) - Number(prev.overall) : null,
         churn: comp?.churn_adjustment !== null && comp ? Number(comp.churn_adjustment) : null,
         luck: comp?.luck_correction !== null && comp ? Number(comp.luck_correction) : null,
@@ -95,7 +107,7 @@ export default async function RatingsPage() {
             {latestWeek === 0 ? "preseason" : `through week ${latestWeek}`} · model {MODEL_VERSION}
           </p>
         </div>
-        <RatingsTable rows={rows} />
+        <RatingsTable rows={rows} showSplit={showSplit} />
       </main>
     </>
   );
