@@ -692,9 +692,14 @@ async function tuneChurn(seasons: SeasonData[], teamIdsByName: Map<string, numbe
   );
   console.log("weight  reload   early NLL   early MAE   clamped");
 
+  // Reload runs past 1.0: the first fit pinned at 1.0 with NLL still falling,
+  // and a strength above 1 is meaningful rather than nonsense — it flips the
+  // sign for the most talented rosters, i.e. losing production would slightly
+  // *help* them. That should lose, but the grid has to be able to say so.
   let best: { w: number; r: number; nll: number } | null = null;
-  for (const returningProdWeight of [0, 2, 4, 6, 8, 10, 12]) {
-    for (const talentReloadStrength of [0, 0.25, 0.5, 0.75, 1]) {
+  const perSeasonOfBest = new Map<number, number>();
+  for (const returningProdWeight of [0, 3, 4, 5, 6, 7, 8, 10]) {
+    for (const talentReloadStrength of [0, 0.5, 1, 1.5, 2]) {
       const params: ModelParams = {
         ...DEFAULT_PARAMS,
         returningProdWeight,
@@ -739,13 +744,29 @@ async function tuneChurn(seasons: SeasonData[], teamIdsByName: Map<string, numbe
           `${n.toFixed(4)}      ${maeOf(early.map((p) => p.actualMargin - p.margin)).toFixed(2)}       ` +
           `${((clamped / Math.max(churnCount, 1)) * 100).toFixed(1)}%`,
       );
-      if (!best || n < best.nll) best = { w: returningProdWeight, r: talentReloadStrength, nll: n };
+      if (!best || n < best.nll) {
+        best = { w: returningProdWeight, r: talentReloadStrength, nll: n };
+        // Per-season NLL for the leader: two seasons is a thin holdout, but a
+        // parameter that helps 2024 and hurts 2025 is visibly overfit.
+        perSeasonOfBest.clear();
+        for (const s of SCORED) {
+          perSeasonOfBest.set(s, nll(early.filter((p) => p.season === s)));
+        }
+      }
     }
   }
   if (best) {
     console.log(
       `\nBest: returningProdWeight=${best.w} talentReloadStrength=${best.r} (NLL ${best.nll.toFixed(4)})`,
     );
+    console.log(
+      `Per-season NLL at the winner: ` +
+        [...perSeasonOfBest].map(([s, v]) => `${s} ${v.toFixed(4)}`).join("  ") +
+        " — a split where one season carries the whole gain is overfit, not fitted.",
+    );
+    if (best.r >= 2 || best.w >= 10) {
+      console.log("!! WARNING: winner sits at the grid edge — unconverged, widen before shipping.");
+    }
     console.log(
       best.w === 0
         ? "→ returning production earns NO weight: it is not predictive here once the\n" +
