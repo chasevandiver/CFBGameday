@@ -274,8 +274,12 @@ describe("pricing", () => {
 
 describe("HFA blending", () => {
   it("is 50/50 team vs FBS average, and falls back to the average", () => {
-    expect(blendedHfa(4.1)).toBeCloseTo(0.5 * 4.1 + 0.5 * 2.3);
-    expect(blendedHfa(null)).toBe(2.3);
+    // Assert the RELATIONSHIP, not the constant — this used to hardcode 2.3
+    // and broke when baseHfa was refit to 3.0, which is a test failing for the
+    // wrong reason.
+    const base = DEFAULT_PARAMS.baseHfa;
+    expect(blendedHfa(4.1)).toBeCloseTo(0.5 * 4.1 + 0.5 * base);
+    expect(blendedHfa(null)).toBe(base);
   });
 });
 

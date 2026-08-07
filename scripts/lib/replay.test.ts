@@ -136,7 +136,10 @@ describe("the cap-binding caveat on tilt invariance", () => {
   };
 
   it("is exactly zero while the clamps stay slack", () => {
-    expect(drift(0.25)).toBe(0);
+    // Machine epsilon, not exact equality: the arithmetic reorders slightly
+    // with different HFA values and lands at ~1e-15. Anything under 1e-9 is
+    // "the clamps never bound", which is the actual claim.
+    expect(drift(0.25)).toBeLessThan(1e-9);
   });
 
   it("grows monotonically with tilt magnitude once clamps bind", () => {

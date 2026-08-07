@@ -20,6 +20,11 @@
 // 13.34 vs 13.72 for an even split, weeks 1–4 12.93 vs 13.16). Week-0/1 totals
 // are real predictions from this version rather than the withheld constant.
 // Margins are unchanged — tilt is margin-neutral by construction.
+// 2026.4.0 also raises baseHfa 2.3 → 3.0. The model was under-predicting the
+// home side by +0.74 ± 0.33 points (2.2 SE from zero); at 3.0 the bias is
+// +0.03 with NLL improved and MAE flat. NOTE: team_hfa rows are computed from
+// baseHfa, so the preseason build must be re-run and reloaded for this to take
+// effect in production — the parameter alone is not enough.
 // 2026.4.0 also restructures churn: the "defense" input was a second, correlated
 // OFFENSE metric (CFBD publishes no defensive returning production), so offense
 // was double-counted at ×5+×5, defense was never modeled, and the ±6 clamp
@@ -136,7 +141,20 @@ export interface ModelParams {
 export const DEFAULT_PARAMS: ModelParams = {
   kFactor: 0.3,
   marginCap: 28,
-  baseHfa: 2.3,
+  // 3.0, up from 2.3 (--tune-hfa, K held at its validated 0.3). The old value
+  // left the model systematically under-predicting the home side: mean SIGNED
+  // margin error +0.74 ± 0.33 SE, i.e. 2.2 SE from zero. At 3.0 the bias is
+  // +0.03, NLL improves (0.5005 → 0.4994) and MAE is flat (13.254 → 13.249).
+  //
+  // Two notes for whoever revisits this. First, the bias was invisible to
+  // everything the report used to print — MAE and sigma are symmetric, so a
+  // model consistently a point light on home teams looks identical to one
+  // randomly a point off either way. It surfaced only because an ensemble
+  // regression kept demanding a +2 intercept. Second, the JOINT K/HFA refit
+  // picked K=0.4/HFA=3.6 by NLL and was worse at nearly everything else: no
+  // MAE gain, the 0.7–0.8 win-prob bucket off by 6.2 points instead of 1.6,
+  // totals MAE 13.09 → 13.19. One scalar objective is not the model.
+  baseHfa: 3.0,
   teamHfaBlend: 0.5,
   priorRatingWeight: 0.7,
   talentWeight: 0.3,
