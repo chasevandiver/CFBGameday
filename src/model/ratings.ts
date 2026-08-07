@@ -98,6 +98,17 @@ export interface ModelParams {
    * average. Replaces the old implicit weight of 10 (two ×5 terms that were
    * assumed independent but were both offense). Fit by `--tune-churn`.
    */
+  /**
+   * How much of the rating update comes from per-play efficiency (PPA) rather
+   * than the scoreboard. 0 = scores only, the behavior every version through
+   * 2026.4.0 shipped; 1 = the margin signal is entirely efficiency-based.
+   *
+   * The final score is a noisy summary of ~150 plays — garbage time, a tipped
+   * interception, one shanked punt. PPA measures the plays. This is the single
+   * largest known gap between this model (margin MAE 13.27) and systems built
+   * on play data. Fit by `--tune-epa`.
+   */
+  epaWeight: number;
   returningProdWeight: number;
   /**
    * How much a high-talent roster blunts the returning-production term
@@ -132,6 +143,8 @@ export const DEFAULT_PARAMS: ModelParams = {
   priorSigmaExtra: 0,
   newHcIntercept: 0,
   newHcSlope: 0,
+  // Identity until --tune-epa earns it: 0 reproduces the score-only model.
+  epaWeight: 0,
   // --tune-churn, NOT the argmin — a deliberate choice, recorded as such.
   //
   // The likelihood surface is flat: everything from weight 6–10 × reload 1–2

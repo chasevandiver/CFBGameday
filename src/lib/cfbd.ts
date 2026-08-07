@@ -231,6 +231,32 @@ export interface CfbdCoach {
   seasons: CfbdCoachSeason[];
 }
 
+/**
+ * Per-game advanced stats. The model has only ever seen final scores, which
+ * are a noisy summary of ~150 plays — garbage time, a tipped interception and
+ * a shanked punt all move the margin without saying much about the teams.
+ * PPA (CFBD's expected-points-added) measures the plays themselves.
+ */
+export interface CfbdAdvancedGameStatSide {
+  plays: number | null;
+  drives: number | null;
+  /** PPA per play */
+  ppa: number | null;
+  /** PPA summed over the game — points-equivalent production */
+  totalPPA: number | null;
+  successRate: number | null;
+  explosiveness: number | null;
+}
+
+export interface CfbdAdvancedGameStat {
+  gameId: number;
+  week: number | null;
+  team: string;
+  opponent: string | null;
+  offense: CfbdAdvancedGameStatSide | null;
+  defense: CfbdAdvancedGameStatSide | null;
+}
+
 export interface CfbdScoreboardGame {
   id: number;
   startDate: string;
@@ -288,6 +314,18 @@ export const cfbd = {
       year: opts.year,
       minYear: opts.minYear,
       maxYear: opts.maxYear,
+      team: opts.team,
+    }),
+
+  /**
+   * Per-game advanced stats (PPA, success rate, explosiveness) — the
+   * play-level signal the score alone throws away. One call covers a whole
+   * season when `week` is omitted.
+   */
+  advancedGameStats: (year: number, opts: { week?: number; team?: string } = {}) =>
+    get<CfbdAdvancedGameStat[]>("/stats/game/advanced", {
+      year,
+      week: opts.week,
       team: opts.team,
     }),
 

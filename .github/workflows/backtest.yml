@@ -60,3 +60,9 @@ jobs:
       # Informational — it must not fail the build.
       - name: Diagnose edges
         run: npx tsx scripts/backtest.ts --diagnose-edges || echo "!! diagnose-edges FAILED"
+
+      # TEMPORARY (remove once epaWeight is decided): does updating ratings from
+      # per-play efficiency beat updating from the scoreboard? This is the
+      # largest known structural gap against SP+ and the market.
+      - name: Fit EPA weight (one-off)
+        run: npx tsx scripts/backtest.ts --tune-epa || echo "!! tune-epa FAILED"

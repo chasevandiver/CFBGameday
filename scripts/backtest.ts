@@ -9,6 +9,7 @@
  *   npx tsx scripts/backtest.ts --tune-preseason-tilts       # should preseason off/def carry a shape?
  *   npx tsx scripts/backtest.ts --tune-coaching              # fit newHcIntercept / newHcSlope
  *   npx tsx scripts/backtest.ts --tune-churn                 # fit returning-production weight + talent reload
+ *   npx tsx scripts/backtest.ts --tune-epa                   # ratings from per-play efficiency vs the scoreboard
  *   npx tsx scripts/backtest.ts --tune-anchors               # week-1 Elo / preseason poll anchor weights
  *
  * Each --tune-* flag prints its own pre-registered decision rule alongside the
@@ -656,6 +657,69 @@ async function tuneCoaching(seasons: SeasonData[], teamIdsByName: Map<string, nu
 }
 
 /**
+ * --tune-epa: should ratings update from per-play efficiency instead of the
+ * scoreboard?
+ *
+ * This is the largest known structural gap. The model has only ever seen final
+ * scores; SP+ and every serious system are built on play data, and they beat us
+ * by ~1.3 points of margin MAE. A final score is a noisy summary of ~150 plays,
+ * so fitting on it means fitting on garbage time and special-teams variance.
+ *
+ * The blend preserves each game's TOTAL and moves only the margin, so this is
+ * strictly a cleaner margin signal — totals modeling is unaffected.
+ */
+function tuneEpa(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
+  const covered = seasons.map(
+    (s) => `${s.season}: ${new Set((s.advanced ?? []).map((r) => r.gameId)).size} games`,
+  );
+  console.log(`\n== --tune-epa ==  PPA coverage — ${covered.join(", ")}`);
+  if (seasons.every((s) => (s.advanced ?? []).length === 0)) {
+    console.log(
+      "No advanced stats returned. Either the key's tier does not include\n" +
+        "/stats/game/advanced, or the response shape differs — check before\n" +
+        "concluding anything. The model stays score-only until this populates.",
+    );
+    return;
+  }
+
+  console.log("epaWeight   margin MAE   fitted σ    NLL      early MAE");
+  let best: { w: number; mae: number } | null = null;
+  for (const epaWeight of [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1]) {
+    const params: ModelParams = { ...DEFAULT_PARAMS, epaWeight };
+    let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
+    const all: ReplayPrediction[] = [];
+    for (const season of seasons) {
+      const { predictions, finalRatings } = replaySeason(season, priors, params);
+      all.push(...predictions);
+      priors = chainPriors(finalRatings);
+    }
+    // Scored on the model's own accuracy against real results — the efficiency
+    // blend changes how ratings LEARN, never what they are graded against.
+    const errs = all.map((p) => p.actualMargin - p.margin);
+    const mae = maeOf(errs);
+    const sigma = Math.sqrt(mean(errs.map((e) => e * e)));
+    const early = all.filter((p) => p.week <= 4);
+    console.log(
+      `${epaWeight.toFixed(2).padStart(7)}     ${mae.toFixed(3)}      ${sigma.toFixed(2)}     ` +
+        `${nll(all).toFixed(4)}   ${maeOf(early.map((p) => p.actualMargin - p.margin)).toFixed(2)}`,
+    );
+    if (!best || mae < best.mae) best = { w: epaWeight, mae };
+  }
+  if (best) {
+    console.log(`\nBest: epaWeight=${best.w} (margin MAE ${best.mae.toFixed(3)})`);
+    console.log(
+      best.w === 0
+        ? "→ scores win; efficiency adds nothing here. Keep epaWeight 0."
+        : `→ set epaWeight=${best.w}. Market MAE is 11.98 — that is the bar this is\n` +
+            "  chasing, and closing the gap to it is the whole point of the change.",
+    );
+    if (best.w === 1) {
+      console.log("!! At the grid edge; pure efficiency won. Sanity-check before shipping.");
+    }
+  }
+}
+
+/**
  * --tune-churn: how hard should returning production move a preseason rating,
  * and does a high-talent roster blunt it?
  *
@@ -1174,6 +1238,7 @@ async function main() {
   const tuneAnchorsFlag = process.argv.includes("--tune-anchors");
   const diagnose = process.argv.includes("--diagnose-edges");
   const tuneChurnFlag = process.argv.includes("--tune-churn");
+  const tuneEpaFlag = process.argv.includes("--tune-epa");
 
   console.log(`Loading seasons ${SEASONS.join(", ")} ${useCache ? "(cache preferred)" : "(fetching)"}…`);
   const seasons: SeasonData[] = [];
@@ -1203,6 +1268,10 @@ async function main() {
   }
   if (tuneChurnFlag) {
     await tuneChurn(seasons, teamIdsByName);
+    return;
+  }
+  if (tuneEpaFlag) {
+    tuneEpa(seasons, teamIdsByName);
     return;
   }
 

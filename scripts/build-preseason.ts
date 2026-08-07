@@ -25,7 +25,8 @@
  * Data-quality proxies (v1, noted in detail JSON): OL share=0.5 (no data),
  * turnover margin=0 (not pulled).
  *
- * Usage: npx tsx scripts/build-preseason.ts [--out DIR]
+ * Usage: npx tsx scripts/build-preseason.ts [--out DIR] [--top N]
+ *        npx tsx scripts/build-preseason.ts --check    # readiness only, no files
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -149,9 +150,11 @@ async function main() {
   const transitions = buildCoachTransitions(coachRows, SEASON);
 
   let talent = await cached(`talent-${SEASON}`, () => cfbd.talent(SEASON), true);
+  let talentIsStale = false;
   if (talent.length === 0) {
-    console.log("  no 2026 talent yet — falling back to 2025");
-    talent = await cached("talent-2025", () => cfbd.talent(2025), true);
+    console.log(`  no ${SEASON} talent yet — falling back to ${SEASON - 1}`);
+    talentIsStale = true;
+    talent = await cached(`talent-${SEASON - 1}`, () => cfbd.talent(SEASON - 1), true);
   }
 
   const fbs = teams.filter((t) => t.classification === "fbs");
@@ -352,6 +355,35 @@ async function main() {
       `${ratingVals.slice().sort((a, b) => a - b)[Math.floor(ratingVals.length / 2)].toFixed(1)}`,
   );
   // Inputs that silently defaulted are the failure mode worth naming out loud.
+  // --check: readiness gate. CFBD publishes preseason inputs on its own
+  // schedule, and a missing one does not error — it silently falls back and
+  // produces a confident-looking rating. This says plainly whether the data is
+  // complete enough to do the real build, and exits non-zero when it isn't so
+  // a scheduled run is visible rather than quietly green.
+  if (process.argv.includes("--check")) {
+    const problems: string[] = [];
+    if (talentIsStale) {
+      problems.push(`talent: ${SEASON} not published, using ${SEASON - 1} (no incoming class)`);
+    }
+    const missingRet = preseason.filter((p) => p.retOff === null).length;
+    if (missingRet > 5) problems.push(`returning production: ${missingRet} teams unmatched`);
+    if (newHires === 0) problems.push("coaches: no head-coach changes detected — check the feed");
+    const clampedNow = preseason.filter((p) => Math.abs(Math.abs(p.churn) - 6) < 0.001).length;
+    if (clampedNow > 15) problems.push(`churn: ${clampedNow} teams at the ±6 clamp`);
+
+    console.log(`\n=== preseason readiness for ${SEASON} ===`);
+    if (problems.length === 0) {
+      console.log("READY — every input is live. Safe to run the real build and load.");
+      return;
+    }
+    for (const p of problems) console.log(`  NOT READY — ${p}`);
+    console.log(
+      "\nRe-run once CFBD publishes. Loading now ships a rating built on a fallback.",
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   const noPrev = preseason.filter((p) => p.finalPrev === null).length;
   const noRet = preseason.filter((p) => p.retOff === null).length;
   if (noPrev > 0) console.log(`  note: ${noPrev} team(s) had no prior-season rating (talent only)`);

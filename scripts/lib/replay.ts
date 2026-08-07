@@ -5,7 +5,13 @@
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { cfbd, type CfbdGame, type CfbdLine, type CfbdSpRating } from "../../src/lib/cfbd";
+import {
+  cfbd,
+  type CfbdAdvancedGameStat,
+  type CfbdGame,
+  type CfbdLine,
+  type CfbdSpRating,
+} from "../../src/lib/cfbd";
 import { snapToHalf } from "../../src/lib/consensus";
 import {
   blendWithPrior,
@@ -23,6 +29,64 @@ export interface SeasonData {
   games: CfbdGame[];
   lines: CfbdLine[];
   prevSp: CfbdSpRating[];
+  /** Per-game PPA; absent for seasons loaded before this was added. */
+  advanced?: CfbdAdvancedGameStat[];
+}
+
+/**
+ * Points-equivalent margin from each offense's total PPA rather than the
+ * scoreboard. Same units, far less noise: it ignores defensive/special-teams
+ * scores and garbage time, which move the final margin without telling you
+ * much about how the teams actually played.
+ *
+ * Returns null when either side is missing PPA, so callers fall back to the
+ * real margin rather than silently substituting a zero.
+ */
+export function efficiencyMargins(advanced: CfbdAdvancedGameStat[] | undefined) {
+  const byGame = new Map<number, Map<string, number>>();
+  for (const row of advanced ?? []) {
+    const total = row.offense?.totalPPA ?? offenseTotalFrom(row);
+    if (total === null) continue;
+    const teams = byGame.get(row.gameId) ?? new Map<string, number>();
+    teams.set(row.team, total);
+    byGame.set(row.gameId, teams);
+  }
+  return (game: CfbdGame): number | null => {
+    const teams = byGame.get(game.id);
+    if (!teams) return null;
+    const home = teams.get(game.homeTeam);
+    const away = teams.get(game.awayTeam);
+    if (home === undefined || away === undefined) return null;
+    return home - away;
+  };
+}
+
+/**
+ * Re-split a game's points so the margin moves toward the efficiency margin
+ * while the total stays exactly as played. `weight` 0 returns the real score
+ * untouched, which is what makes this safe to ship dark.
+ */
+export function blendedPoints(
+  game: CfbdGame,
+  effMargin: (g: CfbdGame) => number | null,
+  weight: number,
+): { home: number; away: number } {
+  const home = game.homePoints as number;
+  const away = game.awayPoints as number;
+  if (!weight) return { home, away };
+  const eff = effMargin(game);
+  if (eff === null) return { home, away };
+  const total = home + away;
+  const margin = (1 - weight) * (home - away) + weight * eff;
+  return { home: total / 2 + margin / 2, away: total / 2 - margin / 2 };
+}
+
+/** Some CFBD responses carry per-play ppa without the season total. */
+function offenseTotalFrom(row: CfbdAdvancedGameStat): number | null {
+  const ppa = row.offense?.ppa;
+  const plays = row.offense?.plays;
+  if (ppa === null || ppa === undefined || plays === null || plays === undefined) return null;
+  return ppa * plays;
 }
 
 export async function cached<T>(
@@ -45,12 +109,16 @@ export async function cached<T>(
 }
 
 export async function loadSeason(season: number, useCache: boolean): Promise<SeasonData> {
-  const [games, lines, prevSp] = await Promise.all([
+  const [games, lines, prevSp, advanced] = await Promise.all([
     cached(`games-${season}`, () => cfbd.games(season), useCache),
     cached(`lines-${season}`, () => cfbd.lines(season), useCache),
     cached(`sp-${season - 1}`, () => cfbd.spRatings(season - 1), useCache),
+    // One call covers the season. Tolerated as optional: a key without the
+    // tier for this endpoint should degrade to the score-only model, not
+    // break the backtest.
+    cached(`advanced-${season}`, () => cfbd.advancedGameStats(season), useCache).catch(() => []),
   ]);
-  return { season, games, lines, prevSp };
+  return { season, games, lines, prevSp, advanced };
 }
 
 export interface ReplayPrediction {
@@ -160,6 +228,7 @@ export function replaySeason(
   // deltas sum to the updateFromResult delta), so margins reproduce the tuned
   // behavior while totals gain real matchup signal.
   const tiltOf = (id: number) => tilts?.get(id) ?? 0;
+  const effMargin = efficiencyMargins(data.advanced);
   const offense = new Map<number, number>();
   const defense = new Map<number, number>();
   for (const [id, prior] of priors) {
@@ -242,6 +311,11 @@ export function replaySeason(
     }
 
     for (const { game: g, home, away } of weekPredictions) {
+      // Blend the scoreboard toward per-play efficiency before updating. The
+      // GAME TOTAL is preserved and only the split moves, so totals modeling is
+      // untouched and this is purely a cleaner margin signal. Falls back to the
+      // raw score whenever PPA is missing for either side.
+      const points = blendedPoints(g, effMargin, params.epaWeight);
       // errors are measured against the BLENDED prediction (same reference the
       // old overall update used), then applied to the unblended running state
       const upd = updateSubRatings(
@@ -250,8 +324,8 @@ export function replaySeason(
           homeDefense: home.defense,
           awayOffense: away.offense,
           awayDefense: away.defense,
-          homePoints: g.homePoints as number,
-          awayPoints: g.awayPoints as number,
+          homePoints: points.home,
+          awayPoints: points.away,
           hfa: params.baseHfa,
           neutralSite: g.neutralSite,
         },
