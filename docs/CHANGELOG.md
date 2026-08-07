@@ -141,6 +141,34 @@ shipping it.
 
 ## Log
 
+### Aug 7 — Off/Def back on the ratings page, behind the honesty gate
+
+The audit reconciliation surfaced this: pulling the Off/Def columns was right
+when the pipeline wrote `overall/2` twice, but the halves have been real since
+2026.3.0 and were never restored, so `/ratings` under-reported what the model
+knows. They're back — with the condition that made removing them correct in the
+first place still enforced.
+
+`splitInformative` decides, the same function that decides whether a projected
+total is a prediction or a constant. Two identical halves are one measurement
+printed twice, whatever the model version says, so the columns hide rather than
+fabricate a pair. Hiding is the honest state, not a degraded one, and the page
+says so in plain words instead of leaving a silent gap.
+
+**This is live-correct today and will change on its own.** All 138 week-0 rows
+in production sit at `offense == defense` exactly (max gap 0.000, version
+2026.2.0), so the columns are hidden right now. They appear the morning the
+preseason refresh lands 2026.4.0 with the 0.4 tilt carry — no deploy, no toggle.
+
+Details worth keeping: Off and Def are signed (`+12.0`, `-3.0`) because they are
+deviations from average, while Rating stays unsigned because it is a position.
+Rank stays keyed to overall no matter which column is sorted. The cells are
+positional, so a test pins header-to-cell alignment in both modes — adding a
+header without its cell would shift every number one column left, silently.
+
+Not done, by request: futures tracker (#40), generated db types (#44), ⌘K (#45)
+and OG share images (#46) stay open. They are additive features, not defects.
+
 ### Aug 7 — the audit, reconciled
 
 `docs/AUDIT-2026-08.md` had 18 numbered bugs and a 46-item checklist, all showing
@@ -359,8 +387,9 @@ and signed-error reporting; nine backtest tuners.
   mark-to-market (#40), generated db types (#44), ⌘K quick-switcher (#45), OG
   share images (#46). Six more are partial — see the status tables in
   `docs/AUDIT-2026-08.md` for exactly which piece each is missing.
-- **`/ratings` still hides Off/Def.** Dropping the columns was right when they
-  were `overall/2`; they've been real since 2026.3.0 and were never restored.
+- **Off/Def are built but dark**, for the same reason everything else is: the
+  production ratings are still 2026.2.0 with even splits. The columns appear on
+  their own once the preseason refresh lands.
 - Untested model ideas that remain plausible: pass/rush splits, special teams and
   field position, QB modeling from player PPA (currently one boolean).
 
