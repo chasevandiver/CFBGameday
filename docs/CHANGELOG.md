@@ -30,9 +30,15 @@ carries the number that killed it.
 **`MODEL_VERSION` 2026.4.0** (`src/model/ratings.ts`), on `main` via PR #12
 (2026-08-07).
 
-⚠️ **In the code, not yet in production.** `team_hfa` rows are derived from
-`baseHfa` at build time, so the `2.3 → 3.0` fix does nothing until
-`build-preseason.ts` is re-run and reloaded. See Open items.
+⚠️ **In the code, not yet in production.** As of 2026-08-07 the database serves
+`ratings` at **2026.2.0** — the site is running a model three versions behind
+this table. `team_hfa` rows are derived from `baseHfa` at build time, so the
+`2.3 → 3.0` fix in particular does nothing until `build-preseason.ts` is re-run
+and reloaded.
+
+That reload is now automatic: the `preseason-refresh` job (below) retries every
+morning in August and loads on the first day `--check` reports READY. Nothing to
+run by hand. See Open items for what it is waiting on.
 
 | Parameter | Value | Provenance |
 |---|---|---|
@@ -135,6 +141,43 @@ shipping it.
 
 ## Log
 
+### Aug 7 — the preseason load, automated
+
+Merged PR #12 as `97c5a6a`. A **merge commit, not a squash**: the table below
+cites 22 branch SHAs, and squashing would have left every one of them dangling.
+
+Checking production after the merge turned up the gap the PR description had
+only half-stated. `ratings` in the database are stamped `2026.2.0` while the code
+is `2026.4.0` — the site has been serving a model from before the tilt carry, the
+churn restructure and the HFA fix. `team_hfa` averages 3.607, consistent with
+`0.5·raw + 0.5·2.3`. None of the merged work was reaching anyone.
+
+Nothing was *broken*: the `hasCalibratedTotals` gate correctly suppresses totals
+on those stale rows, so the site was showing less rather than showing wrong. But
+the only path to fix it was a human running `build-preseason` and then
+`load-json.ts` once per emitted file with a service-role key in their shell.
+
+- **`scripts/load-preseason.ts`** — loads a build directory in one command.
+  Order comes from the emit counter parsed as an integer, not from a hard-coded
+  table list (which would silently skip a table added later) and not from a
+  lexical sort (which puts `100-` before `99-`). `predictions` and
+  `line_snapshots` have identity PKs, so an upsert appends a second copy rather
+  than replacing — the same shape as the freeze-horizon bug — and the refresh
+  path skips them; `--bootstrap` is the once-per-season exception. A load into a
+  season with final games is refused outright: at that point week-0 ratings are
+  history and `ratings-update` owns the current ones.
+- **`preseason-refresh` / `preseason-bootstrap` job tasks**, plus a daily 11:00
+  UTC cron across Aug 1–27. `--check` is the gate: it exits non-zero while any
+  input is still falling back, and the job stops there rather than shipping a
+  rating built on last year's talent. So the outstanding "2026 talent is
+  unpublished, re-run `--check` before Aug 26" item now resolves itself — the
+  job retries every morning and loads on the first day the data is real.
+
+A declined refresh exits 0. Most mornings in August the honest answer is "not
+yet", and a job that goes red every day for three weeks is a job nobody reads.
+The standalone `preseason-check` task keeps its non-zero exit for when you ask
+the question deliberately.
+
 ### Aug 7 — model correctness and the edge verdict (PR #12)
 
 Branch `claude/statistical-prediction-model-el0efe`. First-hand.
@@ -217,17 +260,19 @@ and signed-error reporting; nine backtest tuners.
 - **CLV tracking on Receipts** — never built. The honest in-season scoreboard:
   positive CLV with a losing ATS record is a coherent story, and it's what the
   backtest actually found. Needs `predictions.open_spread` + `clv`.
-- **2026 talent is unpublished.** `build-preseason` silently falls back to 2025,
-  so current ratings contain **no incoming recruiting class**. Re-run
-  `--check` before the Aug 26 load.
-- **`team_hfa` rows must be rebuilt** for `baseHfa` 3.0 to reach production —
-  they're derived from it. The parameter alone is not enough.
+- **Production is three model versions behind.** `ratings` in the database are
+  `2026.2.0`; the code is `2026.4.0`. Everything since — the tilt carry, the
+  churn restructure, `baseHfa` 3.0 — is dark until a rebuild lands.
+- **2026 talent is unpublished**, which is what the rebuild is waiting on.
+  `build-preseason` silently falls back to 2025, so a build today would carry
+  **no incoming recruiting class**. `--check` catches this and refuses; the
+  daily `preseason-refresh` job retries until CFBD publishes. **No manual step
+  is required** — but if it is still red by ~Aug 26, that is worth looking at,
+  because the openers are Aug 29.
 - **`supabase/functions/jobs/index.ts` is dead and drifted** — never deployed,
   and behind `scripts/lib/jobs-core.ts`. Left untouched deliberately.
 - **Audit statuses unreconciled** — all 46 checklist items in
   `docs/AUDIT-2026-08.md` are still `[ ]` though most shipped Aug 6.
-- **Local `main` is stale** at the initial commit; the real default branch is
-  `origin/main`. `git branch --merged main` is misleading.
 - Untested model ideas that remain plausible: pass/rush splits, special teams and
   field position, QB modeling from player PPA (currently one boolean).
 
@@ -253,16 +298,33 @@ npx tsx scripts/backtest.ts [--cached]
 --tune-sp-blend     # prior-year SP+ blend
 --diagnose-edges    # market MAE + encompassing regression (the edge gate)
 
-# Preseason
+# Preseason — build
 npx tsx scripts/build-preseason.ts --check          # readiness; non-zero exit when inputs incomplete
 npx tsx scripts/build-preseason.ts --out DIR --top 40
+
+# Preseason — load (FK order from the filename counter; refuses a season
+# that has already played, unless --force)
+npx tsx scripts/load-preseason.ts --dir DIR --dry-run   # print the plan, write nothing
+npx tsx scripts/load-preseason.ts --dir DIR             # refresh: skips predictions + line_snapshots
+npx tsx scripts/load-preseason.ts --dir DIR --bootstrap # first load of a season: everything
 ```
+
+`predictions` and `line_snapshots` have identity primary keys, so an upsert
+appends instead of replacing. A second `--bootstrap` duplicates them — which is
+why the refresh path skips them and why `--bootstrap` is never scheduled.
 
 **CI** — `backtest.yml` runs the calibration report and `--diagnose-edges` on
 every PR touching `src/model/**`, `scripts/backtest.ts`, `scripts/lib/replay.ts`
 or `scripts/lib/coaching.ts`. `ci.yml` runs lint/typecheck/test/build on every
-PR. `jobs.yml` carries the scheduled data jobs plus `preseason-preview` and
-`preseason-check` dispatch tasks.
+PR. `jobs.yml` carries the scheduled data jobs plus the `preseason-preview`,
+`preseason-check`, `preseason-refresh` and `preseason-bootstrap` dispatch tasks.
+
+`preseason-refresh` also runs on a daily 11:00 UTC cron across Aug 1–27. It runs
+`--check` first and loads nothing unless every input is live, so it is safe to
+let it retry unattended; a declined run exits 0 rather than going red every
+morning for three weeks. The window stops on the 27th because openers are the
+last weekend of August — after that the ratings belong to `ratings-update`, and
+`load-preseason.ts` refuses a season with final games anyway.
 
 **Note on workflow runs:** PRs opened by an app token do not trigger Actions.
 Closing and reopening the PR as a human does.
