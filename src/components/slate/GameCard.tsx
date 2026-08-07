@@ -751,7 +751,7 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
             </span>
           )}
           <MoveIndicator move={move} open={game.lines.spreadOpen} />
-          <Sparkline points={game.spreadHistory} />
+          <Sparkline points={game.spreadHistory} vsModel={move?.vsModel ?? null} />
         </div>
       </div>
 

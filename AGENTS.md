@@ -20,8 +20,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   (per-play efficiency, blending in SP+, widening early-season sigma) have
   already been tested and rejected on evidence. Check there before proposing one.
 - `docs/SPEC.md` — what we're building and why.
-- `docs/AUDIT-2026-08.md` — Aug 2026 product audit. Note its 46-item checklist is
-  unreconciled: items show `[ ]` even where the work shipped.
+- `docs/AUDIT-2026-08.md` — Aug 2026 product audit, **reconciled 2026-08-07**.
+  The 18 bugs and the 46-item checklist each carry a status table verified
+  against the code. The raw `[ ]` boxes below those tables are the original
+  text, kept as the historical record — read the table, not the boxes.
 
 ## Model changes
 
