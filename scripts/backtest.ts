@@ -8,6 +8,7 @@
  *   npx tsx scripts/backtest.ts --tune-sigma                 # fit priorSigmaExtra (early-week uncertainty)
  *   npx tsx scripts/backtest.ts --tune-preseason-tilts       # should preseason off/def carry a shape?
  *   npx tsx scripts/backtest.ts --tune-coaching              # fit newHcIntercept / newHcSlope
+ *   npx tsx scripts/backtest.ts --tune-churn                 # fit returning-production weight + talent reload
  *   npx tsx scripts/backtest.ts --tune-anchors               # week-1 Elo / preseason poll anchor weights
  *
  * Each --tune-* flag prints its own pre-registered decision rule alongside the
@@ -28,6 +29,7 @@
 import { pathToFileURL } from "node:url";
 import {
   DEFAULT_PARAMS,
+  churnAdjustment,
   coachingAdjustmentContinuous,
   priorWeight,
   type ModelParams,
@@ -654,6 +656,107 @@ async function tuneCoaching(seasons: SeasonData[], teamIdsByName: Map<string, nu
 }
 
 /**
+ * --tune-churn: how hard should returning production move a preseason rating,
+ * and does a high-talent roster blunt it?
+ *
+ * Two things forced this. The "defense" input was a second offense metric, so
+ * the effective weight was ~10 on one correlated quantity rather than 5+5 on
+ * two independent ones — and it saturated the ±6 clamp for four of the top 40
+ * teams in the 2026 build. And blue bloods lose the most production to the NFL
+ * while replacing it with blue-chips, so churn and talent applied additively
+ * double-penalize the programs that reload (Alabama: 2nd-highest talent, 26th).
+ */
+async function tuneChurn(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
+  const { cfbd } = await import("../src/lib/cfbd");
+  const { cached } = await import("./lib/replay");
+  const { talentBySeason, spFinalBySeason } = await loadPriorInputs(teamIdsByName);
+
+  // Returning production for each season's roster, keyed by team id.
+  const retBySeason = new Map<number, Map<number, number>>();
+  for (const season of SEASONS) {
+    const rows = await cached(
+      `returning-${season}`,
+      () => cfbd.returningProduction(season),
+      true,
+    );
+    const map = new Map<number, number>();
+    for (const r of rows) {
+      const id = teamIdsByName.get(r.team);
+      if (id !== undefined && r.percentPPA !== null) map.set(id, r.percentPPA);
+    }
+    retBySeason.set(season, map);
+  }
+  console.log(
+    `\n== --tune-churn == (returning production coverage: ` +
+      `${retBySeason.get(SEASONS[1])?.size ?? 0} teams in ${SEASONS[1]})`,
+  );
+  console.log("weight  reload   early NLL   early MAE   clamped");
+
+  let best: { w: number; r: number; nll: number } | null = null;
+  for (const returningProdWeight of [0, 2, 4, 6, 8, 10, 12]) {
+    for (const talentReloadStrength of [0, 0.25, 0.5, 0.75, 1]) {
+      const params: ModelParams = {
+        ...DEFAULT_PARAMS,
+        returningProdWeight,
+        talentReloadStrength,
+      };
+      let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
+      const early: ReplayPrediction[] = [];
+      let clamped = 0;
+      let churnCount = 0;
+      for (const season of seasons) {
+        const { predictions, finalRatings } = replaySeason(season, priors, DEFAULT_PARAMS);
+        if (SCORED.includes(season.season)) early.push(...predictions.filter((p) => p.week <= 4));
+        const next = season.season + 1;
+        const spFinal = spFinalBySeason.get(season.season)!;
+        const talent = talentBySeason.get(season.season)!;
+        const ret = retBySeason.get(next) ?? retBySeason.get(season.season)!;
+        const out = new Map<number, number>();
+        for (const [teamId, rating] of finalRatings) {
+          const sp = spFinal.get(teamId);
+          const base = sp !== undefined ? 0.5 * rating + 0.5 * sp : rating;
+          const tal = talent.get(teamId) ?? -8;
+          const churn = churnAdjustment(
+            {
+              returningProduction: ret.get(teamId) ?? 0.6,
+              qbReturns: null,
+              olReturningShare: 0.5,
+              netPortalPoints: 0,
+              blueChipFreshmen: 0,
+              talentBaseline: tal,
+            },
+            params,
+          );
+          churnCount++;
+          if (Math.abs(Math.abs(churn) - 6) < 0.001) clamped++;
+          out.set(teamId, 0.7 * base + 0.3 * tal + churn);
+        }
+        priors = out;
+      }
+      const n = nll(early);
+      console.log(
+        `${String(returningProdWeight).padStart(5)}   ${talentReloadStrength.toFixed(2)}     ` +
+          `${n.toFixed(4)}      ${maeOf(early.map((p) => p.actualMargin - p.margin)).toFixed(2)}       ` +
+          `${((clamped / Math.max(churnCount, 1)) * 100).toFixed(1)}%`,
+      );
+      if (!best || n < best.nll) best = { w: returningProdWeight, r: talentReloadStrength, nll: n };
+    }
+  }
+  if (best) {
+    console.log(
+      `\nBest: returningProdWeight=${best.w} talentReloadStrength=${best.r} (NLL ${best.nll.toFixed(4)})`,
+    );
+    console.log(
+      best.w === 0
+        ? "→ returning production earns NO weight: it is not predictive here once the\n" +
+            "  prior and talent are in. Setting it to 0 is the honest outcome."
+        : `→ set both in DEFAULT_PARAMS. The clamped%% column should be near zero; if the\n` +
+            "  winner still saturates, the clamp is doing the fitting rather than the weight.",
+    );
+  }
+}
+
+/**
  * --tune-anchors: are there preseason signals worth adding to the prior beyond
  * our own replay finals and final SP+?
  *
@@ -1049,6 +1152,7 @@ async function main() {
   const tuneCoachingFlag = process.argv.includes("--tune-coaching");
   const tuneAnchorsFlag = process.argv.includes("--tune-anchors");
   const diagnose = process.argv.includes("--diagnose-edges");
+  const tuneChurnFlag = process.argv.includes("--tune-churn");
 
   console.log(`Loading seasons ${SEASONS.join(", ")} ${useCache ? "(cache preferred)" : "(fetching)"}…`);
   const seasons: SeasonData[] = [];
@@ -1074,6 +1178,10 @@ async function main() {
   }
   if (tuneAnchorsFlag) {
     await tuneAnchors(seasons, teamIdsByName);
+    return;
+  }
+  if (tuneChurnFlag) {
+    await tuneChurn(seasons, teamIdsByName);
     return;
   }
 

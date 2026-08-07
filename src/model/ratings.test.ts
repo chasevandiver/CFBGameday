@@ -64,37 +64,65 @@ describe("preseason rating", () => {
 });
 
 describe("churn adjustment", () => {
+  const base = {
+    returningProduction: 0.6,
+    qbReturns: true as boolean | null,
+    olReturningShare: 0.5,
+    netPortalPoints: 0,
+    blueChipFreshmen: 0,
+  };
+
   it("is ~0 for an average-churn roster", () => {
-    const adj = churnAdjustment({
-      returningProductionOffense: 0.6,
-      returningProductionDefense: 0.6,
-      qbReturns: true,
-      olReturningShare: 0.5,
-      netPortalPoints: 0,
-      blueChipFreshmen: 0,
-    });
-    expect(Math.abs(adj)).toBeLessThanOrEqual(1.5);
+    expect(Math.abs(churnAdjustment(base))).toBeLessThanOrEqual(1.5);
   });
 
   it("clamps to the −6..+6 range", () => {
     const gutted = churnAdjustment({
-      returningProductionOffense: 0.05,
-      returningProductionDefense: 0.05,
+      ...base,
+      returningProduction: 0.05,
       qbReturns: false,
       olReturningShare: 0,
       netPortalPoints: -4,
-      blueChipFreshmen: 0,
     });
     expect(gutted).toBe(-6);
     const loaded = churnAdjustment({
-      returningProductionOffense: 0.95,
-      returningProductionDefense: 0.95,
-      qbReturns: true,
+      ...base,
+      returningProduction: 0.95,
       olReturningShare: 1,
       netPortalPoints: 4,
       blueChipFreshmen: 5,
     });
     expect(loaded).toBe(6);
+  });
+
+  it("scales with the fitted weight, so the clamp isn't doing the fitting", () => {
+    const hot = churnAdjustment({ ...base, returningProduction: 0.3 }, DEFAULT_PARAMS);
+    const cool = churnAdjustment(
+      { ...base, returningProduction: 0.3 },
+      { ...DEFAULT_PARAMS, returningProdWeight: 4 },
+    );
+    expect(hot).toBeLessThan(cool); // both negative; the hot weight is more so
+  });
+
+  it("blunts returning production for high-talent rosters when reload is on", () => {
+    // Blue bloods lose the most production but replace it with blue-chips.
+    // With reload on, the same weak returning number costs Alabama less.
+    const params = { ...DEFAULT_PARAMS, talentReloadStrength: 0.75 };
+    const bluechip = churnAdjustment(
+      { ...base, returningProduction: 0.3, talentBaseline: 18 },
+      params,
+    );
+    const g5 = churnAdjustment(
+      { ...base, returningProduction: 0.3, talentBaseline: -12 },
+      params,
+    );
+    expect(bluechip).toBeGreaterThan(g5);
+  });
+
+  it("reload strength 0 ignores talent entirely (the pre-fit default)", () => {
+    const withTalent = churnAdjustment({ ...base, returningProduction: 0.3, talentBaseline: 18 });
+    const without = churnAdjustment({ ...base, returningProduction: 0.3, talentBaseline: null });
+    expect(withTalent).toBe(without);
   });
 });
 

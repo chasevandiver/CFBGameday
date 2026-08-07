@@ -86,6 +86,18 @@ export interface ModelParams {
    */
   newHcIntercept: number;
   newHcSlope: number;
+  /**
+   * Points of churn per unit of returning production above/below the FBS
+   * average. Replaces the old implicit weight of 10 (two ×5 terms that were
+   * assumed independent but were both offense). Fit by `--tune-churn`.
+   */
+  returningProdWeight: number;
+  /**
+   * How much a high-talent roster blunts the returning-production term
+   * (0 = off, 1 = the most talented roster ignores it entirely). Fit by
+   * `--tune-churn`.
+   */
+  talentReloadStrength: number;
 }
 
 export const DEFAULT_PARAMS: ModelParams = {
@@ -113,6 +125,10 @@ export const DEFAULT_PARAMS: ModelParams = {
   priorSigmaExtra: 0,
   newHcIntercept: 0,
   newHcSlope: 0,
+  // 10 preserves the old total sensitivity (two ×5 terms) as the starting
+  // point for --tune-churn; reload interaction off until fitted.
+  returningProdWeight: 10,
+  talentReloadStrength: 0,
 };
 
 export interface TeamRating {
@@ -146,9 +162,19 @@ export function preseasonRating(inp: PreseasonInputs, p: ModelParams = DEFAULT_P
 }
 
 export interface ChurnInputs {
-  /** CFBD percentPPA-style returning production, 0..1 */
-  returningProductionOffense: number;
-  returningProductionDefense: number;
+  /**
+   * Returning production, 0..1 (CFBD `percentPPA`).
+   *
+   * ONE term, not two. This previously took an "offense" and a "defense"
+   * value, but every field CFBD publishes on /player/returning — percentPPA,
+   * usage, passingUsage — is an offensive PPA/usage measure. There is no
+   * defensive counterpart in the payload, so the old "defense" input was fed
+   * `usage`: a second, correlated *offense* metric. Each was scaled ×5, which
+   * double-counted offense, left defense unmodeled, and saturated the ±6 clamp
+   * (Alabama, Penn State and Auburn all pinned at −6.0 in the 2026 build).
+   * Treat it honestly as a whole-roster proxy with a single fitted weight.
+   */
+  returningProduction: number;
   /** True if the primary QB (by prior-season usage) returns; null = unknown (no signal) */
   qbReturns: boolean | null;
   /** OL returning starts as a share of 5 × games, 0..1 */
@@ -157,22 +183,39 @@ export interface ChurnInputs {
   netPortalPoints: number;
   /** Count of incoming blue-chip (4/5-star) freshmen */
   blueChipFreshmen: number;
+  /**
+   * Talent baseline in rating points, for the reload interaction. Blue bloods
+   * lose the most production to the NFL and so score worst on returning
+   * production — but their replacements are also blue-chips. Applying churn
+   * and talent additively double-penalizes exactly the programs that reload.
+   * null disables the interaction.
+   */
+  talentBaseline?: number | null;
 }
 
 /**
- * Churn adjustment, typical range −6..+6 (§2.1).
- * Returning production is centered on the FBS average (~60%) so an average
- * roster churns to 0 adjustment; QB and OL carry extra weight.
+ * Churn adjustment, clamped ±6 (§2.1). Returning production is centered on the
+ * FBS average (~60%) so an average roster churns to 0; QB and OL carry extra
+ * weight.
+ *
+ * `talentReloadStrength` scales the returning-production term down for
+ * high-talent rosters and up for low-talent ones: losing your stars hurts a
+ * MAC team far more than it hurts Georgia. 0 disables it.
  */
-export function churnAdjustment(c: ChurnInputs): number {
+export function churnAdjustment(c: ChurnInputs, p: ModelParams = DEFAULT_PARAMS): number {
   const AVG_RETURNING = 0.6;
-  const offCore = (c.returningProductionOffense - AVG_RETURNING) * 5;
-  const defCore = (c.returningProductionDefense - AVG_RETURNING) * 5;
+  // Talent is on the ±18 rating-point scale (z × 5.5, clamped in the builder).
+  const talentZ =
+    c.talentBaseline === null || c.talentBaseline === undefined
+      ? 0
+      : clamp(c.talentBaseline / 18, -1, 1);
+  const reload = clamp(1 - p.talentReloadStrength * talentZ, 0, 2);
+  const core = (c.returningProduction - AVG_RETURNING) * p.returningProdWeight * reload;
   // ~2x weight embedded relative to a generic starter; unknown = no signal
   const qb = c.qbReturns === null ? 0 : c.qbReturns ? 1.0 : -1.0;
   const ol = (c.olReturningShare - 0.5) * 3; // ~1.5x weight
   const freshmen = Math.min(c.blueChipFreshmen * 0.1, 0.75);
-  const raw = offCore + defCore + qb + ol + c.netPortalPoints + freshmen;
+  const raw = core + qb + ol + c.netPortalPoints + freshmen;
   return clamp(raw, -6, 6);
 }
 

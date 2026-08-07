@@ -252,14 +252,20 @@ async function main() {
     const retPassing = ret?.percentPassingPPA ?? null;
     const retOverall = ret?.percentPPA ?? null;
 
-    const churn = churnAdjustment({
-      returningProductionOffense: retOverall ?? 0.6,
-      returningProductionDefense: ret?.usage !== null && ret ? clamp(ret.usage ?? 0.6, 0, 1) : 0.6,
-      qbReturns: ret && retPassing !== null ? retPassing >= 0.5 : null,
-      olReturningShare: 0.5, // no data source — neutral (docs/SPEC.md §3 v2)
-      netPortalPoints: clamp(((portalNet.get(team.id) ?? 0) / pStd) * 1.5, -4, 4),
-      blueChipFreshmen: 0,
-    });
+    const churn = churnAdjustment(
+      {
+        // One returning-production term. `usage` used to be passed as a
+        // "defense" value, but it is another offense metric — that double-count
+        // is what pinned Alabama, Penn State and Auburn at the −6 clamp.
+        returningProduction: retOverall ?? 0.6,
+        qbReturns: ret && retPassing !== null ? retPassing >= 0.5 : null,
+        olReturningShare: 0.5, // no data source — neutral (docs/SPEC.md §3 v2)
+        netPortalPoints: clamp(((portalNet.get(team.id) ?? 0) / pStd) * 1.5, -4, 4),
+        blueChipFreshmen: 0,
+        talentBaseline: tal,
+      },
+      DEFAULT_PARAMS,
+    );
 
     const l = luck.get(team.id);
     const luckCorr = l
@@ -350,6 +356,15 @@ async function main() {
   const noRet = preseason.filter((p) => p.retOff === null).length;
   if (noPrev > 0) console.log(`  note: ${noPrev} team(s) had no prior-season rating (talent only)`);
   if (noRet > 0) console.log(`  note: ${noRet} team(s) had no returning-production match`);
+  // A clamp that binds often isn't protecting against outliers, it's erasing
+  // real differences — the model stops being able to tell "bad" from "awful".
+  const clamped = preseason.filter((p) => Math.abs(Math.abs(p.churn) - 6) < 0.001).length;
+  if (clamped > 0) {
+    console.log(
+      `  note: ${clamped} team(s) hit the ±6 churn clamp` +
+        (clamped > 5 ? " — saturating; the churn scale is too hot" : ""),
+    );
+  }
 
   // ---- 7. Team HFA quick estimate (2015–2024) -------------------------------
   console.log("Estimating team HFA from 2015–2024…");
