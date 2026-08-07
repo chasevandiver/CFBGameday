@@ -808,6 +808,40 @@ async function tuneEnsemble(seasons: SeasonData[], teamIdsByName: Map<string, nu
         "   means another regressor already carries the answer. Leak, not signal.",
     );
   }
+
+  // Equal weights, no fitted coefficients. The fit above lands at ~0.45/0.50,
+  // i.e. it is telling us the two models deserve equal say — and an equal-weight
+  // ensemble cannot overfit because there is nothing to fit. The in-sample to
+  // holdout decay of the fitted version (roughly halving) is the classic sign
+  // that its coefficients carry season-specific noise, so the simpler form is
+  // often the one that survives.
+  console.log("\n-- Equal weights (no fitted coefficients) --");
+  console.log("variant                       holdout MAE   vs ours");
+  const oursHoldout = maeOf(holdoutRows.map((r) => r.p.actualMargin - r.p.margin));
+  for (const [label, predict] of [
+    ["50/50 ours+elo", (r: (typeof rows)[number]) => 0.5 * r.p.margin + 0.5 * r.eloMargin],
+    [
+      "50/50 + fitted intercept",
+      (r: (typeof rows)[number]) => beta[0] + 0.5 * r.p.margin + 0.5 * r.eloMargin,
+    ],
+  ] as Array<[string, (r: (typeof rows)[number]) => number]>) {
+    const mae = maeOf(holdoutRows.map((r) => r.p.actualMargin - predict(r)));
+    console.log(
+      `${label.padEnd(29)} ${mae.toFixed(3)}         ${(oursHoldout - mae).toFixed(3)}`,
+    );
+    warnIfTooGood(label, mae);
+  }
+
+  // Mean SIGNED error: the fitted intercept came in around +2 at t>4, which
+  // says the blend wants a constant added to every home margin. Our model
+  // already applies HFA, so a bias that size is a finding in its own right —
+  // and MAE and sigma both hide it, since they are symmetric.
+  const bias = (xs: (typeof rows)[number][]) =>
+    mean(xs.map((r) => r.p.actualMargin - r.p.margin));
+  console.log(
+    `\nMean signed margin error (actual − ours): fit ${bias(fitRows).toFixed(2)}, ` +
+      `holdout ${bias(holdoutRows).toFixed(2)}. Positive means we under-predict the home side.`,
+  );
   console.log(
     `\nDecision rule: ship weights only if a system's t clears ${TIER_T} AND the 2025\n` +
       "holdout improves by ≥ 0.15 MAE. The EPA change bought 0.010 and was rejected;\n" +
