@@ -7,3 +7,25 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+<!-- Everything below is hand-written and survives `next dev`: the generator
+     (node_modules/next/dist/server/lib/generate-agent-files.js) replaces only
+     the region between the BEGIN/END markers above. -->
+
+# Project context
+
+- **`docs/CHANGELOG.md` — read this first.** Running log of what shipped, plus a
+  decisions table recording every gated experiment *including the rejections*,
+  each with the number that decided it. Several plausible-sounding model ideas
+  (per-play efficiency, blending in SP+, widening early-season sigma) have
+  already been tested and rejected on evidence. Check there before proposing one.
+- `docs/SPEC.md` — what we're building and why.
+- `docs/AUDIT-2026-08.md` — Aug 2026 product audit. Note its 46-item checklist is
+  unreconciled: items show `[ ]` even where the work shipped.
+
+## Model changes
+
+The model is gated. Every parameter in `DEFAULT_PARAMS` is either fitted by a
+`backtest.ts --tune-*` flag or sits at an identity default that reproduces the
+previous version exactly. Do not change one without running its tuner and
+recording the result in the changelog — including when the answer is "no".
