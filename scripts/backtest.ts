@@ -716,7 +716,19 @@ async function tuneEnsemble(seasons: SeasonData[], teamIdsByName: Map<string, nu
 
   const rows = all
     .map((p) => {
-      const elo = eloBySeasonWeek.get(`${p.season}|${p.week}`);
+      // LAG BY ONE WEEK. CFBD's week-N Elo is the rating AFTER week N's games,
+      // so joining on the same week hands the regression the result of the
+      // game it is predicting. The first version of this did exactly that and
+      // produced t=45 on Elo, a NEGATIVE coefficient on our own model, and MAE
+      // 9.44 against a market at 11.98 — i.e. "beats Vegas by 2.5 points",
+      // which is the shape of a leak, not a discovery.
+      //
+      // Week 1 falls back to the previous season's final Elo. Both are what a
+      // Thursday freeze would actually have in hand.
+      const elo =
+        p.week > 1
+          ? eloBySeasonWeek.get(`${p.season}|${p.week - 1}`)
+          : lastEloOfSeason(eloBySeasonWeek, p.season - 1);
       const eloH = elo?.get(p.homeId);
       const eloA = elo?.get(p.awayId);
       const sp = priorSp.get(p.season);
@@ -776,6 +788,13 @@ async function tuneEnsemble(seasons: SeasonData[], teamIdsByName: Map<string, nu
     console.log(
       `${label.padEnd(13)} ${ours.toFixed(3)}      ${ens.toFixed(3)}         ${(ours - ens).toFixed(3)}`,
     );
+    warnIfTooGood(`ensemble (${label})`, ens);
+  }
+  if (beta[1] < 0) {
+    console.log(
+      "!! Our own coefficient is NEGATIVE: the fit is subtracting this model, which\n" +
+        "   means another regressor already carries the answer. Leak, not signal.",
+    );
   }
   console.log(
     `\nDecision rule: ship weights only if a system's t clears ${TIER_T} AND the 2025\n` +
@@ -785,6 +804,36 @@ async function tuneEnsemble(seasons: SeasonData[], teamIdsByName: Map<string, nu
 }
 
 const ENSEMBLE_TESTS = 3;
+
+/** Latest week we have Elo for in a season — the pre-week-1 state for the next. */
+function lastEloOfSeason(
+  byWeek: Map<string, Map<number, number>>,
+  season: number,
+): Map<number, number> | undefined {
+  for (let week = 15; week >= 1; week--) {
+    const found = byWeek.get(`${season}|${week}`);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/**
+ * The closing line is the most accurate public estimate of a CFB margin there
+ * is, at 11.98 MAE over 2023–25. Anything claiming to beat it by a wide margin
+ * in a backtest has a leak, not an edge — so say so loudly rather than letting
+ * a spectacular number read as success.
+ */
+const MARKET_MAE = 11.98;
+
+function warnIfTooGood(label: string, mae: number) {
+  if (mae < MARKET_MAE) {
+    console.log(
+      `!! ${label} MAE ${mae.toFixed(3)} beats the closing line (${MARKET_MAE}). Treat this as a\n` +
+        "   lookahead bug until proven otherwise: check that every input was knowable\n" +
+        "   BEFORE kickoff, not merely published with that week's label.",
+    );
+  }
+}
 
 /**
  * --tune-epa: should ratings update from per-play efficiency instead of the
