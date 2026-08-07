@@ -6,6 +6,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cfbd } from "../../src/lib/cfbd";
+import { modelClv, roundClv, spreadClv, totalClv } from "../../src/lib/clv";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
 import { buildTeamNameIndex } from "../../src/lib/rankings";
 import { fetchCurrentSlate } from "../../src/lib/season";
@@ -35,9 +36,22 @@ interface Snapshot {
   game_id: number;
   provider: string;
   spread: number | null;
+  /** Only selected where the opener is needed; consensus falls back to `spread`. */
+  spread_open?: number | null;
   total: number | null;
   captured_at: string;
 }
+
+/**
+ * The columns every consensus read needs.
+ *
+ * `spread_open` matters and is easy to lose: `consensusFromSnapshots` computes
+ * `open` as `spread_open ?? spread`, so a select that omits the column doesn't
+ * error — it silently reports the current line as the opener, and every
+ * prediction's `open_spread` becomes a copy of `vegas_spread`. Exported so a
+ * test can hold the column list to that.
+ */
+export const SNAPSHOT_COLS = "game_id, provider, spread, spread_open, total, captured_at";
 
 /** Shared consensus (src/lib/consensus.ts) — no more drift between the jobs'
  *  copy and the app's copy (audit #43). */
@@ -394,11 +408,12 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
   const finalIds = finals.map((g) => g.id);
   let picksGraded = 0;
   let betsGraded = 0;
+  let predictionsGraded = 0;
   if (finalIds.length > 0) {
     const gameById = new Map(finals.map((g) => [g.id, g]));
     const { data: snaps } = await db
       .from("line_snapshots")
-      .select("game_id, provider, spread, total, captured_at")
+      .select(SNAPSHOT_COLS)
       .in("game_id", finalIds);
     const snapsByGame = new Map<number, Snapshot[]>();
     for (const s of (snaps ?? []) as Snapshot[]) {
@@ -410,6 +425,45 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
       const g = gameById.get(gameId);
       return consensus(snapsByGame.get(gameId) ?? [], g?.start_ts ?? undefined);
     };
+
+    // Model CLV. The leans are published as information rather than bets, so
+    // the ATS column can't carry the model's scoreboard on its own — CLV asks
+    // the better question (did the market come to us after we committed?) and
+    // converges on a single season where a win rate does not.
+    //
+    // Only frozen rows, and only ones not yet graded: predictions is
+    // append-only history, and re-grading would rewrite a receipt. The two
+    // prediction fields written here didn't exist at freeze time; every number
+    // the model committed to stays exactly as it was stored.
+    const { data: preds } = await db
+      .from("predictions")
+      .select("id, game_id, edge, vegas_spread")
+      .eq("frozen", true)
+      .in("game_id", finalIds)
+      .is("clv", null);
+    for (const p of (preds ?? []) as Array<{
+      id: number;
+      game_id: number;
+      edge: number | null;
+      vegas_spread: number | null;
+    }>) {
+      const close = closing(p.game_id).spread;
+      // No closing line means nothing to measure. Leave clv null so the row
+      // stays in the ungraded set and a later lines backfill can still catch
+      // it, rather than banking a 0 that reads as "dead even".
+      if (close === null) continue;
+      const clv = modelClv(
+        p.edge === null ? null : Number(p.edge),
+        p.vegas_spread === null ? null : Number(p.vegas_spread),
+        close,
+      );
+      if (clv === null) continue;
+      const { error } = await db
+        .from("predictions")
+        .update({ clv: roundClv(clv), close_spread: close })
+        .eq("id", p.id);
+      if (!error) predictionsGraded++;
+    }
 
     const { data: picks } = await db
       .from("picks")
@@ -427,15 +481,11 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
       if (p.side === "home" || p.side === "away") {
         const coverMargin = p.side === "home" ? margin + line : -margin - line;
         result = coverMargin > 0 ? "win" : coverMargin < 0 ? "loss" : "push";
-        if (close.spread !== null) {
-          clv = p.side === "home" ? close.spread - line : line - close.spread;
-        }
+        if (close.spread !== null) clv = roundClv(spreadClv(p.side, line, close.spread));
       } else {
         const diff = p.side === "over" ? total - line : line - total;
         result = diff > 0 ? "win" : diff < 0 ? "loss" : "push";
-        if (close.total !== null) {
-          clv = p.side === "over" ? line - close.total : close.total - line;
-        }
+        if (close.total !== null) clv = roundClv(totalClv(p.side, line, close.total));
       }
       const { error } = await db.from("picks").update({ result, clv }).eq("id", p.id);
       if (!error) picksGraded++;
@@ -459,15 +509,11 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
       if (b.bet_type === "spread" && (b.side === "home" || b.side === "away")) {
         const coverMargin = b.side === "home" ? margin + line : -margin - line;
         result = coverMargin > 0 ? "win" : coverMargin < 0 ? "loss" : "push";
-        if (close.spread !== null) {
-          clv = b.side === "home" ? close.spread - line : line - close.spread;
-        }
+        if (close.spread !== null) clv = roundClv(spreadClv(b.side, line, close.spread));
       } else if (b.bet_type === "total" && (b.side === "over" || b.side === "under")) {
         const diff = b.side === "over" ? total - line : line - total;
         result = diff > 0 ? "win" : diff < 0 ? "loss" : "push";
-        if (close.total !== null) {
-          clv = b.side === "over" ? line - close.total : close.total - line;
-        }
+        if (close.total !== null) clv = roundClv(totalClv(b.side, line, close.total));
       }
       if (result === null) continue;
       const units = Number(b.units);
@@ -487,7 +533,13 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
     }
   }
 
-  return { weeks: weeksPlayed.length, ratingRows: ratingRows.length, picksGraded, betsGraded };
+  return {
+    weeks: weeksPlayed.length,
+    ratingRows: ratingRows.length,
+    picksGraded,
+    betsGraded,
+    predictionsGraded,
+  };
 }
 
 /**
@@ -560,7 +612,7 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
         .not("confirmed_at", "is", null),
       db
         .from("line_snapshots")
-        .select("game_id, provider, spread, total, captured_at")
+        .select(SNAPSHOT_COLS)
         .in(
           "game_id",
           games.map((g) => g.id),
@@ -661,6 +713,11 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
       cover_prob:
         price.homeCoverProb !== null ? Math.round(price.homeCoverProb * 10000) / 10000 : null,
       vegas_spread: vegas.spread,
+      // The opener is context for the receipt, not the number the model was
+      // graded against — CLV measures vegas_spread (what was on the board at
+      // freeze) against the close. Storing it here means the movement is
+      // readable later without re-deriving it from line_snapshots.
+      open_spread: vegas.open,
       edge: price.edge !== null ? Math.round(price.edge * 10) / 10 : null,
       edge_flag: price.edgeFlag,
       consensus_flag: price.consensusFlag,

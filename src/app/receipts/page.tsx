@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AppNav } from "../../components/AppNav";
+import { summarizeClv } from "../../lib/clv";
 import type { GameRow, PredictionRow, TeamRow } from "../../lib/db-types";
 import { DEFAULT_TZ, kickDateLong, kickParts, tzLabel } from "../../lib/kick";
 import { fetchCurrentSeasonWeek } from "../../lib/queries";
@@ -104,6 +105,11 @@ export default async function ReceiptsPage() {
   const flagged = atsGraded.filter((r) => r.pred.edge_flag !== null);
   const flaggedWins = flagged.filter((r) => r.atsResult === "win").length;
 
+  // CLV over every graded lean, not just the flagged ones: flagging at |edge|≥2
+  // throws away most of the sample, and CLV is measurable on any disagreement.
+  // Graded by the Sunday job (scripts/lib/jobs-core.ts), null until then.
+  const clv = summarizeClv(receipts.map((r) => (r.pred.clv === null ? null : Number(r.pred.clv))));
+
   return (
     <>
       <AppNav />
@@ -125,7 +131,7 @@ export default async function ReceiptsPage() {
         {graded.length > 0 && (
           <section className="card mb-5 p-4">
             <h2 className="mb-3 text-sm text-accent">Calibration</h2>
-            <div className="stat grid grid-cols-1 gap-2 text-center text-xs sm:grid-cols-3">
+            <div className="stat grid grid-cols-1 gap-2 text-center text-xs sm:grid-cols-2 lg:grid-cols-4">
               <CalStat
                 label="Model favorites SU"
                 value={`${suWins}–${graded.length - suWins}`}
@@ -145,7 +151,27 @@ export default async function ReceiptsPage() {
                 value={flagged.length ? `${flaggedWins}–${flagged.length - flaggedWins}` : "–"}
                 sub={flagged.length ? "needs >52.4% to matter" : "no graded flags yet"}
               />
+              <CalStat
+                label="Closing line value"
+                value={
+                  clv.avg === null ? "–" : `${clv.avg > 0 ? "+" : ""}${clv.avg.toFixed(2)} pts`
+                }
+                sub={
+                  clv.n === 0
+                    ? "graded Sunday after kickoff"
+                    : `beat the close ${clv.beat}/${clv.n}` +
+                      (clv.flat > 0 ? ` · ${clv.flat} landed on it` : "")
+                }
+                tone={clv.avg === null ? undefined : clv.avg > 0 ? "win" : clv.avg < 0 ? "loss" : undefined}
+              />
             </div>
+            <p className="mt-3 text-[11px] leading-relaxed text-dim">
+              CLV is the honest measure here. The leans are information, not bets — flagged edges
+              went 49.2% against the close in the 2023–25 backtest, under the 52.4% that breaks
+              even. What&rsquo;s worth knowing is whether the market moves toward the model after
+              Thursday, and that answer arrives in one season where a win rate would take several.
+              Positive means it did.
+            </p>
           </section>
         )}
 
@@ -177,6 +203,7 @@ export default async function ReceiptsPage() {
                       <th className="py-2 pr-3 text-right font-semibold">Model</th>
                       <th className="py-2 pr-3 text-right font-semibold">Market</th>
                       <th className="py-2 pr-3 text-right font-semibold">Edge</th>
+                      <th className="py-2 pr-3 text-right font-semibold">CLV</th>
                       <th className="py-2 pr-4 text-right font-semibold">Result</th>
                     </tr>
                   </thead>
@@ -204,6 +231,7 @@ function fmtLine(n: number | null): string {
 function ReceiptRow({ r }: { r: Receipt }) {
   const { game: g, pred, home, away } = r;
   const edge = pred.edge === null ? null : Number(pred.edge);
+  const clv = pred.clv === null ? null : Number(pred.clv);
   const final = g.status === "final" && g.home_points !== null && g.away_points !== null;
   return (
     <tr className="border-t border-chalk/5">
@@ -228,6 +256,18 @@ function ReceiptRow({ r }: { r: Receipt }) {
           <span className={pred.edge_flag ? "font-semibold text-edge" : "text-chalk"}>
             {fmtLine(edge)}
             {pred.edge_flag === "BIG_EDGE" ? " ★" : pred.edge_flag === "EDGE" ? " ✦" : ""}
+          </span>
+        )}
+      </td>
+      <td className="py-2 pr-3 text-right">
+        {clv === null ? (
+          <span className="text-dim" title={final ? "no closing line" : "graded after kickoff"}>
+            –
+          </span>
+        ) : (
+          <span className={clv > 0 ? "text-win" : clv < 0 ? "text-loss" : "text-push"}>
+            {clv > 0 ? "+" : ""}
+            {clv.toFixed(1)}
           </span>
         )}
       </td>
@@ -259,11 +299,28 @@ function ReceiptRow({ r }: { r: Receipt }) {
   );
 }
 
-function CalStat({ label, value, sub }: { label: string; value: string; sub: string }) {
+function CalStat({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  /** Colors the headline number. Left off, it stays neutral chalk. */
+  tone?: "win" | "loss";
+}) {
   return (
     <div className="rounded-lg bg-elev px-2 py-2.5 ring-1 ring-inset ring-chalk/8">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-chalk/40">{label}</p>
-      <p className="mt-0.5 text-base font-semibold text-chalk">{value}</p>
+      <p
+        className={`mt-0.5 text-base font-semibold ${
+          tone === "win" ? "text-win" : tone === "loss" ? "text-loss" : "text-chalk"
+        }`}
+      >
+        {value}
+      </p>
       <p className="text-[10px] text-dim">{sub}</p>
     </div>
   );
