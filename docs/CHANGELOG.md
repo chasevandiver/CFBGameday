@@ -27,8 +27,12 @@ carries the number that killed it.
 
 ## Current state
 
-**`MODEL_VERSION` 2026.4.0** (`src/model/ratings.ts`). Not yet merged to `main` —
-lives on `claude/statistical-prediction-model-el0efe` / PR #12.
+**`MODEL_VERSION` 2026.4.0** (`src/model/ratings.ts`), on `main` via PR #12
+(2026-08-07).
+
+⚠️ **In the code, not yet in production.** `team_hfa` rows are derived from
+`baseHfa` at build time, so the `2.3 → 3.0` fix does nothing until
+`build-preseason.ts` is re-run and reloaded. See Open items.
 
 | Parameter | Value | Provenance |
 |---|---|---|
@@ -131,7 +135,7 @@ shipping it.
 
 ## Log
 
-### Aug 7 — model correctness and the edge verdict (PR #12, unmerged)
+### Aug 7 — model correctness and the edge verdict (PR #12)
 
 Branch `claude/statistical-prediction-model-el0efe`. First-hand.
 
