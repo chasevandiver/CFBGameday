@@ -28,7 +28,7 @@ import {
   fmtPct,
   fmtSpread,
   fmtTotal,
-  stakeForPrediction,
+  modelSideOf,
   type MyBetView,
   type TeamView,
 } from "../../../lib/slate";
@@ -223,15 +223,10 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   const rivalry = rivalryRes.data as { name: string | null; trophy: string | null } | null;
 
   const modelEdge = prediction?.edge === null || prediction === null ? null : Number(prediction.edge);
-  const stake = prediction
-    ? stakeForPrediction({
-        edge: modelEdge,
-        edgeFlag: prediction.edge_flag,
-        coverProb: prediction.cover_prob === null ? null : Number(prediction.cover_prob),
-        vegasSpread: prediction.vegas_spread === null ? null : Number(prediction.vegas_spread),
-      })
+  const modelSide = prediction
+    ? modelSideOf({ edge: modelEdge, edgeFlag: prediction.edge_flag })
     : null;
-  const stakeTeam = stake?.side === "home" ? home : away;
+  const stakeTeam = modelSide === "home" ? home : away;
 
   return (
     <>
@@ -444,15 +439,17 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                 sub="model − market"
               />
             </div>
-            {stake !== null && (
-              <p className="stat mt-3 text-center text-sm text-chalk">
-                Suggested stake ·{" "}
-                <span className="font-semibold text-accent">
-                  {stake.units <= 0
-                    ? "pass"
-                    : `${stake.units}u on ${stakeTeam.abbr} ${fmtSpread(stake.line)}`}
+            {/* No stake here by design: flagged edges went 49.2% against the
+                closing line over 2023–25 and the model adds nothing once that
+                line is in the regression (b=0.035, t=0.84). The lean is shown;
+                a unit size would imply an edge measurement can't find. */}
+            {modelSide !== null && (
+              <p className="stat mt-3 text-center text-sm text-dim">
+                Model leans{" "}
+                <span className="font-semibold text-chalk">
+                  {stakeTeam.abbr} {fmtSpread(modelSide === "home" ? consensus.spread : consensus.spread === null ? null : -consensus.spread)}
                 </span>
-                <span className="ml-1.5 text-[10.5px] text-dim">¼ Kelly, 2u cap</span>
+                <span className="ml-1.5 text-[10.5px]">information, not a recommendation</span>
               </p>
             )}
           </section>

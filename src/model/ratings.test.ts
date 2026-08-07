@@ -14,7 +14,10 @@ import {
   updateFromResult,
   type PricingInputs,
   type TeamRating,
+  coachingAdjustmentContinuous,
   hasCalibratedTotals,
+  paramsForWeek,
+  splitInformative,
   updateSubRatings,
 } from "./ratings";
 
@@ -61,37 +64,92 @@ describe("preseason rating", () => {
 });
 
 describe("churn adjustment", () => {
+  const base = {
+    returningProduction: 0.6,
+    qbReturns: true as boolean | null,
+    olReturningShare: 0.5,
+    netPortalPoints: 0,
+    blueChipFreshmen: 0,
+  };
+
   it("is ~0 for an average-churn roster", () => {
-    const adj = churnAdjustment({
-      returningProductionOffense: 0.6,
-      returningProductionDefense: 0.6,
-      qbReturns: true,
-      olReturningShare: 0.5,
-      netPortalPoints: 0,
-      blueChipFreshmen: 0,
-    });
-    expect(Math.abs(adj)).toBeLessThanOrEqual(1.5);
+    expect(Math.abs(churnAdjustment(base))).toBeLessThanOrEqual(1.5);
   });
 
   it("clamps to the −6..+6 range", () => {
     const gutted = churnAdjustment({
-      returningProductionOffense: 0.05,
-      returningProductionDefense: 0.05,
+      ...base,
+      returningProduction: 0.05,
       qbReturns: false,
       olReturningShare: 0,
       netPortalPoints: -4,
-      blueChipFreshmen: 0,
     });
     expect(gutted).toBe(-6);
     const loaded = churnAdjustment({
-      returningProductionOffense: 0.95,
-      returningProductionDefense: 0.95,
-      qbReturns: true,
+      ...base,
+      returningProduction: 0.95,
       olReturningShare: 1,
       netPortalPoints: 4,
       blueChipFreshmen: 5,
     });
     expect(loaded).toBe(6);
+  });
+
+  it("scales with the fitted weight, so the clamp isn't doing the fitting", () => {
+    const hot = churnAdjustment({ ...base, returningProduction: 0.3 }, DEFAULT_PARAMS);
+    const cool = churnAdjustment(
+      { ...base, returningProduction: 0.3 },
+      { ...DEFAULT_PARAMS, returningProdWeight: 4 },
+    );
+    expect(hot).toBeLessThan(cool); // both negative; the hot weight is more so
+  });
+
+  it("blunts returning production for high-talent rosters when reload is on", () => {
+    // Blue bloods lose the most production but replace it with blue-chips.
+    // With reload on, the same weak returning number costs Alabama less.
+    const params = { ...DEFAULT_PARAMS, talentReloadStrength: 0.75 };
+    const bluechip = churnAdjustment(
+      { ...base, returningProduction: 0.3, talentBaseline: 18 },
+      params,
+    );
+    const g5 = churnAdjustment(
+      { ...base, returningProduction: 0.3, talentBaseline: -12 },
+      params,
+    );
+    expect(bluechip).toBeGreaterThan(g5);
+  });
+
+  it("reload strength 0 ignores talent entirely", () => {
+    const off = { ...DEFAULT_PARAMS, talentReloadStrength: 0 };
+    const withTalent = churnAdjustment(
+      { ...base, returningProduction: 0.3, talentBaseline: 18 },
+      off,
+    );
+    const without = churnAdjustment(
+      { ...base, returningProduction: 0.3, talentBaseline: null },
+      off,
+    );
+    expect(withTalent).toBe(without);
+  });
+
+  it("at the fitted reload of 1, max talent fully neutralizes the penalty", () => {
+    // The reason 1.0 was chosen over the argmin of 2.0: at 1 the most talented
+    // roster stops being punished for lost production; above 1 it would start
+    // being *rewarded* for it, which is not a real mechanism.
+    const maxTalent = churnAdjustment(
+      { ...base, returningProduction: 0.2, talentBaseline: 18 },
+      DEFAULT_PARAMS,
+    );
+    const neutralTalent = churnAdjustment(
+      { ...base, returningProduction: 0.2, talentBaseline: 0 },
+      DEFAULT_PARAMS,
+    );
+    // core term vanishes at max talent, so only QB/OL/portal/freshmen remain
+    expect(maxTalent).toBeGreaterThan(neutralTalent);
+    expect(maxTalent - neutralTalent).toBeCloseTo(
+      (0.2 - 0.6) * -DEFAULT_PARAMS.returningProdWeight,
+      6,
+    );
   });
 });
 
@@ -216,8 +274,12 @@ describe("pricing", () => {
 
 describe("HFA blending", () => {
   it("is 50/50 team vs FBS average, and falls back to the average", () => {
-    expect(blendedHfa(4.1)).toBeCloseTo(0.5 * 4.1 + 0.5 * 2.3);
-    expect(blendedHfa(null)).toBe(2.3);
+    // Assert the RELATIONSHIP, not the constant — this used to hardcode 2.3
+    // and broke when baseHfa was refit to 3.0, which is a test failing for the
+    // wrong reason.
+    const base = DEFAULT_PARAMS.baseHfa;
+    expect(blendedHfa(4.1)).toBeCloseTo(0.5 * 4.1 + 0.5 * base);
+    expect(blendedHfa(null)).toBe(base);
   });
 });
 
@@ -283,6 +345,107 @@ describe("updateSubRatings (spec §2.2 groundwork — display stays gated until 
     });
     expect(neutral.homeOffDelta).toBeCloseTo(0, 10);
     expect(neutral.awayOffDelta).toBeCloseTo(0, 10);
+  });
+});
+
+describe("paramsForWeek (early-season uncertainty)", () => {
+  it("is an exact identity while priorSigmaExtra is 0", () => {
+    for (const week of [0, 1, 4, 8, 15]) {
+      expect(paramsForWeek(week, DEFAULT_PARAMS)).toBe(DEFAULT_PARAMS);
+    }
+  });
+
+  it("widens sigma most in week 0 and decays with the prior's weight", () => {
+    const p = { ...DEFAULT_PARAMS, priorSigmaExtra: 8 };
+    const wk0 = paramsForWeek(0, p);
+    const wk4 = paramsForWeek(4, p);
+    const wk12 = paramsForWeek(12, p);
+
+    // week 0: prior weight 1 → full extra term in quadrature
+    expect(wk0.marginSigma).toBeCloseTo(Math.sqrt(p.marginSigma ** 2 + 64), 10);
+    expect(wk0.marginSigma).toBeGreaterThan(wk4.marginSigma);
+    expect(wk4.marginSigma).toBeGreaterThan(wk12.marginSigma);
+    // never below the base sigma
+    expect(wk12.marginSigma).toBeGreaterThan(p.marginSigma);
+  });
+
+  it("keeps the win-prob slope tied to sigma, so early probs are softer", () => {
+    const p = { ...DEFAULT_PARAMS, priorSigmaExtra: 8 };
+    const wk1 = paramsForWeek(1, p);
+    expect(wk1.winProbSlope).toBeCloseTo(1.7 / wk1.marginSigma, 10);
+
+    // a 14-point favorite should be given a lower win prob in week 1 than
+    // the same edge would get at the flat midseason sigma
+    const priceWith = (params: typeof DEFAULT_PARAMS) =>
+      priceGame(basePricing({ home: team(14), away: team(0), homeTeamHfa: 0 }), params).homeWinProb;
+    expect(priceWith(wk1)).toBeLessThan(priceWith(DEFAULT_PARAMS));
+  });
+});
+
+describe("coachingAdjustmentContinuous", () => {
+  const fitted = { ...DEFAULT_PARAMS, newHcIntercept: -1.5, newHcSlope: 0.3 };
+
+  it("is zero for everyone until the tuner fits the params", () => {
+    expect(coachingAdjustmentContinuous({ newHc: true, overPerf: 5 })).toBe(0);
+    expect(coachingAdjustmentContinuous({ newHc: true, overPerf: null })).toBe(0);
+  });
+
+  it("leaves an intact staff alone regardless of params", () => {
+    expect(coachingAdjustmentContinuous({ newHc: false, overPerf: 6 }, fitted)).toBe(0);
+    expect(coachingAdjustmentContinuous({ newHc: false, overPerf: null }, fitted)).toBe(0);
+  });
+
+  it("charges the install cost to a first-time HC (no quality signal)", () => {
+    expect(coachingAdjustmentContinuous({ newHc: true, overPerf: null }, fitted)).toBeCloseTo(-1.5, 10);
+  });
+
+  it("credits a proven hire and penalizes an underperformer", () => {
+    const proven = coachingAdjustmentContinuous({ newHc: true, overPerf: 6 }, fitted);
+    const reach = coachingAdjustmentContinuous({ newHc: true, overPerf: -6 }, fitted);
+    expect(proven).toBeCloseTo(-1.5 + 0.3 * 6, 10);
+    expect(reach).toBeCloseTo(-1.5 + 0.3 * -6, 10);
+    expect(proven).toBeGreaterThan(reach);
+  });
+
+  it("clamps the quality signal so one outlier tenure can't run away", () => {
+    const huge = coachingAdjustmentContinuous({ newHc: true, overPerf: 40 }, fitted);
+    const atCap = coachingAdjustmentContinuous({ newHc: true, overPerf: 8 }, fitted);
+    expect(huge).toBeCloseTo(atCap, 10);
+  });
+
+  it("clamps the output to [-4, 3]", () => {
+    const extreme = { ...DEFAULT_PARAMS, newHcIntercept: -10, newHcSlope: 0 };
+    expect(coachingAdjustmentContinuous({ newHc: true, overPerf: null }, extreme)).toBe(-4);
+    const generous = { ...DEFAULT_PARAMS, newHcIntercept: 5, newHcSlope: 1 };
+    expect(coachingAdjustmentContinuous({ newHc: true, overPerf: 8 }, generous)).toBe(3);
+  });
+});
+
+describe("splitInformative (the constant-total gate)", () => {
+  it("rejects an even split — every total would price identically", () => {
+    expect(splitInformative([{ offense: 5, defense: 5 }, { offense: -3, defense: -3 }])).toBe(false);
+    expect(splitInformative([])).toBe(false);
+  });
+
+  it("accepts a split once any team's halves differ", () => {
+    expect(splitInformative([{ offense: 5, defense: 5 }, { offense: 4, defense: -4 }])).toBe(true);
+  });
+
+  it("treats sub-epsilon rounding noise as still even", () => {
+    expect(splitInformative([{ offense: 5.001, defense: 5 }])).toBe(false);
+  });
+
+  it("is exactly the condition under which priceGame's total is a constant", () => {
+    const even = priceGame(basePricing({ home: team(21), away: team(-7), homeTeamHfa: 0 }));
+    const evenOther = priceGame(basePricing({ home: team(3), away: team(10), homeTeamHfa: 0 }));
+    // different teams, identical total — that's the bug the gate exists for
+    expect(even.projectedTotal).toBeCloseTo(57, 10);
+    expect(evenOther.projectedTotal).toBeCloseTo(57, 10);
+
+    const tilted = priceGame(
+      basePricing({ home: team(21, 14, 7), away: team(-7, -1, -6), homeTeamHfa: 0 }),
+    );
+    expect(tilted.projectedTotal).not.toBeCloseTo(57, 2);
   });
 });
 

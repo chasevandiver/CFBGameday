@@ -13,11 +13,14 @@ import {
   DEFAULT_PARAMS,
   MODEL_VERSION,
   blendWithPrior,
+  paramsForWeek,
   priceGame,
   priorWeight,
+  splitInformative,
   updateSubRatings,
   type TeamRating,
 } from "../../src/model/ratings";
+import { DAY_MS, envDays, idleOverridden } from "./idle";
 
 export const SEASON = Number(process.env.CFB_SEASON ?? 2026);
 const FCS_RATING = -30;
@@ -269,8 +272,9 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
     .eq("week", 0);
   if (!priorRows || priorRows.length === 0) throw new Error("no week-0 priors");
   const priors = new Map<number, number>();
-  // preseason halves as stored (even split until results move them — the
-  // tilt-scale sweep in the calibration backtest ruled out SP+ shape seeding)
+  // Preseason halves exactly as stored: this job never re-derives them, so
+  // whatever the preseason build wrote (even split, or a fitted tilt once
+  // `backtest.ts --tune-preseason-tilts` earns one) carries the season.
   const priorOff = new Map<number, number>();
   const priorDef = new Map<number, number>();
   for (const r of priorRows as Array<{
@@ -495,7 +499,7 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
 
   const { data: gameRows } = await db
     .from("games")
-    .select("id, home_team_id, away_team_id, neutral_site, status")
+    .select("id, home_team_id, away_team_id, neutral_site, status, start_ts")
     .eq("season_id", SEASON)
     .eq("week", week)
     .eq("season_type", seasonType)
@@ -505,8 +509,30 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
     home_team_id: number;
     away_team_id: number;
     neutral_site: boolean;
+    start_ts: string | null;
   }>;
   if (games.length === 0) return { week, frozen: 0 };
+
+  // A freeze is a Thursday-night receipt for THIS week's slate. The cron fires
+  // every Friday 03:00 UTC year-round, so without a horizon each August
+  // Thursday would append a full week-1 batch priced off mid-August lines —
+  // predictions is append-only, so those batches are permanent clutter on the
+  // receipts page even though the latest-first read hides them.
+  const horizonDays = envDays("FREEZE_HORIZON_DAYS", 8);
+  const kickoffs = games
+    .map((g) => (g.start_ts ? new Date(g.start_ts).getTime() : NaN))
+    .filter((t) => Number.isFinite(t));
+  if (!idleOverridden() && kickoffs.length > 0) {
+    const days = (Math.min(...kickoffs) - Date.now()) / DAY_MS;
+    if (days > horizonDays) {
+      return {
+        week,
+        frozen: 0,
+        skipped: `kickoff_gt_${horizonDays}d`,
+        days_to_kickoff: Math.round(days * 10) / 10,
+      };
+    }
+  }
 
   const { data: ratingRows } = await db
     .from("ratings")
@@ -580,10 +606,13 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
   };
 
   // A pure even off/def split prices every total at the league baseline —
-  // only store totals when at least some teams carry a real split.
-  const splitInformative = [...latest.values()].some(
-    (r) => Math.abs(r.offense - r.defense) > 0.01,
-  );
+  // only store totals when at least some teams carry a real split. Shared with
+  // the preseason builder so the two write paths can't drift (src/model).
+  const totalsAreReal = splitInformative([...latest.values()]);
+
+  // Early-season pricing widens sigma (and softens the win-prob slope) while
+  // the preseason prior is still doing the work — identity until fit.
+  const params = paramsForWeek(week, DEFAULT_PARAMS);
 
   const rows: Json[] = [];
   for (const g of games) {
@@ -612,7 +641,7 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
         fpiMargin: sysMargin("fpi", g.home_team_id, g.away_team_id),
         eloMargin: sysMargin("elo", g.home_team_id, g.away_team_id),
       },
-      DEFAULT_PARAMS,
+      params,
     );
     rows.push({
       game_id: g.id,
@@ -625,9 +654,9 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
       // split (preseason, no results yet) every total is the league
       // baseline — store null rather than a constant dressed as a prediction.
       // O/U leans stay unflagged either way (50.8%/51.9% < the 52.4% vig).
-      total: splitInformative ? Math.round(price.projectedTotal * 10) / 10 : null,
-      home_score: splitInformative ? Math.round(price.projectedHomeScore * 10) / 10 : null,
-      away_score: splitInformative ? Math.round(price.projectedAwayScore * 10) / 10 : null,
+      total: totalsAreReal ? Math.round(price.projectedTotal * 10) / 10 : null,
+      home_score: totalsAreReal ? Math.round(price.projectedHomeScore * 10) / 10 : null,
+      away_score: totalsAreReal ? Math.round(price.projectedAwayScore * 10) / 10 : null,
       home_win_prob: Math.round(price.homeWinProb * 10000) / 10000,
       cover_prob:
         price.homeCoverProb !== null ? Math.round(price.homeCoverProb * 10000) / 10000 : null,

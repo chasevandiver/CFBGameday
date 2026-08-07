@@ -7,7 +7,6 @@
  */
 
 import { liveWinProb } from "../model/live";
-import { suggestedStake } from "../model/ratings";
 
 export interface TeamView {
   id: number;
@@ -382,32 +381,25 @@ export function ouRecord(
 
 /* ---- bet sizing (spec §5.4) ------------------------------------------- */
 
-export interface StakeSuggestion {
-  side: "home" | "away";
-  /** ¼-Kelly units, capped at 2; 0 = flagged but priced as a pass */
-  units: number;
-  /** Market line for the suggested side (side perspective) */
-  line: number | null;
-}
-
 /**
- * Suggested stake for a flagged edge: the model's side of the spread priced
- * by ¼ Kelly on the side's cover probability. Null when the game isn't
- * flagged or the cover probability is unknown.
+ * Which side of the spread the model leans toward, or null when the game isn't
+ * flagged. Same rule as modelPicks: a model spread below the market means the
+ * model likes the home side.
+ *
+ * This replaced `stakeForPrediction`, which returned a ¼-Kelly unit size. The
+ * 2023–25 backtest could not support a stake: flagged games went 49.2% against
+ * the closing line (52.4% breaks even at −110), and the encompassing
+ * regression put the model's coefficient at 0.035 (t=0.84) once the closing
+ * line was included, against the market's 0.987. Sizing a bet off a cover
+ * probability implies an edge that measurement doesn't find, so the lean is
+ * surfaced as information and the number of units is not.
  */
-export function stakeForPrediction(p: {
+export function modelSideOf(p: {
   edge: number | null;
   edgeFlag: "EDGE" | "BIG_EDGE" | null;
-  coverProb: number | null;
-  vegasSpread: number | null;
-}): StakeSuggestion | null {
-  if (!p.edgeFlag || p.edge === null || p.edge === 0 || p.coverProb === null) return null;
-  // model spread below market → model likes home (same rule as modelPicks)
-  const side: "home" | "away" = p.edge < 0 ? "home" : "away";
-  const sideCoverProb = side === "home" ? p.coverProb : 1 - p.coverProb;
-  const line =
-    p.vegasSpread === null ? null : side === "home" ? p.vegasSpread : -p.vegasSpread;
-  return { side, units: suggestedStake(sideCoverProb), line };
+}): "home" | "away" | null {
+  if (!p.edgeFlag || p.edge === null || p.edge === 0) return null;
+  return p.edge < 0 ? "home" : "away";
 }
 
 /* ---- hero selection & line movement ----------------------------------- */

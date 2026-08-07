@@ -206,6 +206,57 @@ export interface CfbdRankingWeek {
   }>;
 }
 
+/**
+ * One season of a coach's tenure. CFBD has been inconsistent about casing on
+ * this endpoint across versions, so the raw shape is normalized in
+ * scripts/lib/coaching.ts rather than trusted here.
+ */
+export interface CfbdCoachSeason {
+  school: string;
+  year: number;
+  games: number | null;
+  wins: number | null;
+  losses: number | null;
+  srs: number | null;
+  spOverall: number | null;
+  spOffense: number | null;
+  spDefense: number | null;
+  preseasonRank: number | null;
+  postseasonRank: number | null;
+}
+
+export interface CfbdCoach {
+  firstName: string | null;
+  lastName: string | null;
+  seasons: CfbdCoachSeason[];
+}
+
+/**
+ * Per-game advanced stats. The model has only ever seen final scores, which
+ * are a noisy summary of ~150 plays — garbage time, a tipped interception and
+ * a shanked punt all move the margin without saying much about the teams.
+ * PPA (CFBD's expected-points-added) measures the plays themselves.
+ */
+export interface CfbdAdvancedGameStatSide {
+  plays: number | null;
+  drives: number | null;
+  /** PPA per play */
+  ppa: number | null;
+  /** PPA summed over the game — points-equivalent production */
+  totalPPA: number | null;
+  successRate: number | null;
+  explosiveness: number | null;
+}
+
+export interface CfbdAdvancedGameStat {
+  gameId: number;
+  week: number | null;
+  team: string;
+  opponent: string | null;
+  offense: CfbdAdvancedGameStatSide | null;
+  defense: CfbdAdvancedGameStatSide | null;
+}
+
 export interface CfbdScoreboardGame {
   id: number;
   startDate: string;
@@ -250,6 +301,33 @@ export const cfbd = {
   fpiRatings: (year: number) => get<CfbdFpiRating[]>("/ratings/fpi", { year }),
 
   portal: (year: number) => get<CfbdPortalEntry[]>("/player/portal", { year }),
+
+  /**
+   * Coaching histories — head coach per school-season with that season's
+   * record and SP+ splits. One call with a minYear/maxYear window returns the
+   * whole history, which is what the preseason coaching adjustment needs.
+   */
+  coaches: (
+    opts: { year?: number; minYear?: number; maxYear?: number; team?: string } = {},
+  ) =>
+    get<CfbdCoach[]>("/coaches", {
+      year: opts.year,
+      minYear: opts.minYear,
+      maxYear: opts.maxYear,
+      team: opts.team,
+    }),
+
+  /**
+   * Per-game advanced stats (PPA, success rate, explosiveness) — the
+   * play-level signal the score alone throws away. One call covers a whole
+   * season when `week` is omitted.
+   */
+  advancedGameStats: (year: number, opts: { week?: number; team?: string } = {}) =>
+    get<CfbdAdvancedGameStat[]>("/stats/game/advanced", {
+      year,
+      week: opts.week,
+      team: opts.team,
+    }),
 
   /** Human polls (AP / Coaches / CFP). Returns school NAMES, not team ids. */
   rankings: (year: number, opts: { week?: number; seasonType?: string } = {}) =>

@@ -7,12 +7,14 @@
  *   default   snapshot every game in the current/next week
  *   --burst   only games kicking off in the next 100 minutes (run every
  *             5–10 min pre-kickoff so the closing proxy is honest)
+ *   --force   ignore the offseason idle guard (see scripts/lib/idle.ts)
  *
- * Usage: npx tsx scripts/refresh-lines.ts [--dry-run] [--burst] [--week N]
+ * Usage: npx tsx scripts/refresh-lines.ts [--dry-run] [--burst] [--week N] [--force]
  */
 
 import { cfbd, cfbdCallCount } from "../src/lib/cfbd";
 import { logCfbdCalls } from "./lib/jobs-core";
+import { idleSkip, envDays } from "./lib/idle";
 import { SEASON, chunk, createSink } from "./lib/ingest";
 
 const BURST_WINDOW_MIN = 100;
@@ -22,6 +24,17 @@ async function main() {
   const burst = process.argv.includes("--burst");
   const weekArg = process.argv.indexOf("--week");
   let week = weekArg > -1 ? Number(process.argv[weekArg + 1]) : undefined;
+
+  // Offseason guard, BEFORE the CFBD fetch: in burst mode the lines call
+  // happens ahead of the kick-window filter, so an idle Saturday would still
+  // spend ~72 calls a day on games two months out.
+  if (db && (await idleSkip(db, {
+    job: burst ? "refresh-lines-burst" : "refresh-lines",
+    season: SEASON,
+    horizonDays: envDays("LINES_IDLE_DAYS", 7),
+  }))) {
+    return;
+  }
 
   if (week === undefined && db) {
     // Default to the earliest week with unplayed games
