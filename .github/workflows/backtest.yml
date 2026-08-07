@@ -60,14 +60,3 @@ jobs:
       # Informational — it must not fail the build.
       - name: Diagnose edges
         run: npx tsx scripts/backtest.ts --diagnose-edges || echo "!! diagnose-edges FAILED"
-
-      # TEMPORARY (remove before merge): fit the restructured churn term, then
-      # re-run the preseason build to confirm the ±6 clamp stops saturating.
-      - name: Fit churn + preseason data-quality check (one-off)
-        run: |
-          echo "::group::tune-churn"
-          npx tsx scripts/backtest.ts --tune-churn || echo "!! tune-churn FAILED"
-          echo "::endgroup::"
-          echo "::group::preseason"
-          npx tsx scripts/build-preseason.ts --out "$RUNNER_TEMP/preseason" --top 40 || echo "!! preseason FAILED"
-          echo "::endgroup::"
