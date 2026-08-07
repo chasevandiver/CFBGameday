@@ -757,9 +757,22 @@ async function tuneEnsemble(seasons: SeasonData[], teamIdsByName: Map<string, nu
     return;
   }
 
+  // Fit on 2023–24 ONLY. An earlier version fit on all three seasons and then
+  // called 2025 a "holdout" — it wasn't one, 2025 was in the fit, and an
+  // in-sample number dressed as out-of-sample is how a weight ships on
+  // evidence it doesn't have.
+  const HOLDOUT = SEASONS[SEASONS.length - 1];
+  const fitRows = rows.filter((r) => r.p.season !== HOLDOUT);
+  const holdoutRows = rows.filter((r) => r.p.season === HOLDOUT);
+  console.log(`Fitting on ${fitRows.length} games (< ${HOLDOUT}), holding out ${holdoutRows.length}`);
+
   const { beta, se } = ols(
-    rows.map((r) => r.p.actualMargin),
-    [rows.map((r) => r.p.margin), rows.map((r) => r.eloMargin), rows.map((r) => r.spMargin)],
+    fitRows.map((r) => r.p.actualMargin),
+    [
+      fitRows.map((r) => r.p.margin),
+      fitRows.map((r) => r.eloMargin),
+      fitRows.map((r) => r.spMargin),
+    ],
   );
   const labels = ["intercept", "ours", "elo (weekly)", "prior SP+ (decayed)"];
   console.log("term                    coef      se       t");
@@ -776,17 +789,16 @@ async function tuneEnsemble(seasons: SeasonData[], teamIdsByName: Map<string, nu
   // Blended prediction vs ours alone, in-sample and on the 2025 holdout.
   const blended = (r: (typeof rows)[number]) =>
     beta[0] + beta[1] * r.p.margin + beta[2] * r.eloMargin + beta[3] * r.spMargin;
-  console.log("\nsample        ours MAE   ensemble MAE   delta");
-  for (const [label, keep] of [
-    ["all", () => true],
-    ["2025 holdout", (r: (typeof rows)[number]) => r.p.season === 2025],
-  ] as Array<[string, (r: (typeof rows)[number]) => boolean]>) {
-    const seg = rows.filter(keep);
+  console.log("\nsample              ours MAE   ensemble MAE   delta");
+  for (const [label, seg] of [
+    [`fit (< ${HOLDOUT})`, fitRows],
+    [`HOLDOUT ${HOLDOUT}`, holdoutRows],
+  ] as Array<[string, typeof rows]>) {
     if (seg.length === 0) continue;
     const ours = maeOf(seg.map((r) => r.p.actualMargin - r.p.margin));
     const ens = maeOf(seg.map((r) => r.p.actualMargin - blended(r)));
     console.log(
-      `${label.padEnd(13)} ${ours.toFixed(3)}      ${ens.toFixed(3)}         ${(ours - ens).toFixed(3)}`,
+      `${label.padEnd(19)} ${ours.toFixed(3)}      ${ens.toFixed(3)}         ${(ours - ens).toFixed(3)}`,
     );
     warnIfTooGood(`ensemble (${label})`, ens);
   }
