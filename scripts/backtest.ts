@@ -86,7 +86,17 @@ function report(predictions: ReplayPrediction[], params: ModelParams): string {
   const errors = predictions.map((p) => p.actualMargin - p.margin);
   const mae = errors.reduce((a, e) => a + Math.abs(e), 0) / errors.length;
   const sigma = Math.sqrt(errors.reduce((a, e) => a + e * e, 0) / errors.length);
+  // Mean SIGNED error alongside MAE: both MAE and sigma are symmetric, so a
+  // systematic lean toward one side is invisible in them. This is how the
+  // home-side under-prediction went unnoticed until an ensemble regression
+  // asked for a +2 intercept.
+  const bias = errors.reduce((a, e) => a + e, 0) / errors.length;
+  const biasSe = sigma / Math.sqrt(errors.length);
   lines.push(`\n== Margin error ==  MAE ${mae.toFixed(2)}  σ ${sigma.toFixed(2)} (param: ${params.marginSigma})`);
+  lines.push(
+    `bias (actual − model) ${bias >= 0 ? "+" : ""}${bias.toFixed(2)} ± ${biasSe.toFixed(2)} SE` +
+      `${Math.abs(bias) > 2 * biasSe ? "  ← systematic; positive means home under-predicted" : ""}`,
+  );
 
   // Totals calibration (§2.2 sub-ratings): the model total must beat the
   // constant-baseline strawman convincingly before totals surfaces ship.
@@ -1531,8 +1541,15 @@ async function main() {
 
   console.log("Tuning (grid search over K, HFA, sigma)…");
   let best: { params: ModelParams; score: number } | null = null;
+  // HFA grid runs to 4.0. It used to stop at 2.6, and the ensemble work turned
+  // up why that matters: mean SIGNED margin error is positive in both periods
+  // (+0.55 on 2023-24, +1.31 on 2025), i.e. the model under-predicts the home
+  // side. A regression blending our margin with Elo wanted a +2.0 intercept at
+  // t=4.27 for the same reason. If the true HFA is above 2.6, the old grid
+  // could never find it — and MAE and sigma are both symmetric, so neither
+  // would ever have shown the bias.
   for (const kFactor of [0.2, 0.25, 0.3, 0.35, 0.4]) {
-    for (const baseHfa of [2.0, 2.3, 2.6]) {
+    for (const baseHfa of [2.0, 2.4, 2.8, 3.2, 3.6, 4.0]) {
       const params: ModelParams = { ...DEFAULT_PARAMS, kFactor, baseHfa };
       const predictions = run(params);
       const graded = predictions.filter((p) => p.favoriteWon !== null);
