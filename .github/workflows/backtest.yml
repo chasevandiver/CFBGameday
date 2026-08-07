@@ -60,3 +60,9 @@ jobs:
       # Informational — it must not fail the build.
       - name: Diagnose edges
         run: npx tsx scripts/backtest.ts --diagnose-edges || echo "!! diagnose-edges FAILED"
+
+      # TEMPORARY (remove before merge): the preseason build has never run
+      # against the live API, so nobody has seen which inputs actually populate
+      # for 2026. Writes to RUNNER_TEMP; never touches the database.
+      - name: Preseason data-quality check (one-off)
+        run: npx tsx scripts/build-preseason.ts --out "$RUNNER_TEMP/preseason" --top 40 || echo "!! preseason FAILED"

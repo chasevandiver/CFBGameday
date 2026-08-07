@@ -879,7 +879,70 @@ function diagnoseEdges(all: ReplayPrediction[]) {
     }
   }
 
-  // 4. The bettable question: does the model beat the OPENING line?
+  // 4. The two places the gate was never run: totals, and inside market tiers.
+  //
+  // Pooling every game assumes all closing lines are equally efficient, which
+  // is false — a Tuesday-night MAC game and Alabama–Georgia are not the same
+  // market. And only margins went through the regression; totals never did,
+  // despite the model sitting relatively closer to the market there.
+  //
+  // These are pre-registered, and the threshold is raised to account for
+  // running several of them. No tier is added after seeing results.
+  console.log("\n-- The gate, re-run where it wasn't: totals and market tiers --");
+  console.log(
+    `Bonferroni: ${TIER_TESTS} pre-registered tests at α=0.05 → require |t| > ${TIER_T.toFixed(1)} (not 2.0)`,
+  );
+  console.log("test                     n      b1(model)   t       b2(market)   verdict");
+
+  const withTotal = all.filter((p) => p.vegasTotal !== null);
+  reportGate(
+    "totals (all games)",
+    withTotal.map((p) => p.actualTotal),
+    withTotal.map((p) => p.projectedTotal),
+    withTotal.map((p) => p.vegasTotal as number),
+  );
+
+  // Liquidity: fewer books is a thinner, softer market. Split at the median so
+  // the two halves are comparable in size.
+  const counts = withLine.map((p) => p.bookCount).sort((a, b) => a - b);
+  const medianBooks = counts[Math.floor(counts.length / 2)];
+  for (const [label, keep] of [
+    [`thin market (<${medianBooks} books)`, (p: ReplayPrediction) => p.bookCount < medianBooks],
+    [`thick market (≥${medianBooks} books)`, (p: ReplayPrediction) => p.bookCount >= medianBooks],
+  ] as Array<[string, (p: ReplayPrediction) => boolean]>) {
+    const seg = withLine.filter(keep);
+    if (seg.length < 100) continue;
+    reportGate(
+      label,
+      seg.map((p) => p.actualMargin),
+      seg.map((p) => p.margin),
+      seg.map((p) => -(p.vegasSpread as number)),
+    );
+  }
+
+  // Non-conference games are the cross-market matchups the model is most
+  // likely to price differently than a market anchored on conference
+  // reputation, and they are where our opponent adjustment can disagree most.
+  for (const [label, keep] of [
+    ["conference games", (p: ReplayPrediction) => p.conferenceGame],
+    ["non-conference", (p: ReplayPrediction) => !p.conferenceGame],
+  ] as Array<[string, (p: ReplayPrediction) => boolean]>) {
+    const seg = withLine.filter(keep);
+    if (seg.length < 100) continue;
+    reportGate(
+      label,
+      seg.map((p) => p.actualMargin),
+      seg.map((p) => p.margin),
+      seg.map((p) => -(p.vegasSpread as number)),
+    );
+  }
+
+  console.log(
+    "A tier only counts if it clears the corrected threshold AND holds on the 2025\n" +
+      "holdout. With this many tests, one crossing an uncorrected |t|>2 is expected noise.",
+  );
+
+  // 5. The bettable question: does the model beat the OPENING line?
   const withOpen = withLine.filter((p) => p.vegasOpen !== null);
   console.log(
     `\n-- vs the OPENING line (a wager you can actually place) --  n=${withOpen.length} with an opener`,
@@ -921,6 +984,41 @@ function diagnoseEdges(all: ReplayPrediction[]) {
         "a lower-variance signal of real edge than the ATS record at this sample size.",
     );
   }
+}
+
+/**
+ * Pre-registered tier tests: totals, thin/thick market, conference/non-.
+ * Bonferroni at α=0.05 over 5 tests → |t| > 2.5 rather than the usual 2.0.
+ * Fixed here, before any of them run, so the bar can't drift after seeing a
+ * result — which is the whole failure mode this guards against.
+ */
+const TIER_TESTS = 5;
+const TIER_T = 2.5;
+
+/**
+ * One encompassing regression, reported as a row. `ours` and `theirs` are both
+ * estimates of `actual`; the question is whether ours still carries a
+ * coefficient once theirs is in the equation.
+ */
+function reportGate(label: string, actual: number[], ours: number[], theirs: number[]) {
+  if (actual.length < 30) {
+    console.log(`${label.padEnd(24)} ${String(actual.length).padStart(5)}   too few games`);
+    return;
+  }
+  let beta: number[];
+  let se: number[];
+  try {
+    ({ beta, se } = ols(actual, [ours, theirs]));
+  } catch {
+    console.log(`${label.padEnd(24)} ${String(actual.length).padStart(5)}   singular (collinear)`);
+    return;
+  }
+  const t = beta[1] / se[1];
+  const verdict = Math.abs(t) > TIER_T ? (t > 0 ? "CLEARS ***" : "negative") : "no signal";
+  console.log(
+    `${label.padEnd(24)} ${String(actual.length).padStart(5)}   ${beta[1].toFixed(3).padStart(8)}   ` +
+      `${t.toFixed(2).padStart(5)}   ${beta[2].toFixed(3).padStart(9)}    ${verdict}`,
+  );
 }
 
 function gradeShrunk(predictions: ReplayPrediction[], w: number): AtsRecord {
