@@ -262,7 +262,13 @@ h2,
    blurring a solid colour for no visible gain; it is reserved for the bars
    that genuinely have content scrolling underneath (nav, header, ticker).
    Colour meaning lives in tintFor() — green covering, red not, amber on the
-   bubble, team colours when you have nothing riding on it. */
+   bubble, team colours when you have nothing riding on it.
+
+   Those two vocabularies must not be confusable at a glance, since half the
+   sport wears red. Three cues keep them apart: verdict colours are fully
+   saturated (team colours are mixed toward --surface in GameCard), they wash
+   the card in one hue (team colours split away-left / home-right), and only
+   they move — see the drift rule below. */
 .glass-wrap {
   position: relative;
   isolation: isolate;
@@ -291,13 +297,24 @@ h2,
   right: 0;
 }
 
+/* Half the sport wears red, so a team glow gets desaturated on top of the mix
+   toward --surface that GameCard already applies. Same idiom as .card-final.
+   The verdict colours are left at full chroma and are then the only saturated
+   glows on the slate. */
+.glass-wrap[data-tint="teams"] .glass-aura {
+  filter: blur(30px) saturate(0.6);
+}
+
 /* Unobtrusive by construction: a slow drift with no hue or opacity change,
    so peripheral vision reads a steady colour rather than a flicker.
-   Live games only — measured at 70 cards, animating every aura costs 8fps
-   (52 vs 60) while a static aura costs nothing, and a card that isn't playing
-   has no news to convey by moving. */
+
+   Motion means money: only cards you have a bet or a pick on drift, which makes
+   movement a third cue separating a verdict glow from a team glow. Live games
+   you have nothing on stay static and say "playing" through card-live, the live
+   dot and the ticker. Cheaper too — measured at 70 cards, animating every aura
+   cost 8fps (52 vs 60), and this animates far fewer than "every live card". */
 @media (prefers-reduced-motion: no-preference) {
-  .glass-wrap[data-live="true"] .glass-aura {
+  .glass-wrap[data-tint="position"] .glass-aura {
     animation: aura-drift 16s ease-in-out infinite alternate;
   }
 }

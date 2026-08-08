@@ -36,17 +36,29 @@ describe("EdgeChip", () => {
 });
 
 describe("MoveIndicator", () => {
-  it("neutral drift renders dim; model-anchored steam gets a direction title", () => {
-    const { container: neutral } = render(
-      <MoveIndicator move={{ delta: 0.5, vsModel: null }} open={-6} />,
-    );
-    expect(neutral.textContent).toContain("0.5");
-    expect(neutral.querySelector(".text-win, .text-loss")).toBeNull();
+  it("renders the magnitude and flips the arrow with direction", () => {
+    const { container: up } = render(<MoveIndicator move={{ delta: 0.5, vsModel: null }} open={-6} />);
+    expect(up.textContent).toContain("0.5");
+    const upPath = up.querySelector("svg")?.innerHTML ?? "";
 
-    const { container: steam } = render(
+    const { container: down } = render(
       <MoveIndicator move={{ delta: -2, vsModel: "toward" }} open={-6} />,
     );
-    expect(steam.querySelector(".text-win")).toBeTruthy();
-    expect(steam.querySelector("span")?.getAttribute("title")).toContain("toward the model");
+    expect(down.textContent).toContain("2");
+    expect(down.querySelector("svg")?.innerHTML).not.toBe(upPath);
+  });
+
+  it("never borrows the win/loss colors — movement carries no money", () => {
+    for (const vsModel of [null, "toward", "away"] as const) {
+      const { container } = render(<MoveIndicator move={{ delta: -2, vsModel }} open={-6} />);
+      expect(container.querySelector(".text-win, .text-loss")).toBeNull();
+      expect(container.querySelector(".text-dim")).toBeTruthy();
+      cleanup();
+    }
+  });
+
+  it("keeps the model-lean read as title text", () => {
+    const { container } = render(<MoveIndicator move={{ delta: -2, vsModel: "toward" }} open={-6} />);
+    expect(container.querySelector("span")?.getAttribute("title")).toContain("toward the model");
   });
 });

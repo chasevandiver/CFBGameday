@@ -102,17 +102,17 @@ export function LiveStatusChip({ prefix, status }: { prefix: string; status: Liv
 }
 
 /**
- * Line movement: arrow + delta vs open. Neutral by default — color appears
- * only when the move is ≥1.5 pts relative to the model's side (spec §4):
- * green = market steaming toward the model, red = away from it. The old
- * version painted every drift green/red on direction alone, which read as a
- * value judgment that meant nothing (audit).
+ * Line movement: arrow + delta vs open. Always neutral.
+ *
+ * It used to tint green when the market steamed toward the model's side and red
+ * when it steamed away. Green/red on this card means one thing — is your money
+ * good — and the movement carries no money, so the colour was borrowing a
+ * vocabulary it had no claim on. The model-lean read survives in the title,
+ * where it costs nothing to ignore.
  */
 export function MoveIndicator({ move, open }: { move: MoveRead | null; open: number | null }) {
   if (move === null) return null;
   const toward = move.delta < 0; // spread dropped → market moved toward the home side
-  const tone =
-    move.vsModel === "toward" ? "text-win" : move.vsModel === "away" ? "text-loss" : "text-dim";
   const title = [
     open !== null ? `Opened ${fmtSpread(open)}` : null,
     move.vsModel === "toward"
@@ -125,7 +125,7 @@ export function MoveIndicator({ move, open }: { move: MoveRead | null; open: num
     .join(" · ");
   return (
     <span
-      className={`stat inline-flex items-center gap-0.5 text-[10.5px] font-medium ${tone}`}
+      className="stat inline-flex items-center gap-0.5 text-[10.5px] font-medium text-dim"
       title={title || undefined}
     >
       {toward ? <ArrowDown size={11} aria-hidden /> : <ArrowUp size={11} aria-hidden />}

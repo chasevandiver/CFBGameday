@@ -58,6 +58,13 @@ interface Props {
 
 const DOWN = ["", "1st", "2nd", "3rd", "4th"];
 
+/**
+ * Pull a team colour toward the card surface so the aura reads as tinted
+ * material rather than as a verdict. Keeps enough hue for Michigan to look navy
+ * and Texas burnt orange, without letting a Bama/Georgia card fake a losing bet.
+ */
+const muted = (color: string): string => `color-mix(in srgb, ${color} 55%, var(--surface))`;
+
 function underTwo(period: number | null, clock: string | null): boolean {
   if ((period !== 2 && period !== 4) || !clock) return false;
   const m = /^(\d+):\d\d$/.exec(clock);
@@ -103,8 +110,15 @@ export function GameCard({
 
   /* The aura carries one fact: is your money good? Green covering, red not,
      amber on the bubble — and when you have nothing on the game, the two team
-     colours instead. A live game glows hardest; a final barely at all. */
+     colours instead. A live game glows hardest; a final barely at all.
+
+     Team colours are muted toward the surface first. Plenty of schools wear a
+     red or a green (Alabama and Georgia are both red, so that card would wash a
+     single flat red), and at a glance down the slate that is indistinguishable
+     from "your bet is losing". Full saturation therefore belongs to the verdict
+     colours alone; team colours read as tinted material, not as signal. */
   const tint = tintFor(game);
+  const position = tint !== "teams";
   const auraColors =
     tint === "covering"
       ? ["var(--win)", "var(--win)"]
@@ -112,13 +126,24 @@ export function GameCard({
         ? ["var(--loss)", "var(--loss)"]
         : tint === "bubble"
           ? ["var(--accent)", "var(--accent)"]
-          : [awayColor, homeColor];
-  const auraStrength = dead ? 0 : live ? 0.42 : final ? 0.12 : 0.22;
+          : [muted(awayColor), muted(homeColor)];
+  /* Verdicts are loud while they can still change and fade once settled. Team
+     colours sit at a steady middle — they're identity, not news — and can carry
+     that brightness without shouting because the CSS desaturates them. */
+  const auraStrength = dead
+    ? 0
+    : position
+      ? live
+        ? 0.42
+        : 0.14
+      : final
+        ? 0.12
+        : 0.3;
 
   return (
     <div
       className="glass-wrap"
-      data-live={live}
+      data-tint={position ? "position" : "teams"}
       style={{ "--aura-strength": auraStrength } as React.CSSProperties}
     >
       <div className="glass-aura" aria-hidden>
@@ -810,7 +835,7 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
             </span>
           )}
           <MoveIndicator move={move} open={game.lines.spreadOpen} />
-          <Sparkline points={game.spreadHistory} vsModel={move?.vsModel ?? null} />
+          <Sparkline points={game.spreadHistory} />
         </div>
       </div>
 

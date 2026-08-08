@@ -4,26 +4,17 @@ import type { LinePoint } from "../../lib/slate";
  * Tiny inline line-movement chart — the shape of the move, next to
  * MoveIndicator's arrow and magnitude.
  *
- * The stroke inherits `currentColor`, so the caller decides the tone. It used
- * to be rendered inside a `text-dim` row while its own doc comment claimed it
- * colored itself win/loss by direction (audit bug #15) — the comment was
- * wrong AND the chart was invisible.
- *
- * Direction alone is deliberately NOT colored. Green for "moved toward home"
- * would imply a valence that doesn't exist: there is no rooting interest until
- * the model takes a side. `vsModel` is the read that means something — the same
- * one MoveIndicator uses — so the pair now agrees instead of one being a
- * decoration.
+ * Never colored. Line movement has no valence — the card's green/red is
+ * reserved for whether your money is good, and lending it to a drifting number
+ * makes every card look like a verdict. Shape and magnitude are the whole
+ * message; MoveIndicator states the direction beside it.
  */
 export function Sparkline({
   points,
-  vsModel = null,
   width = 56,
   height = 18,
 }: {
   points: LinePoint[];
-  /** Market steaming toward or away from the model's side; null = no read. */
-  vsModel?: "toward" | "away" | null;
   width?: number;
   height?: number;
 }) {
@@ -40,16 +31,13 @@ export function Sparkline({
     .join(" ");
   const last = points[points.length - 1];
 
-  // No read → chalk, not dim: the shape still has to be legible.
-  const tone =
-    vsModel === "toward" ? "text-win" : vsModel === "away" ? "text-loss" : "text-chalk/55";
-
   return (
     <svg
       width={width}
       height={height}
       viewBox={`0 0 ${width} ${height}`}
-      className={`overflow-visible ${tone}`}
+      /* chalk, not dim — neutral still has to be legible */
+      className="overflow-visible text-chalk/55"
       aria-hidden
     >
       <path d={d} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
