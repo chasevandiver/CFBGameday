@@ -1,11 +1,17 @@
 "use client";
 
-import { CloudRain, Pin, Snowflake, Star, Tv, Wind } from "lucide-react";
+import { CloudRain, Pin, Snowflake, Star, Thermometer, Tv, Wind } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { inSlip, useBetSlip, type SlipSelection } from "../../lib/bet-slip-store";
 import { kickParts, periodLabel } from "../../lib/kick";
-import { pickCoverView, statusForBet, statusForPick, type PickCoverView } from "../../lib/live-status";
+import {
+  pickCoverView,
+  statusForBet,
+  statusForPick,
+  tintFor,
+  type PickCoverView,
+} from "../../lib/live-status";
 import {
   atsResult,
   displayRank,
@@ -95,13 +101,36 @@ export function GameCard({
   const homeColor = game.home.color ?? "#5b6472";
   const awayColor = game.away.color ?? "#5b6472";
 
+  /* The aura carries one fact: is your money good? Green covering, red not,
+     amber on the bubble — and when you have nothing on the game, the two team
+     colours instead. A live game glows hardest; a final barely at all. */
+  const tint = tintFor(game);
+  const auraColors =
+    tint === "covering"
+      ? ["var(--win)", "var(--win)"]
+      : tint === "losing"
+        ? ["var(--loss)", "var(--loss)"]
+        : tint === "bubble"
+          ? ["var(--accent)", "var(--accent)"]
+          : [awayColor, homeColor];
+  const auraStrength = dead ? 0 : live ? 0.42 : final ? 0.12 : 0.22;
+
   return (
-    <article
-      className={`card card-hover card-in relative overflow-hidden ${live ? "card-live" : ""} ${
-        cover?.tier === "bubble" ? "card-bubble" : ""
-      } ${final && !featured ? "card-final" : ""} ${featured ? "ring-1 ring-accent/40" : ""}`}
-      style={{ animationDelay: `${Math.min(index * 30, 150)}ms` }}
+    <div
+      className="glass-wrap"
+      data-live={live}
+      style={{ "--aura-strength": auraStrength } as React.CSSProperties}
     >
+      <div className="glass-aura" aria-hidden>
+        <span className="aura-a" style={{ background: auraColors[0] }} />
+        <span className="aura-b" style={{ background: auraColors[1] }} />
+      </div>
+      <article
+        className={`card card-hover card-in relative overflow-hidden ${live ? "card-live" : ""} ${
+          cover?.tier === "bubble" ? "card-bubble" : ""
+        } ${final && !featured ? "card-final" : ""} ${featured ? "ring-1 ring-accent/40" : ""}`}
+        style={{ animationDelay: `${Math.min(index * 30, 150)}ms` }}
+      >
       {cover ? (
         <CoverStrip cover={cover} pick={pickPrefix(game)} />
       ) : (
@@ -173,8 +202,9 @@ export function GameCard({
             )}
           </div>
         </div>
-      </div>
-    </article>
+        </div>
+      </article>
+    </div>
   );
 }
 
@@ -220,8 +250,20 @@ function CardHeader({
   const u2m = live && underTwo(game.period, game.clock);
   return (
     <div className="flex min-h-5 items-center justify-between gap-2">
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         {featured && <span className="chip bg-accent/15 text-accent">Game of the Week</span>}
+        {game.rivalry && (
+          <span
+            className="chip shrink-0 bg-chalk/10 text-chalk"
+            title={
+              game.rivalry.trophy
+                ? `${game.rivalry.name} · ${game.rivalry.trophy}`
+                : game.rivalry.name
+            }
+          >
+            {game.rivalry.name}
+          </span>
+        )}
         {live ? (
           <>
             <LiveBadge />
@@ -248,8 +290,8 @@ function CardHeader({
       <div className="flex items-center gap-2">
         <WeatherFlag game={game} />
         {game.tv && (
-          <span className="stat flex items-center gap-1 text-[10.5px] font-medium text-dim">
-            <Tv size={11} aria-hidden />
+          <span className="stat flex shrink-0 items-center gap-1 text-[11px] font-medium text-dim">
+            <Tv size={12} aria-hidden />
             {game.tv}
           </span>
         )}
@@ -284,22 +326,34 @@ function Kickoff({ iso, tz }: { iso: string; tz: string }) {
   );
 }
 
+/**
+ * Conditions. Wind, rain and cold still get their own icon and the accent
+ * colour, because those change how a game is played; otherwise the
+ * temperature shows plainly, so the card answers "what's it like there?"
+ * rather than staying silent on a pleasant day.
+ */
 function WeatherFlag({ game }: { game: GameView }) {
   const w = game.weather;
   if (!w || game.dome || isFinal(game)) return null;
   const windy = (w.windMph ?? 0) >= 15;
   const wet = (w.precipProb ?? 0) >= 50;
   const cold = w.tempF !== null && w.tempF <= 25;
-  if (!windy && !wet && !cold) return null;
-  const Icon = windy ? Wind : wet ? CloudRain : Snowflake;
+  const notable = windy || wet || cold;
+  if (!notable && w.tempF === null) return null;
+  const Icon = windy ? Wind : wet ? CloudRain : cold ? Snowflake : Thermometer;
   const label = windy
     ? `Wind ${Math.round(w.windMph!)} mph`
     : wet
       ? `${Math.round(w.precipProb!)}% precip`
       : `${Math.round(w.tempF!)}°F`;
   return (
-    <span className="stat flex items-center gap-1 text-[10.5px] text-edge" title={label}>
-      <Icon size={11} aria-hidden />
+    <span
+      className={`stat flex shrink-0 items-center gap-1 text-[11px] ${
+        notable ? "text-edge" : "text-dim"
+      }`}
+      title={label}
+    >
+      <Icon size={12} aria-hidden />
       {label}
     </span>
   );
@@ -573,10 +627,11 @@ function OddsColumnLabels({ game }: { game: GameView }) {
   const { spread, total, mlHome, mlAway } = game.lines;
   if (spread === null && total === null && mlHome === null && mlAway === null) return null;
   return (
-    <div className="mt-2 flex justify-end gap-1 text-[10px] font-semibold uppercase tracking-wider text-chalk/45">
-      <span className="min-w-11 text-center">Spread</span>
-      <span className="min-w-11 text-center">Total</span>
-      <span className="min-w-12 text-center">Money</span>
+    /* widths track the cells below them — see OddsCell */
+    <div className="mt-2 flex justify-end gap-1 text-[10.5px] font-semibold uppercase tracking-wider text-chalk/45">
+      <span className="w-11 text-center">Spread</span>
+      <span className="w-11 text-center">Total</span>
+      <span className="w-12 text-center">Money</span>
     </div>
   );
 }
@@ -595,7 +650,9 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
   const teamSpread = spread === null ? null : side === "home" ? spread : -spread;
   const ml = side === "home" ? mlHome : mlAway;
   const totalSide = side === "home" ? ("under" as const) : ("over" as const);
-  const totalLabel = total === null ? "–" : `${side === "home" ? "U" : "O"} ${fmtTotal(total)}`;
+  // lowercase and unspaced, the way a book prints it: five characters fit the
+  // pinned cell where six do not, and a lowercase o never reads as a zero
+  const totalLabel = total === null ? "–" : `${side === "home" ? "u" : "o"}${fmtTotal(total)}`;
   if (spread === null && total === null && ml === null)
     return <span className="stat text-[11px] text-chalk/30">no line</span>;
 
@@ -673,8 +730,10 @@ function OddsCell({
       disabled={disabled}
       aria-label={aria}
       aria-pressed={active}
-      className={`stat pointer-events-auto flex h-8 items-center justify-center rounded-md px-1 text-[11px] font-medium transition-colors ${
-        wide ? "min-w-12" : "min-w-11"
+      /* 44px tall: the readable size, and the tap-target floor docs/DESIGN.md
+         sets — these were 32px, which the audit flagged as under-sized. */
+      className={`stat pointer-events-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-md px-0.5 text-[13px] font-semibold transition-colors ${
+        wide ? "w-12" : ""
       } ${
         active
           ? "bg-accent text-accent-ink ring-1 ring-inset ring-accent"
@@ -720,7 +779,7 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
   const p = game.prediction;
   const picks = modelPicks(game);
   const move = spreadMoveRead(game);
-  const watch = live ? null : watchability(game);
+  const watch = watchability(game);
 
   const liveProb = live ? liveHomeWinProb(game) : null;
   const h = game.homePoints ?? 0;
@@ -744,8 +803,8 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
         <div className="flex items-center gap-1.5 text-dim">
           {watch !== null && (
             <span
-              className="stat text-[10.5px] font-medium text-chalk/55"
-              title="Watchability 0–100: closeness + team quality + expected points"
+              className="stat text-[11px] font-medium text-chalk/55"
+              title="Watchability 0–100: closeness + team quality + expected points + rivalry"
             >
               watch {watch}
             </span>
@@ -811,9 +870,43 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
               </>
             )}
           </p>
+          <SystemsRow game={game} />
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * SP+, FPI and Elo beside the model's own number — spec §2.4 promises "all
+ * four systems side by side on every game card", and they have been synced
+ * (migration 0016) and used by the consensus flag without ever being shown
+ * here. Rendered in the market's convention, home-relative, so they read
+ * against the spread directly above them.
+ */
+function SystemsRow({ game }: { game: GameView }) {
+  if (game.systems.length === 0) return null;
+  const LABEL: Record<string, string> = { sp: "SP+", fpi: "FPI", elo: "Elo" };
+  return (
+    <p className="stat mt-1 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px] leading-none text-dim">
+      {game.systems.map((s) => {
+        // both sides needed to express a margin; Elo is ~25 points per point
+        const margin =
+          s.home === null || s.away === null
+            ? null
+            : s.system === "elo"
+              ? (s.away - s.home) / 25
+              : s.away - s.home;
+        return (
+          <span key={s.system}>
+            {LABEL[s.system]}{" "}
+            <span className="text-chalk/75">
+              {margin === null ? "–" : fmtSpread(Math.round(margin * 10) / 10)}
+            </span>
+          </span>
+        );
+      })}
+    </p>
   );
 }
 

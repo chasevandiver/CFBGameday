@@ -13,7 +13,15 @@ import { hasCalibratedTotals } from "../model/ratings";
 import { pickPollRanks, pollShortName } from "./rankings";
 import { fetchCurrentSlate, type SeasonType } from "./season";
 import { atsRecord, ouRecord } from "./slate";
-import type { CrewPickView, GameView, LinePoint, MyBetView, SlateData, TeamView } from "./slate";
+import type {
+  CrewPickView,
+  GameView,
+  LinePoint,
+  MyBetView,
+  RivalryView,
+  SlateData,
+  TeamView,
+} from "./slate";
 
 // Consensus math lives in ./consensus (single shared implementation for app +
 // jobs); re-exported here for existing importers.
@@ -123,7 +131,7 @@ export async function fetchSlateView(
   // a week of snapshots more than covers it and bounds the row count.
   const historyStart = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
 
-  const [teamsRes, consensusRes, historyRes, predsRes, picksRes, betsRes, weatherRes, venuesRes, seasonGamesRes, ratingsRes, pollsRes, crewPicksRes, profilesRes] =
+  const [teamsRes, consensusRes, historyRes, predsRes, picksRes, betsRes, weatherRes, venuesRes, seasonGamesRes, ratingsRes, pollsRes, crewPicksRes, profilesRes, systemsRes, rivalriesRes] =
     await Promise.all([
       supabase.from("teams").select("*").in("id", teamIds),
       // one consensus row per game, reduced in Postgres (migration 0015) —
@@ -176,6 +184,19 @@ export async function fetchSlateView(
         .select("user_id, game_id, side, result")
         .eq("season_id", seasonId),
       supabase.from("profiles").select("id, display_name"),
+      // SP+/FPI/Elo for the slate's teams (spec §2.4 promises them on every
+      // card). Newest week first so the first row per system+team wins, the
+      // same reduction the game page does.
+      supabase
+        .from("system_ratings")
+        .select("team_id, system, week, value")
+        .eq("season_id", seasonId)
+        .in("team_id", teamIds)
+        .order("week", { ascending: false }),
+      // Static editorial seed (migration 0017) — a few hundred rows at most,
+      // so it is cheaper to pull once and pair in memory than to build an
+      // OR filter per game.
+      supabase.from("rivalries").select("team_a_id, team_b_id, name, trophy"),
     ]);
 
   const teams = new Map(((teamsRes.data ?? []) as TeamRow[]).map((t) => [t.id, t]));
@@ -261,6 +282,32 @@ export async function fetchSlateView(
   const domeByVenue = new Map(
     ((venuesRes.data ?? []) as Array<{ id: number; dome: boolean }>).map((v) => [v.id, v.dome]),
   );
+
+  // latest value per system per team — rows arrive newest week first, so the
+  // first one seen for a key wins (same reduction as game/[id])
+  const systemLatest = new Map<string, number>();
+  for (const r of (systemsRes.data ?? []) as Array<{
+    team_id: number;
+    system: string;
+    value: number;
+  }>) {
+    const key = `${r.system}:${r.team_id}`;
+    if (!systemLatest.has(key)) systemLatest.set(key, Number(r.value));
+  }
+
+  // rivalries are unordered pairs; key both directions so lookup is one hit
+  const rivalryByPair = new Map<string, RivalryView>();
+  for (const r of (rivalriesRes.data ?? []) as Array<{
+    team_a_id: number;
+    team_b_id: number;
+    name: string | null;
+    trophy: string | null;
+  }>) {
+    if (!r.name) continue;
+    const view: RivalryView = { name: r.name, trophy: r.trophy };
+    rivalryByPair.set(`${r.team_a_id}:${r.team_b_id}`, view);
+    rivalryByPair.set(`${r.team_b_id}:${r.team_a_id}`, view);
+  }
 
   // season records from final games
   const records = new Map<number, { w: number; l: number }>();
@@ -383,6 +430,14 @@ export async function fetchSlateView(
           ? { tempF: weather.temp_f, windMph: weather.wind_mph, precipProb: weather.precip_prob }
           : null,
         dome: game.venue_id !== null ? (domeByVenue.get(game.venue_id) ?? false) : false,
+        rivalry: rivalryByPair.get(`${game.home_team_id}:${game.away_team_id}`) ?? null,
+        systems: (["sp", "fpi", "elo"] as const)
+          .map((system) => ({
+            system,
+            home: systemLatest.get(`${system}:${game.home_team_id}`) ?? null,
+            away: systemLatest.get(`${system}:${game.away_team_id}`) ?? null,
+          }))
+          .filter((s) => s.home !== null || s.away !== null),
       },
     ];
   });

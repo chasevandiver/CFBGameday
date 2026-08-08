@@ -39,6 +39,12 @@
   /* Height of the mobile bottom nav. Read by BottomNav, by the body reserve
      below, and by BetSlip so the slip clears the bar. */
   --bottom-nav-h: 64px;
+
+  /* Liquid glass. Derived from the existing surface rather than new hues:
+     the card is the same colour, just letting the aura through. */
+  --glass-surface: color-mix(in srgb, var(--surface) 74%, transparent);
+  --glass-edge: rgba(244, 236, 220, 0.11);
+  --glass-bar: color-mix(in srgb, var(--bg) 72%, transparent);
 }
 
 html[data-theme="light"] {
@@ -59,6 +65,12 @@ html[data-theme="light"] {
 
   --shadow-card: 0 1px 2px rgba(18, 24, 38, 0.06), 0 8px 24px -12px rgba(18, 24, 38, 0.12);
   --shadow-card-hover: 0 2px 4px rgba(18, 24, 38, 0.08), 0 16px 40px -16px rgba(18, 24, 38, 0.2);
+
+  /* Glass on a light ground needs a more opaque card and a brighter edge, or
+     the aura reads as a stain rather than a glow. */
+  --glass-surface: color-mix(in srgb, var(--surface) 86%, transparent);
+  --glass-edge: rgba(255, 255, 255, 0.85);
+  --glass-bar: color-mix(in srgb, var(--bg) 80%, transparent);
 }
 
 @theme inline {
@@ -137,10 +149,12 @@ h2,
 /* ---- Surfaces -------------------------------------------------------- */
 
 .card {
-  background: var(--surface);
+  background: var(--glass-surface);
   border: 1px solid var(--line);
   border-radius: 12px;
-  box-shadow: var(--shadow-card);
+  /* the specular top edge is what makes it read as glass rather than as a
+     flat panel that happens to be see-through */
+  box-shadow: inset 0 1px 0 var(--glass-edge), var(--shadow-card);
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 .card-hover:hover {
@@ -239,6 +253,61 @@ h2,
 .card-final {
   opacity: 0.68;
   filter: saturate(0.78);
+}
+
+/* ---- Liquid glass: the aura behind the card --------------------------- */
+
+/* Cards sit on a blurred wash of colour instead of blurring what is behind
+   them. The slate's ground is a flat --bg, so backdrop-filter would spend GPU
+   blurring a solid colour for no visible gain; it is reserved for the bars
+   that genuinely have content scrolling underneath (nav, header, ticker).
+   Colour meaning lives in tintFor() — green covering, red not, amber on the
+   bubble, team colours when you have nothing riding on it. */
+.glass-wrap {
+  position: relative;
+  isolation: isolate;
+}
+.glass-aura {
+  position: absolute;
+  inset: -12px -2px -16px;
+  z-index: -1;
+  border-radius: 28px;
+  filter: blur(30px);
+  opacity: var(--aura-strength, 0.26);
+  pointer-events: none;
+  transition: opacity 500ms ease;
+}
+.glass-aura span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 58%;
+  border-radius: 50%;
+}
+.glass-aura .aura-a {
+  left: 0;
+}
+.glass-aura .aura-b {
+  right: 0;
+}
+
+/* Unobtrusive by construction: a slow drift with no hue or opacity change,
+   so peripheral vision reads a steady colour rather than a flicker.
+   Live games only — measured at 70 cards, animating every aura costs 8fps
+   (52 vs 60) while a static aura costs nothing, and a card that isn't playing
+   has no news to convey by moving. */
+@media (prefers-reduced-motion: no-preference) {
+  .glass-wrap[data-live="true"] .glass-aura {
+    animation: aura-drift 16s ease-in-out infinite alternate;
+  }
+}
+@keyframes aura-drift {
+  from {
+    transform: translate3d(-1.5%, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(1.5%, 0, 0) scale(1.05);
+  }
 }
 
 /* Team rows: the team's primary color binds its half of the card */

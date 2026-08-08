@@ -12,7 +12,14 @@ import { BetSlip } from "../../../components/slate/BetSlip";
 import { GameCard } from "../../../components/slate/GameCard";
 import { SkeletonCard } from "../../../components/slate/SkeletonCard";
 import { DEFAULT_TZ } from "../../../lib/kick";
-import type { CrewPickView, GameView, MyBetView, TeamView } from "../../../lib/slate";
+import type {
+  CrewPickView,
+  GameView,
+  MyBetView,
+  RivalryView,
+  SystemRatingView,
+  TeamView,
+} from "../../../lib/slate";
 
 const logo = (id: number) => `https://a.espncdn.com/i/teamlogos/ncaa/500-dark/${id}.png`;
 
@@ -66,6 +73,13 @@ const base = {
   lastPlay: null as string | null,
   possession: null as "home" | "away" | null,
   weather: null,
+  rivalry: null as RivalryView | null,
+  // SP+/FPI/Elo in the same shape fetchSlateView builds (spec §2.4)
+  systems: [
+    { system: "sp", home: 18.4, away: 21.1 },
+    { system: "fpi", home: 16.9, away: 19.8 },
+    { system: "elo", home: 1888, away: 1934 },
+  ] as SystemRatingView[],
 };
 
 const PREGAME: GameView = {
@@ -119,6 +133,7 @@ const LIVE: GameView = {
   awayPoints: 21,
   home: MICHIGAN,
   away: OHIO_STATE,
+  rivalry: { name: "The Game", trophy: null },
   myPick: { side: "away", line: 3.5 },
   myBets: [{ id: 1, betType: "total", side: "over", line: 44.5 }],
   crewPicks: [
@@ -155,6 +170,7 @@ const FINAL_GAME: GameView = {
   awayPoints: 24,
   home: TEXAS,
   away: OKLAHOMA,
+  rivalry: { name: "Red River Rivalry", trophy: "Golden Hat" },
   lines: { spread: -6.5, spreadOpen: -7.5, total: 57.5, totalOpen: 58.5, mlHome: -260, mlAway: 210 },
   spreadHistory: hist([-7.5, -7, -7, -6.5]),
   prediction: {

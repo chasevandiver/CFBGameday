@@ -178,3 +178,61 @@ export function statusForBet(
   }
   return null;
 }
+
+/* ---- card tint (the Liquid Glass aura) --------------------------------- */
+
+/**
+ * What the card's ambient glow is saying:
+ *   covering / losing / bubble — you have money or a pick on this game
+ *   teams                      — you don't, so the aura is the team colours
+ *
+ * Ledger bets outrank pick'em picks: if you have both, the one with real
+ * units on it decides the colour. Pushes and ungraded states fall back to
+ * "teams" rather than inventing a verdict.
+ */
+export type CardTint = "covering" | "losing" | "bubble" | "teams";
+
+const tierFromMargin = (coverMargin: number, live: boolean): CardTint => {
+  // the bubble only exists while the game can still flip it
+  if (live && Math.abs(coverMargin) <= 3) return "bubble";
+  if (coverMargin > 0) return "covering";
+  if (coverMargin < 0) return "losing";
+  return "teams";
+};
+
+export function tintFor(g: GameView): CardTint {
+  const live = g.status === "in_progress";
+  const final = g.status === "final";
+  if (!live && !final) return "teams";
+  if (g.homePoints === null || g.awayPoints === null) return "teams";
+
+  // a ledger bet wins over a pick'em pick
+  for (const bet of g.myBets) {
+    const status = statusForBet(bet, g.homePoints, g.awayPoints);
+    if (!status) continue;
+    if (status.state === "push") return "teams";
+    if (status.state === "winning") return live && !status.clinched ? nearNumber(g, bet) : "covering";
+    return live && !status.clinched ? nearNumber(g, bet) : "losing";
+  }
+
+  if (g.myPick && (g.myPick.side === "home" || g.myPick.side === "away")) {
+    const margin =
+      g.myPick.side === "home" ? g.homePoints - g.awayPoints : g.awayPoints - g.homePoints;
+    return tierFromMargin(margin + g.myPick.line, live);
+  }
+  return "teams";
+}
+
+/** Spread bets get the bubble tier; other bet types just win or lose. */
+function nearNumber(g: GameView, bet: MyBetView): CardTint {
+  if (bet.betType !== "spread" || bet.line === null) {
+    return statusForBet(bet, g.homePoints ?? 0, g.awayPoints ?? 0)?.state === "winning"
+      ? "covering"
+      : "losing";
+  }
+  const margin =
+    bet.side === "home"
+      ? (g.homePoints ?? 0) - (g.awayPoints ?? 0)
+      : (g.awayPoints ?? 0) - (g.homePoints ?? 0);
+  return tierFromMargin(margin + bet.line, true);
+}

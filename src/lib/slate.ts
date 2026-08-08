@@ -101,6 +101,23 @@ export interface GameView {
   crewPicks: CrewPickView[];
   weather: { tempF: number | null; windMph: number | null; precipProb: number | null } | null;
   dome: boolean;
+  /** Seeded rivalry for this pairing (migration 0017); null when it isn't one */
+  rivalry: RivalryView | null;
+  /** Latest SP+/FPI/Elo for both sides (spec §2.4); empty when unsynced */
+  systems: SystemRatingView[];
+}
+
+export interface RivalryView {
+  name: string;
+  /** Trophy on the line, when the rivalry plays for one */
+  trophy: string | null;
+}
+
+/** One rating system's latest number for each side, in market convention. */
+export interface SystemRatingView {
+  system: "sp" | "fpi" | "elo";
+  home: number | null;
+  away: number | null;
 }
 
 export interface SlateData {
@@ -472,8 +489,13 @@ export function spreadMoveRead(g: GameView): MoveRead | null {
 /**
  * Watchability 0–100 (spec §7 defines the formula shape; weights tuned by
  * feel): closeness of spread + combined team quality (poll/model rank as the
- * available proxy for ratings) + expected points, on a base of 10.
- * Null for dead games. Rivalry/stakes terms join when that data exists.
+ * available proxy for ratings) + expected points, on a base of 10, plus the
+ * rivalry term the formula was always meant to carry (migration 0017 seeded
+ * the data). Null for dead games.
+ *
+ * The rivalry bonus is deliberately small. A rivalry makes a mediocre game
+ * worth watching; it does not make it a better game than two top-10 teams in
+ * a one-score spread, which already scores near the cap without it.
  */
 export function watchability(g: GameView): number | null {
   if (isDead(g)) return null;
@@ -490,6 +512,8 @@ export function watchability(g: GameView): number | null {
     g.lines.total === null
       ? 8
       : Math.max(0, Math.min(1, (g.lines.total - 38) / 37)) * 20;
+  // stakes: the trophy games people watch regardless of record
+  if (g.rivalry) score += 10;
   return Math.round(Math.min(score, 100));
 }
 

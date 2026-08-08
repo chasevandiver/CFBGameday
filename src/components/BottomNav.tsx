@@ -50,7 +50,7 @@ export function BottomNav() {
         ref={sheetRef}
         id="nav-more-sheet"
         hidden={!open}
-        className="fixed inset-x-0 bottom-0 z-40 rounded-t-xl border-t border-chalk/10 bg-elev px-4 pt-4 md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 rounded-t-xl border-t border-chalk/10 bg-elev/90 px-4 pt-4 backdrop-blur-xl md:hidden"
         style={{ paddingBottom: "calc(var(--bottom-nav-h) + env(safe-area-inset-bottom) + 1rem)" }}
       >
         <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-dim">More</p>
@@ -80,8 +80,14 @@ export function BottomNav() {
       <nav
         aria-label="Primary"
         data-bottom-nav
-        className="fixed inset-x-0 bottom-0 z-40 flex border-t border-chalk/10 bg-background/95 backdrop-blur-md md:hidden"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        className="fixed inset-x-0 bottom-0 z-40 flex border-t border-chalk/10 backdrop-blur-xl backdrop-saturate-150 md:hidden"
+        style={{
+          paddingBottom: "env(safe-area-inset-bottom)",
+          background: "var(--glass-bar)",
+          /* same specular top edge the cards carry, so the bar reads as one
+             material with them rather than as a separate opaque tray */
+          boxShadow: "inset 0 1px 0 var(--glass-edge)",
+        }}
       >
         {PRIMARY_ITEMS.map((item) => {
           const active = isNavItemActive(item, pathname);
