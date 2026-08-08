@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#12100D" />
+<title>Design directions · The CFB Slate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Archivo:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+:root{--bg:#12100d;--surface:#191512;--text:#f2eee5;--dim:#a89f90;--accent:#f2b63c;
+  --line:rgba(244,236,220,.1)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:Archivo,system-ui,sans-serif;
+  font-size:15px;line-height:1.5;padding:calc(24px + env(safe-area-inset-top)) 16px
+  calc(32px + env(safe-area-inset-bottom));max-width:640px;margin:0 auto}
+h1{font-family:"Barlow Condensed",sans-serif;font-size:30px;font-weight:700;color:var(--accent);
+  letter-spacing:.01em;text-transform:uppercase}
+.sub{color:var(--dim);font-size:14px;margin:6px 0 24px}
+a.card{display:block;padding:16px;margin-bottom:12px;background:var(--surface);
+  border:1px solid var(--line);border-radius:12px;text-decoration:none;color:var(--text);
+  min-height:44px}
+a.card h2{font-family:"Barlow Condensed",sans-serif;font-size:22px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.02em}
+a.card p{color:var(--dim);font-size:13.5px;margin-top:4px}
+a.card .sw{display:flex;gap:5px;margin-top:11px}
+a.card .sw i{width:26px;height:14px;border-radius:3px;display:block}
+footer{color:var(--dim);font-size:12.5px;margin-top:24px;border-top:1px solid var(--line);padding-top:16px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+</head>
+<body>
+<h1>Design directions</h1>
+<p class="sub">Live scores + global nav, week 3 mock slate. Open each on a phone. Every direction has a <b>Sim</b> button in the header — turn it on to watch scores update and confirm nothing shifts.</p>
+
+<a class="card" href="direction-a.html">
+  <h2>A · Broadcast Scorebug</h2>
+  <p>Low density, score-led. Team colors become the chrome. Five-tab bottom bar.</p>
+  <span class="sw"><i style="background:#0A0E14"></i><i style="background:#141A24"></i><i style="background:#EDF1F7"></i><i style="background:#8A97A8"></i><i style="background:#FF3B30"></i><i style="background:#3DD68C"></i></span>
+</a>
+
+<a class="card" href="direction-b.html">
+  <h2>B · Betting Sheet</h2>
+  <p>High density, number-led. Amber phosphor monospace. Bottom bet-slip drawer.</p>
+  <span class="sw"><i style="background:#0B0B09"></i><i style="background:#1E1D17"></i><i style="background:#F5C518"></i><i style="background:#C9C4B4"></i><i style="background:#6FCF6B"></i><i style="background:#E5544B"></i></span>
+</a>
+
+<a class="card" href="direction-c.html">
+  <h2>C · Night Ticket</h2>
+  <p>Medium density, matchup-led. Ink card with a torn ecru stub that holds the pick.</p>
+  <span class="sw"><i style="background:#0D1220"></i><i style="background:#131A2B"></i><i style="background:#E8E1CE"></i><i style="background:#2A2418"></i><i style="background:#C8462F"></i><i style="background:#D9A441"></i></span>
+</a>
+
+<footer>Mockups only — standalone HTML, no app code touched. Same six games in all three, including Miami&nbsp;(OH) at Western Michigan as the long-string test.</footer>
+</body>
+</html>
