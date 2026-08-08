@@ -33,7 +33,7 @@ export function BetSlip({ seasonId }: { seasonId: number }) {
 
   if (slip.length === 0) {
     return logged ? (
-      <div className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-30">
+      <div className="fixed bottom-[calc(var(--bottom-nav-h)+env(safe-area-inset-bottom)+0.75rem)] right-4 md:bottom-[max(1rem,env(safe-area-inset-bottom))] z-30">
         <div className="card flex items-center gap-2 px-4 py-2.5 text-sm text-win">
           <Check size={15} strokeWidth={3} aria-hidden />
           Bets logged to your ledger
@@ -86,7 +86,7 @@ export function BetSlip({ seasonId }: { seasonId: number }) {
     });
 
   return (
-    <div className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-30 w-[340px] max-w-[calc(100vw-2rem)]">
+    <div className="fixed bottom-[calc(var(--bottom-nav-h)+env(safe-area-inset-bottom)+0.75rem)] right-4 md:bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 w-[340px] max-w-[calc(100vw-2rem)]">
       <div className="card overflow-hidden shadow-2xl">
         <button
           onClick={() => setOpen(!open)}

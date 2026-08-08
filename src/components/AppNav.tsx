@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AuthButton } from "./AuthButton";
+import { BottomNav } from "./BottomNav";
 import { NavTabs } from "./NavTabs";
 import { ScoreTicker } from "./ScoreTicker";
 import { ThemeToggle } from "./ThemeToggle";
@@ -19,13 +20,17 @@ export function AppNav() {
             The CFB Slate
           </Link>
           <NavTabs />
-          <AuthButton />
-          <ThemeToggle />
+          <div className="flex flex-1 items-center justify-end gap-4 md:flex-none">
+            <AuthButton />
+            <ThemeToggle />
+          </div>
         </div>
       </header>
       {/* sticky under the header; publishes --ticker-h so other sticky bars
           offset below it */}
       <ScoreTicker />
+      {/* primary nav below md — the top strip is desktop-only now */}
+      <BottomNav />
     </>
   );
 }

@@ -2,34 +2,23 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { NAV_ITEMS, isNavItemActive } from "./nav-items";
 
-const TABS: Array<{ label: string; href: string; also?: string[] }> = [
-  { label: "Slate", href: "/slate", also: ["/game"] },
-  { label: "Edges", href: "/edges" },
-  { label: "Rankings", href: "/rankings" },
-  { label: "Ratings", href: "/ratings" },
-  { label: "Standings", href: "/standings" },
-  { label: "Teams", href: "/teams", also: ["/team"] },
-  { label: "Ledger", href: "/ledger" },
-  { label: "Crew", href: "/crew", also: ["/rules"] },
-  { label: "Receipts", href: "/receipts", also: ["/recap"] },
-];
-
-/** Primary nav with the current page marked (aria-current + accent). */
+/**
+ * Desktop primary nav with the current page marked (aria-current + accent).
+ * Hidden below `md`, where BottomNav takes over — all nine tabs fit a wide
+ * header without scrolling, but on a phone they never did.
+ */
 export function NavTabs() {
   const pathname = usePathname();
-  const isActive = (tab: (typeof TABS)[number]) =>
-    pathname === tab.href ||
-    pathname.startsWith(`${tab.href}/`) ||
-    (tab.also ?? []).some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
   return (
-    <nav aria-label="Primary" className="scroll-thin flex flex-1 gap-0.5 overflow-x-auto">
-      {TABS.map((tab) => {
-        const active = isActive(tab);
+    <nav aria-label="Primary" className="hidden flex-1 gap-0.5 md:flex">
+      {NAV_ITEMS.map((tab) => {
+        const active = isNavItemActive(tab, pathname);
         return (
           <Link
-            key={tab.label}
+            key={tab.href}
             href={tab.href}
             aria-current={active ? "page" : undefined}
             className={`shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${

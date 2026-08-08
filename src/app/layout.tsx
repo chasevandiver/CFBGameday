@@ -35,6 +35,9 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
+  /* Required for env(safe-area-inset-*) to report anything but 0 — the bottom
+     nav and the bet slip both sit in the home-indicator zone. */
+  viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: dark)", color: "#12100D" },
     { media: "(prefers-color-scheme: light)", color: "#F2F3F6" },
