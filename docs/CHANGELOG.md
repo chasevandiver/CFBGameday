@@ -162,8 +162,16 @@ markets members may pick (spreads / totals / winners). Migrations `0020` and
   means a postponement that moves a game to another week cannot pull it off a
   board people already picked. There is a test for exactly that.
 - *The freeze reads the clock, not a flag.* `group_week_is_locked` asks whether
-  the week's first kickoff has passed; `locked_at` only records that the job has
-  materialised the list. Correctness never depends on a job running on time.
+  the week's first kickoff has passed; `locked_at` only records that the
+  `freeze-groups` job has materialised the list. That job is chained onto the
+  lines refreshes rather than given a cron of its own — those already run daily
+  and every ten minutes through the Saturday kickoff waves, the freeze is
+  idempotent, and a missed run costs materialisation but never correctness.
+
+`0021`'s backfill only runs when there are picks to rescue. On a project with
+none there is no history to preserve, and minting a group called "The Crew"
+would leave a row nobody asked for — and there is no rename RPC yet, so no way
+to relabel it.
 
 Picks are per group, so the same user can hold opposite sides of one game in two
 pools. Straight-up is winner-only by owner decision — no line, no price, no CLV

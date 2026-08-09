@@ -207,6 +207,48 @@ export async function syncSystemsJob(db: SupabaseClient): Promise<Json> {
 }
 
 /** Open-Meteo forecasts for outdoor games in the next 7 days. */
+/**
+ * Materialise every group week whose first game has kicked off.
+ *
+ * `full_slate` and `conference` boards resolve live from `games` until they
+ * freeze, which is what lets a game added to the schedule join the board on
+ * its own. Once the week starts that has to stop, or a postponement moving a
+ * game to another week would silently pull it off a board people already
+ * picked. `freeze_group_week` copies the resolved list into
+ * `group_week_games` and stamps `locked_at`.
+ *
+ * It does NOT decide whether the week is locked — `group_week_is_locked` reads
+ * the clock, and `set_group_week_config` rejects edits on its own. So a missed
+ * run costs materialisation, never correctness, and the function is idempotent
+ * and cheap enough to call on every lines refresh.
+ */
+export async function freezeGroupWeeksJob(db: SupabaseClient): Promise<Json> {
+  const { data: pending } = await db
+    .from("group_week_config")
+    .select("group_id, season_id, week, season_type")
+    .is("locked_at", null);
+  if (!pending || pending.length === 0) return { considered: 0, frozen: 0 };
+
+  let frozen = 0;
+  for (const c of pending as Array<{
+    group_id: string;
+    season_id: number;
+    week: number;
+    season_type: string;
+  }>) {
+    const { data, error } = await db.rpc("freeze_group_week", {
+      p_group: c.group_id,
+      p_season: c.season_id,
+      p_week: c.week,
+      p_season_type: c.season_type,
+    });
+    // A week whose first kickoff is still ahead returns false; that is the
+    // normal case for most rows on most runs, not a failure.
+    if (!error && data === true) frozen++;
+  }
+  return { considered: pending.length, frozen };
+}
+
 export async function weatherJob(db: SupabaseClient): Promise<Json> {
   const horizon = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
   const { data: games } = await db

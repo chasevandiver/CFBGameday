@@ -229,6 +229,20 @@ select pg_temp.chk('a frozen board survives a game being rescheduled',
 update games set week = 2 where id = 203;
 \o
 
+\echo '# who may run the freeze'
+-- The job connects as service_role. Supabase's default privileges grant it
+-- EXECUTE on new functions, and 0020 only revokes from public/anon/
+-- authenticated — so the revoke does not lock the job out of its own function.
+select pg_temp.chk('service_role can run the freeze job',
+                   has_function_privilege('service_role',
+                     'public.freeze_group_week(uuid,integer,integer,text)', 'execute'));
+select pg_temp.chk('a signed-in member cannot force a freeze',
+                   not has_function_privilege('authenticated',
+                     'public.freeze_group_week(uuid,integer,integer,text)', 'execute'));
+select pg_temp.chk('but can make a pick',
+                   has_function_privilege('authenticated',
+                     'public.make_pick(uuid,integer,text,text)', 'execute'));
+
 \echo '# admin transfer and the last-admin invariant'
 \o /dev/null
 begin;

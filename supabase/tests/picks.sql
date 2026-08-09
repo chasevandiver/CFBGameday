@@ -79,6 +79,7 @@ values (2026, null, :ann::uuid, 201, 'spread', 'home', -3.5),
 do $$
 declare v_group uuid; v_admin uuid; v_code text;
 begin
+  if not exists (select 1 from public.picks) then return; end if;
   update public.picks set market = 'total' where side in ('over', 'under');
 
   select id into v_admin from public.profiles

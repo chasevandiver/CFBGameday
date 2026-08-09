@@ -13,6 +13,8 @@
 -- The backfill puts every existing pick into one group so `group_id` can be
 -- NOT NULL with no window in between. A nullable column in a unique index does
 -- not deduplicate, which would silently allow two spread picks on one game.
+-- It no-ops on a project with no picks: there is nothing to preserve, and the
+-- owner would rather name their own group than inherit one.
 
 -- ---------------------------------------------------------------------------
 -- 1. Columns
@@ -43,8 +45,12 @@ declare
   v_admin uuid;
   v_code  text;
 begin
-  if not exists (select 1 from public.profiles) then
-    return;  -- fresh project: no crew to carry over, and no picks either
+  -- Only when there is history to rescue. `group_id` is about to go NOT NULL,
+  -- so any existing pick needs a group; a project with none needs nothing, and
+  -- minting "The Crew" there would leave a row nobody asked for and — since
+  -- there is no rename RPC — no way to relabel it. The owner makes their own.
+  if not exists (select 1 from public.picks) then
+    return;
   end if;
 
   select id into v_admin
