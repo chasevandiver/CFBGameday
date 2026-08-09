@@ -135,7 +135,7 @@ describe("tintFor", () => {
       status: "in_progress",
       homePoints: 28,
       awayPoints: 20,
-      myPick: null,
+      myPicks: [],
       myBets: [],
       ...overrides,
     }) as GameView;
@@ -148,13 +148,13 @@ describe("tintFor", () => {
   it("reads a pick as covering, losing, or on the bubble", () => {
     // home up 8: -3.5 covers by 4.5; -14.5 is down 6.5, out of reach of one
     // score; -10.5 is down only 2.5, so a field goal still flips it
-    expect(tintFor(g({ myPick: { market: "spread", side: "home", line: -3.5 } }))).toBe("covering");
-    expect(tintFor(g({ myPick: { market: "spread", side: "home", line: -14.5 } }))).toBe("losing");
-    expect(tintFor(g({ myPick: { market: "spread", side: "home", line: -10.5 } }))).toBe("bubble");
+    expect(tintFor(g({ myPicks: [{ market: "spread", side: "home", line: -3.5 }] }))).toBe("covering");
+    expect(tintFor(g({ myPicks: [{ market: "spread", side: "home", line: -14.5 }] }))).toBe("losing");
+    expect(tintFor(g({ myPicks: [{ market: "spread", side: "home", line: -10.5 }] }))).toBe("bubble");
   });
 
   it("drops the bubble once the game is final — nothing can flip it", () => {
-    const settled = { status: "final", myPick: { market: "spread", side: "home", line: -6.5 } } as Partial<GameView>;
+    const settled = { status: "final", myPicks: [{ market: "spread", side: "home", line: -6.5 }] } as Partial<GameView>;
     expect(tintFor(g(settled))).toBe("covering");
   });
 
@@ -162,11 +162,11 @@ describe("tintFor", () => {
     const bets = [{ id: 1, betType: "spread", side: "away", line: 3.5 }];
     // the pick is covering, the bet is not — real units decide the colour
     expect(
-      tintFor(g({ myPick: { market: "spread", side: "home", line: -3.5 }, myBets: bets as GameView["myBets"] })),
+      tintFor(g({ myPicks: [{ market: "spread", side: "home", line: -3.5 }], myBets: bets as GameView["myBets"] })),
     ).toBe("losing");
   });
 
   it("stays neutral on a push rather than inventing a verdict", () => {
-    expect(tintFor(g({ myPick: { market: "spread", side: "home", line: -8 }, status: "final" }))).toBe("teams");
+    expect(tintFor(g({ myPicks: [{ market: "spread", side: "home", line: -8 }], status: "final" }))).toBe("teams");
   });
 });

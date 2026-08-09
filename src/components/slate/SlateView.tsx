@@ -260,7 +260,7 @@ export function SlateView({
         return false;
       if (network !== "all" && g.tv !== network) return false;
       if (rankedOnly && !isRankedMatchup(g)) return false;
-      if (myPicksOnly && !g.myPick) return false;
+      if (myPicksOnly && g.myPicks.length === 0) return false;
       if (
         maxSpread !== Infinity &&
         (g.lines.spread === null || Math.abs(g.lines.spread) > maxSpread)

@@ -50,8 +50,14 @@ export function ConsensusChip({ on }: { on: boolean }) {
   return <span className="chip border border-accent/50 bg-accent/10 text-accent">Consensus</span>;
 }
 
-export function PickedChip() {
-  return <span className="chip bg-accent/15 text-accent">Picked</span>;
+/**
+ * The viewer's pick, named. It used to render the bare word "Picked", which
+ * told you that you had one and nothing about which side — the card already
+ * knew, and the live and final states already printed it. One chip per market,
+ * so a spread and a total on the same game read as two.
+ */
+export function PickedChip({ label }: { label: string }) {
+  return <span className="chip bg-accent/15 text-accent">{label}</span>;
 }
 
 /** Pass/fail/push chip — icon + text, never color alone. */

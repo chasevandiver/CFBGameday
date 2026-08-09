@@ -24,6 +24,7 @@ import {
   isDead,
   isFinal,
   isLive,
+  headlinePick,
   isRedZone,
   liveHomeWinProb,
   modelPicks,
@@ -35,10 +36,10 @@ import {
   type FieldPosition,
   type GameView,
   type MyBetView,
+  type MyPickView,
   type TeamView,
 } from "../../lib/slate";
 import { ConsensusChip, EdgeChip, LiveBadge, LiveStatusChip, MoveIndicator, PickedChip, ResultChip } from "./chips";
-import { Sparkline } from "./Sparkline";
 import { TeamMark } from "./TeamMark";
 import { WinProbBar } from "./WinProbBar";
 
@@ -100,12 +101,13 @@ export function GameCard({
     prev.current = { h: game.homePoints, a: game.awayPoints };
   }, [game.homePoints, game.awayPoints]);
 
+  const headline = headlinePick(game.myPicks);
   const cover =
-    live && game.myPick
+    live && headline
       ? pickCoverView(
-          game.myPick.market,
-          game.myPick.side,
-          game.myPick.line,
+          headline.market,
+          headline.side,
+          headline.line,
           game.homePoints ?? 0,
           game.awayPoints ?? 0,
         )
@@ -194,7 +196,7 @@ export function GameCard({
 
         {/* score changes on games you have action on are announced to screen
             readers; this region persists across score re-renders */}
-        {live && game.myPick && (
+        {live && headline && (
           <p className="sr-only" aria-live="polite">
             {game.away.abbr} {game.awayPoints ?? 0}, {game.home.abbr} {game.homePoints ?? 0},{" "}
             {periodLabel(game.period)}
@@ -581,7 +583,7 @@ const initials = (name: string) =>
 function CrewLine({ game }: { game: GameView }) {
   const crew = game.crewPicks;
   if (crew.length === 0) return null;
-  const my = game.myPick;
+  const my = headlinePick(game.myPicks);
 
   if (!my) {
     const counts = new Map<string, number>();
@@ -677,6 +679,9 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
   const { slip, toggle } = useBetSlip();
   const dead = isDead(game);
   const team = side === "home" ? game.home : game.away;
+  /** Did the viewer take this exact cell in the group they're viewing? */
+  const took = (market: MyPickView["market"], pickSide: string) =>
+    game.myPicks.some((p) => p.market === market && p.side === pickSide);
   const matchup = `${game.away.abbr} @ ${game.home.abbr}`;
   const { spread, total, mlHome, mlAway } = game.lines;
   const teamSpread = spread === null ? null : side === "home" ? spread : -spread;
@@ -702,8 +707,9 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
       <OddsCell
         value={fmtSpread(teamSpread)}
         active={inSlip(slip, game.id, "spread", side)}
+        picked={took("spread", side)}
         disabled={dead || teamSpread === null}
-        aria={`${team.abbr} ${fmtSpread(teamSpread)} spread — add to bet slip`}
+        aria={`${team.abbr} ${fmtSpread(teamSpread)} spread${took("spread", side) ? " — your pick" : ""} — add to bet slip`}
         onToggle={() =>
           toggle(
             sel("spread", side, `${team.abbr} ${fmtSpread(teamSpread)}`,
@@ -714,8 +720,9 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
       <OddsCell
         value={totalLabel}
         active={inSlip(slip, game.id, "total", totalSide)}
+        picked={took("total", totalSide)}
         disabled={dead || total === null}
-        aria={`${totalSide === "over" ? "Over" : "Under"} ${fmtTotal(total)} — add to bet slip`}
+        aria={`${totalSide === "over" ? "Over" : "Under"} ${fmtTotal(total)}${took("total", totalSide) ? " — your pick" : ""} — add to bet slip`}
         onToggle={() =>
           toggle(
             sel("total", totalSide, `${totalSide === "over" ? "O" : "U"} ${fmtTotal(total)}`,
@@ -726,8 +733,9 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
       <OddsCell
         value={fmtMoneyline(ml)}
         active={inSlip(slip, game.id, "moneyline", side)}
+        picked={took("straight_up", side)}
         disabled={dead || ml === null}
-        aria={`${team.abbr} moneyline ${fmtMoneyline(ml)} — add to bet slip`}
+        aria={`${team.abbr} moneyline ${fmtMoneyline(ml)}${took("straight_up", side) ? " — your pick to win" : ""} — add to bet slip`}
         wide
         onToggle={() =>
           toggle(sel("moneyline", side, `${team.abbr} ML`, `${team.school} ML (${matchup})`, null, ml ?? -110))
@@ -737,9 +745,22 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
   );
 }
 
+/**
+ * One odds cell, carrying two different states that must not be confused.
+ *
+ * `active` means it is in the bet slip right now — a transient action, so it
+ * gets the solid fill. `picked` means it is the side you took in the group
+ * you're viewing — a standing fact, so it gets the quieter tinted-and-ringed
+ * treatment the PickedChip already uses for the same idea. Slip wins when both
+ * are true, because the fill is about what you are doing this second.
+ *
+ * This is what lets a card say which side you're on without being opened: the
+ * pregame state used to render a content-free "Picked" badge and nothing else.
+ */
 function OddsCell({
   value,
   active,
+  picked = false,
   disabled,
   aria,
   onToggle,
@@ -747,6 +768,7 @@ function OddsCell({
 }: {
   value: string;
   active: boolean;
+  picked?: boolean;
   disabled: boolean;
   aria: string;
   onToggle: () => void;
@@ -769,7 +791,9 @@ function OddsCell({
       } ${
         active
           ? "bg-accent text-accent-ink ring-1 ring-inset ring-accent"
-          : "bg-elev text-chalk ring-1 ring-inset ring-chalk/8 hover:ring-accent/60"
+          : picked
+            ? "bg-accent/15 text-accent ring-1 ring-inset ring-accent/45"
+            : "bg-elev text-chalk ring-1 ring-inset ring-chalk/8 hover:ring-accent/60"
       } disabled:cursor-default disabled:opacity-40 disabled:hover:ring-chalk/8`}
     >
       {value}
@@ -781,7 +805,8 @@ function OddsCell({
 function CrewSplit({ game }: { game: GameView }) {
   const counts = new Map<string, number>();
   for (const c of game.crewPicks) counts.set(c.side, (counts.get(c.side) ?? 0) + 1);
-  if (game.myPick) counts.set(game.myPick.side, (counts.get(game.myPick.side) ?? 0) + 1);
+  const my = headlinePick(game.myPicks);
+  if (my) counts.set(my.side, (counts.get(my.side) ?? 0) + 1);
   if (game.crewPicks.length === 0) return null;
   return (
     <span className="stat min-w-0 truncate text-[10.5px] text-dim">
@@ -792,11 +817,59 @@ function CrewSplit({ game }: { game: GameView }) {
 
 /* ---- footers ----------------------------------------------------------- */
 
-/** "OSU -3.5" / "O 54.5" for the viewer's pick chip. */
-function pickPrefix(g: GameView): string {
-  const p = g.myPick!;
-  if (p.side === "home") return `${g.home.abbr} ${fmtSpread(p.line)}`;
-  if (p.side === "away") return `${g.away.abbr} ${fmtSpread(p.line)}`;
+/**
+ * The watch rating, said out loud.
+ *
+ * It used to render as `watch 78` at 11px with its scale reachable only
+ * through a `title` tooltip, which a phone cannot show. A number needs a
+ * scale; a word does not — so the band is what makes it self-explanatory, and
+ * the figure is what makes it sortable. Bands follow the anchors the formula
+ * is already tested against (slate.test.ts: a marquee game scores 80+).
+ *
+ * Live cards don't get it. Once the game is playing, how watchable it was
+ * always going to be is beside the point — the score is on the card, and the
+ * cover strip owns that size.
+ */
+function WatchRating({ score }: { score: number | null }) {
+  if (score === null) return null;
+  const band = score >= 80 ? "Must-see" : score >= 60 ? "Good" : "Filler";
+  return (
+    <div
+      className="flex shrink-0 flex-col items-end leading-none"
+      /* One label for the whole block: three separate spans would be read out
+         as "Watch, 78, slash 100, Must-see". */
+      role="img"
+      aria-label={`Watchability ${score} out of 100 — ${band}`}
+    >
+      <span
+        aria-hidden
+        className="text-[9px] font-semibold uppercase tracking-wider text-chalk/40"
+      >
+        Watch
+      </span>
+      <span aria-hidden className="mt-1 flex items-baseline gap-0.5">
+        <span className="scorebug text-[18px] text-chalk">{score}</span>
+        <span className="stat text-[10px] text-chalk/40">/100</span>
+      </span>
+      <span
+        aria-hidden
+        className={`stat mt-0.5 text-[9px] font-semibold uppercase tracking-wider ${
+          score >= 80 ? "text-accent" : "text-chalk/45"
+        }`}
+      >
+        {band}
+      </span>
+    </div>
+  );
+}
+
+
+/** "OSU -3.5" / "O 54.5" / "OSU ML" — the one formatter all three card states share. */
+function pickPrefix(g: GameView, p: MyPickView | null = headlinePick(g.myPicks)): string {
+  if (!p) return "";
+  const team = p.side === "home" ? g.home : g.away;
+  if (p.market === "straight_up") return `${team.abbr} ML`;
+  if (p.market === "spread") return `${team.abbr} ${fmtSpread(p.line)}`;
   return `${p.side === "over" ? "O" : "U"} ${fmtTotal(p.line)}`;
 }
 
@@ -825,25 +898,20 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
 
   return (
     <div className="mt-3 border-t border-chalk/8 pt-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1.5">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          {/* Your side leads the row: it is the one thing on a pregame card
+              that is about you rather than about the game. */}
+          {!live &&
+            game.myPicks.map((mp) => (
+              <PickedChip key={mp.market} label={pickPrefix(game, mp)} />
+            ))}
           <EdgeChip flag={p?.edgeFlag ?? null} edge={p?.edge ?? null} />
           <ConsensusChip on={p?.consensus ?? false} />
-          {game.myPick && !live && <PickedChip />}
-          {game.myPick && !live && <CrewSplit game={game} />}
-        </div>
-        <div className="flex items-center gap-1.5 text-dim">
-          {watch !== null && (
-            <span
-              className="stat text-[11px] font-medium text-chalk/55"
-              title="Watchability 0–100: closeness + team quality + expected points + rivalry"
-            >
-              watch {watch}
-            </span>
-          )}
           <MoveIndicator move={move} open={game.lines.spreadOpen} />
-          <Sparkline points={game.spreadHistory} />
+          {!live && game.myPicks.length > 0 && <CrewSplit game={game} />}
         </div>
+        {!live && <WatchRating score={watch} />}
       </div>
 
       {betStatuses.length > 0 && (
@@ -952,12 +1020,13 @@ function FinalFooter({ game }: { game: GameView }) {
   const { spread } = game.lines;
 
   // the viewer's pick, resolved: if-the-game-ended-now at the final score IS the result
+  const finalPick = headlinePick(game.myPicks);
   const pickStatus =
-    game.myPick && game.homePoints !== null && game.awayPoints !== null
+    finalPick && game.homePoints !== null && game.awayPoints !== null
       ? statusForPick(
-          game.myPick.market,
-          game.myPick.side,
-          game.myPick.line,
+          finalPick.market,
+          finalPick.side,
+          finalPick.line,
           game.homePoints,
           game.awayPoints,
         )

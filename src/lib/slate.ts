@@ -59,7 +59,27 @@ export interface MyBetView {
   line: number | null;
 }
 
-/** A crew mate's pick on this game (the viewer's own pick lives in myPick). */
+/** One of the viewer's picks on this game, in the group they're viewing. */
+export interface MyPickView {
+  market: PickMarket;
+  side: string;
+  /** Null for straight_up, which takes no number. */
+  line: number | null;
+}
+
+/**
+ * The pick a card leads with when it can only show one.
+ *
+ * A game can carry three of them now, but a card has one cover strip and one
+ * aura. The spread is the headline where there is one — it is the market with
+ * a number to be near, so it is the only one with a bubble tier — and
+ * otherwise the first pick made stands in.
+ */
+export function headlinePick(picks: MyPickView[]): MyPickView | null {
+  return picks.find((p) => p.market === "spread") ?? picks[0] ?? null;
+}
+
+/** A crew mate's pick on this game (the viewer's own picks live in myPicks). */
 export interface CrewPickView {
   name: string;
   side: string;
@@ -95,9 +115,8 @@ export interface GameView {
   };
   spreadHistory: LinePoint[];
   prediction: PredictionView | null;
-  /** The viewer's pick in the active group. `line` is null for straight_up,
-   *  which takes no number. */
-  myPick: { market: PickMarket; side: string; line: number | null } | null;
+  /** The viewer's picks in the active group — at most one per market. */
+  myPicks: MyPickView[];
   /** The viewer's open (ungraded, unvoided) bets on this game */
   myBets: MyBetView[];
   /** Everyone else's picks on this game — who's riding which side */

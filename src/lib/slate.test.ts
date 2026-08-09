@@ -15,6 +15,7 @@ import {
   spreadMoveRead,
   modelSideOf,
   upsetAlert,
+  headlinePick,
   watchability,
   weekModelRecord,
   type GameView,
@@ -63,7 +64,7 @@ const game = (overrides: Partial<GameView> = {}): GameView => ({
   possession: null,
   spreadHistory: [],
   prediction: null,
-  myPick: null,
+  myPicks: [],
   myBets: [],
   weather: null,
   dome: false,
@@ -411,5 +412,29 @@ describe("upsetAlert", () => {
     expect(upsetAlert(g)).toBe(true);
     expect(upsetAlert({ ...g, period: 2 })).toBe(false);
     expect(upsetAlert({ ...g, homePoints: 10 })).toBe(false);
+  });
+});
+
+describe("headlinePick", () => {
+  it("leads with the spread when there is one", () => {
+    // A card has one cover strip and one aura. The spread is the market with a
+    // number to be near, so it is the only one with a bubble tier.
+    const picks = [
+      { market: "total" as const, side: "over", line: 51.5 },
+      { market: "spread" as const, side: "home", line: -3 },
+    ];
+    expect(headlinePick(picks)?.market).toBe("spread");
+  });
+
+  it("falls back to the first pick made when no spread is in play", () => {
+    const picks = [
+      { market: "straight_up" as const, side: "home", line: null },
+      { market: "total" as const, side: "under", line: 44 },
+    ];
+    expect(headlinePick(picks)?.market).toBe("straight_up");
+  });
+
+  it("is null with nothing picked", () => {
+    expect(headlinePick([])).toBeNull();
   });
 });

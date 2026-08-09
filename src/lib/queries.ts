@@ -238,15 +238,12 @@ export async function fetchSlateView(
     if (!existing || (p.frozen && !existing.frozen)) predByGame.set(p.game_id, p);
   }
 
-  // Up to three picks per game now, one per market. A card shows a single
-  // verdict — the cover strip, the aura — so the spread is the headline where
-  // there is one, since it is the market with a number to be near, and
-  // otherwise the first pick made stands in. The full set lives on the group
-  // board, which has room for it.
-  const pickByGame = new Map<number, PickRow>();
+  // Up to three picks per game now, one per market. The card carries all of
+  // them (it highlights the cell you took in each) and picks one to lead with
+  // where it can only show one — see headlinePick.
+  const picksByGame = new Map<number, PickRow[]>();
   for (const p of (picksRes.data ?? []) as PickRow[]) {
-    const cur = pickByGame.get(p.game_id);
-    if (!cur || (cur.market !== "spread" && p.market === "spread")) pickByGame.set(p.game_id, p);
+    picksByGame.set(p.game_id, [...(picksByGame.get(p.game_id) ?? []), p]);
   }
 
   // crew standing: everyone else's picks per slate game + season records
@@ -398,7 +395,6 @@ export async function fetchSlateView(
       mlAway: c.ml_away === null ? null : Number(c.ml_away),
     };
     const pred = predByGame.get(game.id) ?? null;
-    const pick = pickByGame.get(game.id) ?? null;
     const weather = weatherByGame.get(game.id) ?? null;
     return [
       {
@@ -452,13 +448,11 @@ export async function fetchSlateView(
               frozen: pred.frozen,
             }
           : null,
-        myPick: pick
-          ? {
-              market: pick.market,
-              side: pick.side,
-              line: pick.line_at_pick === null ? null : Number(pick.line_at_pick),
-            }
-          : null,
+        myPicks: (picksByGame.get(game.id) ?? []).map((p) => ({
+          market: p.market,
+          side: p.side,
+          line: p.line_at_pick === null ? null : Number(p.line_at_pick),
+        })),
         myBets: betsByGame.get(game.id) ?? [],
         crewPicks: crewByGame.get(game.id) ?? [],
         weather: weather

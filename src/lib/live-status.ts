@@ -8,7 +8,7 @@
  */
 
 import type { PickMarket } from "./grade";
-import type { GameView, MyBetView } from "./slate";
+import { headlinePick, type GameView, type MyBetView } from "./slate";
 
 export interface LiveBetStatus {
   state: "winning" | "losing" | "push";
@@ -181,14 +181,9 @@ export function pickCoverView(
 
 /** Feed sort key for live games: bubble sweats first, then losing, covering, no pick. */
 export function liveUrgency(g: GameView): number {
-  if (!g.myPick) return 3;
-  const v = pickCoverView(
-    g.myPick.market,
-    g.myPick.side,
-    g.myPick.line,
-    g.homePoints ?? 0,
-    g.awayPoints ?? 0,
-  );
+  const my = headlinePick(g.myPicks);
+  if (!my) return 3;
+  const v = pickCoverView(my.market, my.side, my.line, g.homePoints ?? 0, g.awayPoints ?? 0);
   if (!v) return 3;
   return v.tier === "bubble" ? 0 : v.tier === "losing" ? 1 : 2;
 }
@@ -251,12 +246,12 @@ export function tintFor(g: GameView): CardTint {
     return live && !status.clinched ? nearNumber(g, bet) : "losing";
   }
 
-  if (g.myPick && (g.myPick.side === "home" || g.myPick.side === "away")) {
-    const margin =
-      g.myPick.side === "home" ? g.homePoints - g.awayPoints : g.awayPoints - g.homePoints;
+  const my = headlinePick(g.myPicks);
+  if (my && (my.side === "home" || my.side === "away")) {
+    const margin = my.side === "home" ? g.homePoints - g.awayPoints : g.awayPoints - g.homePoints;
     // Straight-up has no number to be near, so the raw margin is the verdict.
-    if (g.myPick.market === "straight_up") return tierFromMargin(margin, live);
-    if (g.myPick.line !== null) return tierFromMargin(margin + g.myPick.line, live);
+    if (my.market === "straight_up") return tierFromMargin(margin, live);
+    if (my.line !== null) return tierFromMargin(margin + my.line, live);
   }
   return "teams";
 }

@@ -116,14 +116,14 @@ describe("pickCoverView", () => {
 });
 
 describe("liveUrgency", () => {
-  const live = (myPick: GameView["myPick"], homePoints: number, awayPoints: number) =>
-    ({ status: "in_progress", myPick, homePoints, awayPoints }) as GameView;
+  const live = (myPicks: GameView["myPicks"], homePoints: number, awayPoints: number) =>
+    ({ status: "in_progress", myPicks, homePoints, awayPoints }) as GameView;
 
   it("sorts bubble ahead of losing ahead of covering ahead of no pick", () => {
-    const bubble = live({ market: "spread", side: "home", line: -2.5 }, 24, 23);
-    const losing = live({ market: "spread", side: "home", line: -2.5 }, 14, 24);
-    const covering = live({ market: "spread", side: "home", line: -2.5 }, 35, 14);
-    const noPick = live(null, 21, 21);
+    const bubble = live([{ market: "spread", side: "home", line: -2.5 }], 24, 23);
+    const losing = live([{ market: "spread", side: "home", line: -2.5 }], 14, 24);
+    const covering = live([{ market: "spread", side: "home", line: -2.5 }], 35, 14);
+    const noPick = live([], 21, 21);
     const order = [noPick, covering, losing, bubble].sort((a, b) => liveUrgency(a) - liveUrgency(b));
     expect(order).toEqual([bubble, losing, covering, noPick]);
   });
