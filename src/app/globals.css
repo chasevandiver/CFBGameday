@@ -186,9 +186,11 @@ h2,
 
 /* ---- Game card: cover strip, team rails, field strip ------------------ */
 
-/* Cover strip — the loudest element on a live card. Italic condensed, the
-   way a broadcast score bug sets its verdict. Amber is reserved for the
-   bubble tier and appears nowhere else at full strength. */
+/* Cover strip — the verdict on a live card. Italic condensed, the way a
+   broadcast score bug sets its verdict. All three tiers share one construction:
+   coloured text, a soft gradient, a 3px inset edge bar. Bubble used to be a
+   solid amber block instead, which made it the loudest thing on the slate and
+   fought the amber aura now sitting right behind it. */
 .cover-strip {
   display: flex;
   align-items: baseline;
@@ -238,10 +240,23 @@ h2,
   box-shadow: inset 3px 0 0 var(--loss);
 }
 .cover-bubble {
-  color: #1c1405;
-  background: var(--accent);
-  padding-top: 9px;
-  padding-bottom: 9px;
+  color: var(--accent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+/* The tier hues are tuned against a dark ground. On white the same colours land
+   at 3.1–4.1:1 over the strip's own tint — under the 4.5:1 that 13px text needs,
+   and bubble worst of all now that it no longer inverts on a solid fill. Mixing
+   toward --text darkens them without inventing a colour or losing the hue. Only
+   the text moves; the gradient and edge bar stay at full chroma. */
+html[data-theme="light"] .cover-covering {
+  color: color-mix(in srgb, var(--win) 80%, var(--text));
+}
+html[data-theme="light"] .cover-losing {
+  color: color-mix(in srgb, var(--loss) 80%, var(--text));
+}
+html[data-theme="light"] .cover-bubble {
+  color: color-mix(in srgb, var(--accent) 72%, var(--text));
 }
 .card-bubble {
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);

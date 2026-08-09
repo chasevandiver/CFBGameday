@@ -236,8 +236,9 @@ export function GameCard({
 /* ---- cover strip -------------------------------------------------------- */
 
 /**
- * The loudest element on a live card with a pick: covering / bubble / losing.
- * pointer-events stay off so taps fall through to the card link.
+ * The verdict on a live card with a pick. The word says which side of the number
+ * you're on; the tier's colour says how close it is, amber meaning one score
+ * flips it. pointer-events stay off so taps fall through to the card link.
  */
 function CoverStrip({ cover, pick }: { cover: PickCoverView; pick: string }) {
   return (

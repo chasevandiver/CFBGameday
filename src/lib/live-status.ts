@@ -85,11 +85,11 @@ export type CoverTier = "covering" | "bubble" | "losing";
 
 export interface PickCoverView {
   tier: CoverTier;
-  /** Verdict word, e.g. "Covering" / "On the bubble" */
+  /** Verdict word by sign, e.g. "Covering" / "Not covering" / "On the number" */
   word: string;
   /** Signed margin vs the number in broadcast halves ("+2½"); spread picks only */
   margin: string | null;
-  /** Supporting text: the bubble hint, or the totals room label */
+  /** Supporting text: the totals room label. Always null for spread picks. */
   sub: string | null;
 }
 
@@ -104,6 +104,10 @@ const fmtHalves = (n: number): string => {
 /**
  * The cover strip's view of a live pick. Bubble = within a field goal of the
  * number, on either side of it — the state where one score flips the result.
+ *
+ * The tier is the colour and the sort key (see liveUrgency); it is deliberately
+ * not the wording. `word` reports which side of the number you are on, and the
+ * amber reserved for `bubble` reports how close that number is.
  */
 export function pickCoverView(
   side: string,
@@ -115,19 +119,16 @@ export function pickCoverView(
     const margin = side === "home" ? homePts - awayPts : awayPts - homePts;
     const cm = margin + line;
     const tier: CoverTier = Math.abs(cm) <= 3 ? "bubble" : cm > 0 ? "covering" : "losing";
-    const word =
-      tier === "covering"
-        ? "Covering"
-        : tier === "losing"
-          ? "Not covering"
-          : cm === 0
-            ? "On the number"
-            : "On the bubble";
+    // The word tracks the sign, not the tier — amber already says "bubble", so
+    // saying it again spends the strip's one loud slot on what the colour has
+    // covered. Which side of the number you're on is the part colour can't tell
+    // you: green COVERING is comfortable, amber COVERING +½ is a knife edge.
+    const word = cm === 0 ? "On the number" : cm > 0 ? "Covering" : "Not covering";
     return {
       tier,
       word,
       margin: cm === 0 ? null : fmtHalves(cm),
-      sub: tier === "bubble" ? "a FG flips it" : null,
+      sub: null,
     };
   }
   if (side === "over" || side === "under") {

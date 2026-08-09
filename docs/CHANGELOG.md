@@ -197,6 +197,30 @@ model-lean read survives as title text, so `MoveRead.vsModel` keeps a consumer.
 Live odds on live cards stay out: they are never captured mid-game, so there is
 nothing to render. Data gap, not a UI gap.
 
+**The bubble tier then had four amber signals at once** — a solid amber cover
+strip, an amber card ring, the new amber aura, and the words "ON THE BUBBLE ·
+a FG flips it". The wording went, and the strip stopped shouting.
+
+The word now tracks the *sign* rather than the tier, so it says the thing colour
+cannot: which side of the number you are on. Green **COVERING** with no figure is
+comfortable; amber **COVERING +½** is a knife edge. The tier is unchanged and
+still drives the aura, `.card-bubble` and `liveUrgency`'s sweats-first sort — it
+just stopped being restated in words. `sub` drops to null for spread picks only;
+the totals branch keeps its room label ("3 pts of room", "Over hit"), which is
+information rather than a tag.
+
+`.cover-bubble` also gave up its solid fill for the same coloured-text + soft
+gradient + 3px edge bar the other two tiers use, which deleted the hardcoded
+`#1c1405` that existed only to be legible on that fill.
+
+That fill was doing accessibility work nobody had noticed. Removing it dropped
+the amber text to **3.13:1** in light mode, and measuring the rest found the
+whole family already under the 4.5:1 that 13px text needs — covering 4.01,
+losing 4.12. All three are now mixed toward `--text` in light mode only, landing
+at 5.23 / 5.40 / 4.80 with the hue and the tokens intact. Dark mode was always
+fine (6.53 / 4.64 / 7.30) and is untouched. Bubble was first taken to 6.35, which
+turned the amber olive; 72% accent keeps it gold and still clears the bar.
+
 Measured, not assumed: 60fps at 14 cards and 61fps at 67 (10 of them animating),
 Chromium at 390×844. No model parameter was touched — watchability is tuned by
 feel per spec §7, not fitted by `backtest.ts`, so the gate in `AGENTS.md` does
