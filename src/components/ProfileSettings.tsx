@@ -80,7 +80,7 @@ export function ProfileSettings({
             Save
           </button>
         </form>
-        <p className="mt-2 text-xs text-dim">This is the name on the Crew leaderboard.</p>
+        <p className="mt-2 text-xs text-dim">This is the name on your group leaderboards.</p>
       </section>
 
       <section className="card p-4">

@@ -101,6 +101,29 @@ export interface GroupWeek {
   locked: boolean;
 }
 
+export interface GroupMemberView {
+  userId: string;
+  name: string;
+  role: "admin" | "member";
+}
+
+/** Active roster, admins first then alphabetical. Removed members are excluded. */
+export async function fetchGroupMembers(
+  supabase: SupabaseClient,
+  groupId: string,
+): Promise<GroupMemberView[]> {
+  const { data } = await supabase
+    .from("group_members")
+    .select("user_id, role, profiles!inner(id, display_name)")
+    .eq("group_id", groupId)
+    .is("removed_at", null);
+
+  type Row = Pick<GroupMemberRow, "user_id" | "role"> & { profiles: { display_name: string } };
+  return ((data ?? []) as unknown as Row[])
+    .map((r) => ({ userId: r.user_id, name: r.profiles.display_name, role: r.role }))
+    .sort((a, b) => (a.role === b.role ? a.name.localeCompare(b.name) : a.role === "admin" ? -1 : 1));
+}
+
 export async function fetchGroupWeek(
   supabase: SupabaseClient,
   groupId: string,

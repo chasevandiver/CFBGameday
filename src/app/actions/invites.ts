@@ -65,6 +65,6 @@ export async function inviteCrewMember(formData: FormData): Promise<InviteResult
   const proto = hdrs.get("x-forwarded-proto") ?? "https";
   const link = `${proto}://${host}/auth/confirm?token_hash=${data.properties?.hashed_token}&type=magiclink`;
 
-  revalidatePath("/crew");
+  revalidatePath("/admin");
   return { ok: true, link };
 }

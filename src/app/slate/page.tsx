@@ -1,5 +1,7 @@
+import { cookies } from "next/headers";
 import { AppNav } from "../../components/AppNav";
 import { SlateView } from "../../components/slate/SlateView";
+import { ACTIVE_GROUP_COOKIE, resolveActiveGroup } from "../../lib/groups";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../lib/queries";
 import { createClient } from "../../lib/supabase/server";
 
@@ -34,8 +36,14 @@ export default async function SlatePage({
         ? parsed
         : currentWeek;
 
+  const { active } = await resolveActiveGroup(
+    supabase,
+    user?.id ?? null,
+    (await cookies()).get(ACTIVE_GROUP_COOKIE)?.value ?? null,
+  );
+
   const [initial, favRes] = await Promise.all([
-    fetchSlateView(supabase, seasonId, week, user?.id ?? null, st),
+    fetchSlateView(supabase, seasonId, week, user?.id ?? null, st, active?.id ?? null),
     user
       ? supabase.from("profiles").select("favorite_team_ids").eq("id", user.id).maybeSingle()
       : Promise.resolve({ data: null }),

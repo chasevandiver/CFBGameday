@@ -104,12 +104,23 @@ function toTeamView(
   };
 }
 
+/**
+ * The slate, seen from inside one group.
+ *
+ * `groupId` scopes both halves of the pick layer: your own picks and the crew
+ * line under each card. Since migration 0021 a pick belongs to a group, so
+ * without it the same user's picks from two pools would collide in a map keyed
+ * by game and whichever row came back last would win. Null means "no group in
+ * view" — signed out, or signed in with no membership — and the pick layer is
+ * simply empty, which is the honest rendering of "you have nothing on this".
+ */
 export async function fetchSlateView(
   supabase: SupabaseClient,
   seasonId: number,
   week: number,
   userId: string | null,
   seasonType: SeasonType = "regular",
+  groupId: string | null = null,
 ): Promise<SlateData> {
   const fetchedAt = new Date().toISOString();
   const { data: games, error } = await supabase
@@ -148,8 +159,13 @@ export async function fetchSlateView(
         .select("*")
         .in("game_id", gameIds)
         .order("created_at", { ascending: false }),
-      userId
-        ? supabase.from("picks").select("*").in("game_id", gameIds).eq("user_id", userId)
+      userId && groupId
+        ? supabase
+            .from("picks")
+            .select("*")
+            .in("game_id", gameIds)
+            .eq("user_id", userId)
+            .eq("group_id", groupId)
         : Promise.resolve({ data: [], error: null }),
       userId
         ? supabase
@@ -180,10 +196,13 @@ export async function fetchSlateView(
         .eq("season_type", "regular"),
       // whole season, whole crew: this week's rows drive the crew standing on
       // each card, and the graded rows (result set) drive each mate's record
-      supabase
-        .from("picks")
-        .select("user_id, game_id, side, result, units, clv")
-        .eq("season_id", seasonId),
+      groupId
+        ? supabase
+            .from("picks")
+            .select("user_id, game_id, market, side, result, units, clv")
+            .eq("season_id", seasonId)
+            .eq("group_id", groupId)
+        : Promise.resolve({ data: [], error: null }),
       supabase.from("profiles").select("id, display_name"),
       // SP+/FPI/Elo for the slate's teams (spec §2.4 promises them on every
       // card). Newest week first so the first row per system+team wins, the
@@ -219,7 +238,16 @@ export async function fetchSlateView(
     if (!existing || (p.frozen && !existing.frozen)) predByGame.set(p.game_id, p);
   }
 
-  const pickByGame = new Map(((picksRes.data ?? []) as PickRow[]).map((p) => [p.game_id, p]));
+  // Up to three picks per game now, one per market. A card shows a single
+  // verdict — the cover strip, the aura — so the spread is the headline where
+  // there is one, since it is the market with a number to be near, and
+  // otherwise the first pick made stands in. The full set lives on the group
+  // board, which has room for it.
+  const pickByGame = new Map<number, PickRow>();
+  for (const p of (picksRes.data ?? []) as PickRow[]) {
+    const cur = pickByGame.get(p.game_id);
+    if (!cur || (cur.market !== "spread" && p.market === "spread")) pickByGame.set(p.game_id, p);
+  }
 
   // crew standing: everyone else's picks per slate game + season records
   const nameByUser = new Map(
@@ -229,7 +257,7 @@ export async function fetchSlateView(
     ]),
   );
   const allPicks = (crewPicksRes.data ?? []) as Array<
-    Pick<PickRow, "user_id" | "game_id" | "side" | "result" | "units" | "clv">
+    Pick<PickRow, "user_id" | "game_id" | "market" | "side" | "result" | "units" | "clv">
   >;
   // The crew line shows "Dave 12-7" beside a pick, so only W-L is rendered —
   // but it is the same tally as the leaderboard's and shares its implementation
@@ -237,8 +265,13 @@ export async function fetchSlateView(
   const recordByUser = tallyBy(allPicks, (p) => p.user_id);
   const gameIdSet = new Set(gameIds);
   const crewByGame = new Map<number, CrewPickView[]>();
-  for (const p of allPicks) {
+  // Same one-per-mate rule as above: a crew line reading "Dave home, Dave over,
+  // Dave home" is three renderings of one opinion.
+  const seen = new Set<string>();
+  for (const p of [...allPicks].sort((a, b) => (a.market === "spread" ? -1 : 0) - (b.market === "spread" ? -1 : 0))) {
     if (!gameIdSet.has(p.game_id) || p.user_id === userId) continue;
+    if (seen.has(`${p.game_id}:${p.user_id}`)) continue;
+    seen.add(`${p.game_id}:${p.user_id}`);
     const rec = recordByUser.get(p.user_id);
     const arr = crewByGame.get(p.game_id) ?? [];
     arr.push({

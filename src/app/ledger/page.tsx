@@ -299,8 +299,9 @@ export default async function LedgerPage() {
           </table>
         </section>
         <p className="mt-3 text-xs text-chalk/50">
-          The ledger is append-only — bets can be voided, never deleted. Everyone&rsquo;s season
-          numbers show on the Crew page.
+          The ledger is append-only — bets can be voided, never deleted. It is yours alone: group
+          boards run on pick&rsquo;em picks, so you can pick a game here you would never bet, and
+          bet one nobody put on the board.
         </p>
       </main>
     </>
