@@ -141,6 +141,89 @@ shipping it.
 
 ## Log
 
+### Aug 9 — Groups, and six things that only said half of what they knew
+
+The social layer becomes group-scoped, and several numbers that were on
+screen without their meaning got the rest of it. No model parameter was
+touched: `DEFAULT_PARAMS` is untouched, `watchability()`'s formula is unchanged
+(only its presentation), so the gate in `AGENTS.md` does not apply and no tuner
+run is owed.
+
+**Groups.** Any user creates one and is its admin; the admin sets, per week,
+which games are in play (handpicked / full slate / one conference) and which
+markets members may pick (spreads / totals / winners). Migrations `0020` and
+`0021`. Three decisions worth keeping:
+
+- *Header plus join table, not a `game_ids` array.* No referential integrity to
+  `games`, no index for "which groups carry this game", and `unnest` in every
+  join. The join table also gives the freeze somewhere to write.
+- *`full_slate` and `conference` resolve live and materialise at the freeze.*
+  Live means a late schedule addition joins the board on its own; materialising
+  means a postponement that moves a game to another week cannot pull it off a
+  board people already picked. There is a test for exactly that.
+- *The freeze reads the clock, not a flag.* `group_week_is_locked` asks whether
+  the week's first kickoff has passed; `locked_at` only records that the job has
+  materialised the list. Correctness never depends on a job running on time.
+
+Picks are per group, so the same user can hold opposite sides of one game in two
+pools. Straight-up is winner-only by owner decision — no line, no price, no CLV
+— which is why `line_at_pick` is now nullable behind a check constraint.
+
+**A pre-existing display bug, found by a test on new code.** `line_at_pick` is
+stored home-perspective: `make_pick` snapshots the raw consensus and both
+`spreadClv` and the grader read it that way. Every *display* path printed it
+raw, so an away backer on a home −6.5 holds +6.5 and was shown "−6.5" — on the
+card, in the pick confirmation, and in the weekly grid. `lineForSide` does the
+conversion in one place now. Nothing stored was ever wrong; grading and CLV were
+always correct, so there is nothing to backfill.
+
+**A bug `0021` introduced and this fixes.** `fetchSlateView` fetched picks by
+user alone and keyed them by game, so once a pick belonged to a group, two
+pools' picks on one game collided and the last row back won. It takes a
+`groupId` now. Within a group a game can carry three picks (one per market) and
+a card shows one verdict, so `headlinePick` leads with the spread — the only
+market with a number to be near, hence the only one with a bubble tier — and
+falls back to the first pick made.
+
+**The sparkline is off the game card.** It plotted consensus spread movement and
+sat beside the watch rating, which is not what it measured. `MoveIndicator`,
+immediately to its left, already stated the same fact numerically; its x-axis
+was index rather than time, so snapshots an hour apart and a week apart drew an
+identical shape; and it was `aria-hidden` at 56×18 with no text alternative.
+`MovementChart` keeps the data on `/game/[id]`, where it has a real time axis and
+a label. The component stays — `GameHeader` uses it for win-prob history, where
+the x-axis genuinely is a sequence.
+
+**The watch rating** was `watch 78` at 11px with its scale only in a `title`
+tooltip a phone cannot show. It is now WATCH over an 18px figure, `/100`, and a
+band — MUST-SEE / GOOD / FILLER. A number needs a scale; a word does not. Hidden
+on live cards: once the game is playing, how watchable it was always going to be
+is beside the point, and the cover strip owns that size.
+
+**Ratings.** `rating-scales.ts` holds what each system measures, and mainly
+exists to hold the awkward part: model, SP+ and FPI are all points-vs-average
+and comparable, Elo is not. The 25-Elo-per-point conversion was written out
+inline twice and is now in one place. `rankAndPercentile` replaces five ad-hoc
+rank computations and adds the half that was missing everywhere — #14 means
+different things in fields of 136 and 20.
+
+**One tally instead of five.** Record math existed in the leaderboard, the weekly
+grid, the slate's crew line, the recap and the ledger, and disagreed: two counted
+pushes and three didn't, the −110 convention was inlined twice as a magic 0.909,
+and only two computed ROI. `src/lib/records.ts` is the only implementation now.
+`PICKEM_WIN_PAYOUT` stays at the shipped 0.909 rather than the true 10/11 —
+nine ten-thousandths of a unit is not worth silently restating every historical
+leaderboard over.
+
+**Verification.** `scripts/db-test.sh` (`npm run db:test`) applies all 21
+migrations to a throwaway Postgres with a shim for the three Supabase API roles
+and `auth.uid()`, then runs `supabase/tests/*.sql` — 64 assertions impersonating
+a member, a non-member and a signed-out visitor. RLS, revoked grants and
+security-definer guards are not reachable from vitest, and reading a policy and
+agreeing with it is not a test. Deliberately breaking one assertion was checked
+to turn the suite red. 296 unit tests; card changes rendered and measured in
+Chromium at 390×844.
+
 ### Aug 8 — Liquid Glass cards, and one colour vocabulary instead of two
 
 Three rounds of card mockups all lost to the card that already shipped, so the
