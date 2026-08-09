@@ -419,7 +419,13 @@ export async function fetchSlateView(
               frozen: pred.frozen,
             }
           : null,
-        myPick: pick ? { side: pick.side, line: Number(pick.line_at_pick) } : null,
+        myPick: pick
+          ? {
+              market: pick.market,
+              side: pick.side,
+              line: pick.line_at_pick === null ? null : Number(pick.line_at_pick),
+            }
+          : null,
         myBets: betsByGame.get(game.id) ?? [],
         crewPicks: crewByGame.get(game.id) ?? [],
         weather: weather

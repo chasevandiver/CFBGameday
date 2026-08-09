@@ -83,10 +83,22 @@ describe("liveMoneylineStatus", () => {
 });
 
 describe("statusForPick", () => {
-  it("routes team sides to spread math and totals sides to total math", () => {
-    expect(statusForPick("home", -6.5, 30, 20)?.state).toBe("winning");
-    expect(statusForPick("over", 44.5, 28, 17)?.clinched).toBe(true);
-    expect(statusForPick("weird", -3, 10, 7)).toBeNull();
+  it("routes each market to its own math", () => {
+    expect(statusForPick("spread", "home", -6.5, 30, 20)?.state).toBe("winning");
+    expect(statusForPick("total", "over", 44.5, 28, 17)?.clinched).toBe(true);
+    expect(statusForPick("straight_up", "home", null, 24, 21)?.state).toBe("winning");
+  });
+
+  it("does not read a straight-up pick against a spread it never took", () => {
+    // Home wins by 3 having been laid 6.5: a straight-up win, a spread loss.
+    expect(statusForPick("straight_up", "home", null, 24, 21)?.state).toBe("winning");
+    expect(statusForPick("spread", "home", -6.5, 24, 21)?.state).toBe("losing");
+  });
+
+  it("returns null for a side the market does not have, or a missing line", () => {
+    expect(statusForPick("spread", "over", -3, 10, 7)).toBeNull();
+    expect(statusForPick("spread", "home", null, 10, 7)).toBeNull();
+    expect(statusForPick("straight_up", "under", null, 10, 7)).toBeNull();
   });
 });
 
@@ -136,13 +148,13 @@ describe("tintFor", () => {
   it("reads a pick as covering, losing, or on the bubble", () => {
     // home up 8: -3.5 covers by 4.5; -14.5 is down 6.5, out of reach of one
     // score; -10.5 is down only 2.5, so a field goal still flips it
-    expect(tintFor(g({ myPick: { side: "home", line: -3.5 } }))).toBe("covering");
-    expect(tintFor(g({ myPick: { side: "home", line: -14.5 } }))).toBe("losing");
-    expect(tintFor(g({ myPick: { side: "home", line: -10.5 } }))).toBe("bubble");
+    expect(tintFor(g({ myPick: { market: "spread", side: "home", line: -3.5 } }))).toBe("covering");
+    expect(tintFor(g({ myPick: { market: "spread", side: "home", line: -14.5 } }))).toBe("losing");
+    expect(tintFor(g({ myPick: { market: "spread", side: "home", line: -10.5 } }))).toBe("bubble");
   });
 
   it("drops the bubble once the game is final — nothing can flip it", () => {
-    const settled = { status: "final", myPick: { side: "home", line: -6.5 } } as Partial<GameView>;
+    const settled = { status: "final", myPick: { market: "spread", side: "home", line: -6.5 } } as Partial<GameView>;
     expect(tintFor(g(settled))).toBe("covering");
   });
 
@@ -150,11 +162,11 @@ describe("tintFor", () => {
     const bets = [{ id: 1, betType: "spread", side: "away", line: 3.5 }];
     // the pick is covering, the bet is not — real units decide the colour
     expect(
-      tintFor(g({ myPick: { side: "home", line: -3.5 }, myBets: bets as GameView["myBets"] })),
+      tintFor(g({ myPick: { market: "spread", side: "home", line: -3.5 }, myBets: bets as GameView["myBets"] })),
     ).toBe("losing");
   });
 
   it("stays neutral on a push rather than inventing a verdict", () => {
-    expect(tintFor(g({ myPick: { side: "home", line: -8 }, status: "final" }))).toBe("teams");
+    expect(tintFor(g({ myPick: { market: "spread", side: "home", line: -8 }, status: "final" }))).toBe("teams");
   });
 });

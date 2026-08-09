@@ -109,7 +109,7 @@ const PREGAME: GameView = {
     consensus: false,
     frozen: false,
   },
-  myPick: { side: "home", line: -1.5 },
+  myPick: { market: "spread", side: "home", line: -1.5 },
   crewPicks: [
     { name: "Jake", side: "home", record: "12-8" },
     { name: "Mo", side: "home", record: "10-10" },
@@ -134,7 +134,7 @@ const LIVE: GameView = {
   home: MICHIGAN,
   away: OHIO_STATE,
   rivalry: { name: "The Game", trophy: null },
-  myPick: { side: "away", line: 3.5 },
+  myPick: { market: "spread", side: "away", line: 3.5 },
   myBets: [{ id: 1, betType: "total", side: "over", line: 44.5 }],
   crewPicks: [
     { name: "Jake", side: "away", record: "12-8" },

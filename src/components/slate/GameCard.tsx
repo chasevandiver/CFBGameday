@@ -102,7 +102,13 @@ export function GameCard({
 
   const cover =
     live && game.myPick
-      ? pickCoverView(game.myPick.side, game.myPick.line, game.homePoints ?? 0, game.awayPoints ?? 0)
+      ? pickCoverView(
+          game.myPick.market,
+          game.myPick.side,
+          game.myPick.line,
+          game.homePoints ?? 0,
+          game.awayPoints ?? 0,
+        )
       : null;
 
   const homeColor = game.home.color ?? "#5b6472";
@@ -948,7 +954,13 @@ function FinalFooter({ game }: { game: GameView }) {
   // the viewer's pick, resolved: if-the-game-ended-now at the final score IS the result
   const pickStatus =
     game.myPick && game.homePoints !== null && game.awayPoints !== null
-      ? statusForPick(game.myPick.side, game.myPick.line, game.homePoints, game.awayPoints)
+      ? statusForPick(
+          game.myPick.market,
+          game.myPick.side,
+          game.myPick.line,
+          game.homePoints,
+          game.awayPoints,
+        )
       : null;
 
   // favorite by closing line; cover chip judges whether the favorite covered

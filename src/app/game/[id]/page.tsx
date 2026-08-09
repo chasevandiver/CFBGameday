@@ -1,5 +1,6 @@
 import { ArrowLeft, CloudRain, Thermometer, Wind } from "lucide-react";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { AppNav } from "../../../components/AppNav";
 import { GameHeader } from "../../../components/game/GameHeader";
@@ -16,7 +17,13 @@ import type {
   ProfileRow,
   TeamRow,
 } from "../../../lib/db-types";
+import {
+  ACTIVE_GROUP_COOKIE,
+  fetchGroupWeek,
+  resolveActiveGroup,
+} from "../../../lib/groups";
 import { pickPollRanks, pollShortName } from "../../../lib/rankings";
+import type { SeasonType } from "../../../lib/season";
 import {
   consensusFromSnapshots,
   consensusHistory,
@@ -185,8 +192,29 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     graded(trends.get(game.home_team_id)) || graded(trends.get(game.away_team_id));
 
   const kickoffPassed = game.start_ts !== null && new Date(game.start_ts) <= new Date();
-  const myPick = user ? (picks.find((p) => p.user_id === user.id) ?? null) : null;
-  const crewPicks = picks.filter((p) => p.user_id !== user?.id);
+  // Picks are per group, so "my pick" is only meaningful once a group is in
+  // view. The cookie remembers which; `?g=` overrides it so a shared link opens
+  // the group it names.
+  const { active: activeGroup } = await resolveActiveGroup(
+    supabase,
+    user?.id ?? null,
+    (await cookies()).get(ACTIVE_GROUP_COOKIE)?.value ?? null,
+  );
+  const groupWeek = activeGroup
+    ? await fetchGroupWeek(supabase, activeGroup.id, game.season_id, game.week, game.season_type as SeasonType)
+    : null;
+  const inPlay = groupWeek !== null && groupWeek.gameIds.includes(game.id);
+
+  const myPicks =
+    user && activeGroup
+      ? picks.filter((p) => p.user_id === user.id && p.group_id === activeGroup.id)
+      : [];
+  // The spread pick is the card's headline where one verdict is needed; with
+  // no spread in play the first pick made stands in.
+  const myPick = myPicks.find((p) => p.market === "spread") ?? myPicks[0] ?? null;
+  const crewPicks = picks.filter(
+    (p) => p.user_id !== user?.id && (!activeGroup || p.group_id === activeGroup.id),
+  );
 
   // The live layer (score, situation, win prob, your-action chips) renders in
   // the GameHeader client island, which streams realtime updates and polls as
@@ -254,7 +282,15 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
               ? { spread: Number(prediction.spread), homeWinProb: Number(prediction.home_win_prob) }
               : null
           }
-          myPick={myPick ? { side: myPick.side, line: Number(myPick.line_at_pick) } : null}
+          myPick={
+            myPick
+              ? {
+                  market: myPick.market,
+                  side: myPick.side,
+                  line: myPick.line_at_pick === null ? null : Number(myPick.line_at_pick),
+                }
+              : null
+          }
           myBets={myBets}
           initial={{
             status: game.status,
@@ -277,30 +313,47 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
 
         {/* Pick'em + crew — up top, never hidden */}
         <section className="card mt-4 px-4 py-4">
-          <h2 className="mb-3 text-sm text-accent">Your pick</h2>
+          <h2 className="mb-3 text-sm text-accent">
+            Your pick{activeGroup ? ` · ${activeGroup.name}` : ""}
+          </h2>
+          {user && !activeGroup ? (
+            <p className="text-sm text-dim">
+              Picks belong to a group.{" "}
+              <Link href="/groups" className="font-medium text-accent underline-offset-2 hover:underline">
+                Join or create one
+              </Link>{" "}
+              to start picking.
+            </p>
+          ) : user && !inPlay ? (
+            <p className="text-sm text-dim">
+              {groupWeek === null
+                ? `${activeGroup!.name} hasn't set up week ${game.week} yet.`
+                : `This game isn't in play for ${activeGroup!.name} in week ${game.week}.`}
+            </p>
+          ) : (
           <PickButtons
+            groupId={activeGroup?.id ?? ""}
             gameId={game.id}
             homeLabel={home.abbr}
             awayLabel={away.abbr}
             currentSpread={consensus.spread}
             currentTotal={consensus.total}
-            myPick={
-              myPick
-                ? {
-                    side: myPick.side,
-                    line_at_pick: Number(myPick.line_at_pick),
-                    result: myPick.result,
-                    clv: myPick.clv === null ? null : Number(myPick.clv),
-                  }
-                : null
-            }
+            markets={inPlay ? groupWeek!.markets : []}
+            myPicks={myPicks.map((p) => ({
+              market: p.market,
+              side: p.side,
+              line_at_pick: p.line_at_pick === null ? null : Number(p.line_at_pick),
+              result: p.result,
+              clv: p.clv === null ? null : Number(p.clv),
+            }))}
             kickoffPassed={kickoffPassed}
             kickoffTs={game.start_ts}
             signedIn={user !== null}
           />
+          )}
           <div className="mt-4 border-t border-chalk/8 pt-3">
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-chalk/40">
-              Crew picks
+              {activeGroup ? `${activeGroup.name} picks` : "Crew picks"}
             </p>
             {crewPicks.length === 0 ? (
               <p className="text-sm text-dim">Nobody else has picked this one yet.</p>

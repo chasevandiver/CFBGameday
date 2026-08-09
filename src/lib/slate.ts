@@ -7,6 +7,7 @@
  */
 
 import { liveWinProb } from "../model/live";
+import type { PickMarket } from "./grade";
 
 export interface TeamView {
   id: number;
@@ -94,7 +95,9 @@ export interface GameView {
   };
   spreadHistory: LinePoint[];
   prediction: PredictionView | null;
-  myPick: { side: string; line: number } | null;
+  /** The viewer's pick in the active group. `line` is null for straight_up,
+   *  which takes no number. */
+  myPick: { market: PickMarket; side: string; line: number | null } | null;
   /** The viewer's open (ungraded, unvoided) bets on this game */
   myBets: MyBetView[];
   /** Everyone else's picks on this game — who's riding which side */

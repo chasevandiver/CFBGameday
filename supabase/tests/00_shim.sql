@@ -2,12 +2,22 @@
 -- runs: the three API roles, the auth schema, and auth.uid() reading the JWT
 -- claim. Enough to exercise RLS and the security-definer RPCs for real.
 
-drop role if exists anon;
-drop role if exists authenticated;
-drop role if exists service_role;
-create role anon nologin noinherit;
-create role authenticated nologin noinherit;
-create role service_role nologin noinherit bypassrls;
+-- Roles are cluster-wide, and the runner builds one database per suite, so
+-- these have to survive being applied more than once. Dropping and recreating
+-- fails the moment an earlier suite's database owns objects granted to them.
+do $$
+begin
+  if not exists (select 1 from pg_roles where rolname = 'anon') then
+    create role anon nologin noinherit;
+  end if;
+  if not exists (select 1 from pg_roles where rolname = 'authenticated') then
+    create role authenticated nologin noinherit;
+  end if;
+  if not exists (select 1 from pg_roles where rolname = 'service_role') then
+    create role service_role nologin noinherit bypassrls;
+  end if;
+end;
+$$;
 grant anon, authenticated, service_role to postgres;
 
 grant usage on schema public to anon, authenticated, service_role;

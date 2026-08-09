@@ -7,6 +7,7 @@
  * passes the line the over has won and the under is dead, whatever the clock.
  */
 
+import type { PickMarket } from "./grade";
 import type { GameView, MyBetView } from "./slate";
 
 export interface LiveBetStatus {
@@ -67,15 +68,28 @@ export function liveMoneylineStatus(
   return { state: "push", clinched: false, label: "Tied" };
 }
 
-/** Pick'em picks: home/away are spread picks against line_at_pick; over/under totals. */
+/**
+ * Pick'em picks, live. Routed by market rather than by side: straight-up shares
+ * home/away with the spread and carries no line, so reading `side` alone would
+ * grade a winner pick against a number it never took (see `grade.ts`, which
+ * makes the same distinction at settlement).
+ */
 export function statusForPick(
+  market: PickMarket,
   side: string,
-  line: number,
+  line: number | null,
   homePts: number,
   awayPts: number,
 ): LiveBetStatus | null {
-  if (side === "home" || side === "away") return liveSpreadStatus(side, line, homePts, awayPts);
-  if (side === "over" || side === "under") return liveTotalStatus(side, line, homePts, awayPts);
+  if (market === "straight_up") {
+    if (side !== "home" && side !== "away") return null;
+    return liveMoneylineStatus(side, homePts, awayPts);
+  }
+  if (line === null) return null;
+  if (market === "spread" && (side === "home" || side === "away"))
+    return liveSpreadStatus(side, line, homePts, awayPts);
+  if (market === "total" && (side === "over" || side === "under"))
+    return liveTotalStatus(side, line, homePts, awayPts);
   return null;
 }
 
@@ -110,12 +124,27 @@ const fmtHalves = (n: number): string => {
  * amber reserved for `bubble` reports how close that number is.
  */
 export function pickCoverView(
+  market: PickMarket,
   side: string,
-  line: number,
+  line: number | null,
   homePts: number,
   awayPts: number,
 ): PickCoverView | null {
-  if (side === "home" || side === "away") {
+  if (market === "straight_up") {
+    if (side !== "home" && side !== "away") return null;
+    const margin = side === "home" ? homePts - awayPts : awayPts - homePts;
+    // One score is the sweat for a winner pick — there is no number to be
+    // near, so the bubble is "a touchdown and two flips it".
+    const tier: CoverTier = Math.abs(margin) <= 8 ? "bubble" : margin > 0 ? "covering" : "losing";
+    return {
+      tier,
+      word: margin === 0 ? "Tied" : margin > 0 ? "Winning" : "Losing",
+      margin: null,
+      sub: margin === 0 ? null : `${margin > 0 ? "Up" : "Down"} ${Math.abs(margin)}`,
+    };
+  }
+  if (line === null) return null;
+  if (market === "spread" && (side === "home" || side === "away")) {
     const margin = side === "home" ? homePts - awayPts : awayPts - homePts;
     const cm = margin + line;
     const tier: CoverTier = Math.abs(cm) <= 3 ? "bubble" : cm > 0 ? "covering" : "losing";
@@ -131,7 +160,7 @@ export function pickCoverView(
       sub: null,
     };
   }
-  if (side === "over" || side === "under") {
+  if (market === "total" && (side === "over" || side === "under")) {
     const st = liveTotalStatus(side, line, homePts, awayPts);
     const room = line - (homePts + awayPts);
     const tier: CoverTier =
@@ -153,7 +182,13 @@ export function pickCoverView(
 /** Feed sort key for live games: bubble sweats first, then losing, covering, no pick. */
 export function liveUrgency(g: GameView): number {
   if (!g.myPick) return 3;
-  const v = pickCoverView(g.myPick.side, g.myPick.line, g.homePoints ?? 0, g.awayPoints ?? 0);
+  const v = pickCoverView(
+    g.myPick.market,
+    g.myPick.side,
+    g.myPick.line,
+    g.homePoints ?? 0,
+    g.awayPoints ?? 0,
+  );
   if (!v) return 3;
   return v.tier === "bubble" ? 0 : v.tier === "losing" ? 1 : 2;
 }
@@ -219,7 +254,9 @@ export function tintFor(g: GameView): CardTint {
   if (g.myPick && (g.myPick.side === "home" || g.myPick.side === "away")) {
     const margin =
       g.myPick.side === "home" ? g.homePoints - g.awayPoints : g.awayPoints - g.homePoints;
-    return tierFromMargin(margin + g.myPick.line, live);
+    // Straight-up has no number to be near, so the raw margin is the verdict.
+    if (g.myPick.market === "straight_up") return tierFromMargin(margin, live);
+    if (g.myPick.line !== null) return tierFromMargin(margin + g.myPick.line, live);
   }
   return "teams";
 }

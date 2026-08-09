@@ -4,6 +4,7 @@ import { Tv } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useViewerTz } from "../../lib/client-store";
 import type { GameRow } from "../../lib/db-types";
+import type { PickMarket } from "../../lib/grade";
 import { DEFAULT_TZ, kickDateLong, kickParts, periodLabel, tzLabel } from "../../lib/kick";
 import { statusForBet, statusForPick } from "../../lib/live-status";
 import {
@@ -44,7 +45,7 @@ interface Props {
   away: TeamView;
   /** Pregame model line (home perspective) + win prob; null when unpriced */
   prediction: { spread: number; homeWinProb: number } | null;
-  myPick: { side: string; line: number } | null;
+  myPick: { market: PickMarket; side: string; line: number | null } | null;
   myBets: MyBetView[];
   initial: GameLiveState;
 }
@@ -171,7 +172,8 @@ export function GameHeader({
   const posAbbr = g.possession === "home" ? home.abbr : g.possession === "away" ? away.abbr : null;
 
   const myPickStatus = useMemo(
-    () => (live && myPick ? statusForPick(myPick.side, myPick.line, hPts, aPts) : null),
+    () =>
+      live && myPick ? statusForPick(myPick.market, myPick.side, myPick.line, hPts, aPts) : null,
     [live, myPick, hPts, aPts],
   );
   const myBetStatuses = useMemo(

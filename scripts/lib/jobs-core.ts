@@ -8,6 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { cfbd } from "../../src/lib/cfbd";
 import { modelClv, roundClv, spreadClv, totalClv } from "../../src/lib/clv";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
+import { gradePick, type PickMarket } from "../../src/lib/grade";
 import { buildTeamNameIndex } from "../../src/lib/rankings";
 import { fetchCurrentSlate } from "../../src/lib/season";
 import {
@@ -467,26 +468,32 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
 
     const { data: picks } = await db
       .from("picks")
-      .select("id, game_id, side, line_at_pick, result")
+      .select("id, game_id, market, side, line_at_pick, result")
       .in("game_id", finalIds)
       .is("result", null);
     for (const p of picks ?? []) {
       const g = gameById.get(p.game_id)!;
-      const margin = (g.home_points as number) - (g.away_points as number);
-      const total = (g.home_points as number) + (g.away_points as number);
       const line = Number(p.line_at_pick);
-      let result: string;
-      let clv: number | null = null;
       const close = closing(p.game_id);
-      if (p.side === "home" || p.side === "away") {
-        const coverMargin = p.side === "home" ? margin + line : -margin - line;
-        result = coverMargin > 0 ? "win" : coverMargin < 0 ? "loss" : "push";
-        if (close.spread !== null) clv = roundClv(spreadClv(p.side, line, close.spread));
-      } else {
-        const diff = p.side === "over" ? total - line : line - total;
-        result = diff > 0 ? "win" : diff < 0 ? "loss" : "push";
-        if (close.total !== null) clv = roundClv(totalClv(p.side, line, close.total));
+      const result = gradePick(
+        p.market as PickMarket,
+        p.side,
+        p.line_at_pick === null ? null : line,
+        g.home_points as number,
+        g.away_points as number,
+      );
+      // A row the grader cannot settle stays ungraded rather than banking a
+      // guess; the check constraint in 0021 should keep this unreachable.
+      if (result === null) continue;
+
+      // Straight-up takes no number, so there is nothing to compare a close to.
+      let clv: number | null = null;
+      if (p.market === "spread" && close.spread !== null) {
+        clv = roundClv(spreadClv(p.side as "home" | "away", line, close.spread));
+      } else if (p.market === "total" && close.total !== null) {
+        clv = roundClv(totalClv(p.side as "over" | "under", line, close.total));
       }
+
       const { error } = await db.from("picks").update({ result, clv }).eq("id", p.id);
       if (!error) picksGraded++;
     }
