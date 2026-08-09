@@ -27,11 +27,11 @@ import {
   isLive,
   headlinePick,
   isRedZone,
-  lineForSide,
   liveHomeWinProb,
   modelPicks,
   ouResult,
   parseSituation,
+  pickSideLabel,
   spreadMoveRead,
   upsetAlert,
   watchability,
@@ -869,10 +869,7 @@ function WatchRating({ score }: { score: number | null }) {
 /** "OSU -3.5" / "O 54.5" / "OSU ML" — the one formatter all three card states share. */
 function pickPrefix(g: GameView, p: MyPickView | null = headlinePick(g.myPicks)): string {
   if (!p) return "";
-  const team = p.side === "home" ? g.home : g.away;
-  if (p.market === "straight_up") return `${team.abbr} ML`;
-  if (p.market === "spread") return `${team.abbr} ${fmtSpread(lineForSide(p.side, p.line))}`;
-  return `${p.side === "over" ? "O" : "U"} ${fmtTotal(p.line)}`;
+  return pickSideLabel(p.market, p.side, p.line, g.home.abbr, g.away.abbr, { compact: true });
 }
 
 function betPrefix(g: GameView, b: MyBetView): string {

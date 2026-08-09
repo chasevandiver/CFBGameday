@@ -141,6 +141,68 @@ shipping it.
 
 ## Log
 
+### Aug 9 — The group week page: matchups first, and who's on which side
+
+The weekly picks page nested **game → market → person**, which reads as a
+database dump. The question on a Saturday morning is *who is on which side of
+this game*, and that layout made you assemble it yourself by scanning names down
+two separate market sections. `/groups/[slug]/week/[week]?view=pick` now inverts
+the inner two levels and makes the split spatial: the matchup is the headline,
+the two sides are the two halves of the card, and each member sits under the one
+they took with the number they actually got. The by-person view is unchanged and
+still a toggle. Scope was the week page only — the board keeps its pick
+controls, per `docs/DESIGN.md`'s "build one screen completely, then propagate".
+
+**Every device on the new card already existed** (`MatchupCard.tsx`): the 3px
+team split edge and `TeamMark` from the game card, `.trow`/`.trail` for the
+team-owned halves, the accent ring `OddsCell` uses for "this one is yours", and
+`ResultChip`'s icon-plus-colour rule for a graded pick. No new colour, weight,
+spacing or radius token. `.trow`'s gradient is `var(--tc, transparent)`, so the
+over/under halves reuse the identical class with `--tc` unset and come out
+neutral — one component, colour only where a team owns it.
+
+**All the week's matchups appear**, not only the picked ones; a game nobody has
+touched says "nobody in yet" rather than vanishing. Dropped games keep their
+greyed "no longer in play" card at the bottom.
+
+**`pickSideLabel` in `src/lib/slate.ts`** — `"UNC +6"` / `"UNC to win"` /
+`"UNC ML"` existed as **five** private copies (`week/[week]/page.tsx`,
+`GameCard`, `PickButtons`, `game/[id]/page.tsx`, `share-text`), each rendering
+straight-up slightly differently. All five now call one function, which calls
+`lineForSide` — so the away-spread sign fix can't be forgotten in a sixth copy.
+Same move as `src/lib/records.ts`.
+
+**`0023_hidden_picks`, applied to production.** A per-group
+`picks_hidden_until_kickoff` flag, off by default. The single picks policy
+becomes three, because "mine" and "everyone else's" now answer differently:
+own picks always readable, others' and anon's gated on `picks_revealed(group,
+game)` — a `stable security definer` helper that is two primary-key hits. A
+`null` `start_ts` counts as *not yet kicked off*, so a TBD game stays shut
+rather than defaulting open. With the blind on RLS returns nothing, so the page
+cannot even say how many picks are in; `group_game_pick_count` is a
+security-definer counter, guarded on `is_group_member` so a non-member of a
+public group cannot poll it for who has committed. `supabase/tests/hidden-picks.sql`
+asserts all of it across three roles — 90 assertions total now pass.
+
+**Four things only rendering caught**, at 390×844 against a temporary two-member
+public group in the live project (deleted afterwards, along with the two game
+rows it mutated):
+
+- The lean bar rendered a 2–0 as a 50/50. A flex item's percentage width still
+  shrinks to make room for its sibling; it is now one span over a coloured
+  track, no flex math.
+- The matchup header link was a 23px strip of team abbreviations — under the
+  44px floor, with nothing else in the row to tap. The whole row is the link.
+- "Nobody in yet." was shown to signed-out visitors on a blind board, where the
+  page has no entitlement to the count and does not know. `blindCount` is now
+  `number | null`, and null reads "Hidden".
+- The blind repeated "they reveal at kickoff" on every card — the same
+  sign-in-prompt-per-card mistake as the last round. The rule is stated once in
+  a banner above the list; each card carries only its own number ("3 in ·
+  hidden").
+
+The `{group name} →` link on that page was also 16px tall; fixed in passing.
+
 ### Aug 9 — Groups live in production, and the gaps closed
 
 `0020`–`0022` applied to the live project. The `0021` backfill found nothing to

@@ -116,6 +116,8 @@ export interface GroupRow {
   name: string;
   slug: string;
   visibility: "private" | "public";
+  /** Others' picks are unreadable until each game kicks off (migration 0023). */
+  picks_hidden_until_kickoff: boolean;
   join_code: string;
   created_by: string;
   created_at: string;

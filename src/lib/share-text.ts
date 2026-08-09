@@ -14,7 +14,7 @@
 import type { PickMarket } from "./grade";
 import type { Tally } from "./records";
 import { formatRecord } from "./records";
-import { fmtSpread, fmtTotal, lineForSide } from "./slate";
+import { pickSideLabel } from "./slate";
 
 export type ShareMode = "just-placed" | "today" | "day-record" | "lifetime";
 
@@ -60,13 +60,12 @@ const HEADER = "THE CFB SLATE";
 /** "UGA -6.5 vs BAMA" · "Over 51.5 — UGA/BAMA" · "UGA to win vs BAMA" */
 export function formatPick(p: SharePick): string {
   if (p.text) return p.text;
-  const team = p.side === "home" ? p.homeAbbr : p.awayAbbr;
+  const label = pickSideLabel(p.market, p.side, p.line, p.homeAbbr, p.awayAbbr);
+  // A total names neither team, so the matchup goes after it rather than an
+  // opponent going after a side that has none.
+  if (p.market === "total") return `${label} — ${p.awayAbbr}/${p.homeAbbr}`;
   const opponent = p.side === "home" ? p.awayAbbr : p.homeAbbr;
-  if (p.market === "straight_up") return `${team} to win vs ${opponent}`;
-  if (p.market === "spread")
-    return `${team} ${fmtSpread(lineForSide(p.side, p.line))} vs ${opponent}`;
-  const side = p.side === "over" ? "Over" : "Under";
-  return `${side} ${fmtTotal(p.line)} — ${p.awayAbbr}/${p.homeAbbr}`;
+  return `${label} vs ${opponent}`;
 }
 
 const recordLine = (label: string, t: Tally): string =>

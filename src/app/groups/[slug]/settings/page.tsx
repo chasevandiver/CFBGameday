@@ -171,6 +171,7 @@ export default async function GroupSettingsPage({
               groupId={active.id}
               name={active.name}
               visibility={active.visibility}
+              hidePicks={active.picksHiddenUntilKickoff}
               joinCode={joinCode}
             />
           </section>

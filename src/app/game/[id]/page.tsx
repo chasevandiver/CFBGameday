@@ -35,8 +35,8 @@ import {
   fmtPct,
   fmtSpread,
   fmtTotal,
-  lineForSide,
   modelSideOf,
+  pickSideLabel,
   type MyBetView,
   type TeamView,
 } from "../../../lib/slate";
@@ -75,10 +75,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 /** The viewer's pick, read-only. Mirrors the board's wording. */
 function pickText(p: PickRow, homeAbbr: string, awayAbbr: string): string {
-  const team = p.side === "home" ? homeAbbr : awayAbbr;
-  if (p.market === "straight_up") return `${team} to win`;
-  if (p.market === "spread") return `${team} ${fmtSpread(lineForSide(p.side, p.line_at_pick))}`;
-  return `${p.side === "over" ? "Over" : "Under"} ${fmtTotal(p.line_at_pick)}`;
+  return pickSideLabel(p.market, p.side, p.line_at_pick, homeAbbr, awayAbbr);
 }
 
 function toView(t: TeamRow, pollRank: number | null = null, poll: string | null = null): TeamView {

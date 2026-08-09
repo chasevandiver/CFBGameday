@@ -171,6 +171,7 @@ export async function updateGroup(
   groupId: string,
   name: string,
   visibility: "private" | "public",
+  hidePicks: boolean,
 ): Promise<ActionResult> {
   const supabase = await createClient();
   const {
@@ -182,6 +183,7 @@ export async function updateGroup(
     p_group: groupId,
     p_name: name,
     p_visibility: visibility,
+    p_hide_picks: hidePicks,
   });
   if (error) return { ok: false, message: error.message };
 

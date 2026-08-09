@@ -23,6 +23,8 @@ export interface GroupSummary {
   name: string;
   slug: string;
   visibility: "private" | "public";
+  /** Others' picks stay unreadable until each game kicks off (migration 0023). */
+  picksHiddenUntilKickoff: boolean;
   /** The viewer's role, or null when they are only looking at a public group. */
   role: "admin" | "member" | null;
 }
@@ -32,6 +34,7 @@ const toSummary = (g: GroupRow, role: GroupSummary["role"]): GroupSummary => ({
   name: g.name,
   slug: g.slug,
   visibility: g.visibility,
+  picksHiddenUntilKickoff: g.picks_hidden_until_kickoff ?? false,
   role,
 });
 
@@ -43,7 +46,9 @@ export async function fetchMyGroups(
   if (!userId) return [];
   const { data } = await supabase
     .from("group_members")
-    .select("role, joined_at, groups!inner(id, name, slug, visibility, archived_at)")
+    .select(
+      "role, joined_at, groups!inner(id, name, slug, visibility, picks_hidden_until_kickoff, archived_at)",
+    )
     .eq("user_id", userId)
     .is("removed_at", null)
     .order("joined_at", { ascending: true });
@@ -74,7 +79,7 @@ export async function resolveActiveGroup(
     // doubles as the visibility check.
     const { data } = await supabase
       .from("groups")
-      .select("id, name, slug, visibility, archived_at")
+      .select("id, name, slug, visibility, picks_hidden_until_kickoff, archived_at")
       .eq("slug", slug)
       .is("archived_at", null)
       .maybeSingle();

@@ -84,6 +84,36 @@ export function lineForSide(side: string, line: number | null): number | null {
 }
 
 /**
+ * How a pick reads: "UNC +6", "Over 51.5", "OSU to win".
+ *
+ * One implementation. There were five — the weekly grid, the game card, the
+ * pick control, the game page and the share text each grew their own, and they
+ * had already drifted on how straight-up is worded. Every one of them has to
+ * call `lineForSide` first, which is the away-spread sign fix, so a sixth copy
+ * is a sixth chance to reintroduce a bug the whole codebase has already had.
+ *
+ * `compact` is the difference between a card chip ("OSU ML") and a sentence
+ * ("OSU to win"), which is the only thing the five ever legitimately disagreed
+ * about.
+ */
+export function pickSideLabel(
+  market: PickMarket,
+  side: string,
+  line: number | null,
+  homeAbbr: string,
+  awayAbbr: string,
+  opts: { compact?: boolean } = {},
+): string {
+  const team = side === "home" ? homeAbbr : awayAbbr;
+  if (market === "straight_up") return opts.compact ? `${team} ML` : `${team} to win`;
+  if (market === "spread") return `${team} ${fmtSpread(lineForSide(side, line))}`;
+  const over = side === "over";
+  return opts.compact
+    ? `${over ? "O" : "U"} ${fmtTotal(line)}`
+    : `${over ? "Over" : "Under"} ${fmtTotal(line)}`;
+}
+
+/**
  * The pick a card leads with when it can only show one.
  *
  * A game can carry three of them now, but a card has one cover strip and one

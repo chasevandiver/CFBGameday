@@ -16,11 +16,13 @@ export function GroupAdmin({
   groupId,
   name,
   visibility,
+  hidePicks,
   joinCode,
 }: {
   groupId: string;
   name: string;
   visibility: "private" | "public";
+  hidePicks: boolean;
   joinCode: string;
 }) {
   const router = useRouter();
@@ -30,15 +32,17 @@ export function GroupAdmin({
 
   const [draftName, setDraftName] = useState(name);
   const [draftVis, setDraftVis] = useState(visibility);
+  const [draftHide, setDraftHide] = useState(hidePicks);
   const [confirmArchive, setConfirmArchive] = useState(false);
 
-  const dirty = draftName.trim() !== name || draftVis !== visibility;
+  const dirty =
+    draftName.trim() !== name || draftVis !== visibility || draftHide !== hidePicks;
 
   const save = () =>
     start(async () => {
       setError(null);
       setNote(null);
-      const res = await updateGroup(groupId, draftName, draftVis);
+      const res = await updateGroup(groupId, draftName, draftVis, draftHide);
       if (!res.ok) {
         setError(res.message ?? "Could not save");
         return;
@@ -74,6 +78,32 @@ export function GroupAdmin({
             {v === "private" ? "Members only" : "Anyone with the link"}
           </label>
         ))}
+      </fieldset>
+
+      <fieldset className="flex flex-col gap-1.5">
+        <legend className="mb-1 text-xs text-dim">When picks become visible</legend>
+        <label className="flex min-h-11 items-center gap-2 text-sm text-chalk">
+          <input
+            type="radio"
+            name="hide-picks"
+            checked={!draftHide}
+            onChange={() => setDraftHide(false)}
+          />
+          As soon as they&rsquo;re made
+        </label>
+        <label className="flex min-h-11 items-center gap-2 text-sm text-chalk">
+          <input
+            type="radio"
+            name="hide-picks"
+            checked={draftHide}
+            onChange={() => setDraftHide(true)}
+          />
+          At each game&rsquo;s kickoff
+        </label>
+        <p className="text-[11px] leading-snug text-dim">
+          Your own picks are always visible to you. Hiding the rest stops the group copying
+          whoever&rsquo;s hot; the board still says how many are in.
+        </p>
       </fieldset>
 
       <div className="flex flex-wrap items-center gap-3">

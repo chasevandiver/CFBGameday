@@ -17,6 +17,7 @@ import {
   upsetAlert,
   headlinePick,
   lineForSide,
+  pickSideLabel,
   watchability,
   weekModelRecord,
   type GameView,
@@ -463,5 +464,36 @@ describe("lineForSide", () => {
 
   it("passes a null straight through", () => {
     expect(lineForSide("away", null)).toBeNull();
+  });
+});
+
+describe("pickSideLabel", () => {
+  // The one formatter five call sites used to own a copy of. Each of them had
+  // to remember to run the stored line through lineForSide first; this is the
+  // regression that kept coming back.
+  it("mirrors the number for an away spread backer", () => {
+    expect(pickSideLabel("spread", "away", -6.5, "UGA", "BAMA")).toBe("BAMA +6.5");
+    expect(pickSideLabel("spread", "home", -6.5, "UGA", "BAMA")).toBe("UGA -6.5");
+  });
+
+  it("says PK on a pick'em rather than +0", () => {
+    expect(pickSideLabel("spread", "away", 0, "UGA", "BAMA")).toBe("BAMA PK");
+  });
+
+  it("words straight-up long by default and short when compact", () => {
+    expect(pickSideLabel("straight_up", "home", null, "UGA", "BAMA")).toBe("UGA to win");
+    expect(pickSideLabel("straight_up", "home", null, "UGA", "BAMA", { compact: true })).toBe(
+      "UGA ML",
+    );
+  });
+
+  it("leaves a total side-agnostic — both sides hold the same number", () => {
+    expect(pickSideLabel("total", "over", 51.5, "UGA", "BAMA")).toBe("Over 51.5");
+    expect(pickSideLabel("total", "under", 51.5, "UGA", "BAMA")).toBe("Under 51.5");
+    expect(pickSideLabel("total", "over", 51.5, "UGA", "BAMA", { compact: true })).toBe("O 51.5");
+  });
+
+  it("renders a missing line as a dash rather than inventing one", () => {
+    expect(pickSideLabel("spread", "home", null, "UGA", "BAMA")).toBe("UGA –");
   });
 });

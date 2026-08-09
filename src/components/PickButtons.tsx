@@ -5,7 +5,7 @@ import { useEffect, useState, useTransition } from "react";
 import { makePick, removePick } from "../app/actions/picks";
 import type { PickMarket } from "../lib/grade";
 import { forgetPick, rememberPick } from "../lib/session-picks";
-import { fmtSpread, fmtTotal, lineForSide } from "../lib/slate";
+import { fmtSpread, fmtTotal, pickSideLabel } from "../lib/slate";
 
 export interface MyPickView {
   market: PickMarket;
@@ -202,10 +202,7 @@ export function PickButtons({
 }
 
 function pickLabel(p: MyPickView, homeLabel: string, awayLabel: string): string {
-  const team = p.side === "home" ? homeLabel : awayLabel;
-  if (p.market === "straight_up") return `${team} to win`;
-  if (p.market === "spread") return `${team} ${fmtSpread(lineForSide(p.side, p.line_at_pick))}`;
-  return `${p.side === "over" ? "Over" : "Under"} ${fmtTotal(p.line_at_pick)}`;
+  return pickSideLabel(p.market, p.side, p.line_at_pick, homeLabel, awayLabel);
 }
 
 /** "Locks in 2h 14m" once kickoff is inside 24h; ticks every 30s. */
