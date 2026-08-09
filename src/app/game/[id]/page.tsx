@@ -23,6 +23,7 @@ import {
   resolveActiveGroup,
 } from "../../../lib/groups";
 import { pickPollRanks, pollShortName } from "../../../lib/rankings";
+import { ELO_PER_POINT, RATING_SCALES, systemMargin } from "../../../lib/rating-scales";
 import type { SeasonType } from "../../../lib/season";
 import {
   consensusFromSnapshots,
@@ -244,7 +245,9 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
       const h = sysLatest.get(`${system}:${game.home_team_id}`);
       const a = sysLatest.get(`${system}:${game.away_team_id}`);
       if (h === undefined || a === undefined) return null;
-      const margin = system === "elo" ? (h - a) / 25 : h - a;
+      // Home perspective, and Elo divided down first — the conversion lives in
+      // rating-scales rather than being written out at each call site.
+      const margin = -(systemMargin(system, h, a) ?? 0);
       return { system, home: h, away: a, margin };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
@@ -527,16 +530,16 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                 {systemRows.map((r) => (
                   <tr key={r.system} className="border-t border-chalk/5">
                     <td className="py-2 pl-4 pr-3 font-sans text-chalk">
-                      {r.system === "sp" ? "SP+" : r.system === "fpi" ? "FPI" : "Elo"}
+                      {RATING_SCALES[r.system].label}
                     </td>
                     <td className="px-3 py-2 text-right text-chalk/80">
-                      {r.system === "elo" ? Math.round(r.away) : r.away.toFixed(1)}
+                      {RATING_SCALES[r.system].format(r.away)}
                     </td>
                     <td className="px-3 py-2 text-right text-chalk/80">
-                      {r.system === "elo" ? Math.round(r.home) : r.home.toFixed(1)}
+                      {RATING_SCALES[r.system].format(r.home)}
                     </td>
                     <td className="py-2 pl-3 pr-4 text-right text-chalk">
-                      {home.abbr} {fmtSpread(Math.round(-r.margin * 10) / 10)}
+                      {home.abbr} {fmtSpread(Math.round(r.margin * 10) / 10)}
                     </td>
                   </tr>
                 ))}
@@ -553,9 +556,11 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
               </tbody>
             </table>
             <p className="px-4 py-2 text-[10.5px] text-dim">
-              Margins in the market&rsquo;s convention (negative = {home.abbr} favored); Elo
-              margin approximated at 25 Elo per point. Consensus flags fire when every system
-              disagrees with the line the same way.
+              SP+ and FPI are points better than an average FBS team on a neutral field, the
+              same scale our rating uses, so they read against each other directly. Elo is not —
+              margins convert at about {ELO_PER_POINT} Elo per point. Margins are in the
+              market&rsquo;s convention (negative = {home.abbr} favored); consensus flags fire
+              when every system disagrees with the line the same way.
             </p>
           </section>
         )}

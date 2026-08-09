@@ -12,6 +12,7 @@ import {
   tintFor,
   type PickCoverView,
 } from "../../lib/live-status";
+import { RATING_SCALES, systemMargin } from "../../lib/rating-scales";
 import {
   atsResult,
   displayRank,
@@ -987,20 +988,15 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
  */
 function SystemsRow({ game }: { game: GameView }) {
   if (game.systems.length === 0) return null;
-  const LABEL: Record<string, string> = { sp: "SP+", fpi: "FPI", elo: "Elo" };
   return (
     <p className="stat mt-1 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px] leading-none text-dim">
       {game.systems.map((s) => {
-        // both sides needed to express a margin; Elo is ~25 points per point
-        const margin =
-          s.home === null || s.away === null
-            ? null
-            : s.system === "elo"
-              ? (s.away - s.home) / 25
-              : s.away - s.home;
+        // Elo is not a points scale; the conversion lives in rating-scales,
+        // beside the reason it is needed.
+        const margin = systemMargin(s.system, s.home, s.away);
         return (
           <span key={s.system}>
-            {LABEL[s.system]}{" "}
+            {RATING_SCALES[s.system].label}{" "}
             <span className="text-chalk/75">
               {margin === null ? "–" : fmtSpread(Math.round(margin * 10) / 10)}
             </span>

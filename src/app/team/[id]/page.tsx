@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { AppNav } from "../../../components/AppNav";
 import type { GameRow, TeamRow } from "../../../lib/db-types";
 import { DEFAULT_TZ, kickDateLong } from "../../../lib/kick";
+import { RatingStat } from "../../../components/RatingStat";
 import { fetchCurrentSeasonWeek } from "../../../lib/queries";
+import { ELO_PER_POINT, type RatingSystem } from "../../../lib/rating-scales";
 import { pickPollRanks, pollShortName } from "../../../lib/rankings";
 import { createClient } from "../../../lib/supabase/server";
 import {
@@ -64,7 +66,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
     .maybeSingle<TeamRow>();
   if (!team) notFound();
 
-  const [ratingsRes, compsRes, hfaRes, gamesRes, verdictRes, pollsRes] = await Promise.all([
+  const [ratingsRes, compsRes, hfaRes, gamesRes, verdictRes, pollsRes, systemsRes] = await Promise.all([
     supabase.from("latest_ratings").select("team_id, overall").eq("season_id", seasonId),
     supabase
       .from("preseason_components")
@@ -90,6 +92,14 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
       .select("week, poll, team_id, rank")
       .eq("season_id", seasonId)
       .eq("season_type", "regular"),
+    // Whole field, newest week first: the first row per system+team is that
+    // system's current number, and the rest of the field is what makes a
+    // percentile possible.
+    supabase
+      .from("system_ratings")
+      .select("team_id, system, week, value")
+      .eq("season_id", seasonId)
+      .order("week", { ascending: false }),
   ]);
 
   // Latest rating per team + this team's rank
@@ -100,16 +110,37 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
     ]),
   );
   const rating = latest.get(teamId);
-  const rank =
-    rating !== undefined
-      ? [...latest.values()].filter((v) => v > rating).length + 1
-      : null;
+  const ratingField = [...latest.values()];
   const hfa = new Map<number, number>(
     (hfaRes.data ?? []).map((r: { team_id: number; blended_hfa: number }) => [
       r.team_id,
       Number(r.blended_hfa),
     ]),
   );
+
+  // One current value per team per system, then this team's against the field.
+  const bySystem = new Map<RatingSystem, Map<number, number>>();
+  for (const r of (systemsRes.data ?? []) as Array<{
+    team_id: number;
+    system: string;
+    value: number;
+  }>) {
+    const sys = r.system as RatingSystem;
+    const seen = bySystem.get(sys) ?? new Map<number, number>();
+    if (!seen.has(r.team_id)) seen.set(r.team_id, Number(r.value));
+    bySystem.set(sys, seen);
+  }
+  const systemStats = (["sp", "fpi", "elo"] as const)
+    .map((system) => {
+      const field = bySystem.get(system);
+      const value = field?.get(teamId);
+      return value === undefined
+        ? null
+        : { system, value, field: [...field!.values()] };
+    })
+    .filter(
+      (x): x is { system: "sp" | "fpi" | "elo"; value: number; field: number[] } => x !== null,
+    );
 
   const games = (gamesRes.data ?? []) as GameRow[];
   const oppIds = games.map((g) => (g.home_team_id === teamId ? g.away_team_id : g.home_team_id));
@@ -181,13 +212,32 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
                 .join(" · ")}
             </p>
           </div>
-          <div className="shrink-0 text-right">
-            <p className="stat text-2xl font-semibold">
-              {rating !== undefined ? `${rating > 0 ? "+" : ""}${rating.toFixed(1)}` : "—"}
-            </p>
-            <p className="stat text-xs text-dim">{rank !== null ? `#${rank} of FBS` : "unrated"}</p>
+          <div className="w-40 shrink-0">
+            {/* The headline number, with its scale and its place in the field.
+                It used to read "+12.4" over "#14 of FBS" and nothing else —
+                a rank with no field size and a figure with no unit. */}
+            <RatingStat system="model" value={rating ?? null} field={ratingField} />
           </div>
         </section>
+
+        {/* Every other system, on the same footing, so the comparison is
+            possible at all — spec §2.4 promised these side by side and only
+            the game page ever showed them. */}
+        {systemStats.length > 0 && (
+          <section className="card mb-4 p-4">
+            <h2 className="mb-3 text-sm text-accent">Other systems</h2>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {systemStats.map((s) => (
+                <RatingStat key={s.system} system={s.system} value={s.value} field={s.field} />
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-dim">
+              SP+ and FPI are on the same points scale as our rating, so they can be read against
+              each other directly. Elo is not — about {ELO_PER_POINT} Elo points make one scoring
+              point.
+            </p>
+          </section>
+        )}
 
         {/* Preseason breakdown */}
         {comp && (

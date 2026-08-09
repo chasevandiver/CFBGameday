@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { rankAndPercentile } from "../lib/rankings";
 
 export interface RatingRow {
   teamId: number;
@@ -89,6 +90,15 @@ export function RatingsTable({
     return new Map(byOverall.map((r, i) => [r.teamId, i + 1]));
   }, [rows]);
 
+  // Where each team sits in the whole field — not the filtered view, because a
+  // conference chip shouldn't turn every SEC team into a top-quarter team.
+  const placementById = useMemo(() => {
+    const field = rows.map((r) => r.overall);
+    return new Map(
+      rows.map((r) => [r.teamId, rankAndPercentile(field, r.overall)?.percentile ?? null]),
+    );
+  }, [rows]);
+
   const visible = useMemo(() => {
     const filtered = conference ? rows.filter((r) => r.conference === conference) : rows;
     return [...filtered].sort((a, b) => {
@@ -114,6 +124,18 @@ export function RatingsTable({
           <Chip key={c} label={c} active={conference === c} onClick={() => setConference(c)} />
         ))}
       </div>
+
+      {/* The scale, above the panel rather than under it. It was a footnote
+          below a 136-row scroll with a sticky header, so by the time anyone
+          was reading numbers the explanation had left the screen — which on a
+          phone is the same as not having written it. */}
+      <p className="rounded border border-chalk/10 bg-surface px-3 py-2 text-[11px] leading-snug text-dim">
+        <span className="font-semibold text-chalk/70">Rating</span> is points better than an
+        average FBS team on a neutral field — <span className="text-chalk/70">+10</span> is a
+        playoff side, <span className="text-chalk/70">0</span> is average,{" "}
+        <span className="text-chalk/70">−20</span> is the bottom of the sport. The bar under each
+        number is where that team sits among all {rows.length}.
+      </p>
 
       {/* scrollable panel so the header can stick — 136 rows without it lose
           the column labels three flicks in */}
@@ -165,7 +187,7 @@ export function RatingsTable({
                     <span className="hidden text-xs text-chalk/40 sm:inline">{r.conference}</span>
                   </span>
                 </td>
-                <NumCell value={r.overall} strong />
+                <NumCell value={r.overall} strong meter={placementById.get(r.teamId) ?? null} />
                 {showSplit && (
                   <>
                     <NumCell value={r.offense} signed />
@@ -214,11 +236,18 @@ function NumCell({
   value,
   strong = false,
   signed = false,
+  meter = null,
 }: {
   value: number | null;
   strong?: boolean;
   /** Off/Def are deviations from average, so the sign is the whole point. */
   signed?: boolean;
+  /**
+   * 0..1 place in the field, drawn as a rule under the number. A column of its
+   * own would cost width this table does not have on a phone; underlining the
+   * figure it describes costs none.
+   */
+  meter?: number | null;
 }) {
   return (
     <td className={`px-2 py-1.5 text-right ${strong ? "font-semibold" : "text-chalk/80"}`}>
@@ -226,6 +255,14 @@ function NumCell({
         <span className="text-chalk/30">—</span>
       ) : (
         `${signed && value > 0 ? "+" : ""}${value.toFixed(1)}`
+      )}
+      {meter !== null && value !== null && (
+        <span aria-hidden className="mt-0.5 block h-px w-full bg-elev">
+          <span
+            className="block h-px bg-accent/70"
+            style={{ width: `${Math.round(Math.max(0, Math.min(1, meter)) * 100)}%` }}
+          />
+        </span>
       )}
     </td>
   );
