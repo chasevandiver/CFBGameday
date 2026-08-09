@@ -1,0 +1,289 @@
+-- Groups: membership, visibility, week configuration and the freeze (0020).
+--
+-- Every assertion runs as a real API role. `test_as` sets the JWT claim and
+-- switches to `authenticated`, so RLS and the security-definer RPCs are
+-- exercised the way PostgREST would exercise them — reading the policy and
+-- agreeing with it is not a test.
+
+\set ON_ERROR_STOP on
+\pset pager off
+\pset tuples_only on
+\pset format unaligned
+
+create function pg_temp.chk(label text, ok boolean) returns text
+language sql as $$ select case when ok then 'PASS  ' else 'FAIL  ' end || label; $$;
+
+-- Records the message of an expected failure, or a FAIL line if none came.
+create function pg_temp.raises(label text, stmt text) returns text
+language plpgsql as $$
+begin
+  execute stmt;
+  return 'FAIL  ' || label || ' (no error raised)';
+exception when others then
+  return 'PASS  ' || label || ' -> ' || sqlerrm;
+end; $$;
+
+\o /dev/null
+-- ---------------------------------------------------------------------------
+-- Seed, as postgres (bypasses RLS)
+-- ---------------------------------------------------------------------------
+insert into seasons (id, label, week0_start, is_current)
+values (2026, '2026', date '2026-08-29', true);
+
+insert into teams (id, school, abbreviation, conference, classification) values
+  (1, 'Georgia',    'UGA',  'SEC',     'fbs'),
+  (2, 'Alabama',    'BAMA', 'SEC',     'fbs'),
+  (3, 'Ohio State', 'OSU',  'Big Ten', 'fbs'),
+  (4, 'Michigan',   'MICH', 'Big Ten', 'fbs'),
+  (5, 'Iowa',       'IOWA', 'Big Ten', 'fbs');
+
+-- Week 2 is upcoming; week 1 has already kicked off.
+insert into games (id, season_id, week, season_type, start_ts, home_team_id, away_team_id) values
+  (201, 2026, 2, 'regular', now() + interval '3 days', 1, 2),   -- SEC only
+  (202, 2026, 2, 'regular', now() + interval '3 days', 3, 4),   -- Big Ten only
+  (203, 2026, 2, 'regular', now() + interval '4 days', 5, 1),   -- Iowa (B1G) vs Georgia
+  (101, 2026, 1, 'regular', now() - interval '2 days', 3, 5);
+
+insert into invite_allowlist (email, make_admin) values
+  ('ann@example.com', false), ('bob@example.com', false), ('cal@example.com', false);
+insert into auth.users (id, email) values
+  ('11111111-1111-1111-1111-111111111111', 'ann@example.com'),
+  ('22222222-2222-2222-2222-222222222222', 'bob@example.com'),
+  ('33333333-3333-3333-3333-333333333333', 'cal@example.com');
+\o
+
+\set ann '''11111111-1111-1111-1111-111111111111'''
+\set bob '''22222222-2222-2222-2222-222222222222'''
+\set cal '''33333333-3333-3333-3333-333333333333'''
+
+\echo '# creating a group'
+\o /dev/null
+begin;
+  select test_as(:ann::uuid);
+  select create_group('Saturday Boys', 'private') as grp \gset
+commit;
+select join_code as code from groups where id = :'grp'::uuid \gset
+\o
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.chk('creator is the admin', is_group_admin(:'grp'::uuid));
+  select pg_temp.chk('creator is a member',  is_group_member(:'grp'::uuid));
+  select pg_temp.chk('name slugified to saturday-boys',
+                     (select slug from groups where id = :'grp'::uuid) = 'saturday-boys');
+rollback;
+
+\echo '# joining, and who can see a private group'
+\o /dev/null
+begin;
+  select test_as(:bob::uuid);
+  select join_group(:'code');
+commit;
+\o
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.chk('joiner is a member, not an admin',
+                     is_group_member(:'grp'::uuid) and not is_group_admin(:'grp'::uuid));
+rollback;
+begin;
+  select test_as(:cal::uuid);
+  select pg_temp.chk('non-member sees no private group', (select count(*) from groups) = 0);
+  select pg_temp.chk('non-member sees no roster', (select count(*) from group_members) = 0);
+rollback;
+begin;
+  select test_as_anon();
+  select pg_temp.chk('anon sees no private group', (select count(*) from groups) = 0);
+rollback;
+
+\echo '# a public group is readable signed out'
+\o /dev/null
+update groups set visibility = 'public' where id = :'grp'::uuid;
+\o
+begin;
+  select test_as_anon();
+  select pg_temp.chk('anon sees a public group', (select count(*) from groups) = 1);
+  select pg_temp.chk('anon sees its roster', (select count(*) from group_members) = 2);
+rollback;
+\o /dev/null
+update groups set visibility = 'private' where id = :'grp'::uuid;
+\o
+
+\echo '# every write goes through an RPC'
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.raises('direct update on groups',
+                        $$update groups set name = 'Hijacked'$$);
+  select pg_temp.raises('direct insert into group_members',
+                        $$insert into group_members (group_id, user_id, role)
+                          select id, '33333333-3333-3333-3333-333333333333', 'admin'
+                          from groups limit 1$$);
+  select pg_temp.raises('direct insert into group_week_config',
+                        $$insert into group_week_config
+                            (group_id, season_id, week, selection_mode, markets)
+                          select id, 2026, 3, 'full_slate', array['spread'] from groups limit 1$$);
+rollback;
+
+\echo '# selection modes'
+\o /dev/null
+begin;
+  select test_as(:ann::uuid);
+  select set_group_week_config(:'grp'::uuid, 2026, 2, 'regular',
+                               'full_slate', null, array['spread','total']);
+commit;
+\o
+select pg_temp.chk('full_slate takes the whole week',
+                   (select array_agg(g order by g) from group_week_game_ids(:'grp'::uuid, 2026, 2) g)
+                   = array[201,202,203]);
+\o /dev/null
+begin;
+  select test_as(:ann::uuid);
+  select set_group_week_config(:'grp'::uuid, 2026, 2, 'regular',
+                               'conference', 'Big Ten', array['spread']);
+commit;
+\o
+select pg_temp.chk('conference takes games with a Big Ten team on either side',
+                   (select array_agg(g order by g) from group_week_game_ids(:'grp'::uuid, 2026, 2) g)
+                   = array[202,203]);
+\o /dev/null
+begin;
+  select test_as(:ann::uuid);
+  select set_group_week_config(:'grp'::uuid, 2026, 2, 'regular',
+                               'handpicked', null, array['spread','straight_up'], array[201,203]);
+commit;
+\o
+select pg_temp.chk('handpicked takes exactly the listed games',
+                   (select array_agg(g order by g) from group_week_game_ids(:'grp'::uuid, 2026, 2) g)
+                   = array[201,203]);
+
+\echo '# configuration is validated'
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.raises('a game from another week',
+    format($$select set_group_week_config(%L, 2026, 2, 'regular', 'handpicked', null,
+                                          array['spread'], array[101])$$, :'grp'));
+  select pg_temp.raises('conference mode with no conference',
+    format($$select set_group_week_config(%L, 2026, 2, 'regular', 'conference', null,
+                                          array['spread'])$$, :'grp'));
+  select pg_temp.raises('an unknown market',
+    format($$select set_group_week_config(%L, 2026, 2, 'regular', 'full_slate', null,
+                                          array['parlay'])$$, :'grp'));
+  select pg_temp.raises('zero markets',
+    format($$select set_group_week_config(%L, 2026, 2, 'regular', 'full_slate', null,
+                                          array[]::text[])$$, :'grp'));
+rollback;
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.raises('a plain member configuring the week',
+    format($$select set_group_week_config(%L, 2026, 2, 'regular', 'full_slate', null,
+                                          array['spread'])$$, :'grp'));
+rollback;
+
+\echo '# the freeze'
+select pg_temp.chk('an upcoming week is unlocked',
+                   not group_week_is_locked(:'grp'::uuid, 2026, 2));
+\o /dev/null
+-- Config is handpicked {201,203}; age 201 so the week has started.
+update games set start_ts = now() - interval '1 hour' where id = 201;
+\o
+select pg_temp.chk('the clock locks the week, with no locked_at stamped',
+                   group_week_is_locked(:'grp'::uuid, 2026, 2)
+                   and (select locked_at is null from group_week_config
+                        where group_id = :'grp'::uuid and week = 2));
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.raises('editing a locked week',
+    format($$select set_group_week_config(%L, 2026, 2, 'regular', 'full_slate', null,
+                                          array['spread'])$$, :'grp'));
+rollback;
+
+\echo '# freezing materialises a live-resolved list'
+\o /dev/null
+-- Back to conference mode with nothing materialised, and age a Big Ten game.
+update group_week_config set selection_mode = 'conference', conference = 'Big Ten'
+  where group_id = :'grp'::uuid and week = 2;
+delete from group_week_games where group_id = :'grp'::uuid and week = 2;
+update games set start_ts = now() - interval '1 hour' where id = 202;
+\o
+select pg_temp.chk('resolves live before the freeze',
+                   (select array_agg(g order by g) from group_week_game_ids(:'grp'::uuid, 2026, 2) g)
+                   = array[202,203]);
+select pg_temp.chk('freeze reports that it fired', freeze_group_week(:'grp'::uuid, 2026, 2));
+select pg_temp.chk('the list is now rows in group_week_games',
+                   (select array_agg(game_id order by game_id) from group_week_games
+                    where group_id = :'grp'::uuid and week = 2) = array[202,203]);
+select pg_temp.chk('locked_at is stamped',
+                   (select locked_at is not null from group_week_config
+                    where group_id = :'grp'::uuid and week = 2));
+select pg_temp.chk('resolution now reads the frozen table',
+                   (select array_agg(g order by g) from group_week_game_ids(:'grp'::uuid, 2026, 2) g)
+                   = array[202,203]);
+select pg_temp.chk('freezing twice is a no-op',
+                   not freeze_group_week(:'grp'::uuid, 2026, 2));
+-- A postponement that moves a game out of the week cannot pull it off the board.
+\o /dev/null
+update games set week = 3 where id = 203;
+\o
+select pg_temp.chk('a frozen board survives a game being rescheduled',
+                   (select array_agg(g order by g) from group_week_game_ids(:'grp'::uuid, 2026, 2) g)
+                   = array[202,203]);
+\o /dev/null
+update games set week = 2 where id = 203;
+\o
+
+\echo '# admin transfer and the last-admin invariant'
+\o /dev/null
+begin;
+  select test_as(:ann::uuid);
+  select set_group_role(:'grp'::uuid, :bob::uuid, 'admin');
+  select set_group_role(:'grp'::uuid, :ann::uuid, 'member');
+commit;
+\o
+select pg_temp.chk('transfer promoted bob and demoted ann',
+                   (select string_agg(p.display_name || '=' || m.role, ',' order by p.display_name)
+                    from group_members m join profiles p on p.id = m.user_id
+                    where m.group_id = :'grp'::uuid and m.removed_at is null)
+                   = 'ann=member,bob=admin');
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.raises('demoting the last admin',
+    format($$select set_group_role(%L, %L, 'member')$$, :'grp', :bob));
+  select pg_temp.raises('the last admin leaving',
+    format($$select leave_group(%L)$$, :'grp'));
+rollback;
+begin;
+  set constraints all immediate;
+  select pg_temp.raises('the trigger backstop, bypassing the RPC guard',
+    format($$update group_members set role = 'member'
+             where group_id = %L and role = 'admin'$$, :'grp'));
+rollback;
+
+\echo '# removal is soft, and rejoining restores the role'
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.raises('a plain member removing someone',
+    format($$select remove_group_member(%L, %L)$$, :'grp', :bob));
+rollback;
+\o /dev/null
+begin;
+  select test_as(:bob::uuid);
+  select remove_group_member(:'grp'::uuid, :ann::uuid);
+commit;
+\o
+select pg_temp.chk('the row is kept with removed_at set',
+                   (select removed_at is not null from group_members
+                    where group_id = :'grp'::uuid and user_id = :ann::uuid));
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.chk('a removed member loses sight of a private group',
+                     (select count(*) from groups) = 0);
+rollback;
+\o /dev/null
+begin;
+  select test_as(:ann::uuid);
+  select join_group(:'code');
+commit;
+\o
+select pg_temp.chk('rejoining reactivates the same row',
+                   (select count(*) from group_members
+                    where group_id = :'grp'::uuid and user_id = :ann::uuid) = 1
+                   and (select removed_at is null from group_members
+                        where group_id = :'grp'::uuid and user_id = :ann::uuid));
