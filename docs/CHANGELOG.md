@@ -686,6 +686,23 @@ and signed-error reporting; nine backtest tuners.
   because the openers are Aug 29.
 - **`supabase/functions/jobs/index.ts` is dead and drifted** — never deployed,
   and behind `scripts/lib/jobs-core.ts`. Left untouched deliberately.
+- **The matchup split has only been seen with a synthetic second member.** The
+  Aug 9 render check used a throwaway "Jeff" profile; the geometry, the lean bar
+  and the graded chips are verified, but nobody has looked at the card with two
+  real names and a full week of picks in it. Worth a second look after the first
+  real Saturday.
+- **The blind reads `start_ts`, not status.** `picks_revealed` (the RLS rule)
+  and `blindFor` (the page) both ask whether kickoff has passed. A game whose
+  `status` goes final while its `start_ts` is stale therefore stays hidden — the
+  Aug 9 fixture hit exactly that. Left as-is on purpose: `start_ts` is the
+  single source of truth for the lock, and a second one in the security boundary
+  is worse than the edge case. Only bites if the schedule feed and the score
+  feed disagree.
+- **`#5b6472` is hardcoded as a colour fallback in six places** — `TeamMark.tsx:20`,
+  `GameCard.tsx:118-119, 449, 615-616, 649-650`, `WinProbBar.tsx:19-20`. It is
+  literally the light-mode value of `--push`, so those fallbacks are wrong in
+  dark mode. `MatchupCard` uses `var(--push)`; the existing six are flagged, not
+  churned, because that is a separate change with its own render check.
 - **Four audit items remain open**, all additive: futures tracker with weekly
   mark-to-market (#40), generated db types (#44), ⌘K quick-switcher (#45), OG
   share images (#46). Six more are partial — see the status tables in
