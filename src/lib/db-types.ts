@@ -4,6 +4,10 @@
  * shapes in sync with supabase/migrations/.
  */
 
+import type { PickMarket } from "./grade";
+
+export type { PickMarket };
+
 export interface TeamRow {
   id: number;
   school: string;
@@ -107,13 +111,59 @@ export interface ProfileRow {
   is_admin: boolean;
 }
 
+export interface GroupRow {
+  id: string;
+  name: string;
+  slug: string;
+  visibility: "private" | "public";
+  /** Others' picks are unreadable until each game kicks off (migration 0023). */
+  picks_hidden_until_kickoff: boolean;
+  join_code: string;
+  created_by: string;
+  created_at: string;
+  archived_at: string | null;
+}
+
+export interface GroupMemberRow {
+  group_id: string;
+  user_id: string;
+  role: "admin" | "member";
+  joined_at: string;
+  /** Removal is soft, so a departed member's graded picks still resolve. */
+  removed_at: string | null;
+}
+
+export type SelectionMode = "handpicked" | "full_slate" | "conference";
+
+export interface GroupWeekConfigRow {
+  group_id: string;
+  season_id: number;
+  week: number;
+  season_type: string;
+  selection_mode: SelectionMode;
+  /** Set iff selection_mode is 'conference'. */
+  conference: string | null;
+  markets: PickMarket[];
+  /** League Rules #6, per group. 0 = no minimum. */
+  min_picks_per_week: number;
+  /** Stamped when the freeze job materialised the list. Not the lock itself —
+   *  group_week_is_locked() reads the clock. */
+  locked_at: string | null;
+  updated_by: string | null;
+  updated_at: string;
+}
+
 export interface PickRow {
   id: number;
   season_id: number;
+  group_id: string;
   user_id: string;
   game_id: number;
+  market: PickMarket;
   side: "home" | "away" | "over" | "under";
-  line_at_pick: number;
+  /** Null for straight_up, which takes no number. A check constraint keeps the
+   *  two priced markets from being written without one (migration 0021). */
+  line_at_pick: number | null;
   units: number;
   locked_at: string;
   result: "win" | "loss" | "push" | "void" | null;

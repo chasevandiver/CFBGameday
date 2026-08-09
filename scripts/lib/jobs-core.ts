@@ -8,6 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { cfbd } from "../../src/lib/cfbd";
 import { modelClv, roundClv, spreadClv, totalClv } from "../../src/lib/clv";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
+import { gradePick, type PickMarket } from "../../src/lib/grade";
 import { buildTeamNameIndex } from "../../src/lib/rankings";
 import { fetchCurrentSlate } from "../../src/lib/season";
 import {
@@ -206,6 +207,48 @@ export async function syncSystemsJob(db: SupabaseClient): Promise<Json> {
 }
 
 /** Open-Meteo forecasts for outdoor games in the next 7 days. */
+/**
+ * Materialise every group week whose first game has kicked off.
+ *
+ * `full_slate` and `conference` boards resolve live from `games` until they
+ * freeze, which is what lets a game added to the schedule join the board on
+ * its own. Once the week starts that has to stop, or a postponement moving a
+ * game to another week would silently pull it off a board people already
+ * picked. `freeze_group_week` copies the resolved list into
+ * `group_week_games` and stamps `locked_at`.
+ *
+ * It does NOT decide whether the week is locked — `group_week_is_locked` reads
+ * the clock, and `set_group_week_config` rejects edits on its own. So a missed
+ * run costs materialisation, never correctness, and the function is idempotent
+ * and cheap enough to call on every lines refresh.
+ */
+export async function freezeGroupWeeksJob(db: SupabaseClient): Promise<Json> {
+  const { data: pending } = await db
+    .from("group_week_config")
+    .select("group_id, season_id, week, season_type")
+    .is("locked_at", null);
+  if (!pending || pending.length === 0) return { considered: 0, frozen: 0 };
+
+  let frozen = 0;
+  for (const c of pending as Array<{
+    group_id: string;
+    season_id: number;
+    week: number;
+    season_type: string;
+  }>) {
+    const { data, error } = await db.rpc("freeze_group_week", {
+      p_group: c.group_id,
+      p_season: c.season_id,
+      p_week: c.week,
+      p_season_type: c.season_type,
+    });
+    // A week whose first kickoff is still ahead returns false; that is the
+    // normal case for most rows on most runs, not a failure.
+    if (!error && data === true) frozen++;
+  }
+  return { considered: pending.length, frozen };
+}
+
 export async function weatherJob(db: SupabaseClient): Promise<Json> {
   const horizon = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
   const { data: games } = await db
@@ -467,26 +510,32 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
 
     const { data: picks } = await db
       .from("picks")
-      .select("id, game_id, side, line_at_pick, result")
+      .select("id, game_id, market, side, line_at_pick, result")
       .in("game_id", finalIds)
       .is("result", null);
     for (const p of picks ?? []) {
       const g = gameById.get(p.game_id)!;
-      const margin = (g.home_points as number) - (g.away_points as number);
-      const total = (g.home_points as number) + (g.away_points as number);
       const line = Number(p.line_at_pick);
-      let result: string;
-      let clv: number | null = null;
       const close = closing(p.game_id);
-      if (p.side === "home" || p.side === "away") {
-        const coverMargin = p.side === "home" ? margin + line : -margin - line;
-        result = coverMargin > 0 ? "win" : coverMargin < 0 ? "loss" : "push";
-        if (close.spread !== null) clv = roundClv(spreadClv(p.side, line, close.spread));
-      } else {
-        const diff = p.side === "over" ? total - line : line - total;
-        result = diff > 0 ? "win" : diff < 0 ? "loss" : "push";
-        if (close.total !== null) clv = roundClv(totalClv(p.side, line, close.total));
+      const result = gradePick(
+        p.market as PickMarket,
+        p.side,
+        p.line_at_pick === null ? null : line,
+        g.home_points as number,
+        g.away_points as number,
+      );
+      // A row the grader cannot settle stays ungraded rather than banking a
+      // guess; the check constraint in 0021 should keep this unreachable.
+      if (result === null) continue;
+
+      // Straight-up takes no number, so there is nothing to compare a close to.
+      let clv: number | null = null;
+      if (p.market === "spread" && close.spread !== null) {
+        clv = roundClv(spreadClv(p.side as "home" | "away", line, close.spread));
+      } else if (p.market === "total" && close.total !== null) {
+        clv = roundClv(totalClv(p.side as "over" | "under", line, close.total));
       }
+
       const { error } = await db.from("picks").update({ result, clv }).eq("id", p.id);
       if (!error) picksGraded++;
     }
@@ -498,26 +547,44 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
       .is("result", null)
       .is("voided_at", null);
     for (const b of bets ?? []) {
-      if (b.line_taken === null || !b.side) continue;
+      // A moneyline bet has no line to take, so `line_taken` being null is
+      // normal for it rather than a reason to skip. It used to be caught by
+      // this guard and sat ungraded forever, quietly missing from the ledger's
+      // record and units.
+      if (!b.side) continue;
       const g = gameById.get(b.game_id)!;
       const margin = (g.home_points as number) - (g.away_points as number);
       const total = (g.home_points as number) + (g.away_points as number);
-      const line = Number(b.line_taken);
+      const line = b.line_taken === null ? null : Number(b.line_taken);
       const close = closing(b.game_id);
       let result: string | null = null;
       let clv: number | null = null;
-      if (b.bet_type === "spread" && (b.side === "home" || b.side === "away")) {
+      let closingLine: number | null = null;
+      if (b.bet_type === "spread" && line !== null && (b.side === "home" || b.side === "away")) {
         const coverMargin = b.side === "home" ? margin + line : -margin - line;
         result = coverMargin > 0 ? "win" : coverMargin < 0 ? "loss" : "push";
+        closingLine = close.spread;
         if (close.spread !== null) clv = roundClv(spreadClv(b.side, line, close.spread));
-      } else if (b.bet_type === "total" && (b.side === "over" || b.side === "under")) {
+      } else if (
+        b.bet_type === "total" &&
+        line !== null &&
+        (b.side === "over" || b.side === "under")
+      ) {
         const diff = b.side === "over" ? total - line : line - total;
         result = diff > 0 ? "win" : diff < 0 ? "loss" : "push";
+        closingLine = close.total;
         if (close.total !== null) clv = roundClv(totalClv(b.side, line, close.total));
+      } else if (b.bet_type === "moneyline" && (b.side === "home" || b.side === "away")) {
+        // Who won, full stop. CLV on a moneyline is measured in cents against a
+        // closing price we do not capture — spec §5.3 — so it stays null rather
+        // than being invented from the spread.
+        result = margin === 0 ? "push" : (margin > 0) === (b.side === "home") ? "win" : "loss";
       }
       if (result === null) continue;
       const units = Number(b.units);
       const odds = Number(b.odds);
+      // Correct for any American price, which is what makes a +2500 moneyline
+      // pay what it should rather than -110.
       const win = odds > 0 ? units * (odds / 100) : units * (100 / -odds);
       const payout = result === "win" ? win : result === "loss" ? -units : 0;
       const { error } = await db
@@ -525,7 +592,7 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
         .update({
           result,
           clv,
-          closing_line: b.bet_type === "total" ? close.total : close.spread,
+          closing_line: closingLine,
           payout_units: Math.round(payout * 100) / 100,
         })
         .eq("id", b.id);

@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "backtest": "tsx scripts/backtest.ts"
+    "backtest": "tsx scripts/backtest.ts",
+    "db:test": "bash scripts/db-test.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

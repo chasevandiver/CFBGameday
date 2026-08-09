@@ -141,6 +141,224 @@ shipping it.
 
 ## Log
 
+### Aug 9 — The group week page: matchups first, and who's on which side
+
+The weekly picks page nested **game → market → person**, which reads as a
+database dump. The question on a Saturday morning is *who is on which side of
+this game*, and that layout made you assemble it yourself by scanning names down
+two separate market sections. `/groups/[slug]/week/[week]?view=pick` now inverts
+the inner two levels and makes the split spatial: the matchup is the headline,
+the two sides are the two halves of the card, and each member sits under the one
+they took with the number they actually got. The by-person view is unchanged and
+still a toggle. Scope was the week page only — the board keeps its pick
+controls, per `docs/DESIGN.md`'s "build one screen completely, then propagate".
+
+**Every device on the new card already existed** (`MatchupCard.tsx`): the 3px
+team split edge and `TeamMark` from the game card, `.trow`/`.trail` for the
+team-owned halves, the accent ring `OddsCell` uses for "this one is yours", and
+`ResultChip`'s icon-plus-colour rule for a graded pick. No new colour, weight,
+spacing or radius token. `.trow`'s gradient is `var(--tc, transparent)`, so the
+over/under halves reuse the identical class with `--tc` unset and come out
+neutral — one component, colour only where a team owns it.
+
+**All the week's matchups appear**, not only the picked ones; a game nobody has
+touched says "nobody in yet" rather than vanishing. Dropped games keep their
+greyed "no longer in play" card at the bottom.
+
+**`pickSideLabel` in `src/lib/slate.ts`** — `"UNC +6"` / `"UNC to win"` /
+`"UNC ML"` existed as **five** private copies (`week/[week]/page.tsx`,
+`GameCard`, `PickButtons`, `game/[id]/page.tsx`, `share-text`), each rendering
+straight-up slightly differently. All five now call one function, which calls
+`lineForSide` — so the away-spread sign fix can't be forgotten in a sixth copy.
+Same move as `src/lib/records.ts`.
+
+**`0023_hidden_picks`, applied to production.** A per-group
+`picks_hidden_until_kickoff` flag, off by default. The single picks policy
+becomes three, because "mine" and "everyone else's" now answer differently:
+own picks always readable, others' and anon's gated on `picks_revealed(group,
+game)` — a `stable security definer` helper that is two primary-key hits. A
+`null` `start_ts` counts as *not yet kicked off*, so a TBD game stays shut
+rather than defaulting open. With the blind on RLS returns nothing, so the page
+cannot even say how many picks are in; `group_game_pick_count` is a
+security-definer counter, guarded on `is_group_member` so a non-member of a
+public group cannot poll it for who has committed. `supabase/tests/hidden-picks.sql`
+asserts all of it across three roles — 90 assertions total now pass.
+
+**Four things only rendering caught**, at 390×844 against a temporary two-member
+public group in the live project (deleted afterwards, along with the two game
+rows it mutated):
+
+- The lean bar rendered a 2–0 as a 50/50. A flex item's percentage width still
+  shrinks to make room for its sibling; it is now one span over a coloured
+  track, no flex math.
+- The matchup header link was a 23px strip of team abbreviations — under the
+  44px floor, with nothing else in the row to tap. The whole row is the link.
+- "Nobody in yet." was shown to signed-out visitors on a blind board, where the
+  page has no entitlement to the count and does not know. `blindCount` is now
+  `number | null`, and null reads "Hidden".
+- The blind repeated "they reveal at kickoff" on every card — the same
+  sign-in-prompt-per-card mistake as the last round. The rule is stated once in
+  a banner above the list; each card carries only its own number ("3 in ·
+  hidden").
+
+The `{group name} →` link on that page was also 16px tall; fixed in passing.
+
+### Aug 9 — Groups live in production, and the gaps closed
+
+`0020`–`0022` applied to the live project. The `0021` backfill found nothing to
+rescue and no-opped, which is what it is for: the one pick in the database was a
+week-1 test that the owner asked to drop first, so the first real group gets made
+and named in the UI rather than inherited as "The Crew".
+
+**A bug the production data exposed.** The backfill stamped `locked_at` on every
+week it reconstructed, on the reasoning that a week with picks in it had been
+played. The single pick was on week 1, which kicks off on Aug 29 — so the
+backfill would have frozen an upcoming week, handing the owner a board of one
+game that `set_group_week_config` then refuses to change. It now only freezes
+weeks whose first kickoff has actually passed, and `supabase/tests/picks.sql`
+asserts an upcoming week stays editable.
+
+**`min_picks_per_week`** (`0022`). League Rules #6 has always claimed a
+3-picks-a-week minimum and nothing displayed or enforced it; with per-group
+formats the number stops being a site-wide fact anyway — a pool handpicking six
+games cannot ask the same as one playing the full slate. Per week, 0 means none,
+and it is displayed rather than enforced: the board shows "2 of 3 picks in" and
+nothing is blocked or voided. `/rules` was rewritten around it.
+
+**`update_group`** (`0022`). `create_group` set the name and visibility once and
+nothing could change either, so a typo in a group name was permanent. The slug
+moves with the name — the URL changes, which is the right trade for a pool
+reached from the Groups tab against a slug that contradicts its name forever.
+`archive_group` and `regenerate_join_code` had shipped as RPCs with no UI at all;
+all four are now in a settings panel.
+
+**Winners-only groups hide the money columns.** Straight-up takes no number, so
+such a week grades no units, no ROI and no CLV. Those columns are inapplicable
+rather than empty, and a column of dashes is a question the reader has to answer.
+
+**Moneyline bets grade.** `if (b.line_taken === null || !b.side) continue` was
+skipping them — a moneyline has no line to take, so the guard treated the normal
+case as a broken row and they sat ungraded forever, quietly missing from the
+ledger's record and units. The payout maths was already right for any American
+price. CLV stays null: it is measured in cents against a closing price we do not
+capture (spec §5.3), and inventing one from the spread would be worse than
+leaving it blank.
+
+**`/game/[id]` is read-only for picks**, per the owner decision that picking
+happens on the group board. It shows what you took, in which group, and links to
+the board to change it.
+
+**Four fixes that only came from looking at it.** The pages were finally rendered
+against the live database at 390×844, with a temporary public group that was
+deleted afterwards:
+
+- The by-pick view keyed on game × market, so a spread and a total on one game
+  put "UNC at TCU" on screen twice in a row and two picks looked like two games.
+  One card per game now, markets nested.
+- Ungraded picks rendered a `·` in the result column, which reads as a glyph
+  rather than as an absence. Nothing renders now.
+- A member with nothing graded showed "— this week · — lifetime". It says
+  "nothing graded yet".
+- Signed-out, every game card repeated "Sign in to make your pick". One prompt
+  above the board instead.
+
+The away-spread sign fix from the previous entry was confirmed on real rows: a
+pick stored as −4.5 home-perspective renders "NCSU +4.5", which is what the
+bettor holds.
+
+76 database assertions, 296 unit tests.
+
+### Aug 9 — Groups, and six things that only said half of what they knew
+
+The social layer becomes group-scoped, and several numbers that were on
+screen without their meaning got the rest of it. No model parameter was
+touched: `DEFAULT_PARAMS` is untouched, `watchability()`'s formula is unchanged
+(only its presentation), so the gate in `AGENTS.md` does not apply and no tuner
+run is owed.
+
+**Groups.** Any user creates one and is its admin; the admin sets, per week,
+which games are in play (handpicked / full slate / one conference) and which
+markets members may pick (spreads / totals / winners). Migrations `0020` and
+`0021`. Three decisions worth keeping:
+
+- *Header plus join table, not a `game_ids` array.* No referential integrity to
+  `games`, no index for "which groups carry this game", and `unnest` in every
+  join. The join table also gives the freeze somewhere to write.
+- *`full_slate` and `conference` resolve live and materialise at the freeze.*
+  Live means a late schedule addition joins the board on its own; materialising
+  means a postponement that moves a game to another week cannot pull it off a
+  board people already picked. There is a test for exactly that.
+- *The freeze reads the clock, not a flag.* `group_week_is_locked` asks whether
+  the week's first kickoff has passed; `locked_at` only records that the
+  `freeze-groups` job has materialised the list. That job is chained onto the
+  lines refreshes rather than given a cron of its own — those already run daily
+  and every ten minutes through the Saturday kickoff waves, the freeze is
+  idempotent, and a missed run costs materialisation but never correctness.
+
+`0021`'s backfill only runs when there are picks to rescue. On a project with
+none there is no history to preserve, and minting a group called "The Crew"
+would leave a row nobody asked for — and there is no rename RPC yet, so no way
+to relabel it.
+
+Picks are per group, so the same user can hold opposite sides of one game in two
+pools. Straight-up is winner-only by owner decision — no line, no price, no CLV
+— which is why `line_at_pick` is now nullable behind a check constraint.
+
+**A pre-existing display bug, found by a test on new code.** `line_at_pick` is
+stored home-perspective: `make_pick` snapshots the raw consensus and both
+`spreadClv` and the grader read it that way. Every *display* path printed it
+raw, so an away backer on a home −6.5 holds +6.5 and was shown "−6.5" — on the
+card, in the pick confirmation, and in the weekly grid. `lineForSide` does the
+conversion in one place now. Nothing stored was ever wrong; grading and CLV were
+always correct, so there is nothing to backfill.
+
+**A bug `0021` introduced and this fixes.** `fetchSlateView` fetched picks by
+user alone and keyed them by game, so once a pick belonged to a group, two
+pools' picks on one game collided and the last row back won. It takes a
+`groupId` now. Within a group a game can carry three picks (one per market) and
+a card shows one verdict, so `headlinePick` leads with the spread — the only
+market with a number to be near, hence the only one with a bubble tier — and
+falls back to the first pick made.
+
+**The sparkline is off the game card.** It plotted consensus spread movement and
+sat beside the watch rating, which is not what it measured. `MoveIndicator`,
+immediately to its left, already stated the same fact numerically; its x-axis
+was index rather than time, so snapshots an hour apart and a week apart drew an
+identical shape; and it was `aria-hidden` at 56×18 with no text alternative.
+`MovementChart` keeps the data on `/game/[id]`, where it has a real time axis and
+a label. The component stays — `GameHeader` uses it for win-prob history, where
+the x-axis genuinely is a sequence.
+
+**The watch rating** was `watch 78` at 11px with its scale only in a `title`
+tooltip a phone cannot show. It is now WATCH over an 18px figure, `/100`, and a
+band — MUST-SEE / GOOD / FILLER. A number needs a scale; a word does not. Hidden
+on live cards: once the game is playing, how watchable it was always going to be
+is beside the point, and the cover strip owns that size.
+
+**Ratings.** `rating-scales.ts` holds what each system measures, and mainly
+exists to hold the awkward part: model, SP+ and FPI are all points-vs-average
+and comparable, Elo is not. The 25-Elo-per-point conversion was written out
+inline twice and is now in one place. `rankAndPercentile` replaces five ad-hoc
+rank computations and adds the half that was missing everywhere — #14 means
+different things in fields of 136 and 20.
+
+**One tally instead of five.** Record math existed in the leaderboard, the weekly
+grid, the slate's crew line, the recap and the ledger, and disagreed: two counted
+pushes and three didn't, the −110 convention was inlined twice as a magic 0.909,
+and only two computed ROI. `src/lib/records.ts` is the only implementation now.
+`PICKEM_WIN_PAYOUT` stays at the shipped 0.909 rather than the true 10/11 —
+nine ten-thousandths of a unit is not worth silently restating every historical
+leaderboard over.
+
+**Verification.** `scripts/db-test.sh` (`npm run db:test`) applies all 21
+migrations to a throwaway Postgres with a shim for the three Supabase API roles
+and `auth.uid()`, then runs `supabase/tests/*.sql` — 64 assertions impersonating
+a member, a non-member and a signed-out visitor. RLS, revoked grants and
+security-definer guards are not reachable from vitest, and reading a policy and
+agreeing with it is not a test. Deliberately breaking one assertion was checked
+to turn the suite red. 296 unit tests; card changes rendered and measured in
+Chromium at 390×844.
+
 ### Aug 8 — Liquid Glass cards, and one colour vocabulary instead of two
 
 Three rounds of card mockups all lost to the card that already shipped, so the
@@ -468,6 +686,23 @@ and signed-error reporting; nine backtest tuners.
   because the openers are Aug 29.
 - **`supabase/functions/jobs/index.ts` is dead and drifted** — never deployed,
   and behind `scripts/lib/jobs-core.ts`. Left untouched deliberately.
+- **The matchup split has only been seen with a synthetic second member.** The
+  Aug 9 render check used a throwaway "Jeff" profile; the geometry, the lean bar
+  and the graded chips are verified, but nobody has looked at the card with two
+  real names and a full week of picks in it. Worth a second look after the first
+  real Saturday.
+- **The blind reads `start_ts`, not status.** `picks_revealed` (the RLS rule)
+  and `blindFor` (the page) both ask whether kickoff has passed. A game whose
+  `status` goes final while its `start_ts` is stale therefore stays hidden — the
+  Aug 9 fixture hit exactly that. Left as-is on purpose: `start_ts` is the
+  single source of truth for the lock, and a second one in the security boundary
+  is worse than the edge case. Only bites if the schedule feed and the score
+  feed disagree.
+- **`#5b6472` is hardcoded as a colour fallback in six places** — `TeamMark.tsx:20`,
+  `GameCard.tsx:118-119, 449, 615-616, 649-650`, `WinProbBar.tsx:19-20`. It is
+  literally the light-mode value of `--push`, so those fallbacks are wrong in
+  dark mode. `MatchupCard` uses `var(--push)`; the existing six are flagged, not
+  churned, because that is a separate change with its own render check.
 - **Four audit items remain open**, all additive: futures tracker with weekly
   mark-to-market (#40), generated db types (#44), ⌘K quick-switcher (#45), OG
   share images (#46). Six more are partial — see the status tables in

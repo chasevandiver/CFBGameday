@@ -7,6 +7,7 @@
  */
 
 import { liveWinProb } from "../model/live";
+import type { PickMarket } from "./grade";
 
 export interface TeamView {
   id: number;
@@ -58,7 +59,73 @@ export interface MyBetView {
   line: number | null;
 }
 
-/** A crew mate's pick on this game (the viewer's own pick lives in myPick). */
+/** One of the viewer's picks on this game, in the group they're viewing. */
+export interface MyPickView {
+  market: PickMarket;
+  side: string;
+  /** Null for straight_up, which takes no number. */
+  line: number | null;
+}
+
+/**
+ * The number a picker actually holds, from a stored `line_at_pick`.
+ *
+ * Spreads are home-perspective everywhere in this codebase — `make_pick`
+ * snapshots the raw consensus and `spreadClv` and the grader both read it that
+ * way — so an away backer on a home −6.5 has a row saying −6.5 while what they
+ * hold is +6.5. Every display path printed the stored number raw and so showed
+ * away picks with the sign inverted. Totals are side-agnostic: over 51.5 and
+ * under 51.5 are both 51.5.
+ */
+export function lineForSide(side: string, line: number | null): number | null {
+  if (line === null) return null;
+  // -0 survives into a rendered "−0", which is why negation goes through zero.
+  return side === "away" ? (line === 0 ? 0 : -line) : line;
+}
+
+/**
+ * How a pick reads: "UNC +6", "Over 51.5", "OSU to win".
+ *
+ * One implementation. There were five — the weekly grid, the game card, the
+ * pick control, the game page and the share text each grew their own, and they
+ * had already drifted on how straight-up is worded. Every one of them has to
+ * call `lineForSide` first, which is the away-spread sign fix, so a sixth copy
+ * is a sixth chance to reintroduce a bug the whole codebase has already had.
+ *
+ * `compact` is the difference between a card chip ("OSU ML") and a sentence
+ * ("OSU to win"), which is the only thing the five ever legitimately disagreed
+ * about.
+ */
+export function pickSideLabel(
+  market: PickMarket,
+  side: string,
+  line: number | null,
+  homeAbbr: string,
+  awayAbbr: string,
+  opts: { compact?: boolean } = {},
+): string {
+  const team = side === "home" ? homeAbbr : awayAbbr;
+  if (market === "straight_up") return opts.compact ? `${team} ML` : `${team} to win`;
+  if (market === "spread") return `${team} ${fmtSpread(lineForSide(side, line))}`;
+  const over = side === "over";
+  return opts.compact
+    ? `${over ? "O" : "U"} ${fmtTotal(line)}`
+    : `${over ? "Over" : "Under"} ${fmtTotal(line)}`;
+}
+
+/**
+ * The pick a card leads with when it can only show one.
+ *
+ * A game can carry three of them now, but a card has one cover strip and one
+ * aura. The spread is the headline where there is one — it is the market with
+ * a number to be near, so it is the only one with a bubble tier — and
+ * otherwise the first pick made stands in.
+ */
+export function headlinePick(picks: MyPickView[]): MyPickView | null {
+  return picks.find((p) => p.market === "spread") ?? picks[0] ?? null;
+}
+
+/** A crew mate's pick on this game (the viewer's own picks live in myPicks). */
 export interface CrewPickView {
   name: string;
   side: string;
@@ -94,7 +161,8 @@ export interface GameView {
   };
   spreadHistory: LinePoint[];
   prediction: PredictionView | null;
-  myPick: { side: string; line: number } | null;
+  /** The viewer's picks in the active group — at most one per market. */
+  myPicks: MyPickView[];
   /** The viewer's open (ungraded, unvoided) bets on this game */
   myBets: MyBetView[];
   /** Everyone else's picks on this game — who's riding which side */

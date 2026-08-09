@@ -1,10 +1,10 @@
 import { ArrowLeft, CloudRain, Thermometer, Wind } from "lucide-react";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { AppNav } from "../../../components/AppNav";
 import { GameHeader } from "../../../components/game/GameHeader";
 import { MovementChart } from "../../../components/game/MovementChart";
-import { PickButtons } from "../../../components/PickButtons";
 import { ConsensusChip, EdgeChip } from "../../../components/slate/chips";
 import { Sparkline } from "../../../components/slate/Sparkline";
 import type {
@@ -16,7 +16,14 @@ import type {
   ProfileRow,
   TeamRow,
 } from "../../../lib/db-types";
+import {
+  ACTIVE_GROUP_COOKIE,
+  fetchGroupWeek,
+  resolveActiveGroup,
+} from "../../../lib/groups";
 import { pickPollRanks, pollShortName } from "../../../lib/rankings";
+import { ELO_PER_POINT, RATING_SCALES, systemMargin } from "../../../lib/rating-scales";
+import type { SeasonType } from "../../../lib/season";
 import {
   consensusFromSnapshots,
   consensusHistory,
@@ -29,6 +36,7 @@ import {
   fmtSpread,
   fmtTotal,
   modelSideOf,
+  pickSideLabel,
   type MyBetView,
   type TeamView,
 } from "../../../lib/slate";
@@ -63,6 +71,11 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     description,
     openGraph: { title, description },
   };
+}
+
+/** The viewer's pick, read-only. Mirrors the board's wording. */
+function pickText(p: PickRow, homeAbbr: string, awayAbbr: string): string {
+  return pickSideLabel(p.market, p.side, p.line_at_pick, homeAbbr, awayAbbr);
 }
 
 function toView(t: TeamRow, pollRank: number | null = null, poll: string | null = null): TeamView {
@@ -185,8 +198,29 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     graded(trends.get(game.home_team_id)) || graded(trends.get(game.away_team_id));
 
   const kickoffPassed = game.start_ts !== null && new Date(game.start_ts) <= new Date();
-  const myPick = user ? (picks.find((p) => p.user_id === user.id) ?? null) : null;
-  const crewPicks = picks.filter((p) => p.user_id !== user?.id);
+  // Picks are per group, so "my pick" is only meaningful once a group is in
+  // view. The cookie remembers which; `?g=` overrides it so a shared link opens
+  // the group it names.
+  const { active: activeGroup } = await resolveActiveGroup(
+    supabase,
+    user?.id ?? null,
+    (await cookies()).get(ACTIVE_GROUP_COOKIE)?.value ?? null,
+  );
+  const groupWeek = activeGroup
+    ? await fetchGroupWeek(supabase, activeGroup.id, game.season_id, game.week, game.season_type as SeasonType)
+    : null;
+  const inPlay = groupWeek !== null && groupWeek.gameIds.includes(game.id);
+
+  const myPicks =
+    user && activeGroup
+      ? picks.filter((p) => p.user_id === user.id && p.group_id === activeGroup.id)
+      : [];
+  // The spread pick is the card's headline where one verdict is needed; with
+  // no spread in play the first pick made stands in.
+  const myPick = myPicks.find((p) => p.market === "spread") ?? myPicks[0] ?? null;
+  const crewPicks = picks.filter(
+    (p) => p.user_id !== user?.id && (!activeGroup || p.group_id === activeGroup.id),
+  );
 
   // The live layer (score, situation, win prob, your-action chips) renders in
   // the GameHeader client island, which streams realtime updates and polls as
@@ -216,7 +250,9 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
       const h = sysLatest.get(`${system}:${game.home_team_id}`);
       const a = sysLatest.get(`${system}:${game.away_team_id}`);
       if (h === undefined || a === undefined) return null;
-      const margin = system === "elo" ? (h - a) / 25 : h - a;
+      // Home perspective, and Elo divided down first — the conversion lives in
+      // rating-scales rather than being written out at each call site.
+      const margin = -(systemMargin(system, h, a) ?? 0);
       return { system, home: h, away: a, margin };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
@@ -254,7 +290,15 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
               ? { spread: Number(prediction.spread), homeWinProb: Number(prediction.home_win_prob) }
               : null
           }
-          myPick={myPick ? { side: myPick.side, line: Number(myPick.line_at_pick) } : null}
+          myPick={
+            myPick
+              ? {
+                  market: myPick.market,
+                  side: myPick.side,
+                  line: myPick.line_at_pick === null ? null : Number(myPick.line_at_pick),
+                }
+              : null
+          }
           myBets={myBets}
           initial={{
             status: game.status,
@@ -277,30 +321,99 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
 
         {/* Pick'em + crew — up top, never hidden */}
         <section className="card mt-4 px-4 py-4">
-          <h2 className="mb-3 text-sm text-accent">Your pick</h2>
-          <PickButtons
-            gameId={game.id}
-            homeLabel={home.abbr}
-            awayLabel={away.abbr}
-            currentSpread={consensus.spread}
-            currentTotal={consensus.total}
-            myPick={
-              myPick
-                ? {
-                    side: myPick.side,
-                    line_at_pick: Number(myPick.line_at_pick),
-                    result: myPick.result,
-                    clv: myPick.clv === null ? null : Number(myPick.clv),
-                  }
-                : null
-            }
-            kickoffPassed={kickoffPassed}
-            kickoffTs={game.start_ts}
-            signedIn={user !== null}
-          />
+          <h2 className="mb-3 text-sm text-accent">
+            Your pick{activeGroup ? ` · ${activeGroup.name}` : ""}
+          </h2>
+          {/* Read-only. Picking happens on the group board, where the week's
+              format — which games, which markets — is the frame around the
+              choice rather than something this page has to restate per game. */}
+          {myPicks.length === 0 ? (
+            <p className="text-sm text-dim">
+              {!user ? (
+                <>
+                  <Link
+                    href="/login"
+                    className="font-medium text-accent underline-offset-2 hover:underline"
+                  >
+                    Sign in
+                  </Link>{" "}
+                  to pick.
+                </>
+              ) : !activeGroup ? (
+                <>
+                  Picks belong to a group.{" "}
+                  <Link
+                    href="/groups"
+                    className="font-medium text-accent underline-offset-2 hover:underline"
+                  >
+                    Join or create one
+                  </Link>{" "}
+                  to start picking.
+                </>
+              ) : groupWeek === null ? (
+                `${activeGroup.name} hasn't set up week ${game.week} yet.`
+              ) : !inPlay ? (
+                `This game isn't in play for ${activeGroup.name} in week ${game.week}.`
+              ) : kickoffPassed ? (
+                "Kickoff — no pick made."
+              ) : (
+                <>
+                  Nothing on this one yet.{" "}
+                  <Link
+                    href={`/groups/${activeGroup.slug}?week=${game.week}`}
+                    className="font-medium text-accent underline-offset-2 hover:underline"
+                  >
+                    Pick it on the board
+                  </Link>
+                  .
+                </>
+              )}
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-1.5">
+              {myPicks.map((p) => (
+                <li key={p.market} className="flex flex-wrap items-center gap-2">
+                  <span className="stat text-sm text-chalk">
+                    {pickText(p, home.abbr, away.abbr)}
+                  </span>
+                  {p.result && p.result !== "void" && (
+                    <span
+                      className={`chip ${
+                        p.result === "win"
+                          ? "bg-win/12 text-win"
+                          : p.result === "loss"
+                            ? "bg-loss/12 text-loss"
+                            : "bg-push/12 text-push"
+                      }`}
+                    >
+                      {p.result}
+                    </span>
+                  )}
+                  {p.clv !== null && (
+                    <span
+                      className={`stat text-xs ${Number(p.clv) > 0 ? "text-win" : Number(p.clv) < 0 ? "text-loss" : "text-dim"}`}
+                    >
+                      CLV {Number(p.clv) > 0 ? "+" : ""}
+                      {Number(p.clv)}
+                    </span>
+                  )}
+                </li>
+              ))}
+              {activeGroup && !kickoffPassed && (
+                <li>
+                  <Link
+                    href={`/groups/${activeGroup.slug}?week=${game.week}`}
+                    className="stat text-xs text-accent underline-offset-2 hover:underline"
+                  >
+                    Change it on the board →
+                  </Link>
+                </li>
+              )}
+            </ul>
+          )}
           <div className="mt-4 border-t border-chalk/8 pt-3">
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-chalk/40">
-              Crew picks
+              {activeGroup ? `${activeGroup.name} picks` : "Crew picks"}
             </p>
             {crewPicks.length === 0 ? (
               <p className="text-sm text-dim">Nobody else has picked this one yet.</p>
@@ -474,16 +587,16 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                 {systemRows.map((r) => (
                   <tr key={r.system} className="border-t border-chalk/5">
                     <td className="py-2 pl-4 pr-3 font-sans text-chalk">
-                      {r.system === "sp" ? "SP+" : r.system === "fpi" ? "FPI" : "Elo"}
+                      {RATING_SCALES[r.system].label}
                     </td>
                     <td className="px-3 py-2 text-right text-chalk/80">
-                      {r.system === "elo" ? Math.round(r.away) : r.away.toFixed(1)}
+                      {RATING_SCALES[r.system].format(r.away)}
                     </td>
                     <td className="px-3 py-2 text-right text-chalk/80">
-                      {r.system === "elo" ? Math.round(r.home) : r.home.toFixed(1)}
+                      {RATING_SCALES[r.system].format(r.home)}
                     </td>
                     <td className="py-2 pl-3 pr-4 text-right text-chalk">
-                      {home.abbr} {fmtSpread(Math.round(-r.margin * 10) / 10)}
+                      {home.abbr} {fmtSpread(Math.round(r.margin * 10) / 10)}
                     </td>
                   </tr>
                 ))}
@@ -500,9 +613,11 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
               </tbody>
             </table>
             <p className="px-4 py-2 text-[10.5px] text-dim">
-              Margins in the market&rsquo;s convention (negative = {home.abbr} favored); Elo
-              margin approximated at 25 Elo per point. Consensus flags fire when every system
-              disagrees with the line the same way.
+              SP+ and FPI are points better than an average FBS team on a neutral field, the
+              same scale our rating uses, so they read against each other directly. Elo is not —
+              margins convert at about {ELO_PER_POINT} Elo per point. Margins are in the
+              market&rsquo;s convention (negative = {home.abbr} favored); consensus flags fire
+              when every system disagrees with the line the same way.
             </p>
           </section>
         )}

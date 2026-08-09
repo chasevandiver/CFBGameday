@@ -39,18 +39,25 @@ export default function RulesPage() {
             The season leaderboard shows record, units (graded at −110: a win pays 0.909u per
             unit), ROI, and average CLV. Ordering is units, then ROI, then average CLV.
           </Rule>
-          <Rule n={6} title="Conventions.">
-            One unit per pick unless specified. Three picks a week is the target to stay in the
-            standings conversation. Spread and totals picks both count — a pick is one of: either
-            side of the spread, the over, or the under.
+          <Rule n={6} title="Your group sets the format.">
+            Which games are in play each week, and which bet types you may pick, are set by your
+            group&rsquo;s admin — handpicked, the full slate, or one conference, times spreads,
+            totals and straight-up winners. A pick is one of: either side of the spread, the over,
+            the under, or a team to win outright.
           </Rule>
-          <Rule n={7} title="Bets are forever.">
+          <Rule n={7} title="Conventions.">
+            One unit per pick unless specified. A group can set a weekly minimum; the board shows
+            how many you have in against it, and nothing is blocked or voided if you fall short.
+            Straight-up picks carry no number, so they grade win or loss and never units, ROI or
+            CLV — a group playing winners only has a leaderboard of records.
+          </Rule>
+          <Rule n={8} title="Bets are forever.">
             The ledger is append-only: bets can be voided (they stay on the page, struck through),
             never deleted. Grading fields are written by the Sunday job only. Everyone&rsquo;s
             numbers are visible to everyone — that transparency is what keeps a group betting
             site fun instead of ugly.
           </Rule>
-          <Rule n={8} title="CLV is the arbiter.">
+          <Rule n={9} title="CLV is the arbiter.">
             Closing line value is measured against our own captured closing consensus — the last
             snapshots before kickoff. Beating the close consistently is the only evidence an edge
             is real; a hot record with negative CLV is luck on a timer.

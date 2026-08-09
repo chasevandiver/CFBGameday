@@ -66,7 +66,7 @@ const base = {
   week: 11,
   neutralSite: false,
   dome: false,
-  myPick: null,
+  myPicks: [],
   myBets: [] as MyBetView[],
   crewPicks: [] as CrewPickView[],
   situation: null as string | null,
@@ -109,7 +109,7 @@ const PREGAME: GameView = {
     consensus: false,
     frozen: false,
   },
-  myPick: { side: "home", line: -1.5 },
+  myPicks: [{ market: "spread", side: "home", line: -1.5 }],
   crewPicks: [
     { name: "Jake", side: "home", record: "12-8" },
     { name: "Mo", side: "home", record: "10-10" },
@@ -134,7 +134,10 @@ const LIVE: GameView = {
   home: MICHIGAN,
   away: OHIO_STATE,
   rivalry: { name: "The Game", trophy: null },
-  myPick: { side: "away", line: 3.5 },
+  myPicks: [
+    { market: "spread", side: "away", line: -3.5 },
+    { market: "total", side: "over", line: 44.5 },
+  ],
   myBets: [{ id: 1, betType: "total", side: "over", line: 44.5 }],
   crewPicks: [
     { name: "Jake", side: "away", record: "12-8" },
@@ -243,7 +246,7 @@ const POSTPONED: GameView = {
   lines: { spread: -2.5, spreadOpen: -2.5, total: 48.5, totalOpen: 48.5, mlHome: -135, mlAway: 115 },
 };
 
-const HERO: GameView = { ...PREGAME, id: 7, home: OHIO_STATE, away: GEORGIA, myPick: null, weather: null };
+const HERO: GameView = { ...PREGAME, id: 7, home: OHIO_STATE, away: GEORGIA, myPicks: [], weather: null };
 
 export function SlatePreviewClient() {
   const [starred, setStarred] = useState<number[]>([OHIO_STATE.id]);

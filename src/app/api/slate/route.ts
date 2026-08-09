@@ -1,4 +1,6 @@
+import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
+import { ACTIVE_GROUP_COOKIE, resolveActiveGroup } from "../../../lib/groups";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../lib/queries";
 import { createClient } from "../../../lib/supabase/server";
 
@@ -28,6 +30,21 @@ export async function GET(request: NextRequest) {
         ? "regular"
         : seasonType;
 
-  const data = await fetchSlateView(supabase, seasonId, week, user?.id ?? null, st);
+  // Pick state on a card is group-scoped, so the refresh has to agree with the
+  // server render about which group is in view.
+  const { active } = await resolveActiveGroup(
+    supabase,
+    user?.id ?? null,
+    request.nextUrl.searchParams.get("g") ?? (await cookies()).get(ACTIVE_GROUP_COOKIE)?.value ?? null,
+  );
+
+  const data = await fetchSlateView(
+    supabase,
+    seasonId,
+    week,
+    user?.id ?? null,
+    st,
+    active?.id ?? null,
+  );
   return NextResponse.json(data, { headers: { "cache-control": "no-store" } });
 }

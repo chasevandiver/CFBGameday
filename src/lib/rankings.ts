@@ -50,3 +50,51 @@ export function pollShortName(poll: string | null): string | null {
   if (poll === "Coaches Poll") return "Coaches";
   return poll;
 }
+
+/* ---- where a team sits in the field ------------------------------------- */
+
+export interface FieldPlacement {
+  /** 1 = best. Ties share the better rank, as a leaderboard does. */
+  rank: number;
+  /** How many teams were ranked — "#14 of 136" needs both halves. */
+  of: number;
+  /** 0..1, where 1 is the top of the field. */
+  percentile: number;
+}
+
+/**
+ * Rank and percentile for one value within a field of them.
+ *
+ * This was computed ad hoc in five places — RatingsTable, /team/[id],
+ * /rankings, /teams and the slate query — each with its own sort or
+ * count-of-better, and no percentile anywhere despite spec §3 promising one.
+ * A rank alone still doesn't say much: #14 is excellent in a field of 136 and
+ * mid-table in a field of 20, which is exactly the context a bare number is
+ * missing.
+ *
+ * `higherIsBetter: false` handles a scale where a low number wins.
+ */
+export function rankAndPercentile(
+  values: number[],
+  value: number,
+  higherIsBetter = true,
+): FieldPlacement | null {
+  const of = values.length;
+  if (of === 0) return null;
+  const better = values.filter((v) => (higherIsBetter ? v > value : v < value)).length;
+  const rank = better + 1;
+  // With one team the percentile is undefined rather than 0 or 1; call it the
+  // top, since a field of one has no spread to place anything within.
+  const percentile = of === 1 ? 1 : (of - rank) / (of - 1);
+  return { rank, of, percentile };
+}
+
+/** "top 10%" / "bottom 15%" / "middle of the field" — the percentile, said. */
+export function describePlacement(p: FieldPlacement): string {
+  const pct = Math.round(p.percentile * 100);
+  if (pct >= 90) return `top ${Math.max(1, 100 - pct)}%`;
+  if (pct >= 60) return `top ${100 - pct}%`;
+  if (pct <= 10) return `bottom ${Math.max(1, pct)}%`;
+  if (pct <= 40) return `bottom ${pct}%`;
+  return "middle of the field";
+}

@@ -7,6 +7,7 @@
 import { cfbdCallCount } from "../src/lib/cfbd";
 import { createServiceClient } from "../src/lib/supabase/service";
 import {
+  freezeGroupWeeksJob,
   freezeJob,
   logCfbdCalls,
   ratingsUpdateJob,
@@ -24,6 +25,7 @@ async function main() {
     weather: weatherJob,
     "ratings-update": ratingsUpdateJob,
     freeze: freezeJob,
+    "freeze-groups": freezeGroupWeeksJob,
     "sync-rankings": syncRankingsJob,
     "sync-systems": syncSystemsJob,
   } as const;

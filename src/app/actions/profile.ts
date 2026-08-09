@@ -27,7 +27,7 @@ export async function updateDisplayName(formData: FormData): Promise<ProfileResu
   if (error) return { ok: false, message: error.message };
 
   revalidatePath("/me");
-  revalidatePath("/crew");
+  revalidatePath("/groups", "layout");
   return { ok: true };
 }
 

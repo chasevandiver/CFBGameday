@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AppNav } from "../../components/AppNav";
 import { ProfileSettings, type FavTeam } from "../../components/ProfileSettings";
@@ -20,7 +21,7 @@ export default async function MePage() {
   const [{ data: profile }, { data: teamRows }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("display_name, favorite_team_ids")
+      .select("display_name, favorite_team_ids, is_admin")
       .eq("id", user.id)
       .maybeSingle(),
     supabase
@@ -47,6 +48,14 @@ export default async function MePage() {
           favoriteIds={profile?.favorite_team_ids ?? []}
           teams={teams}
         />
+        {profile?.is_admin && (
+          <p className="mt-6 text-xs text-dim">
+            <Link href="/admin" className="text-accent underline-offset-2 hover:underline">
+              Site admin
+            </Link>{" "}
+            — invites, API budget, rating adjustments.
+          </p>
+        )}
       </main>
     </>
   );

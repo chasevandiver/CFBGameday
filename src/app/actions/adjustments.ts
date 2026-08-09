@@ -50,7 +50,7 @@ export async function addAdjustment(
   });
   if (error) return { ok: false, message: error.message };
 
-  revalidatePath("/crew");
+  revalidatePath("/admin");
   return { ok: true };
 }
 
@@ -67,7 +67,7 @@ export async function confirmAdjustment(id: number): Promise<AdjustmentResult> {
     .eq("id", id);
   if (error) return { ok: false, message: error.message };
 
-  revalidatePath("/crew");
+  revalidatePath("/admin");
   return { ok: true };
 }
 
@@ -76,6 +76,6 @@ export async function removeAdjustment(id: number): Promise<AdjustmentResult> {
   const { error } = await supabase.from("rating_adjustments").delete().eq("id", id);
   if (error) return { ok: false, message: error.message };
 
-  revalidatePath("/crew");
+  revalidatePath("/admin");
   return { ok: true };
 }

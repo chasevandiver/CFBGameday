@@ -3,21 +3,31 @@
 import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { makePick, removePick } from "../app/actions/picks";
-import { fmtSpread, fmtTotal } from "../lib/slate";
+import type { PickMarket } from "../lib/grade";
+import { forgetPick, rememberPick } from "../lib/session-picks";
+import { fmtSpread, fmtTotal, pickSideLabel } from "../lib/slate";
+
+export interface MyPickView {
+  market: PickMarket;
+  side: string;
+  line_at_pick: number | null;
+  result?: string | null;
+  clv?: number | null;
+}
 
 interface Props {
+  /** The group these picks belong to. Picks are per group (migration 0021). */
+  groupId: string;
   gameId: number;
   homeLabel: string;
   awayLabel: string;
   /** Vegas convention, home perspective */
   currentSpread: number | null;
   currentTotal: number | null;
-  myPick: {
-    side: string;
-    line_at_pick: number;
-    result?: string | null;
-    clv?: number | null;
-  } | null;
+  /** Which markets this group's admin turned on for the week. */
+  markets: PickMarket[];
+  /** The viewer's picks on this game in this group — up to one per market. */
+  myPicks: MyPickView[];
   kickoffPassed: boolean;
   /** ISO kickoff for the lock countdown; null = TBD */
   kickoffTs: string | null;
@@ -25,24 +35,32 @@ interface Props {
 }
 
 /**
- * One pick per game, four ways to make it: either spread side or either side
- * of the total (the schema, grader, and live tracker supported O/U picks all
- * along — this adds the missing UI). Tapping your current side removes it;
- * tapping another swaps it and re-snapshots the line (League Rule #2).
+ * One pick per market per game, in one group. The admin decides which of the
+ * three markets are live for the week, so this renders a row per enabled market
+ * rather than a fixed grid — a spreads-only pool sees two buttons, not six
+ * with four disabled.
+ *
+ * Tapping your current side removes it; tapping another swaps it and
+ * re-snapshots the line (League Rule #2). Straight-up takes no number at all,
+ * so it has nothing to re-snapshot and no CLV to report.
  */
 export function PickButtons({
+  groupId,
   gameId,
   homeLabel,
   awayLabel,
   currentSpread,
   currentTotal,
-  myPick,
+  markets,
+  myPicks,
   kickoffPassed,
   kickoffTs,
   signedIn,
 }: Props) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  const pickIn = (m: PickMarket) => myPicks.find((p) => p.market === m) ?? null;
 
   if (!signedIn) {
     return (
@@ -56,80 +74,122 @@ export function PickButtons({
   }
 
   if (kickoffPassed) {
-    return myPick ? (
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="stat text-sm text-chalk/70">
-          Locked: {pickLabel(myPick.side, myPick.line_at_pick, homeLabel, awayLabel)}
-        </p>
-        {myPick.result && myPick.result !== "void" && (
-          <span
-            className={`chip ${
-              myPick.result === "win"
-                ? "bg-win/12 text-win"
-                : myPick.result === "loss"
-                  ? "bg-loss/12 text-loss"
-                  : "bg-push/12 text-push"
-            }`}
-          >
-            {myPick.result}
-          </span>
-        )}
-        {myPick.clv !== null && myPick.clv !== undefined && (
-          <span className={`stat text-xs ${myPick.clv > 0 ? "text-win" : myPick.clv < 0 ? "text-loss" : "text-dim"}`}>
-            CLV {myPick.clv > 0 ? "+" : ""}
-            {myPick.clv}
-          </span>
-        )}
+    return myPicks.length > 0 ? (
+      <div className="flex flex-col gap-1.5">
+        {myPicks.map((p) => (
+          <div key={p.market} className="flex flex-wrap items-center gap-2">
+            <p className="stat text-sm text-chalk/70">
+              Locked: {pickLabel(p, homeLabel, awayLabel)}
+            </p>
+            {p.result && p.result !== "void" && (
+              <span
+                className={`chip ${
+                  p.result === "win"
+                    ? "bg-win/12 text-win"
+                    : p.result === "loss"
+                      ? "bg-loss/12 text-loss"
+                      : "bg-push/12 text-push"
+                }`}
+              >
+                {p.result}
+              </span>
+            )}
+            {p.clv !== null && p.clv !== undefined && (
+              <span
+                className={`stat text-xs ${p.clv > 0 ? "text-win" : p.clv < 0 ? "text-loss" : "text-dim"}`}
+              >
+                CLV {p.clv > 0 ? "+" : ""}
+                {p.clv}
+              </span>
+            )}
+          </div>
+        ))}
       </div>
     ) : (
       <p className="stat text-sm text-chalk/50">Kickoff — no pick made</p>
     );
   }
 
-  const pick = (side: "home" | "away" | "over" | "under") =>
+  const tap = (market: PickMarket, side: "home" | "away" | "over" | "under") =>
     startTransition(async () => {
       setError(null);
-      const res = myPick?.side === side ? await removePick(gameId) : await makePick(gameId, side);
-      if (!res.ok && res.message) setError(res.message);
+      const removing = pickIn(market)?.side === side;
+      const res = removing
+        ? await removePick(groupId, gameId, market)
+        : await makePick(groupId, gameId, market, side);
+      if (!res.ok) {
+        if (res.message) setError(res.message);
+        return;
+      }
+      // Feeds the share sheet's "just placed", which is the one thing the
+      // server cannot answer from a timestamp.
+      if (removing) forgetPick(gameId, market);
+      else rememberPick(gameId, market);
     });
 
   const awaySpread = currentSpread === null ? null : -currentSpread;
+  const has = (m: PickMarket) => markets.includes(m);
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex gap-2">
-        <PickButton
-          label={`${awayLabel} ${fmtSpread(awaySpread)}`}
-          active={myPick?.side === "away"}
-          disabled={pending || currentSpread === null}
-          onClick={() => pick("away")}
-        />
-        <PickButton
-          label={`${homeLabel} ${fmtSpread(currentSpread)}`}
-          active={myPick?.side === "home"}
-          disabled={pending || currentSpread === null}
-          onClick={() => pick("home")}
-        />
-      </div>
-      <div className="flex gap-2">
-        <PickButton
-          label={`Over ${fmtTotal(currentTotal)}`}
-          active={myPick?.side === "over"}
-          disabled={pending || currentTotal === null}
-          onClick={() => pick("over")}
-        />
-        <PickButton
-          label={`Under ${fmtTotal(currentTotal)}`}
-          active={myPick?.side === "under"}
-          disabled={pending || currentTotal === null}
-          onClick={() => pick("under")}
-        />
-      </div>
+      {has("spread") && (
+        <div className="flex gap-2">
+          <PickButton
+            label={`${awayLabel} ${fmtSpread(awaySpread)}`}
+            active={pickIn("spread")?.side === "away"}
+            disabled={pending || currentSpread === null}
+            onClick={() => tap("spread", "away")}
+          />
+          <PickButton
+            label={`${homeLabel} ${fmtSpread(currentSpread)}`}
+            active={pickIn("spread")?.side === "home"}
+            disabled={pending || currentSpread === null}
+            onClick={() => tap("spread", "home")}
+          />
+        </div>
+      )}
+      {has("total") && (
+        <div className="flex gap-2">
+          <PickButton
+            label={`Over ${fmtTotal(currentTotal)}`}
+            active={pickIn("total")?.side === "over"}
+            disabled={pending || currentTotal === null}
+            onClick={() => tap("total", "over")}
+          />
+          <PickButton
+            label={`Under ${fmtTotal(currentTotal)}`}
+            active={pickIn("total")?.side === "under"}
+            disabled={pending || currentTotal === null}
+            onClick={() => tap("total", "under")}
+          />
+        </div>
+      )}
+      {has("straight_up") && (
+        <div className="flex gap-2">
+          {/* No line, so no disabled state: a winner pick works on a game no
+              book has posted a number for. */}
+          <PickButton
+            label={`${awayLabel} to win`}
+            active={pickIn("straight_up")?.side === "away"}
+            disabled={pending}
+            onClick={() => tap("straight_up", "away")}
+          />
+          <PickButton
+            label={`${homeLabel} to win`}
+            active={pickIn("straight_up")?.side === "home"}
+            disabled={pending}
+            onClick={() => tap("straight_up", "home")}
+          />
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        {myPick ? (
+        {myPicks.length > 0 ? (
           <p className="stat text-xs text-accent">
-            Your number: {pickLabel(myPick.side, myPick.line_at_pick, homeLabel, awayLabel)}{" "}
-            <span className="text-dim">(tap again to remove — re-picking re-snapshots the line)</span>
+            Your {myPicks.length === 1 ? "number" : "picks"}:{" "}
+            {myPicks.map((p) => pickLabel(p, homeLabel, awayLabel)).join(" · ")}{" "}
+            <span className="text-dim">
+              (tap again to remove — re-picking re-snapshots the line)
+            </span>
           </p>
         ) : (
           <span />
@@ -141,10 +201,8 @@ export function PickButtons({
   );
 }
 
-function pickLabel(side: string, line: number, homeLabel: string, awayLabel: string): string {
-  if (side === "home") return `${homeLabel} ${fmtSpread(line)}`;
-  if (side === "away") return `${awayLabel} ${fmtSpread(line)}`;
-  return `${side === "over" ? "Over" : "Under"} ${fmtTotal(line)}`;
+function pickLabel(p: MyPickView, homeLabel: string, awayLabel: string): string {
+  return pickSideLabel(p.market, p.side, p.line_at_pick, homeLabel, awayLabel);
 }
 
 /** "Locks in 2h 14m" once kickoff is inside 24h; ticks every 30s. */

@@ -25,7 +25,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Standings", href: "/standings" },
   { label: "Teams", href: "/teams", also: ["/team"] },
   { label: "Ledger", href: "/ledger", primary: true, icon: Receipt },
-  { label: "Crew", href: "/crew", also: ["/rules"], primary: true, icon: Users },
+  { label: "Groups", href: "/groups", also: ["/crew", "/rules"], primary: true, icon: Users },
   { label: "Receipts", href: "/receipts", also: ["/recap"] },
 ];
 

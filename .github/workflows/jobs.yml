@@ -28,6 +28,7 @@ on:
           - weather
           - ratings-update
           - freeze
+          - freeze-groups
           - questions
           - verdicts
           # Read-only preview: builds the preseason ratings and prints the
@@ -128,12 +129,17 @@ jobs:
       - name: Run job
         run: |
           case "${{ steps.task.outputs.task }}" in
-            refresh-lines) npx tsx scripts/refresh-lines.ts ;;
-            refresh-lines-burst) npx tsx scripts/refresh-lines.ts --burst ;;
+            # Group weeks freeze at their first kickoff. Chained onto the lines
+            # jobs rather than given a cron of their own: those already run daily
+            # and every 10 minutes through the Saturday kickoff waves, and the
+            # freeze is idempotent and cheap. A missed run costs materialisation,
+            # never correctness — group_week_is_locked reads the clock.
+            refresh-lines) npx tsx scripts/refresh-lines.ts && npx tsx scripts/run-job.ts freeze-groups ;;
+            refresh-lines-burst) npx tsx scripts/refresh-lines.ts --burst && npx tsx scripts/run-job.ts freeze-groups ;;
             # daily slot also refreshes poll rankings (AP Sun, CFP Tue — 1 call/day)
             sync-games) npx tsx scripts/sync-games.ts && npx tsx scripts/run-job.ts sync-rankings && npx tsx scripts/run-job.ts sync-systems ;;
             scoreboard-loop) npx tsx scripts/scoreboard-loop.ts --minutes 63 ;;
-            sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
+            sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze|freeze-groups) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
             # Preview only — the JSON goes to a scratch dir and is discarded.
             preseason-preview) npx tsx scripts/build-preseason.ts --out "$RUNNER_TEMP/preseason" --top 40 ;;
             preseason-check) npx tsx scripts/build-preseason.ts --check --out "$RUNNER_TEMP/preseason-check" ;;
