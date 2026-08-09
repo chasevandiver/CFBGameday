@@ -7,6 +7,7 @@ import { ShareButton } from "../../../components/ShareButton";
 import type { PickRow } from "../../../lib/db-types";
 import {
   fetchGroupMembers,
+  hasPricedMarket,
   fetchGroupWeek,
   resolveActiveGroup,
 } from "../../../lib/groups";
@@ -137,6 +138,13 @@ export default async function GroupBoardPage({
 
   const joinCode = (joinRes.data as { join_code: string } | null)?.join_code ?? null;
 
+  // Straight-up takes no number, so a winners-only week grades no units, no ROI
+  // and no CLV. Those columns are inapplicable rather than empty, and a column
+  // of dashes is a question the reader has to answer.
+  const priced = groupWeek === null || hasPricedMarket(groupWeek.markets);
+  const myPickCount = myWeekPicks.length;
+  const minPicks = groupWeek?.minPicks ?? 0;
+
   return (
     <>
       <AppNav />
@@ -195,8 +203,12 @@ export default async function GroupBoardPage({
               <tr className="border-b border-chalk/8">
                 <th className="px-4 py-2 text-left font-semibold">Member</th>
                 <th className="px-3 py-2 text-right font-semibold">Record</th>
-                <th className="px-3 py-2 text-right font-semibold">Units</th>
-                <th className="px-4 py-2 text-right font-semibold">CLV</th>
+                {priced && (
+                  <>
+                    <th className="px-3 py-2 text-right font-semibold">Units</th>
+                    <th className="px-4 py-2 text-right font-semibold">CLV</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -213,16 +225,20 @@ export default async function GroupBoardPage({
                   <td className="px-3 py-2 text-right">
                     {r.decided > 0 ? formatRecord(r) : "—"}
                   </td>
-                  <td
-                    className={`px-3 py-2 text-right ${r.units > 0 ? "text-win" : r.units < 0 ? "text-loss" : ""}`}
-                  >
-                    {r.decided > 0 ? `${r.units >= 0 ? "+" : ""}${r.units.toFixed(1)}` : "—"}
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    {r.avgClv === null
-                      ? "—"
-                      : `${r.avgClv > 0 ? "+" : ""}${r.avgClv.toFixed(2)}`}
-                  </td>
+                  {priced && (
+                    <>
+                      <td
+                        className={`px-3 py-2 text-right ${r.units > 0 ? "text-win" : r.units < 0 ? "text-loss" : ""}`}
+                      >
+                        {r.decided > 0 ? `${r.units >= 0 ? "+" : ""}${r.units.toFixed(1)}` : "—"}
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        {r.avgClv === null
+                          ? "—"
+                          : `${r.avgClv > 0 ? "+" : ""}${r.avgClv.toFixed(2)}`}
+                      </td>
+                    </>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -235,10 +251,32 @@ export default async function GroupBoardPage({
           {groupWeek && (
             <p className="stat text-xs text-chalk/50">
               {describeFormat(groupWeek)}
+              {groupWeek.minPicks > 0 ? ` · ${groupWeek.minPicks} min` : ""}
               {groupWeek.locked ? " · locked" : ""}
             </p>
           )}
         </div>
+
+        {!user && groupWeek !== null && boardGames.length > 0 && (
+          <p className="card mb-3 px-4 py-3 text-sm text-dim">
+            <Link
+              href="/login"
+              className="font-medium text-accent underline-offset-2 hover:underline"
+            >
+              Sign in
+            </Link>{" "}
+            to pick — the line snapshots the moment you tap.
+          </p>
+        )}
+
+        {minPicks > 0 && user && groupWeek !== null && (
+          <p
+            className={`stat mb-2 text-xs ${myPickCount >= minPicks ? "text-dim" : "text-accent"}`}
+          >
+            {myPickCount} of {minPicks} picks in
+            {myPickCount >= minPicks ? " — you're good" : ""}
+          </p>
+        )}
 
         {groupWeek === null ? (
           <section className="card px-6 py-10 text-center">
@@ -281,6 +319,7 @@ export default async function GroupBoardPage({
                             : "TBD"}
                     </span>
                   </div>
+                  {user && (
                   <PickButtons
                     groupId={active.id}
                     gameId={g.id}
@@ -298,8 +337,9 @@ export default async function GroupBoardPage({
                     }))}
                     kickoffPassed={g.startTs !== null && new Date(g.startTs) <= new Date()}
                     kickoffTs={g.startTs}
-                    signedIn={user !== null}
+                    signedIn
                   />
+                  )}
                   {takers.length > 0 && (
                     <p className="stat mt-2 truncate text-[11px] text-dim">
                       {takers.length} {takers.length === 1 ? "pick" : "picks"} in

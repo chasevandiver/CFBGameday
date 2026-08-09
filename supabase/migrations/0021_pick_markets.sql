@@ -73,17 +73,25 @@ begin
 
   update public.picks set group_id = v_group where group_id is null;
 
-  -- Every week the crew has already played, as handpicked lists of exactly the
-  -- games somebody picked, already frozen. Reconstructing them as full_slate
-  -- would retroactively put games on the board that were never in play.
+  -- Every week somebody has picked in, as a handpicked list of exactly the
+  -- games they picked. Reconstructing them as full_slate would retroactively
+  -- put games on the board that were never in play.
+  --
+  -- Only weeks that have actually kicked off are stamped as frozen. A pick on
+  -- an upcoming week has to leave that week editable — freezing it here would
+  -- hand the owner a board of one game that set_group_week_config then refuses
+  -- to change.
   insert into public.group_week_config (
     group_id, season_id, week, season_type,
     selection_mode, markets, locked_at, updated_by
   )
-  select distinct v_group, g.season_id, g.week, g.season_type,
-         'handpicked', array['spread', 'total'], now(), v_admin
+  select v_group, g.season_id, g.week, g.season_type,
+         'handpicked', array['spread', 'total'],
+         case when min(g.start_ts) <= now() then now() end,
+         v_admin
   from public.picks pk
-  join public.games g on g.id = pk.game_id;
+  join public.games g on g.id = pk.game_id
+  group by g.season_id, g.week, g.season_type;
 
   insert into public.group_week_games (group_id, season_id, week, season_type, game_id)
   select distinct v_group, g.season_id, g.week, g.season_type, g.id

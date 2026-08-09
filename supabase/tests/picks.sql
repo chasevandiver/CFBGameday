@@ -95,9 +95,11 @@ begin
   update public.picks set group_id = v_group where group_id is null;
   insert into public.group_week_config (group_id, season_id, week, season_type,
                                         selection_mode, markets, locked_at, updated_by)
-  select distinct v_group, g.season_id, g.week, g.season_type,
-         'handpicked', array['spread','total'], now(), v_admin
-  from public.picks pk join public.games g on g.id = pk.game_id;
+  select v_group, g.season_id, g.week, g.season_type,
+         'handpicked', array['spread','total'],
+         case when min(g.start_ts) <= now() then now() end, v_admin
+  from public.picks pk join public.games g on g.id = pk.game_id
+  group by g.season_id, g.week, g.season_type;
   insert into public.group_week_games (group_id, season_id, week, season_type, game_id)
   select distinct v_group, g.season_id, g.week, g.season_type, g.id
   from public.picks pk join public.games g on g.id = pk.game_id;
@@ -117,8 +119,13 @@ select pg_temp.chk('the commissioner is the crew admin',
 select pg_temp.chk('everyone else came along as a member',
                    (select role from group_members
                     where group_id = :'crew'::uuid and user_id = :bob::uuid) = 'member');
-select pg_temp.chk('played weeks were reconstructed as frozen handpicked lists',
-                   (select selection_mode = 'handpicked' and locked_at is not null
+select pg_temp.chk('picked weeks were reconstructed as handpicked lists',
+                   (select selection_mode = 'handpicked'
+                    from group_week_config where group_id = :'crew'::uuid and week = 2));
+-- Week 2 kicks off in three days here. Freezing it would hand the owner a
+-- board of exactly the games already picked that they could never change.
+select pg_temp.chk('an upcoming week is left unfrozen and editable',
+                   (select locked_at is null
                     from group_week_config where group_id = :'crew'::uuid and week = 2));
 select pg_temp.chk('and only over the games that were actually picked',
                    (select array_agg(game_id order by game_id) from group_week_games

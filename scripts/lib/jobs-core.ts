@@ -547,26 +547,44 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
       .is("result", null)
       .is("voided_at", null);
     for (const b of bets ?? []) {
-      if (b.line_taken === null || !b.side) continue;
+      // A moneyline bet has no line to take, so `line_taken` being null is
+      // normal for it rather than a reason to skip. It used to be caught by
+      // this guard and sat ungraded forever, quietly missing from the ledger's
+      // record and units.
+      if (!b.side) continue;
       const g = gameById.get(b.game_id)!;
       const margin = (g.home_points as number) - (g.away_points as number);
       const total = (g.home_points as number) + (g.away_points as number);
-      const line = Number(b.line_taken);
+      const line = b.line_taken === null ? null : Number(b.line_taken);
       const close = closing(b.game_id);
       let result: string | null = null;
       let clv: number | null = null;
-      if (b.bet_type === "spread" && (b.side === "home" || b.side === "away")) {
+      let closingLine: number | null = null;
+      if (b.bet_type === "spread" && line !== null && (b.side === "home" || b.side === "away")) {
         const coverMargin = b.side === "home" ? margin + line : -margin - line;
         result = coverMargin > 0 ? "win" : coverMargin < 0 ? "loss" : "push";
+        closingLine = close.spread;
         if (close.spread !== null) clv = roundClv(spreadClv(b.side, line, close.spread));
-      } else if (b.bet_type === "total" && (b.side === "over" || b.side === "under")) {
+      } else if (
+        b.bet_type === "total" &&
+        line !== null &&
+        (b.side === "over" || b.side === "under")
+      ) {
         const diff = b.side === "over" ? total - line : line - total;
         result = diff > 0 ? "win" : diff < 0 ? "loss" : "push";
+        closingLine = close.total;
         if (close.total !== null) clv = roundClv(totalClv(b.side, line, close.total));
+      } else if (b.bet_type === "moneyline" && (b.side === "home" || b.side === "away")) {
+        // Who won, full stop. CLV on a moneyline is measured in cents against a
+        // closing price we do not capture — spec §5.3 — so it stays null rather
+        // than being invented from the spread.
+        result = margin === 0 ? "push" : (margin > 0) === (b.side === "home") ? "win" : "loss";
       }
       if (result === null) continue;
       const units = Number(b.units);
       const odds = Number(b.odds);
+      // Correct for any American price, which is what makes a +2500 moneyline
+      // pay what it should rather than -110.
       const win = odds > 0 ? units * (odds / 100) : units * (100 / -odds);
       const payout = result === "win" ? win : result === "loss" ? -units : 0;
       const { error } = await db
@@ -574,7 +592,7 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
         .update({
           result,
           clv,
-          closing_line: b.bet_type === "total" ? close.total : close.spread,
+          closing_line: closingLine,
           payout_units: Math.round(payout * 100) / 100,
         })
         .eq("id", b.id);

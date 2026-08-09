@@ -129,10 +129,16 @@ export default async function GroupWeekPage({
                     <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-chalk/8 px-4 py-3">
                       <h2 className="font-medium text-chalk">{m.name}</h2>
                       <p className="stat text-xs text-dim">
-                        <span className="text-chalk">
-                          {w.decided > 0 ? formatRecord(w) : "—"}
-                        </span>{" "}
-                        this week · {life.decided > 0 ? formatRecord(life) : "—"} lifetime
+                        {w.decided === 0 && life.decided === 0 ? (
+                          "nothing graded yet"
+                        ) : (
+                          <>
+                            <span className="text-chalk">
+                              {w.decided > 0 ? formatRecord(w) : "0-0"}
+                            </span>{" "}
+                            this week · {life.decided > 0 ? formatRecord(life) : "0-0"} lifetime
+                          </>
+                        )}
                       </p>
                     </div>
                     <ul>
@@ -164,33 +170,39 @@ export default async function GroupWeekPage({
           </ul>
         ) : (
           <ul className="flex flex-col gap-3">
-            {byPick(picks, slate.games, inPlay).map(({ game, market, takers }) => (
-              <li key={`${game.id}:${market}`} className="card px-4 py-3">
-                <div className="mb-2 flex items-baseline justify-between gap-2">
-                  <Link href={`/game/${game.id}`} className="min-w-0 font-medium text-chalk">
-                    {game.away.abbr} <span className="text-dim">at</span> {game.home.abbr}
-                  </Link>
-                  <span className="stat shrink-0 text-[10px] uppercase tracking-wider text-chalk/40">
-                    {market === "straight_up" ? "winner" : market}
-                  </span>
-                </div>
-                <ul className="flex flex-col gap-1">
-                  {takers.map((p) => (
-                    <li
-                      key={p.id}
-                      className={`flex items-baseline justify-between gap-3 text-sm ${
-                        inPlay.has(p.game_id) && markets.has(p.market) ? "" : "opacity-45"
-                      }`}
-                    >
-                      <span className="min-w-0 truncate font-sans text-chalk">
-                        {nameOf.get(p.user_id) ?? "—"}
-                      </span>
-                      <span className="stat shrink-0 text-dim">
-                        {sideText(p, game)} <ResultText p={p} />
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+            {byGame(picks, slate.games, inPlay).map(({ game, byMarket }) => (
+              <li key={game.id} className="card px-4 py-3">
+                <Link
+                  href={`/game/${game.id}`}
+                  className="mb-2 block min-w-0 font-medium text-chalk"
+                >
+                  {game.away.abbr} <span className="text-dim">at</span> {game.home.abbr}
+                </Link>
+                {byMarket.map(({ market, takers }) => (
+                  <div key={market} className="mt-2 first:mt-0">
+                    <p className="stat mb-1 text-[10px] uppercase tracking-wider text-chalk/40">
+                      {market === "straight_up" ? "winner" : market}
+                    </p>
+                    <ul className="flex flex-col gap-1">
+                      {takers.map((p) => (
+                        <li
+                          key={p.id}
+                          className={`flex items-baseline justify-between gap-3 text-sm ${
+                            inPlay.has(p.game_id) && markets.has(p.market) ? "" : "opacity-45"
+                          }`}
+                        >
+                          <span className="min-w-0 truncate font-sans text-chalk">
+                            {nameOf.get(p.user_id) ?? "—"}
+                          </span>
+                          <span className="stat flex shrink-0 items-baseline gap-1.5 text-dim">
+                            {sideText(p, game)}
+                            <ResultText p={p} />
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
               </li>
             ))}
           </ul>
@@ -229,7 +241,9 @@ function ViewTab({
 }
 
 function ResultText({ p }: { p: PickRow }) {
-  if (!p.result || p.result === "void") return <span className="text-chalk/30">·</span>;
+  // Nothing, not a dot: an ungraded pick has no result, and a stray glyph in
+  // the result column reads as one.
+  if (!p.result || p.result === "void") return null;
   const tone =
     p.result === "win" ? "text-win" : p.result === "loss" ? "text-loss" : "text-push";
   return <span className={`stat text-xs font-semibold uppercase ${tone}`}>{p.result}</span>;
@@ -248,25 +262,37 @@ function sideText(p: PickRow, g: GameView): string {
   return `${p.side === "over" ? "O" : "U"} ${fmtTotal(p.line_at_pick)}`;
 }
 
+const MARKET_ORDER = ["spread", "total", "straight_up"];
+
 /**
- * One row per game and market that anybody took, board games first so the
- * week reads in order and the dropped ones settle at the bottom.
+ * One card per game, with the markets nested inside it.
+ *
+ * Keying on game × market instead put "UNC at TCU" on screen twice in a row
+ * when somebody took both the spread and the total — the matchup is the thing
+ * you scan for, and repeating it made two picks look like two games.
+ *
+ * Games still on the board come first, in kickoff order, so the ones the admin
+ * dropped settle at the bottom where their greying reads as a footnote.
  */
-function byPick(picks: PickRow[], games: GameView[], inPlay: Set<number>) {
+function byGame(picks: PickRow[], games: GameView[], inPlay: Set<number>) {
   const gameById = new Map(games.map((g) => [g.id, g]));
-  const groups = new Map<string, { game: GameView; market: string; takers: PickRow[] }>();
+  const grouped = new Map<number, { game: GameView; takers: PickRow[] }>();
   for (const p of picks) {
     const game = gameById.get(p.game_id);
     if (!game) continue;
-    const key = `${p.game_id}:${p.market}`;
-    const entry = groups.get(key) ?? { game, market: p.market, takers: [] };
+    const entry = grouped.get(p.game_id) ?? { game, takers: [] };
     entry.takers.push(p);
-    groups.set(key, entry);
+    grouped.set(p.game_id, entry);
   }
-  return [...groups.values()]
-    .map((e) => ({
-      ...e,
-      takers: e.takers.sort((a, b) => a.side.localeCompare(b.side)),
+  return [...grouped.values()]
+    .map(({ game, takers }) => ({
+      game,
+      byMarket: MARKET_ORDER.filter((m) => takers.some((p) => p.market === m)).map((market) => ({
+        market,
+        takers: takers
+          .filter((p) => p.market === market)
+          .sort((a, b) => a.side.localeCompare(b.side)),
+      })),
     }))
     .sort((a, b) => {
       const live = Number(inPlay.has(b.game.id)) - Number(inPlay.has(a.game.id));

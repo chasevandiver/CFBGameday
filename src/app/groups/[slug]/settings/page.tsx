@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppNav } from "../../../../components/AppNav";
-import { JoinCode } from "../../../../components/group/GroupForms";
+import { GroupAdmin } from "../../../../components/group/GroupAdmin";
 import { RosterAdmin } from "../../../../components/group/RosterAdmin";
 import { WeekConfigForm, type ConfigGame } from "../../../../components/group/WeekConfigForm";
 import type { GameRow, PickRow, TeamRow } from "../../../../lib/db-types";
@@ -146,6 +146,7 @@ export default async function GroupSettingsPage({
                       conference: groupWeek.conference,
                       markets: groupWeek.markets,
                       gameIds: groupWeek.gameIds,
+                      minPicks: groupWeek.minPicks,
                     }
                   : null
               }
@@ -165,12 +166,13 @@ export default async function GroupSettingsPage({
 
         {joinCode && (
           <section className="card px-4 py-4">
-            <h2 className="mb-1 text-sm text-accent">Join code</h2>
-            <p className="mb-3 text-xs text-dim">
-              Anyone with an account on the site can join with this. Signing up is invite-only, so
-              the code routes people to the right group rather than guarding the door.
-            </p>
-            <JoinCode code={joinCode} />
+            <h2 className="mb-3 text-sm text-accent">The group</h2>
+            <GroupAdmin
+              groupId={active.id}
+              name={active.name}
+              visibility={active.visibility}
+              joinCode={joinCode}
+            />
           </section>
         )}
       </main>

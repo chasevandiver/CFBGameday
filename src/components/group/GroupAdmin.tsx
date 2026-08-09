@@ -1,0 +1,154 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
+import { archiveGroup, regenerateJoinCode, updateGroup } from "../../app/actions/groups";
+
+/**
+ * The parts of a group that aren't a week: its name, who can see it, its join
+ * code, and retiring it.
+ *
+ * All four existed as RPCs with nothing calling them. Renaming matters most —
+ * `create_group` set the name once and nothing could change it, so a typo was
+ * permanent.
+ */
+export function GroupAdmin({
+  groupId,
+  name,
+  visibility,
+  joinCode,
+}: {
+  groupId: string;
+  name: string;
+  visibility: "private" | "public";
+  joinCode: string;
+}) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
+  const [draftName, setDraftName] = useState(name);
+  const [draftVis, setDraftVis] = useState(visibility);
+  const [confirmArchive, setConfirmArchive] = useState(false);
+
+  const dirty = draftName.trim() !== name || draftVis !== visibility;
+
+  const save = () =>
+    start(async () => {
+      setError(null);
+      setNote(null);
+      const res = await updateGroup(groupId, draftName, draftVis);
+      if (!res.ok) {
+        setError(res.message ?? "Could not save");
+        return;
+      }
+      setNote("Saved");
+      // The slug moves with the name, so the current URL is now stale.
+      if (res.slug) router.replace(`/groups/${res.slug}/settings`);
+      router.refresh();
+    });
+
+  return (
+    <div className="flex flex-col gap-4">
+      <label className="flex flex-col gap-1.5">
+        <span className="text-xs text-dim">Name</span>
+        <input
+          value={draftName}
+          maxLength={60}
+          onChange={(e) => setDraftName(e.target.value)}
+          className="min-h-11 rounded-lg border border-chalk/25 bg-elev px-3 text-sm text-chalk"
+        />
+      </label>
+
+      <fieldset className="flex flex-col gap-1.5">
+        <legend className="mb-1 text-xs text-dim">Who can see the board</legend>
+        {(["private", "public"] as const).map((v) => (
+          <label key={v} className="flex min-h-11 items-center gap-2 text-sm text-chalk">
+            <input
+              type="radio"
+              name="visibility"
+              checked={draftVis === v}
+              onChange={() => setDraftVis(v)}
+            />
+            {v === "private" ? "Members only" : "Anyone with the link"}
+          </label>
+        ))}
+      </fieldset>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          onClick={save}
+          disabled={pending || !dirty || draftName.trim() === ""}
+          className="stat min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink disabled:opacity-50"
+        >
+          {pending ? "Saving…" : "Save"}
+        </button>
+        {note && <span className="stat text-xs text-win">{note}</span>}
+        {error && <span className="text-xs text-loss">{error}</span>}
+      </div>
+
+      <div className="border-t border-chalk/8 pt-4">
+        <p className="mb-1 text-xs text-dim">
+          Join code. Signing up is invite-only, so this routes people to the right group rather
+          than guarding the door — regenerate it if it ends up somewhere it shouldn&rsquo;t.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="stat rounded-lg border border-chalk/20 px-3 py-2.5 text-sm tracking-widest text-chalk">
+            {joinCode}
+          </span>
+          <button
+            disabled={pending}
+            onClick={() =>
+              start(async () => {
+                setError(null);
+                const res = await regenerateJoinCode(groupId);
+                if (!res.ok) setError(res.message ?? "Could not regenerate");
+                else router.refresh();
+              })
+            }
+            className="stat min-h-11 rounded-lg border border-chalk/20 px-3 text-xs text-chalk hover:border-chalk/50 disabled:opacity-50"
+          >
+            New code
+          </button>
+        </div>
+      </div>
+
+      <div className="border-t border-chalk/8 pt-4">
+        {/* Archive, not delete: the picks stay gradeable and the history stays
+            readable. It just stops appearing in anyone's list. */}
+        {confirmArchive ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-chalk">Archive {name}? Picks and records are kept.</span>
+            <button
+              disabled={pending}
+              onClick={() =>
+                start(async () => {
+                  const res = await archiveGroup(groupId);
+                  if (!res.ok) setError(res.message ?? "Could not archive");
+                  else router.push("/groups");
+                })
+              }
+              className="stat min-h-11 rounded-lg border border-loss px-3 text-xs text-loss disabled:opacity-50"
+            >
+              Archive it
+            </button>
+            <button
+              onClick={() => setConfirmArchive(false)}
+              className="stat min-h-11 rounded-lg border border-chalk/20 px-3 text-xs text-dim"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirmArchive(true)}
+            className="stat min-h-11 rounded-lg border border-chalk/20 px-3 text-xs text-dim hover:border-loss hover:text-loss"
+          >
+            Archive group
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}

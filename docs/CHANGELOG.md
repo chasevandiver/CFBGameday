@@ -141,6 +141,71 @@ shipping it.
 
 ## Log
 
+### Aug 9 — Groups live in production, and the gaps closed
+
+`0020`–`0022` applied to the live project. The `0021` backfill found nothing to
+rescue and no-opped, which is what it is for: the one pick in the database was a
+week-1 test that the owner asked to drop first, so the first real group gets made
+and named in the UI rather than inherited as "The Crew".
+
+**A bug the production data exposed.** The backfill stamped `locked_at` on every
+week it reconstructed, on the reasoning that a week with picks in it had been
+played. The single pick was on week 1, which kicks off on Aug 29 — so the
+backfill would have frozen an upcoming week, handing the owner a board of one
+game that `set_group_week_config` then refuses to change. It now only freezes
+weeks whose first kickoff has actually passed, and `supabase/tests/picks.sql`
+asserts an upcoming week stays editable.
+
+**`min_picks_per_week`** (`0022`). League Rules #6 has always claimed a
+3-picks-a-week minimum and nothing displayed or enforced it; with per-group
+formats the number stops being a site-wide fact anyway — a pool handpicking six
+games cannot ask the same as one playing the full slate. Per week, 0 means none,
+and it is displayed rather than enforced: the board shows "2 of 3 picks in" and
+nothing is blocked or voided. `/rules` was rewritten around it.
+
+**`update_group`** (`0022`). `create_group` set the name and visibility once and
+nothing could change either, so a typo in a group name was permanent. The slug
+moves with the name — the URL changes, which is the right trade for a pool
+reached from the Groups tab against a slug that contradicts its name forever.
+`archive_group` and `regenerate_join_code` had shipped as RPCs with no UI at all;
+all four are now in a settings panel.
+
+**Winners-only groups hide the money columns.** Straight-up takes no number, so
+such a week grades no units, no ROI and no CLV. Those columns are inapplicable
+rather than empty, and a column of dashes is a question the reader has to answer.
+
+**Moneyline bets grade.** `if (b.line_taken === null || !b.side) continue` was
+skipping them — a moneyline has no line to take, so the guard treated the normal
+case as a broken row and they sat ungraded forever, quietly missing from the
+ledger's record and units. The payout maths was already right for any American
+price. CLV stays null: it is measured in cents against a closing price we do not
+capture (spec §5.3), and inventing one from the spread would be worse than
+leaving it blank.
+
+**`/game/[id]` is read-only for picks**, per the owner decision that picking
+happens on the group board. It shows what you took, in which group, and links to
+the board to change it.
+
+**Four fixes that only came from looking at it.** The pages were finally rendered
+against the live database at 390×844, with a temporary public group that was
+deleted afterwards:
+
+- The by-pick view keyed on game × market, so a spread and a total on one game
+  put "UNC at TCU" on screen twice in a row and two picks looked like two games.
+  One card per game now, markets nested.
+- Ungraded picks rendered a `·` in the result column, which reads as a glyph
+  rather than as an absence. Nothing renders now.
+- A member with nothing graded showed "— this week · — lifetime". It says
+  "nothing graded yet".
+- Signed-out, every game card repeated "Sign in to make your pick". One prompt
+  above the board instead.
+
+The away-spread sign fix from the previous entry was confirmed on real rows: a
+pick stored as −4.5 home-perspective renders "NCSU +4.5", which is what the
+bettor holds.
+
+76 database assertions, 296 unit tests.
+
 ### Aug 9 — Groups, and six things that only said half of what they knew
 
 The social layer becomes group-scoped, and several numbers that were on

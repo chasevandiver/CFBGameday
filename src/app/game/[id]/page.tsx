@@ -5,7 +5,6 @@ import { notFound } from "next/navigation";
 import { AppNav } from "../../../components/AppNav";
 import { GameHeader } from "../../../components/game/GameHeader";
 import { MovementChart } from "../../../components/game/MovementChart";
-import { PickButtons } from "../../../components/PickButtons";
 import { ConsensusChip, EdgeChip } from "../../../components/slate/chips";
 import { Sparkline } from "../../../components/slate/Sparkline";
 import type {
@@ -36,6 +35,7 @@ import {
   fmtPct,
   fmtSpread,
   fmtTotal,
+  lineForSide,
   modelSideOf,
   type MyBetView,
   type TeamView,
@@ -71,6 +71,14 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     description,
     openGraph: { title, description },
   };
+}
+
+/** The viewer's pick, read-only. Mirrors the board's wording. */
+function pickText(p: PickRow, homeAbbr: string, awayAbbr: string): string {
+  const team = p.side === "home" ? homeAbbr : awayAbbr;
+  if (p.market === "straight_up") return `${team} to win`;
+  if (p.market === "spread") return `${team} ${fmtSpread(lineForSide(p.side, p.line_at_pick))}`;
+  return `${p.side === "over" ? "Over" : "Under"} ${fmtTotal(p.line_at_pick)}`;
 }
 
 function toView(t: TeamRow, pollRank: number | null = null, poll: string | null = null): TeamView {
@@ -319,40 +327,92 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
           <h2 className="mb-3 text-sm text-accent">
             Your pick{activeGroup ? ` · ${activeGroup.name}` : ""}
           </h2>
-          {user && !activeGroup ? (
+          {/* Read-only. Picking happens on the group board, where the week's
+              format — which games, which markets — is the frame around the
+              choice rather than something this page has to restate per game. */}
+          {myPicks.length === 0 ? (
             <p className="text-sm text-dim">
-              Picks belong to a group.{" "}
-              <Link href="/groups" className="font-medium text-accent underline-offset-2 hover:underline">
-                Join or create one
-              </Link>{" "}
-              to start picking.
-            </p>
-          ) : user && !inPlay ? (
-            <p className="text-sm text-dim">
-              {groupWeek === null
-                ? `${activeGroup!.name} hasn't set up week ${game.week} yet.`
-                : `This game isn't in play for ${activeGroup!.name} in week ${game.week}.`}
+              {!user ? (
+                <>
+                  <Link
+                    href="/login"
+                    className="font-medium text-accent underline-offset-2 hover:underline"
+                  >
+                    Sign in
+                  </Link>{" "}
+                  to pick.
+                </>
+              ) : !activeGroup ? (
+                <>
+                  Picks belong to a group.{" "}
+                  <Link
+                    href="/groups"
+                    className="font-medium text-accent underline-offset-2 hover:underline"
+                  >
+                    Join or create one
+                  </Link>{" "}
+                  to start picking.
+                </>
+              ) : groupWeek === null ? (
+                `${activeGroup.name} hasn't set up week ${game.week} yet.`
+              ) : !inPlay ? (
+                `This game isn't in play for ${activeGroup.name} in week ${game.week}.`
+              ) : kickoffPassed ? (
+                "Kickoff — no pick made."
+              ) : (
+                <>
+                  Nothing on this one yet.{" "}
+                  <Link
+                    href={`/groups/${activeGroup.slug}?week=${game.week}`}
+                    className="font-medium text-accent underline-offset-2 hover:underline"
+                  >
+                    Pick it on the board
+                  </Link>
+                  .
+                </>
+              )}
             </p>
           ) : (
-          <PickButtons
-            groupId={activeGroup?.id ?? ""}
-            gameId={game.id}
-            homeLabel={home.abbr}
-            awayLabel={away.abbr}
-            currentSpread={consensus.spread}
-            currentTotal={consensus.total}
-            markets={inPlay ? groupWeek!.markets : []}
-            myPicks={myPicks.map((p) => ({
-              market: p.market,
-              side: p.side,
-              line_at_pick: p.line_at_pick === null ? null : Number(p.line_at_pick),
-              result: p.result,
-              clv: p.clv === null ? null : Number(p.clv),
-            }))}
-            kickoffPassed={kickoffPassed}
-            kickoffTs={game.start_ts}
-            signedIn={user !== null}
-          />
+            <ul className="flex flex-col gap-1.5">
+              {myPicks.map((p) => (
+                <li key={p.market} className="flex flex-wrap items-center gap-2">
+                  <span className="stat text-sm text-chalk">
+                    {pickText(p, home.abbr, away.abbr)}
+                  </span>
+                  {p.result && p.result !== "void" && (
+                    <span
+                      className={`chip ${
+                        p.result === "win"
+                          ? "bg-win/12 text-win"
+                          : p.result === "loss"
+                            ? "bg-loss/12 text-loss"
+                            : "bg-push/12 text-push"
+                      }`}
+                    >
+                      {p.result}
+                    </span>
+                  )}
+                  {p.clv !== null && (
+                    <span
+                      className={`stat text-xs ${Number(p.clv) > 0 ? "text-win" : Number(p.clv) < 0 ? "text-loss" : "text-dim"}`}
+                    >
+                      CLV {Number(p.clv) > 0 ? "+" : ""}
+                      {Number(p.clv)}
+                    </span>
+                  )}
+                </li>
+              ))}
+              {activeGroup && !kickoffPassed && (
+                <li>
+                  <Link
+                    href={`/groups/${activeGroup.slug}?week=${game.week}`}
+                    className="stat text-xs text-accent underline-offset-2 hover:underline"
+                  >
+                    Change it on the board →
+                  </Link>
+                </li>
+              )}
+            </ul>
           )}
           <div className="mt-4 border-t border-chalk/8 pt-3">
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-chalk/40">

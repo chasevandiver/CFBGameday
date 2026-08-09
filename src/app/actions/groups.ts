@@ -142,6 +142,8 @@ export async function setGroupWeekConfig(input: {
   conference: string | null;
   markets: PickMarket[];
   gameIds: number[];
+  /** 0 = no minimum, which is the default. */
+  minPicks: number;
 }): Promise<ActionResult> {
   const res = await rpc("set_group_week_config", {
     p_group: input.groupId,
@@ -152,7 +154,39 @@ export async function setGroupWeekConfig(input: {
     p_conference: input.conference,
     p_markets: input.markets,
     p_game_ids: input.mode === "handpicked" ? input.gameIds : null,
+    p_min_picks: input.minPicks,
   });
   if (res.ok) revalidatePath("/slate");
   return res;
+}
+
+/**
+ * Rename a group, or open it up / close it off.
+ *
+ * The slug moves with the name, so the group's URL changes. That is the right
+ * trade for a pool of friends who reach it from the Groups tab — the
+ * alternative is a slug that contradicts the name forever.
+ */
+export async function updateGroup(
+  groupId: string,
+  name: string,
+  visibility: "private" | "public",
+): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Sign in first" };
+
+  const { data, error } = await supabase.rpc("update_group", {
+    p_group: groupId,
+    p_name: name,
+    p_visibility: visibility,
+  });
+  if (error) return { ok: false, message: error.message };
+
+  const slug = data as string;
+  await setActiveGroup(slug);
+  revalidatePath("/groups", "layout");
+  return { ok: true, slug };
 }

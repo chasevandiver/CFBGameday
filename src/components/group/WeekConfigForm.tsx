@@ -57,6 +57,7 @@ export function WeekConfigForm({
     conference: string | null;
     markets: PickMarket[];
     gameIds: number[];
+    minPicks: number;
   } | null;
 }) {
   const router = useRouter();
@@ -70,6 +71,7 @@ export function WeekConfigForm({
   );
   const [markets, setMarkets] = useState<PickMarket[]>(initial?.markets ?? ["spread"]);
   const [gameIds, setGameIds] = useState<number[]>(initial?.gameIds ?? []);
+  const [minPicks, setMinPicks] = useState<number>(initial?.minPicks ?? 0);
 
   /** What the board would hold if this were saved now. */
   const selected = useMemo(() => {
@@ -113,6 +115,7 @@ export function WeekConfigForm({
         conference: mode === "conference" ? conference : null,
         markets,
         gameIds,
+        minPicks,
       });
       if (!res.ok) setError(res.message ?? "Could not save");
       else {
@@ -221,6 +224,27 @@ export function WeekConfigForm({
         {markets.length === 0 && (
           <p className="mt-1 text-xs text-loss">Turn on at least one bet type.</p>
         )}
+      </fieldset>
+
+      <fieldset>
+        <legend className="mb-2 text-sm text-accent">Weekly minimum</legend>
+        <label className="flex items-center gap-3">
+          <input
+            type="number"
+            min={0}
+            max={50}
+            value={minPicks}
+            onChange={(e) => setMinPicks(Math.max(0, Math.min(50, Number(e.target.value) || 0)))}
+            className="stat h-11 w-20 rounded-lg border border-chalk/25 bg-elev px-3 text-sm text-chalk"
+          />
+          <span className="text-[11px] leading-snug text-dim">
+            {minPicks === 0
+              ? "No minimum — pick as many or as few as you like."
+              : `Members are expected to make ${minPicks} ${minPicks === 1 ? "pick" : "picks"} this week.`}{" "}
+            Shown on the board, not enforced: nobody gets blocked from picking, and nobody&rsquo;s
+            week gets voided.
+          </span>
+        </label>
       </fieldset>
 
       {(orphaned > 0 || droppedMarkets.length > 0) && (

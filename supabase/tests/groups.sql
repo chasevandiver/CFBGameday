@@ -177,6 +177,59 @@ begin;
                                           array['spread'])$$, :'grp'));
 rollback;
 
+\echo '# renaming a group, and the weekly minimum'
+\o /dev/null
+begin;
+  select test_as(:ann::uuid);
+  select set_group_week_config(:'grp'::uuid, 2026, 3, 'regular', 'full_slate', null,
+                               array['spread'], null, 3);
+commit;
+\o
+select pg_temp.chk('a weekly minimum is stored',
+                   (select min_picks_per_week from group_week_config
+                    where group_id = :'grp'::uuid and week = 3) = 3);
+select pg_temp.chk('and defaults to none when not given',
+                   (select min_picks_per_week from group_week_config
+                    where group_id = :'grp'::uuid and week = 2) = 0);
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.raises('an absurd weekly minimum',
+    format($$select set_group_week_config(%L, 2026, 3, 'regular', 'full_slate', null,
+                                          array['spread'], null, 500)$$, :'grp'));
+rollback;
+
+\o /dev/null
+begin;
+  select test_as(:ann::uuid);
+  select update_group(:'grp'::uuid, 'Sunday Boys', 'public');
+commit;
+\o
+select pg_temp.chk('renaming moves the slug with the name',
+                   (select name || '/' || slug || '/' || visibility from groups
+                    where id = :'grp'::uuid) = 'Sunday Boys/sunday-boys/public');
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.raises('a member renaming the group',
+    format($$select update_group(%L, 'Hijacked', 'public')$$, :'grp'));
+rollback;
+begin;
+  -- As the admin, so this reaches the name check instead of stopping at the
+  -- admin gate and reporting a pass for the wrong reason.
+  select test_as(:ann::uuid);
+  select pg_temp.raises('an empty group name',
+    format($$select update_group(%L, '   ', 'private')$$, :'grp'));
+  select pg_temp.raises('a bad visibility',
+    format($$select update_group(%L, 'Fine', 'secret')$$, :'grp'));
+rollback;
+\o /dev/null
+begin;
+  select test_as(:ann::uuid);
+  select update_group(:'grp'::uuid, 'Saturday Boys', 'private');
+commit;
+\o
+select pg_temp.chk('renaming back restores the original slug, not saturday-boys-1',
+                   (select slug from groups where id = :'grp'::uuid) = 'saturday-boys');
+
 \echo '# the freeze'
 select pg_temp.chk('an upcoming week is unlocked',
                    not group_week_is_locked(:'grp'::uuid, 2026, 2));

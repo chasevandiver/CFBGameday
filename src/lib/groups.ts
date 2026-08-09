@@ -99,7 +99,19 @@ export interface GroupWeek {
   conference: string | null;
   /** True once the week's first game has kicked off; config is read-only then. */
   locked: boolean;
+  /** League Rules #6, per group. 0 means no minimum. Displayed, not enforced. */
+  minPicks: number;
 }
+
+/**
+ * Whether any enabled market carries a price.
+ *
+ * Straight-up takes no number, so a winners-only week grades no units, no ROI
+ * and no CLV. Those columns are then not empty, they are inapplicable — and a
+ * column of dashes is a question the reader has to answer.
+ */
+export const hasPricedMarket = (markets: PickMarket[]): boolean =>
+  markets.some((m) => m === "spread" || m === "total");
 
 export interface GroupMemberView {
   userId: string;
@@ -140,7 +152,7 @@ export async function fetchGroupWeek(
   const [{ data: cfg }, { data: ids }, { data: locked }] = await Promise.all([
     supabase
       .from("group_week_config")
-      .select("markets, selection_mode, conference")
+      .select("markets, selection_mode, conference, min_picks_per_week")
       .eq("group_id", groupId)
       .eq("season_id", seasonId)
       .eq("week", week)
@@ -151,9 +163,13 @@ export async function fetchGroupWeek(
   ]);
   if (!cfg) return null;
 
-  const row = cfg as Pick<GroupWeekConfigRow, "markets" | "selection_mode" | "conference">;
+  const row = cfg as Pick<
+    GroupWeekConfigRow,
+    "markets" | "selection_mode" | "conference" | "min_picks_per_week"
+  >;
   return {
     markets: row.markets ?? [],
+    minPicks: row.min_picks_per_week ?? 0,
     // The RPC returns a setof integer, which PostgREST hands back as an array
     // of scalars.
     gameIds: ((ids ?? []) as number[]).map(Number),

@@ -142,6 +142,8 @@ export interface GroupWeekConfigRow {
   /** Set iff selection_mode is 'conference'. */
   conference: string | null;
   markets: PickMarket[];
+  /** League Rules #6, per group. 0 = no minimum. */
+  min_picks_per_week: number;
   /** Stamped when the freeze job materialised the list. Not the lock itself —
    *  group_week_is_locked() reads the clock. */
   locked_at: string | null;
