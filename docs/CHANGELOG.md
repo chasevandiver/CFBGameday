@@ -141,6 +141,91 @@ shipping it.
 
 ## Log
 
+### Aug 8 — Liquid Glass cards, and one colour vocabulary instead of two
+
+Three rounds of card mockups all lost to the card that already shipped, so the
+layout stayed and only the surface changed. Cards became translucent over a
+blurred colour *aura* rather than gaining `backdrop-filter`: the slate's ground
+is a flat `--bg`, so blurring through a card spends GPU blurring a solid colour.
+`backdrop-filter` is still used on the header, ticker and bottom nav, which do
+have content scrolling under them.
+
+Most of that pass was surfacing data that already existed and was merely quiet.
+Watchability was implemented, tested and sorting the slate while being thrown
+away on live games; TV and weather were on the card at 10.5px, weather only when
+notable. Rivalry was the one real gap — seeded by `0017_rivalries_seed.sql` and
+read by `/game/[id]`, never joined into the slate — and joining it closed the
+hole `watchability()`'s own comment had promised ("rivalry/stakes terms join when
+that data exists"). Odds cells went to 44px and 13px, which is the readability
+ask and the audit's under-sized-target finding in one change.
+
+**The tint carries one fact: is your money good.** `tintFor()` resolves ledger
+bet → pick'em pick → neither; green covering, red not, amber inside a field goal,
+team colours when you have nothing on it. Pregame always resolves to team colours
+— a position tint requires a live or final score.
+
+That last rule is what makes the obvious objection narrower than it sounds: a
+card can never show both vocabularies, so the risk was never *within* a card. It
+was two cards in one scroll, and it is real, because half the sport wears red.
+Alabama `#9e1b32` vs Georgia `#ba0c2f` washes a pregame card in near-uniform red
+two rows above a live card where your bet is losing.
+
+Rendered side by side, the original three separators were not enough — strength
+(0.22 vs 0.42) only works when both are on screen, and the two-colour team split
+collapses exactly when both teams wear the same hue. So the two vocabularies were
+made structurally different instead of merely different in value:
+
+- **Chroma, not brightness.** Team colours are mixed 55% toward `--surface` and
+  desaturated to 0.6 (the `.card-final` idiom); verdict colours keep full chroma
+  and are now the only saturated glows on the slate. First attempt also dimmed
+  them to 0.18 and that erased team identity outright — a Nevada/San José State
+  card had no visible colour at all — so brightness went back *up* to 0.30. Dull
+  and present separates from signal; dim and saturated does not.
+- **Motion means money.** The drift moved off `[data-live="true"]` and onto
+  `[data-tint="position"]`. A live game you have nothing on no longer moves; it
+  still says "playing" through `card-live`, the live dot and the ticker.
+- Colour is never alone regardless: every position-tinted card states the verdict
+  in words (`CoverStrip`, `LiveStatusChip`, `ResultChip`).
+
+**Line movement lost its colour entirely.** `MoveIndicator` tinted green when the
+market steamed toward the model's side and red away from it, and `Sparkline`
+shared the tone. Green/red on this card means one thing, the movement carries no
+money, and the colour was borrowing a vocabulary it had no claim on — the audit
+called it semantic-free and it was. Arrow, magnitude and shape stay; the
+model-lean read survives as title text, so `MoveRead.vsModel` keeps a consumer.
+
+Live odds on live cards stay out: they are never captured mid-game, so there is
+nothing to render. Data gap, not a UI gap.
+
+**The bubble tier then had four amber signals at once** — a solid amber cover
+strip, an amber card ring, the new amber aura, and the words "ON THE BUBBLE ·
+a FG flips it". The wording went, and the strip stopped shouting.
+
+The word now tracks the *sign* rather than the tier, so it says the thing colour
+cannot: which side of the number you are on. Green **COVERING** with no figure is
+comfortable; amber **COVERING +½** is a knife edge. The tier is unchanged and
+still drives the aura, `.card-bubble` and `liveUrgency`'s sweats-first sort — it
+just stopped being restated in words. `sub` drops to null for spread picks only;
+the totals branch keeps its room label ("3 pts of room", "Over hit"), which is
+information rather than a tag.
+
+`.cover-bubble` also gave up its solid fill for the same coloured-text + soft
+gradient + 3px edge bar the other two tiers use, which deleted the hardcoded
+`#1c1405` that existed only to be legible on that fill.
+
+That fill was doing accessibility work nobody had noticed. Removing it dropped
+the amber text to **3.13:1** in light mode, and measuring the rest found the
+whole family already under the 4.5:1 that 13px text needs — covering 4.01,
+losing 4.12. All three are now mixed toward `--text` in light mode only, landing
+at 5.23 / 5.40 / 4.80 with the hue and the tokens intact. Dark mode was always
+fine (6.53 / 4.64 / 7.30) and is untouched. Bubble was first taken to 6.35, which
+turned the amber olive; 72% accent keeps it gold and still clears the bar.
+
+Measured, not assumed: 60fps at 14 cards and 61fps at 67 (10 of them animating),
+Chromium at 390×844. No model parameter was touched — watchability is tuned by
+feel per spec §7, not fitted by `backtest.ts`, so the gate in `AGENTS.md` does
+not apply.
+
 ### Aug 7 — Off/Def back on the ratings page, behind the honesty gate
 
 The audit reconciliation surfaced this: pulling the Off/Def columns was right

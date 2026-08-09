@@ -5,8 +5,9 @@ import {
   liveTotalStatus,
   statusForBet,
   statusForPick,
+  tintFor,
 } from "./live-status";
-import type { MyBetView } from "./slate";
+import type { GameView, MyBetView } from "./slate";
 
 describe("liveSpreadStatus", () => {
   it("home favorite covering", () => {
@@ -113,5 +114,47 @@ describe("statusForBet", () => {
     expect(statusForBet(bet({ betType: "future", side: null, line: null }), 28, 20)).toBeNull();
     expect(statusForBet(bet({ side: null }), 28, 20)).toBeNull();
     expect(statusForBet(bet({ line: null }), 28, 20)).toBeNull();
+  });
+});
+
+describe("tintFor", () => {
+  const g = (overrides: Partial<GameView> = {}): GameView =>
+    ({
+      status: "in_progress",
+      homePoints: 28,
+      awayPoints: 20,
+      myPick: null,
+      myBets: [],
+      ...overrides,
+    }) as GameView;
+
+  it("is neutral with nothing riding on it, and before kickoff", () => {
+    expect(tintFor(g())).toBe("teams");
+    expect(tintFor(g({ status: "scheduled", homePoints: null, awayPoints: null }))).toBe("teams");
+  });
+
+  it("reads a pick as covering, losing, or on the bubble", () => {
+    // home up 8: -3.5 covers by 4.5; -14.5 is down 6.5, out of reach of one
+    // score; -10.5 is down only 2.5, so a field goal still flips it
+    expect(tintFor(g({ myPick: { side: "home", line: -3.5 } }))).toBe("covering");
+    expect(tintFor(g({ myPick: { side: "home", line: -14.5 } }))).toBe("losing");
+    expect(tintFor(g({ myPick: { side: "home", line: -10.5 } }))).toBe("bubble");
+  });
+
+  it("drops the bubble once the game is final — nothing can flip it", () => {
+    const settled = { status: "final", myPick: { side: "home", line: -6.5 } } as Partial<GameView>;
+    expect(tintFor(g(settled))).toBe("covering");
+  });
+
+  it("a ledger bet outranks a pick'em pick", () => {
+    const bets = [{ id: 1, betType: "spread", side: "away", line: 3.5 }];
+    // the pick is covering, the bet is not — real units decide the colour
+    expect(
+      tintFor(g({ myPick: { side: "home", line: -3.5 }, myBets: bets as GameView["myBets"] })),
+    ).toBe("losing");
+  });
+
+  it("stays neutral on a push rather than inventing a verdict", () => {
+    expect(tintFor(g({ myPick: { side: "home", line: -8 }, status: "final" }))).toBe("teams");
   });
 });

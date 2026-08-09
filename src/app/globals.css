@@ -35,6 +35,16 @@
 
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.5);
   --shadow-card-hover: 0 2px 4px rgba(0, 0, 0, 0.45), 0 16px 40px -16px rgba(0, 0, 0, 0.65);
+
+  /* Height of the mobile bottom nav. Read by BottomNav, by the body reserve
+     below, and by BetSlip so the slip clears the bar. */
+  --bottom-nav-h: 64px;
+
+  /* Liquid glass. Derived from the existing surface rather than new hues:
+     the card is the same colour, just letting the aura through. */
+  --glass-surface: color-mix(in srgb, var(--surface) 74%, transparent);
+  --glass-edge: rgba(244, 236, 220, 0.11);
+  --glass-bar: color-mix(in srgb, var(--bg) 72%, transparent);
 }
 
 html[data-theme="light"] {
@@ -55,6 +65,12 @@ html[data-theme="light"] {
 
   --shadow-card: 0 1px 2px rgba(18, 24, 38, 0.06), 0 8px 24px -12px rgba(18, 24, 38, 0.12);
   --shadow-card-hover: 0 2px 4px rgba(18, 24, 38, 0.08), 0 16px 40px -16px rgba(18, 24, 38, 0.2);
+
+  /* Glass on a light ground needs a more opaque card and a brighter edge, or
+     the aura reads as a stain rather than a glow. */
+  --glass-surface: color-mix(in srgb, var(--surface) 86%, transparent);
+  --glass-edge: rgba(255, 255, 255, 0.85);
+  --glass-bar: color-mix(in srgb, var(--bg) 80%, transparent);
 }
 
 @theme inline {
@@ -97,6 +113,14 @@ body {
   transition: background-color 200ms ease, color 200ms ease;
 }
 
+/* The bottom nav is fixed, so the last card would sit under it. Reserve the
+   space only on pages that actually render the bar (login does not). */
+@media (max-width: 767px) {
+  body:has(nav[data-bottom-nav]) {
+    padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom));
+  }
+}
+
 /* Numbers: tabular, lining — scores, lines and totals always align */
 .stat,
 table.stats td,
@@ -125,10 +149,12 @@ h2,
 /* ---- Surfaces -------------------------------------------------------- */
 
 .card {
-  background: var(--surface);
+  background: var(--glass-surface);
   border: 1px solid var(--line);
   border-radius: 12px;
-  box-shadow: var(--shadow-card);
+  /* the specular top edge is what makes it read as glass rather than as a
+     flat panel that happens to be see-through */
+  box-shadow: inset 0 1px 0 var(--glass-edge), var(--shadow-card);
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 .card-hover:hover {
@@ -160,9 +186,11 @@ h2,
 
 /* ---- Game card: cover strip, team rails, field strip ------------------ */
 
-/* Cover strip — the loudest element on a live card. Italic condensed, the
-   way a broadcast score bug sets its verdict. Amber is reserved for the
-   bubble tier and appears nowhere else at full strength. */
+/* Cover strip — the verdict on a live card. Italic condensed, the way a
+   broadcast score bug sets its verdict. All three tiers share one construction:
+   coloured text, a soft gradient, a 3px inset edge bar. Bubble used to be a
+   solid amber block instead, which made it the loudest thing on the slate and
+   fought the amber aura now sitting right behind it. */
 .cover-strip {
   display: flex;
   align-items: baseline;
@@ -212,10 +240,23 @@ h2,
   box-shadow: inset 3px 0 0 var(--loss);
 }
 .cover-bubble {
-  color: #1c1405;
-  background: var(--accent);
-  padding-top: 9px;
-  padding-bottom: 9px;
+  color: var(--accent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+/* The tier hues are tuned against a dark ground. On white the same colours land
+   at 3.1–4.1:1 over the strip's own tint — under the 4.5:1 that 13px text needs,
+   and bubble worst of all now that it no longer inverts on a solid fill. Mixing
+   toward --text darkens them without inventing a colour or losing the hue. Only
+   the text moves; the gradient and edge bar stay at full chroma. */
+html[data-theme="light"] .cover-covering {
+  color: color-mix(in srgb, var(--win) 80%, var(--text));
+}
+html[data-theme="light"] .cover-losing {
+  color: color-mix(in srgb, var(--loss) 80%, var(--text));
+}
+html[data-theme="light"] .cover-bubble {
+  color: color-mix(in srgb, var(--accent) 72%, var(--text));
 }
 .card-bubble {
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
@@ -227,6 +268,78 @@ h2,
 .card-final {
   opacity: 0.68;
   filter: saturate(0.78);
+}
+
+/* ---- Liquid glass: the aura behind the card --------------------------- */
+
+/* Cards sit on a blurred wash of colour instead of blurring what is behind
+   them. The slate's ground is a flat --bg, so backdrop-filter would spend GPU
+   blurring a solid colour for no visible gain; it is reserved for the bars
+   that genuinely have content scrolling underneath (nav, header, ticker).
+   Colour meaning lives in tintFor() — green covering, red not, amber on the
+   bubble, team colours when you have nothing riding on it.
+
+   Those two vocabularies must not be confusable at a glance, since half the
+   sport wears red. Three cues keep them apart: verdict colours are fully
+   saturated (team colours are mixed toward --surface in GameCard), they wash
+   the card in one hue (team colours split away-left / home-right), and only
+   they move — see the drift rule below. */
+.glass-wrap {
+  position: relative;
+  isolation: isolate;
+}
+.glass-aura {
+  position: absolute;
+  inset: -12px -2px -16px;
+  z-index: -1;
+  border-radius: 28px;
+  filter: blur(30px);
+  opacity: var(--aura-strength, 0.26);
+  pointer-events: none;
+  transition: opacity 500ms ease;
+}
+.glass-aura span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 58%;
+  border-radius: 50%;
+}
+.glass-aura .aura-a {
+  left: 0;
+}
+.glass-aura .aura-b {
+  right: 0;
+}
+
+/* Half the sport wears red, so a team glow gets desaturated on top of the mix
+   toward --surface that GameCard already applies. Same idiom as .card-final.
+   The verdict colours are left at full chroma and are then the only saturated
+   glows on the slate. */
+.glass-wrap[data-tint="teams"] .glass-aura {
+  filter: blur(30px) saturate(0.6);
+}
+
+/* Unobtrusive by construction: a slow drift with no hue or opacity change,
+   so peripheral vision reads a steady colour rather than a flicker.
+
+   Motion means money: only cards you have a bet or a pick on drift, which makes
+   movement a third cue separating a verdict glow from a team glow. Live games
+   you have nothing on stay static and say "playing" through card-live, the live
+   dot and the ticker. Cheaper too — measured at 70 cards, animating every aura
+   cost 8fps (52 vs 60), and this animates far fewer than "every live card". */
+@media (prefers-reduced-motion: no-preference) {
+  .glass-wrap[data-tint="position"] .glass-aura {
+    animation: aura-drift 16s ease-in-out infinite alternate;
+  }
+}
+@keyframes aura-drift {
+  from {
+    transform: translate3d(-1.5%, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(1.5%, 0, 0) scale(1.05);
+  }
 }
 
 /* Team rows: the team's primary color binds its half of the card */

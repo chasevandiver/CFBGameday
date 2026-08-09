@@ -67,6 +67,8 @@ const game = (overrides: Partial<GameView> = {}): GameView => ({
   myBets: [],
   weather: null,
   dome: false,
+  rivalry: null,
+  systems: [],
   ...overrides,
 });
 
@@ -371,6 +373,28 @@ describe("watchability", () => {
     expect(watchability(marquee)!).toBeGreaterThan(watchability(dud)!);
     expect(watchability(marquee)!).toBeGreaterThanOrEqual(80);
     expect(watchability(game({ status: "postponed" }))).toBeNull();
+  });
+
+  it("a rivalry lifts a game without outranking a marquee matchup", () => {
+    const plain = game({
+      status: "scheduled",
+      lines: { ...game().lines, spread: -10, total: 45 },
+    });
+    const rivalry = game({
+      ...plain,
+      rivalry: { name: "Iron Bowl", trophy: null },
+    });
+    const marquee = game({
+      status: "scheduled",
+      home: team(1, 2),
+      away: team(2, 5),
+      lines: { ...game().lines, spread: -2.5, total: 62 },
+    });
+
+    // two unranked teams in a double-digit spread are worth watching *because*
+    // it's a rivalry — but not more than #2 vs #5 in a one-score game
+    expect(watchability(rivalry)!).toBeGreaterThan(watchability(plain)!);
+    expect(watchability(rivalry)!).toBeLessThan(watchability(marquee)!);
   });
 });
 

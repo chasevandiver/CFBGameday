@@ -20,6 +20,11 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   (per-play efficiency, blending in SP+, widening early-season sigma) have
   already been tested and rejected on evidence. Check there before proposing one.
 - `docs/SPEC.md` — what we're building and why.
+- `docs/DESIGN.md` — design rules for this product. Read before any UI work.
+  Says which of the installed design skills owns what, and carries the
+  product-specific constraints those skills can't know (glanceable, no layout
+  shift, thumb zone). Also defines the two modes — exploration vs.
+  implementation — and the token rules that are hard in the second.
 - `docs/AUDIT-2026-08.md` — Aug 2026 product audit, **reconciled 2026-08-07**.
   The 18 bugs and the 46-item checklist each carry a status table verified
   against the code. The raw `[ ]` boxes below those tables are the original
