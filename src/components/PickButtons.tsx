@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { makePick, removePick } from "../app/actions/picks";
 import type { PickMarket } from "../lib/grade";
-import { fmtSpread, fmtTotal } from "../lib/slate";
+import { forgetPick, rememberPick } from "../lib/session-picks";
+import { fmtSpread, fmtTotal, lineForSide } from "../lib/slate";
 
 export interface MyPickView {
   market: PickMarket;
@@ -112,11 +113,18 @@ export function PickButtons({
   const tap = (market: PickMarket, side: "home" | "away" | "over" | "under") =>
     startTransition(async () => {
       setError(null);
-      const res =
-        pickIn(market)?.side === side
-          ? await removePick(groupId, gameId, market)
-          : await makePick(groupId, gameId, market, side);
-      if (!res.ok && res.message) setError(res.message);
+      const removing = pickIn(market)?.side === side;
+      const res = removing
+        ? await removePick(groupId, gameId, market)
+        : await makePick(groupId, gameId, market, side);
+      if (!res.ok) {
+        if (res.message) setError(res.message);
+        return;
+      }
+      // Feeds the share sheet's "just placed", which is the one thing the
+      // server cannot answer from a timestamp.
+      if (removing) forgetPick(gameId, market);
+      else rememberPick(gameId, market);
     });
 
   const awaySpread = currentSpread === null ? null : -currentSpread;
@@ -196,7 +204,7 @@ export function PickButtons({
 function pickLabel(p: MyPickView, homeLabel: string, awayLabel: string): string {
   const team = p.side === "home" ? homeLabel : awayLabel;
   if (p.market === "straight_up") return `${team} to win`;
-  if (p.market === "spread") return `${team} ${fmtSpread(p.line_at_pick)}`;
+  if (p.market === "spread") return `${team} ${fmtSpread(lineForSide(p.side, p.line_at_pick))}`;
   return `${p.side === "over" ? "Over" : "Under"} ${fmtTotal(p.line_at_pick)}`;
 }
 

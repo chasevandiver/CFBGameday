@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { AppNav } from "../../../components/AppNav";
 import { GroupSwitcher, JoinCode } from "../../../components/group/GroupForms";
 import { PickButtons } from "../../../components/PickButtons";
+import { ShareButton } from "../../../components/ShareButton";
 import type { PickRow } from "../../../lib/db-types";
 import {
   fetchGroupMembers,
@@ -10,8 +11,10 @@ import {
   resolveActiveGroup,
 } from "../../../lib/groups";
 import { DEFAULT_TZ, kickParts } from "../../../lib/kick";
+import { pickKey } from "../../../lib/session-picks";
+import type { SharePick } from "../../../lib/share-text";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../lib/queries";
-import { byLeagueRules, EMPTY_TALLY, formatRecord, tallyBy } from "../../../lib/records";
+import { byLeagueRules, EMPTY_TALLY, formatRecord, tally, tallyBy } from "../../../lib/records";
 import { createClient } from "../../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +56,7 @@ export default async function GroupBoardPage({
   const parsed = Number(weekParam);
   const week = Number.isInteger(parsed) && parsed >= 1 && parsed <= 20 ? parsed : currentWeek;
 
-  const [groupWeek, members, slate, joinRes, seasonPicksRes] = await Promise.all([
+  const [groupWeek, members, slate, joinRes, seasonPicksRes, lifetimeRes] = await Promise.all([
     fetchGroupWeek(supabase, active.id, seasonId, week, seasonType),
     fetchGroupMembers(supabase, active.id),
     fetchSlateView(supabase, seasonId, week, user?.id ?? null, seasonType, active.id),
@@ -65,6 +68,15 @@ export default async function GroupBoardPage({
       .select("user_id, result, units, clv")
       .eq("group_id", active.id)
       .eq("season_id", seasonId),
+    // Lifetime spans seasons — a group has no season_id precisely so this
+    // question stays answerable across them.
+    user
+      ? supabase
+          .from("picks")
+          .select("result, units, clv")
+          .eq("group_id", active.id)
+          .eq("user_id", user.id)
+      : Promise.resolve({ data: [] }),
   ]);
 
   const inPlay = new Set(groupWeek?.gameIds ?? []);
@@ -83,6 +95,37 @@ export default async function GroupBoardPage({
     if (p.user_id !== user?.id) continue;
     minePerGame.set(p.game_id, [...(minePerGame.get(p.game_id) ?? []), p]);
   }
+
+  // Share context. "Today" is the viewer's own picks on games kicking off
+  // today in their timezone — the day they would be texting about.
+  const gameById = new Map(slate.games.map((g) => [g.id, g]));
+  const todayLabel = new Intl.DateTimeFormat("en-US", {
+    timeZone: DEFAULT_TZ,
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(new Date());
+  const isToday = (iso: string | null) =>
+    iso !== null &&
+    new Intl.DateTimeFormat("en-CA", { timeZone: DEFAULT_TZ }).format(new Date(iso)) ===
+      new Intl.DateTimeFormat("en-CA", { timeZone: DEFAULT_TZ }).format(new Date());
+  const myWeekPicks = weekPicks.filter((p) => p.user_id === user?.id);
+  const todayPicks: SharePick[] = myWeekPicks
+    .filter((p) => isToday(gameById.get(p.game_id)?.startTs ?? null))
+    .map((p) => {
+      const g = gameById.get(p.game_id)!;
+      return {
+        key: pickKey(p.game_id, p.market),
+        market: p.market,
+        side: p.side,
+        line: p.line_at_pick === null ? null : Number(p.line_at_pick),
+        homeAbbr: g.home.abbr,
+        awayAbbr: g.away.abbr,
+      };
+    });
+  const myTodayRows = myWeekPicks.filter((p) =>
+    isToday(gameById.get(p.game_id)?.startTs ?? null),
+  );
 
   const tallies = tallyBy(
     (seasonPicksRes.data ?? []) as Array<Pick<PickRow, "user_id" | "result" | "units" | "clv">>,
@@ -124,6 +167,24 @@ export default async function GroupBoardPage({
             </Link>
           )}
           {joinCode && <JoinCode code={joinCode} />}
+          {user && (
+            <ShareButton
+              context={{
+                groupName: active.name,
+                userName: members.find((m) => m.userId === user.id)?.name ?? "Me",
+                week,
+                day: todayLabel,
+                today: todayPicks,
+                dayRecord: tally(myTodayRows),
+                weekRecord: tally(myWeekPicks),
+                lifetimeRecord: tally(
+                  (lifetimeRes.data ?? []) as Array<
+                    Pick<PickRow, "result" | "units" | "clv">
+                  >,
+                ),
+              }}
+            />
+          )}
         </nav>
 
         {/* ---- standings ---- */}

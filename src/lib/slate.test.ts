@@ -16,6 +16,7 @@ import {
   modelSideOf,
   upsetAlert,
   headlinePick,
+  lineForSide,
   watchability,
   weekModelRecord,
   type GameView,
@@ -436,5 +437,31 @@ describe("headlinePick", () => {
 
   it("is null with nothing picked", () => {
     expect(headlinePick([])).toBeNull();
+  });
+});
+
+describe("lineForSide", () => {
+  // Spreads are stored home-perspective — make_pick snapshots the raw
+  // consensus, and spreadClv and the grader both read it that way. Every
+  // display path printed the stored number raw, so an away pick showed the
+  // sign inverted: a bettor holding +6.5 saw "-6.5" beside their own name.
+  it("leaves a home backer's number alone", () => {
+    expect(lineForSide("home", -6.5)).toBe(-6.5);
+    expect(lineForSide("home", 3)).toBe(3);
+  });
+
+  it("mirrors it for an away backer", () => {
+    // Home -6.5 means the away side is +6.5, which is what they hold.
+    expect(lineForSide("away", -6.5)).toBe(6.5);
+    expect(lineForSide("away", 3)).toBe(-3);
+  });
+
+  it("never produces -0, which renders as a minus sign on a pick'em", () => {
+    expect(Object.is(lineForSide("away", 0), -0)).toBe(false);
+    expect(lineForSide("away", 0)).toBe(0);
+  });
+
+  it("passes a null straight through", () => {
+    expect(lineForSide("away", null)).toBeNull();
   });
 });

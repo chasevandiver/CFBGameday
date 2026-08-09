@@ -1,6 +1,7 @@
 import { AppNav } from "../../components/AppNav";
 import { BetForm, type BetFormGame } from "../../components/BetForm";
 import { LiveStatusChip } from "../../components/slate/chips";
+import { ShareButton } from "../../components/ShareButton";
 import { VoidBetButton } from "../../components/VoidBetButton";
 import { REASON_TAGS, REASON_TAG_LABELS, type BetRow, type TeamRow } from "../../lib/db-types";
 import { kickParts, DEFAULT_TZ } from "../../lib/kick";
@@ -30,7 +31,7 @@ export default async function LedgerPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const { seasonId } = await fetchCurrentSeasonWeek(supabase);
+  const { seasonId, week } = await fetchCurrentSeasonWeek(supabase);
 
   const [{ data }, { data: weekGames }] = await Promise.all([
     supabase
@@ -136,11 +137,53 @@ export default async function LedgerPage() {
       return acc;
     }, []);
 
+  // Share, sourced from bets rather than picks: same formatter, same four
+  // modes, different ledger. Today's bets are the ones placed today — a bet
+  // has a placed_at of its own, unlike a pick, which is tied to a kickoff.
+  const dayKey = (iso: string) =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: DEFAULT_TZ }).format(new Date(iso));
+  const todayKey = dayKey(new Date().toISOString());
+  const todayBets = bets.filter((b) => dayKey(b.placed_at) === todayKey);
+  const gradedToday = todayBets
+    .filter((b) => b.result && b.result !== "void")
+    .map((b) => ({ ...b, payoutUnits: b.payout_units }));
+
   return (
     <>
       <AppNav />
       <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
-        <h1 className="mb-6 text-2xl">Ledger</h1>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl">Ledger</h1>
+          {user && (
+            <ShareButton
+              context={{
+                groupName: "Ledger",
+                userName: "My bets",
+                week,
+                day: new Intl.DateTimeFormat("en-US", {
+                  timeZone: DEFAULT_TZ,
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                }).format(new Date()),
+                today: todayBets.map((b) => ({
+                  key: String(b.id),
+                  market: "spread" as const,
+                  side: b.side ?? "home",
+                  line: null,
+                  homeAbbr: "",
+                  awayAbbr: "",
+                  // A bet's description is what the bettor typed; there is no
+                  // honest way to rebuild a team and a number from it.
+                  text: `${b.description}${b.units === 1 ? "" : ` (${b.units}u)`}`,
+                })),
+                dayRecord: tally(gradedToday),
+                weekRecord: overall,
+                lifetimeRecord: overall,
+              }}
+            />
+          )}
+        </div>
 
         {/* Season dashboard */}
         <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">

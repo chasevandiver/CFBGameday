@@ -68,6 +68,22 @@ export interface MyPickView {
 }
 
 /**
+ * The number a picker actually holds, from a stored `line_at_pick`.
+ *
+ * Spreads are home-perspective everywhere in this codebase — `make_pick`
+ * snapshots the raw consensus and `spreadClv` and the grader both read it that
+ * way — so an away backer on a home −6.5 has a row saying −6.5 while what they
+ * hold is +6.5. Every display path printed the stored number raw and so showed
+ * away picks with the sign inverted. Totals are side-agnostic: over 51.5 and
+ * under 51.5 are both 51.5.
+ */
+export function lineForSide(side: string, line: number | null): number | null {
+  if (line === null) return null;
+  // -0 survives into a rendered "−0", which is why negation goes through zero.
+  return side === "away" ? (line === 0 ? 0 : -line) : line;
+}
+
+/**
  * The pick a card leads with when it can only show one.
  *
  * A game can carry three of them now, but a card has one cover strip and one

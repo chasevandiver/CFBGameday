@@ -135,7 +135,7 @@ const LIVE: GameView = {
   away: OHIO_STATE,
   rivalry: { name: "The Game", trophy: null },
   myPicks: [
-    { market: "spread", side: "away", line: 3.5 },
+    { market: "spread", side: "away", line: -3.5 },
     { market: "total", side: "over", line: 44.5 },
   ],
   myBets: [{ id: 1, betType: "total", side: "over", line: 44.5 }],

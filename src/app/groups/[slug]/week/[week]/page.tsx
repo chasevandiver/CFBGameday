@@ -5,7 +5,7 @@ import type { PickRow } from "../../../../../lib/db-types";
 import { fetchGroupMembers, fetchGroupWeek, resolveActiveGroup } from "../../../../../lib/groups";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../../../lib/queries";
 import { EMPTY_TALLY, formatRecord, tallyBy } from "../../../../../lib/records";
-import { fmtSpread, fmtTotal, type GameView } from "../../../../../lib/slate";
+import { fmtSpread, fmtTotal, lineForSide, type GameView } from "../../../../../lib/slate";
 import { createClient } from "../../../../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -244,7 +244,7 @@ function pickText(p: PickRow, g: GameView | undefined): string {
 function sideText(p: PickRow, g: GameView): string {
   const team = p.side === "home" ? g.home.abbr : g.away.abbr;
   if (p.market === "straight_up") return `${team} to win`;
-  if (p.market === "spread") return `${team} ${fmtSpread(p.line_at_pick)}`;
+  if (p.market === "spread") return `${team} ${fmtSpread(lineForSide(p.side, p.line_at_pick))}`;
   return `${p.side === "over" ? "O" : "U"} ${fmtTotal(p.line_at_pick)}`;
 }
 

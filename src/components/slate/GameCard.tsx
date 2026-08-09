@@ -26,6 +26,7 @@ import {
   isLive,
   headlinePick,
   isRedZone,
+  lineForSide,
   liveHomeWinProb,
   modelPicks,
   ouResult,
@@ -869,7 +870,7 @@ function pickPrefix(g: GameView, p: MyPickView | null = headlinePick(g.myPicks))
   if (!p) return "";
   const team = p.side === "home" ? g.home : g.away;
   if (p.market === "straight_up") return `${team.abbr} ML`;
-  if (p.market === "spread") return `${team.abbr} ${fmtSpread(p.line)}`;
+  if (p.market === "spread") return `${team.abbr} ${fmtSpread(lineForSide(p.side, p.line))}`;
   return `${p.side === "over" ? "O" : "U"} ${fmtTotal(p.line)}`;
 }
 
