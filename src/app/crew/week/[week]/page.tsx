@@ -4,6 +4,7 @@ import { AppNav } from "../../../../components/AppNav";
 import type { GameRow, PickRow, TeamRow } from "../../../../lib/db-types";
 import { DEFAULT_TZ, kickParts } from "../../../../lib/kick";
 import { fetchCurrentSeasonWeek, fetchProfiles } from "../../../../lib/queries";
+import { EMPTY_TALLY, formatRecord, tallyBy } from "../../../../lib/records";
 import { fmtSpread, fmtTotal } from "../../../../lib/slate";
 import { createClient } from "../../../../lib/supabase/server";
 
@@ -64,18 +65,12 @@ export default async function CrewWeekPage({ params }: { params: Promise<{ week:
     picks.some((x) => x.user_id === p.id),
   );
 
-  const record = (userId: string) => {
-    const mine = picks.filter((p) => p.user_id === userId);
-    const w = mine.filter((p) => p.result === "win").length;
-    const l = mine.filter((p) => p.result === "loss").length;
-    const push = mine.filter((p) => p.result === "push").length;
-    return { w, l, push, graded: w + l + push > 0 };
-  };
-  const records = new Map(activeProfiles.map((p) => [p.id, record(p.id)]));
-  const bestWins = Math.max(0, ...[...records.values()].filter((r) => r.graded).map((r) => r.w));
+  const byUser = tallyBy(picks, (p) => p.user_id);
+  const records = new Map(activeProfiles.map((p) => [p.id, byUser.get(p.id) ?? EMPTY_TALLY]));
+  const bestWins = Math.max(0, ...[...records.values()].filter((r) => r.decided > 0).map((r) => r.wins));
   const winners = activeProfiles.filter((p) => {
     const r = records.get(p.id)!;
-    return r.graded && r.w === bestWins && bestWins > 0;
+    return r.decided > 0 && r.wins === bestWins && bestWins > 0;
   });
 
   const pickCell = (p: PickRow | undefined, g: GameRow) => {
@@ -124,10 +119,7 @@ export default async function CrewWeekPage({ params }: { params: Promise<{ week:
             <span className="font-medium text-chalk">
               {winners.map((w) => w.display_name).join(" & ")}
             </span>{" "}
-            <span className="stat text-dim">
-              ({bestWins}-{records.get(winners[0].id)!.l}
-              {records.get(winners[0].id)!.push ? `-${records.get(winners[0].id)!.push}` : ""})
-            </span>
+            <span className="stat text-dim">({formatRecord(records.get(winners[0].id)!)})</span>
           </p>
         )}
 
@@ -180,7 +172,7 @@ export default async function CrewWeekPage({ params }: { params: Promise<{ week:
                     const r = records.get(p.id)!;
                     return (
                       <td key={p.id} className="px-2 py-2 text-center font-semibold text-chalk">
-                        {r.graded ? `${r.w}-${r.l}${r.push ? `-${r.push}` : ""}` : "–"}
+                        {r.decided > 0 ? formatRecord(r) : "–"}
                       </td>
                     );
                   })}

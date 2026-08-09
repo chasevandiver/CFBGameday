@@ -4,6 +4,7 @@ import { AppNav } from "../../components/AppNav";
 import { InviteForm } from "../../components/InviteForm";
 import type { PickRow, ProfileRow } from "../../lib/db-types";
 import { fetchCfbdCallsThisMonth, fetchCurrentSeasonWeek, fetchProfiles } from "../../lib/queries";
+import { byLeagueRules, EMPTY_TALLY, formatRecord, tallyBy, type Tally } from "../../lib/records";
 import { createClient } from "../../lib/supabase/server";
 import { createServiceClient } from "../../lib/supabase/service";
 
@@ -11,15 +12,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata = { title: "Crew" };
 
-interface Row {
-  name: string;
-  wins: number;
-  losses: number;
-  pushes: number;
-  units: number;
-  roi: number | null;
-  avgClv: number | null;
-}
+type Row = Tally & { name: string };
 
 export default async function CrewPage() {
   const supabase = await createClient();
@@ -125,38 +118,14 @@ export default async function CrewPage() {
     .filter((x): x is NonNullable<typeof x> => x !== null)
     .sort((a, b) => a.week - b.week);
 
-  const rows: Row[] = profiles.map((p: ProfileRow) => {
-    const mine = picks.filter((x) => x.user_id === p.id && x.result !== "void");
-    const wins = mine.filter((x) => x.result === "win").length;
-    const losses = mine.filter((x) => x.result === "loss").length;
-    const pushes = mine.filter((x) => x.result === "push").length;
-    // -110 convention: win pays 0.909u per unit staked
-    const units = mine.reduce((a, x) => {
-      if (x.result === "win") return a + x.units * 0.909;
-      if (x.result === "loss") return a - x.units;
-      return a;
-    }, 0);
-    const staked = mine.filter((x) => x.result !== "push").reduce((a, x) => a + x.units, 0);
-    const withClv = mine.filter((x) => x.clv !== null);
-    return {
-      name: p.display_name,
-      wins,
-      losses,
-      pushes,
-      units,
-      roi: staked > 0 ? units / staked : null,
-      avgClv:
-        withClv.length > 0
-          ? withClv.reduce((a, x) => a + (x.clv as number), 0) / withClv.length
-          : null,
-    };
-  });
-
-  // Leaderboard tiebreaker per League Rules: units → ROI → CLV
-  rows.sort(
-    (a, b) =>
-      b.units - a.units || (b.roi ?? -Infinity) - (a.roi ?? -Infinity) || (b.avgClv ?? -Infinity) - (a.avgClv ?? -Infinity),
-  );
+  // Picks carry no payout column, so `records` grades them at the flat -110 of
+  // League Rules #6. Leaderboard tiebreaker per League Rules #5: units → ROI → CLV.
+  const tallies = tallyBy(picks, (p) => p.user_id);
+  const rows: Row[] = profiles.map((p: ProfileRow) => ({
+    name: p.display_name,
+    ...(tallies.get(p.id) ?? EMPTY_TALLY),
+  }));
+  rows.sort(byLeagueRules);
 
   return (
     <>
@@ -221,10 +190,7 @@ export default async function CrewPage() {
                 <tr key={r.name} className="border-b border-chalk/5 last:border-0">
                   <td className="px-3 py-2 text-chalk/50">{i + 1}</td>
                   <td className="px-3 py-2 font-sans">{r.name}</td>
-                  <td className="px-3 py-2 text-right">
-                    {r.wins}-{r.losses}
-                    {r.pushes > 0 ? `-${r.pushes}` : ""}
-                  </td>
+                  <td className="px-3 py-2 text-right">{formatRecord(r)}</td>
                   <td
                     className={`px-3 py-2 text-right ${r.units > 0 ? "text-win" : r.units < 0 ? "text-loss" : ""}`}
                   >

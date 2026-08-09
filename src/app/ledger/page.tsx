@@ -6,6 +6,7 @@ import { REASON_TAGS, REASON_TAG_LABELS, type BetRow, type TeamRow } from "../..
 import { kickParts, DEFAULT_TZ } from "../../lib/kick";
 import { statusForBet, type LiveBetStatus } from "../../lib/live-status";
 import { fetchBetFormGames, fetchCurrentSeasonWeek } from "../../lib/queries";
+import { formatRecord, tally, tallyBy } from "../../lib/records";
 import { fmtSpread, fmtTotal } from "../../lib/slate";
 import { createClient } from "../../lib/supabase/server";
 
@@ -108,38 +109,24 @@ export default async function LedgerPage() {
     );
   };
 
-  const graded = bets.filter((b) => b.result && b.result !== "void");
-  const wins = graded.filter((b) => b.result === "win").length;
-  const losses = graded.filter((b) => b.result === "loss").length;
-  const pushes = graded.filter((b) => b.result === "push").length;
-  const units = graded.reduce((a, b) => a + (b.payout_units ?? 0), 0);
-  const staked = graded
-    .filter((b) => b.result !== "push")
-    .reduce((a, b) => a + b.units, 0);
-  const withClv = graded.filter((b) => b.clv !== null);
-  const avgClv =
-    withClv.length > 0 ? withClv.reduce((a, b) => a + (b.clv as number), 0) / withClv.length : null;
+  // Bets grade at their real American odds, so `payout_units` is passed through
+  // rather than synthesized — the one place the shared tally does not apply the
+  // flat -110 of pick'em. A null payout on a graded bet means the grader has not
+  // reached it, and `records` derives one; that only bites for the manual
+  // bet_types the grader never touches (moneyline, futures), which is a known
+  // gap in jobs-core, not something to paper over here.
+  const graded = bets
+    .filter((b) => b.result && b.result !== "void")
+    .map((b) => ({ ...b, payoutUnits: b.payout_units }));
+  const overall = tally(graded);
+  const { units, avgClv } = overall;
 
   // Reason-tag audit (spec §5.3): W-L, units, ROI, CLV by tag — most bettors
   // have one profitable angle and four leaks. The ledger's marquee feature.
-  const tagRows = REASON_TAGS.map((tag) => {
-    const mine = graded.filter((b) => b.reason_tag === tag);
-    if (mine.length === 0) return null;
-    const w = mine.filter((b) => b.result === "win").length;
-    const l = mine.filter((b) => b.result === "loss").length;
-    const u = mine.reduce((a, b) => a + (b.payout_units ?? 0), 0);
-    const st = mine.filter((b) => b.result !== "push").reduce((a, b) => a + b.units, 0);
-    const clvs = mine.filter((b) => b.clv !== null).map((b) => Number(b.clv));
-    return {
-      tag,
-      w,
-      l,
-      units: u,
-      roi: st > 0 ? u / st : null,
-      avgClv: clvs.length ? clvs.reduce((a, b) => a + b, 0) / clvs.length : null,
-    };
-  }).filter((r): r is NonNullable<typeof r> => r !== null);
-  tagRows.sort((a, b) => b.units - a.units);
+  const byTag = tallyBy(graded, (b) => b.reason_tag);
+  const tagRows = REASON_TAGS.filter((tag) => byTag.has(tag))
+    .map((tag) => ({ tag, ...byTag.get(tag)! }))
+    .sort((a, b) => b.units - a.units);
 
   // cumulative units, oldest → newest, for the season curve
   const curve = [...graded]
@@ -159,11 +146,7 @@ export default async function LedgerPage() {
         <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Stat
             label="Record"
-            value={
-              graded.length
-                ? `${wins}-${losses}${pushes > 0 ? `-${pushes}` : ""}`
-                : "–"
-            }
+            value={graded.length ? formatRecord(overall) : "–"}
           />
           <Stat
             label="Units"
@@ -172,7 +155,7 @@ export default async function LedgerPage() {
           />
           <Stat
             label="ROI"
-            value={staked > 0 ? `${((units / staked) * 100).toFixed(1)}%` : "–"}
+            value={overall.roi === null ? "–" : `${(overall.roi * 100).toFixed(1)}%`}
           />
           <Stat
             label="Avg CLV"
@@ -214,9 +197,7 @@ export default async function LedgerPage() {
                     <td className="py-2 pl-4 pr-3 font-sans text-chalk">
                       {REASON_TAG_LABELS[r.tag]}
                     </td>
-                    <td className="px-3 py-2 text-right text-chalk/80">
-                      {r.w}-{r.l}
-                    </td>
+                    <td className="px-3 py-2 text-right text-chalk/80">{formatRecord(r)}</td>
                     <td
                       className={`px-3 py-2 text-right ${r.units > 0 ? "text-win" : r.units < 0 ? "text-loss" : ""}`}
                     >

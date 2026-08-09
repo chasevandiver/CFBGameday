@@ -11,6 +11,7 @@ import type {
 } from "./db-types";
 import { hasCalibratedTotals } from "../model/ratings";
 import { pickPollRanks, pollShortName } from "./rankings";
+import { tallyBy } from "./records";
 import { fetchCurrentSlate, type SeasonType } from "./season";
 import { atsRecord, ouRecord } from "./slate";
 import type {
@@ -181,7 +182,7 @@ export async function fetchSlateView(
       // each card, and the graded rows (result set) drive each mate's record
       supabase
         .from("picks")
-        .select("user_id, game_id, side, result")
+        .select("user_id, game_id, side, result, units, clv")
         .eq("season_id", seasonId),
       supabase.from("profiles").select("id, display_name"),
       // SP+/FPI/Elo for the slate's teams (spec §2.4 promises them on every
@@ -227,20 +228,13 @@ export async function fetchSlateView(
       p.display_name,
     ]),
   );
-  const allPicks = (crewPicksRes.data ?? []) as Array<{
-    user_id: string;
-    game_id: number;
-    side: string;
-    result: string | null;
-  }>;
-  const recordByUser = new Map<string, { w: number; l: number }>();
-  for (const p of allPicks) {
-    if (p.result !== "win" && p.result !== "loss") continue;
-    const rec = recordByUser.get(p.user_id) ?? { w: 0, l: 0 };
-    if (p.result === "win") rec.w += 1;
-    else rec.l += 1;
-    recordByUser.set(p.user_id, rec);
-  }
+  const allPicks = (crewPicksRes.data ?? []) as Array<
+    Pick<PickRow, "user_id" | "game_id" | "side" | "result" | "units" | "clv">
+  >;
+  // The crew line shows "Dave 12-7" beside a pick, so only W-L is rendered —
+  // but it is the same tally as the leaderboard's and shares its implementation
+  // so the two can never disagree about, say, whether a void counts.
+  const recordByUser = tallyBy(allPicks, (p) => p.user_id);
   const gameIdSet = new Set(gameIds);
   const crewByGame = new Map<number, CrewPickView[]>();
   for (const p of allPicks) {
@@ -250,7 +244,9 @@ export async function fetchSlateView(
     arr.push({
       name: nameByUser.get(p.user_id) ?? "Crew",
       side: p.side,
-      record: rec ? `${rec.w}-${rec.l}` : null,
+      // Null, not "0-0", until something has graded — an empty record beside a
+      // name reads as a standing, and in week 1 nobody has one yet.
+      record: rec && rec.decided > 0 ? `${rec.wins}-${rec.losses}` : null,
     });
     crewByGame.set(p.game_id, arr);
   }

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { AppNav } from "../../../components/AppNav";
 import type { GameRow, PickRow, PredictionRow, TeamRow } from "../../../lib/db-types";
 import { fetchCurrentSeasonWeek, fetchProfiles } from "../../../lib/queries";
+import { formatRecord, tallyBy } from "../../../lib/records";
 import { fmtPct, fmtSpread } from "../../../lib/slate";
 import { createClient } from "../../../lib/supabase/server";
 
@@ -148,23 +149,12 @@ export default async function RecapPage({ params }: { params: Promise<{ week: st
   // ---- crew: CLV leaders + records for the week ----
   const picks = (picksRes.data ?? []) as PickRow[];
   const nameById = new Map(profiles.map((p) => [p.id, p.display_name]));
-  const byUser = new Map<string, { w: number; l: number; p: number; clv: number[] }>();
-  for (const p of picks) {
-    if (p.result === "void" || p.result === null) continue;
-    const u = byUser.get(p.user_id) ?? { w: 0, l: 0, p: 0, clv: [] };
-    if (p.result === "win") u.w++;
-    else if (p.result === "loss") u.l++;
-    else u.p++;
-    if (p.clv !== null) u.clv.push(Number(p.clv));
-    byUser.set(p.user_id, u);
-  }
-  const crew = [...byUser.entries()]
-    .map(([uid, u]) => ({
-      name: nameById.get(uid) ?? "?",
-      ...u,
-      avgClv: u.clv.length ? u.clv.reduce((a, b) => a + b, 0) / u.clv.length : null,
-    }))
-    .sort((a, b) => b.w - a.w || (b.avgClv ?? -Infinity) - (a.avgClv ?? -Infinity));
+  const crew = [...tallyBy(picks, (p) => p.user_id).entries()]
+    .filter(([, t]) => t.decided > 0)
+    .map(([uid, t]) => ({ name: nameById.get(uid) ?? "?", ...t }))
+    // The recap ranks the week by wins, not by the season leaderboard's units —
+    // "who went 6-1" is the story of a Saturday. CLV breaks the tie.
+    .sort((a, b) => b.wins - a.wins || (b.avgClv ?? -Infinity) - (a.avgClv ?? -Infinity));
 
   const noData = games.length === 0;
 
@@ -272,8 +262,7 @@ export default async function RecapPage({ params }: { params: Promise<{ week: st
                     <li key={c.name} className="stat flex items-center justify-between text-sm">
                       <span className="font-sans text-chalk">{c.name}</span>
                       <span className="text-dim">
-                        {c.w}-{c.l}
-                        {c.p ? `-${c.p}` : ""}
+                        {formatRecord(c)}
                         {c.avgClv !== null && (
                           <span className={c.avgClv > 0 ? "text-win" : c.avgClv < 0 ? "text-loss" : ""}>
                             {" "}
