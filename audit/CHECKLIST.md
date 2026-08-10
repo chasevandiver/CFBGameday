@@ -55,7 +55,7 @@ explain themselves.
 - [ ] **G10-v1** Copy-digest ShareButton mode: Thursday (frozen slate/edges/"N haven't picked") + Sunday (results/movers/CLV) — `src/lib/share-text.ts` pattern · S–M — **deferred**: S–M, best paired with the group board's real first Saturday
 - [ ] **UX-14** Groups first-run pointer on the slate ("picks: {group}" chip / link to /groups when none) · S — **deferred**: pairs with G10; needs a live active-group cookie flow to test
 - [x] **UX-23** Human empty-state copy on the slate (drop "data ingestion" engineer-speak) — `SlateView.tsx:499-502` · S
-- [ ] **UX-29** Team page says "verdict pending" instead of silently omitting the promised block — `team/[id]/page.tsx` · S
+- [x] **UX-29** Team page says "verdict pending" instead of silently omitting the promised block — `team/[id]/page.tsx` · S
 - [x] **UX-17** One week range everywhere (settings strip reaches 16+post; align three validators) — `SlateView.tsx:621`, `groups/[slug]/page.tsx:58`, `settings/page.tsx:120` · S
 - [x] **UX-19** Login page gets nav / back-to-slate link — `LoginForm.tsx` · S
 - [x] **UX-18** Ratings rows link to team pages; `/teams` gets a name filter — `RatingsTable.tsx`, `TeamsGrid.tsx` · S

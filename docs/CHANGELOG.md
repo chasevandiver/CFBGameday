@@ -141,6 +141,70 @@ shipping it.
 
 ## Log
 
+### Aug 10 — The verdict block stops disappearing, and three docs stop lying
+
+**`UX-29`.** The team page rendered its Verdict section as `{verdict && (…)}`,
+so with no row it vanished without a trace — while `generateMetadata` told every
+crawler and every share card that the page carries "the verdict on The CFB
+Slate". That reads like an edge case and isn't: `team_verdicts` is empty for
+*every* team, because arming the writer (`F2` — add `ANTHROPIC_API_KEY`,
+dispatch once) is still an open calendar item. So all ~130 team pages were
+promising a block none of them rendered. The section now always renders and says
+"Not written yet" when there's nothing, in the plain register `UX-23` set for the
+slate's empty states. A row whose four fields are all blank counts as pending
+too, so the fix can't produce a heading over an empty list.
+
+**Three documents had drifted, all of them over-reporting open work** — which is
+the direction that keeps drift alive, because nothing about reading them feels
+wrong. Each claim below was re-checked against the code before its line was
+edited, not taken from the previous doc:
+
+- `docs/CHANGELOG.md` still listed the six hardcoded `#5b6472` fallbacks (closed
+  by `UX-15`; it now survives only as the `--push` token definition in
+  `globals.css`), still counted OG share images among the open audit items
+  (shipped as `UX-12/F8`), and still said the code was at `2026.4.0` when this
+  same file's Current-state header says `2026.4.1`. Self-contradictory, twenty
+  lines apart.
+- `docs/AUDIT-2026-08.md` §23 carried its 08-07 reconciliation into 08-10
+  unchanged: row 36 still flagged the `build-preseason.ts` `SEASON` hardcode
+  (closed by `04:DQ-14`) and row 46 still said "no `opengraph-image` route
+  anywhere". **38 done, 5 partial, 3 open** now, and the three re-checked rows
+  are dated; the rest of the table keeps its 08-07 stamp because it was not
+  re-verified line by line.
+- The scorecard at the top of that file still named shipped features as things
+  blocking 100. It is a snapshot and stays unedited per the file's own receipts
+  rule, but it now says so, and points at §23 and `audit/CHECKLIST.md` for live
+  status.
+
+What survived the check is as important as what didn't: §23's row 42 (no route
+smoke tests) and row 31 (BetForm game search is still a plain `<select>`) are
+both still true, and were left exactly as written.
+
+`audit/CHECKLIST.md` needed no correction — every box I spot-checked matched the
+code. It remains the file to trust.
+
+### Aug 10 — Bets on the card in every state, TV populated, watch rating shrunk
+
+*Reconstructed from `de8e7f2` (PR #24) on 08-10 — this entry was missed when the
+PR merged, and the house rule at the top of this file says every shipped change
+gets one. Written from the commit message and the diff, not from having done it
+first-hand a second time.*
+
+Four things, all from using the site. The watch rating went from a three-line
+stack down the right edge of every pregame card to one chip in the existing row
+— the band is the read, the number rides along for sorting. TV was rendered but
+never populated: 0 of 888 games had one, because `scoreboardPatch` returns early
+for scheduled games, so `tv` only ever arrived once a game was already playing;
+`sync-games` now pulls CFBD `/games/media` daily, and the upsert groups rows by
+column signature instead of the old two-pass split, because row shapes vary by
+design. And a bet placed from the slate was invisible until the game went live
+and vanished again when Sunday's grader touched it — the card now says both pool
+and ledger in every state, with a ring and corner pip on the odds cell you have
+money on (shape, not just tint, since a pool pick can sit on the same cell).
+
+The follow-on bugs this left — the slate not refreshing, and "My picks" hiding
+bet-only games — are the entry above.
+
 ### Aug 10 — A logged bet shows up when you log it, and counts as yours
 
 Two bugs from real use, both fallout from putting bets on the cards the day
@@ -885,8 +949,9 @@ and signed-error reporting; nine backtest tuners.
   Sunday after Week 1 — the grader has nothing to grade until games are final.
   The path is unexercised against real rows until then.
 - **Production is three model versions behind.** `ratings` in the database are
-  `2026.2.0`; the code is `2026.4.0`. Everything since — the tilt carry, the
-  churn restructure, `baseHfa` 3.0 — is dark until a rebuild lands.
+  `2026.2.0`; the code is `2026.4.1` (`src/model/ratings.ts:56`). Everything
+  since — the tilt carry, the churn restructure, `baseHfa` 3.0, the centered
+  team-HFA blend — is dark until a rebuild lands.
 - **2026 talent is unpublished**, which is what the rebuild is waiting on.
   `build-preseason` silently falls back to 2025, so a build today would carry
   **no incoming recruiting class**. `--check` catches this and refuses; the
@@ -907,15 +972,15 @@ and signed-error reporting; nine backtest tuners.
   single source of truth for the lock, and a second one in the security boundary
   is worse than the edge case. Only bites if the schedule feed and the score
   feed disagree.
-- **`#5b6472` is hardcoded as a colour fallback in six places** — `TeamMark.tsx:20`,
-  `GameCard.tsx:118-119, 449, 615-616, 649-650`, `WinProbBar.tsx:19-20`. It is
-  literally the light-mode value of `--push`, so those fallbacks are wrong in
-  dark mode. `MatchupCard` uses `var(--push)`; the existing six are flagged, not
-  churned, because that is a separate change with its own render check.
-- **Four audit items remain open**, all additive: futures tracker with weekly
-  mark-to-market (#40), generated db types (#44), ⌘K quick-switcher (#45), OG
-  share images (#46). Six more are partial — see the status tables in
-  `docs/AUDIT-2026-08.md` for exactly which piece each is missing.
+- ~~**`#5b6472` is hardcoded as a colour fallback in six places.**~~ **Closed
+  2026-08-10** by `UX-15`. It now appears only in `globals.css` as the
+  light-mode definition of `--push`, which is where it belongs; every component
+  fallback reads `var(--push)`.
+- **Three audit items remain open**, all additive: futures tracker with weekly
+  mark-to-market (#40), generated db types (#44), ⌘K quick-switcher (#45). OG
+  share images (#46) closed on 08-10. Five more are partial — see the status
+  table in `docs/AUDIT-2026-08.md` §23 for exactly which piece each is missing,
+  and `audit/CHECKLIST.md` for what is actually queued.
 - **Off/Def are built but dark**, for the same reason everything else is: the
   production ratings are still 2026.2.0 with even splits. The columns appear on
   their own once the preseason refresh lands.

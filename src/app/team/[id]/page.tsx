@@ -182,7 +182,14 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
     .reduce((a, s) => a + s.winProb, 0) + schedule.filter((s) => s.won).length;
 
   const comp = compsRes.data;
-  const verdict = verdictRes.data?.verdict ?? null;
+  const verdictRow = verdictRes.data?.verdict ?? null;
+  // A row whose four fields are all empty is the same story as no row at all —
+  // treat it as pending rather than rendering a heading over nothing.
+  const verdict =
+    verdictRow &&
+    (verdictRow.ceiling || verdictRow.floor || verdictRow.swing_factor || verdictRow.market_note)
+      ? verdictRow
+      : null;
 
   const { poll, byTeam: pollRanks } = pickPollRanks(
     (pollsRes.data ?? []) as Array<{ week: number; poll: string; team_id: number; rank: number }>,
@@ -258,10 +265,13 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
           </section>
         )}
 
-        {/* Verdict (LLM) */}
-        {verdict && (
-          <section className="card mb-4 p-4">
-            <h2 className="mb-3 text-sm text-accent">The Verdict</h2>
+        {/* Verdict (LLM). The section renders either way: generateMetadata
+            promises every team page carries a verdict, and until the writer job
+            has run there is no row for anyone, so omitting it silently made the
+            page quietly break its own promise ~130 times over. */}
+        <section className="card mb-4 p-4">
+          <h2 className="mb-3 text-sm text-accent">The Verdict</h2>
+          {verdict ? (
             <dl className="flex flex-col gap-2 text-sm">
               {verdict.ceiling && <VerdictLine label="Ceiling" text={verdict.ceiling} />}
               {verdict.floor && <VerdictLine label="Floor" text={verdict.floor} />}
@@ -270,8 +280,12 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
               )}
               {verdict.market_note && <VerdictLine label="Market note" text={verdict.market_note} />}
             </dl>
-          </section>
-        )}
+          ) : (
+            <p className="text-sm text-dim">
+              Not written yet — the weekly run drafts these, and this team&rsquo;s hasn&rsquo;t landed.
+            </p>
+          )}
+        </section>
 
         {/* Schedule map */}
         <section className="card p-4">
