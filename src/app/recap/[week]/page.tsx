@@ -266,7 +266,9 @@ export default async function RecapPage({ params }: { params: Promise<{ week: st
                         {c.avgClv !== null && (
                           <span className={c.avgClv > 0 ? "text-win" : c.avgClv < 0 ? "text-loss" : ""}>
                             {" "}
-                            · CLV {fmtSpread(Math.round(c.avgClv * 100) / 100)}
+                            {/* not fmtSpread: a 0.00 average is "0.00", never "PK" */}
+                            · CLV {c.avgClv > 0 ? "+" : ""}
+                            {(Math.round(c.avgClv * 100) / 100).toFixed(2)}
                           </span>
                         )}
                       </span>

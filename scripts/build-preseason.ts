@@ -58,7 +58,11 @@ import {
   teamIdsByNameFrom,
 } from "./lib/replay";
 
-const SEASON = 2026;
+// Env-driven like the rest of the pipeline (scripts/lib/ingest reads the same
+// var): the loader validates its dir against CFB_SEASON, so a hardcode here
+// meant a 2027 build silently carried 2026 data past a loader guard checking
+// the wrong year (audit 04/DQ-14).
+const SEASON = Number(process.env.CFB_SEASON ?? 2026);
 const REPLAY_SEASONS = [2023, 2024, 2025];
 const CHUNK = 250;
 
@@ -73,7 +77,13 @@ const CHUNK = 250;
  * 13.16. Every SP+-shape variant lost badly (up to 16.87) — the earlier sweep
  * that "ruled out tilts" only ever tested SP+ shape, never carryover.
  */
-const TILT_CARRY = Number(process.env.PRESEASON_TILT_CARRY ?? 0.4);
+// A typo'd or blank env var used to coerce to NaN and silently disable the
+// tilt (falsy), shipping withheld totals with no explanation (audit 04/DQ-13).
+const TILT_CARRY_RAW = process.env.PRESEASON_TILT_CARRY;
+const TILT_CARRY = TILT_CARRY_RAW === undefined ? 0.4 : Number(TILT_CARRY_RAW);
+if (Number.isNaN(TILT_CARRY)) {
+  throw new Error(`PRESEASON_TILT_CARRY="${TILT_CARRY_RAW}" is not a number`);
+}
 
 type Row = Record<string, string | number | boolean | null | object>;
 
@@ -395,7 +405,14 @@ async function main() {
     }
     const missingRet = preseason.filter((p) => p.retOff === null).length;
     if (missingRet > 5) problems.push(`returning production: ${missingRet} teams unmatched`);
-    if (newHires === 0) problems.push("coaches: no head-coach changes detected — check the feed");
+    // A partially-published coach feed matched SOME hires: a low-but-nonzero
+    // count is likelier a half-loaded feed than a quiet coaching carousel, so
+    // gate on a floor rather than only on zero (audit 04/§2).
+    if (newHires < 8) {
+      problems.push(`coaches: only ${newHires} head-coach changes detected — feed may be partial`);
+    }
+    if (portal.length === 0) problems.push("portal: no transfer entries — feed not published yet");
+    if (lines2026.length === 0) problems.push("lines: no week-1 lines posted yet");
     const clampedNow = preseason.filter((p) => Math.abs(Math.abs(p.churn) - 6) < 0.001).length;
     if (clampedNow > 15) problems.push(`churn: ${clampedNow} teams at the ±6 clamp`);
 
@@ -431,12 +448,19 @@ async function main() {
 
   // ---- 7. Team HFA quick estimate (2015–2024) -------------------------------
   console.log("Estimating team HFA from 2015–2024…");
+  const fbsIds = new Set(fbs.map((t) => t.id));
   const homeMargins = new Map<number, number[]>();
   const awayMargins = new Map<number, number[]>();
   for (let year = 2015; year <= 2024; year++) {
     const games = await cached(`games-${year}`, () => cfbd.games(year), true);
     for (const g of games) {
       if (g.homePoints === null || g.awayPoints === null || g.neutralSite) continue;
+      // FBS-vs-FBS only (approximated by 2026 membership): home slates carry
+      // the FCS buy games, so raw home averages were inflated ~+2 points by
+      // scheduling rather than home field — SPEC §2.3 asks for residuals, and
+      // this is the same-source version of that fix (audit 03/M-1b). The
+      // centered blend on top pins the mean; this repairs the per-team spread.
+      if (!fbsIds.has(g.homeId) || !fbsIds.has(g.awayId)) continue;
       const margin = g.homePoints - g.awayPoints;
       if (!homeMargins.has(g.homeId)) homeMargins.set(g.homeId, []);
       homeMargins.get(g.homeId)!.push(margin);

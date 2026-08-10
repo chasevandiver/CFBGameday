@@ -182,8 +182,9 @@ export async function fetchSlateView(
         .from("latest_ratings")
         .select("team_id, week, overall")
         .eq("season_id", seasonId),
+      // latest week per poll only (0025) — pickPollRanks needs no history
       supabase
-        .from("poll_rankings")
+        .from("latest_poll_rankings")
         .select("week, poll, team_id, rank")
         .eq("season_id", seasonId)
         .eq("season_type", "regular"),
@@ -198,14 +199,13 @@ export async function fetchSlateView(
         : Promise.resolve({ data: [], error: null }),
       supabase.from("profiles").select("id, display_name"),
       // SP+/FPI/Elo for the slate's teams (spec §2.4 promises them on every
-      // card). Newest week first so the first row per system+team wins, the
-      // same reduction the game page does.
+      // card) — one row per system+team via 0025, not every synced week
+      // (~5,000 rows per tick by week 14, all discarded but the newest).
       supabase
-        .from("system_ratings")
+        .from("latest_systems")
         .select("team_id, system, week, value")
         .eq("season_id", seasonId)
-        .in("team_id", teamIds)
-        .order("week", { ascending: false }),
+        .in("team_id", teamIds),
       // Static editorial seed (migration 0017) — a few hundred rows at most,
       // so it is cheaper to pull once and pair in memory than to build an
       // OR filter per game.
@@ -545,9 +545,22 @@ export async function fetchTeamAtsSeason(
   return result;
 }
 
+/**
+ * The season/week pointer heads every route and the 60s ticker poll, costing
+ * three serial round trips each time for an answer that changes on the scale
+ * of hours. A ~60s in-module cache (per warm serverless instance) removes it
+ * from the hot path; the staleness bound is far inside the rollover
+ * granularity (audit 09/P-15).
+ */
+let pointerCache: {
+  at: number;
+  value: { seasonId: number; week: number; seasonType: SeasonType };
+} | null = null;
+
 export async function fetchCurrentSeasonWeek(
   supabase: SupabaseClient,
 ): Promise<{ seasonId: number; week: number; seasonType: SeasonType }> {
+  if (pointerCache && Date.now() - pointerCache.at < 60_000) return pointerCache.value;
   const { data: season } = await supabase
     .from("seasons")
     .select("id")
@@ -556,7 +569,9 @@ export async function fetchCurrentSeasonWeek(
   if (!season) throw new Error("No current season configured — seed the seasons table.");
 
   const pointer = await fetchCurrentSlate(supabase, season.id);
-  return { seasonId: season.id, ...pointer };
+  const value = { seasonId: season.id, ...pointer };
+  pointerCache = { at: Date.now(), value };
+  return value;
 }
 
 /**

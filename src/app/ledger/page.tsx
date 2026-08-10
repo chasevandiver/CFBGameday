@@ -37,13 +37,17 @@ export default async function LedgerPage() {
   } = await supabase.auth.getUser();
   const { seasonId, week } = await fetchCurrentSeasonWeek(supabase);
 
+  // No user → no ledger, without leaning on a "" uuid cast that only returns
+  // empty because the cast error is swallowed (audit 06/SEC-09).
   const [{ data }, { data: weekGames }] = await Promise.all([
-    supabase
-      .from("bets")
-      .select("*")
-      .eq("season_id", seasonId)
-      .eq("user_id", user?.id ?? "")
-      .order("placed_at", { ascending: false }),
+    user
+      ? supabase
+          .from("bets")
+          .select("*")
+          .eq("season_id", seasonId)
+          .eq("user_id", user.id)
+          .order("placed_at", { ascending: false })
+      : Promise.resolve({ data: [] as BetRow[] }),
     fetchBetFormGames(supabase, seasonId),
   ]);
   const bets = (data ?? []) as BetRow[];
@@ -116,10 +120,10 @@ export default async function LedgerPage() {
 
   // Bets grade at their real American odds, so `payout_units` is passed through
   // rather than synthesized — the one place the shared tally does not apply the
-  // flat -110 of pick'em. A null payout on a graded bet means the grader has not
-  // reached it, and `records` derives one; that only bites for the manual
-  // bet_types the grader never touches (moneyline, futures), which is a known
-  // gap in jobs-core, not something to paper over here.
+  // flat -110 of pick'em. Moneylines DO grade now (jobs-core handles any
+  // American price); what the auto-grader still can't settle from a final
+  // score is team_total, first_half and future — those stay open until a
+  // manual result is entered, which is by design, not a bug to paper over.
   const graded = bets
     .filter((b) => b.result && b.result !== "void")
     .map((b) => ({ ...b, payoutUnits: b.payout_units }));
@@ -186,6 +190,14 @@ export default async function LedgerPage() {
                 lifetimeRecord: overall,
               }}
             />
+          )}
+          {user && (
+            <a
+              href="/ledger/export"
+              className="stat rounded-lg border border-chalk/15 px-3 py-1.5 text-xs text-chalk/70 hover:border-chalk/40"
+            >
+              Export CSV
+            </a>
           )}
         </div>
 

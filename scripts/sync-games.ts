@@ -75,11 +75,20 @@ async function run(
     away_team_id: g.awayId,
     home_points: g.homePoints,
     away_points: g.awayPoints,
-    status: g.completed ? "final" : "scheduled",
+    // Only assert "final"; otherwise leave status alone (new rows take the
+    // schema default 'scheduled'). The old unconditional map flipped a live
+    // game back to 'scheduled' if this ever ran mid-window (audit 07/OPS-12c).
+    ...(g.completed ? { status: "final" } : {}),
     notes: g.notes,
   }));
 
-  for (const batch of chunk(rows, 500)) await sink.upsert("games", batch);
+  // Two passes because PostgREST bulk rows must share a column set: finals
+  // carry `status`, everything else omits it (new rows take the schema
+  // default; live rows keep whatever the scoreboard wrote).
+  const finalsRows = rows.filter((r) => "status" in r);
+  const otherRows = rows.filter((r) => !("status" in r));
+  for (const batch of chunk(finalsRows, 500)) await sink.upsert("games", batch);
+  for (const batch of chunk(otherRows, 500)) await sink.upsert("games", batch);
   if (db) await logCfbdCalls(db, "sync-games", cfbdCallCount());
   console.log(`  ${rows.length} games upserted`);
   return { games: rows.length };

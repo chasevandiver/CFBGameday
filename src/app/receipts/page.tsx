@@ -4,7 +4,12 @@ import { summarizeClv } from "../../lib/clv";
 import type { GameRow, PredictionRow, TeamRow } from "../../lib/db-types";
 import { DEFAULT_TZ, kickDateLong, kickParts, tzLabel } from "../../lib/kick";
 import { fetchCurrentSeasonWeek } from "../../lib/queries";
+import { fmtSpread } from "../../lib/slate";
 import { createClient } from "../../lib/supabase/server";
+
+/** Edge is a disagreement, not a line — it never reads "PK". */
+const fmtEdge = (n: number | null): string =>
+  n === null ? "–" : `${n > 0 ? "+" : ""}${n.toFixed(1)}`;
 
 export const dynamic = "force-dynamic";
 
@@ -116,12 +121,20 @@ export default async function ReceiptsPage() {
       <main id="main" className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h1 className="text-2xl">Receipts</h1>
-          <Link
-            href="/recap"
-            className="text-xs font-medium text-accent underline-offset-2 hover:underline"
-          >
-            Week in review →
-          </Link>
+          <span className="flex items-baseline gap-3">
+            <Link
+              href="/model"
+              className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+            >
+              The model →
+            </Link>
+            <Link
+              href="/recap"
+              className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+            >
+              Week in review →
+            </Link>
+          </span>
         </div>
         <p className="mb-5 mt-1 text-sm text-dim">
           Every prediction frozen Thursday night, timestamped, never edited. The model answers
@@ -224,11 +237,6 @@ export default async function ReceiptsPage() {
   );
 }
 
-function fmtLine(n: number | null): string {
-  if (n === null) return "–";
-  if (n === 0) return "PK";
-  return `${n > 0 ? "+" : ""}${n.toFixed(1)}`;
-}
 
 function ReceiptRow({ r }: { r: Receipt }) {
   const { game: g, pred, home, away } = r;
@@ -246,17 +254,17 @@ function ReceiptRow({ r }: { r: Receipt }) {
         </Link>
       </td>
       <td className="py-2 pr-3 text-right text-chalk">
-        {home.abbreviation ?? home.school} {fmtLine(Number(pred.spread))}
+        {home.abbreviation ?? home.school} {fmtSpread(Number(pred.spread))}
       </td>
       <td className="py-2 pr-3 text-right text-dim">
-        {fmtLine(pred.vegas_spread === null ? null : Number(pred.vegas_spread))}
+        {fmtSpread(pred.vegas_spread === null ? null : Number(pred.vegas_spread))}
       </td>
       <td className="py-2 pr-3 text-right">
         {edge === null ? (
           <span className="text-dim">–</span>
         ) : (
           <span className={pred.edge_flag ? "font-semibold text-edge" : "text-chalk"}>
-            {fmtLine(edge)}
+            {fmtEdge(edge)}
             {pred.edge_flag === "BIG_EDGE" ? " ★" : pred.edge_flag === "EDGE" ? " ✦" : ""}
           </span>
         )}

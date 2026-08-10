@@ -54,18 +54,41 @@ export async function addAdjustment(
   return { ok: true };
 }
 
-export async function confirmAdjustment(id: number): Promise<AdjustmentResult> {
-  const supabase = await createClient();
+/**
+ * RLS already stops a non-admin's write — but as a zero-row no-op, which the
+ * action then reported as `ok: true` (audit 06/SEC-11). The app-level check
+ * turns that silent nothing into an answer.
+ */
+async function requireAdmin(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<string | null> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { ok: false, message: "Not signed in" };
+  if (!user) return "Not signed in";
+  const { data: me } = await supabase
+    .from("profiles")
+    .select("is_admin")
+    .eq("id", user.id)
+    .maybeSingle();
+  return me?.is_admin ? null : "Admins only";
+}
 
-  const { error } = await supabase
+export async function confirmAdjustment(id: number): Promise<AdjustmentResult> {
+  const supabase = await createClient();
+  const denied = await requireAdmin(supabase);
+  if (denied) return { ok: false, message: denied };
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { data, error } = await supabase
     .from("rating_adjustments")
-    .update({ confirmed_by: user.id, confirmed_at: new Date().toISOString() })
-    .eq("id", id);
+    .update({ confirmed_by: user!.id, confirmed_at: new Date().toISOString() })
+    .eq("id", id)
+    .select("id");
   if (error) return { ok: false, message: error.message };
+  if (!data || data.length === 0) return { ok: false, message: "Adjustment not found" };
 
   revalidatePath("/admin");
   return { ok: true };
@@ -73,8 +96,15 @@ export async function confirmAdjustment(id: number): Promise<AdjustmentResult> {
 
 export async function removeAdjustment(id: number): Promise<AdjustmentResult> {
   const supabase = await createClient();
-  const { error } = await supabase.from("rating_adjustments").delete().eq("id", id);
+  const denied = await requireAdmin(supabase);
+  if (denied) return { ok: false, message: denied };
+  const { data, error } = await supabase
+    .from("rating_adjustments")
+    .delete()
+    .eq("id", id)
+    .select("id");
   if (error) return { ok: false, message: error.message };
+  if (!data || data.length === 0) return { ok: false, message: "Adjustment not found" };
 
   revalidatePath("/admin");
   return { ok: true };

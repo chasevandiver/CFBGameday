@@ -168,3 +168,30 @@ describe("tilt chaining helpers", () => {
     expect(chainTilts(new Map([[1, 6]]), 0).get(1)).toBe(0);
   });
 });
+
+describe("lookahead guard (audit 02/M-06)", () => {
+  // The one property the whole backtest rests on: week-N predictions may not
+  // see week-N results. Statically the loops are ordered correctly, but no
+  // test would catch a refactor that applies results before predicting — the
+  // suite passed identically under simulated contamination. This is the net:
+  // perturb week 2's scores wildly; every week-1 AND week-2 prediction must
+  // be identical, because neither may consume week-2 results. Week 3 SHOULD
+  // move (it legitimately learns from week 2) — asserted too, so the test
+  // can't pass vacuously.
+  it("perturbing week-N scores leaves week ≤ N predictions unchanged", () => {
+    const base = replaySeason(season, priors, DEFAULT_PARAMS).predictions;
+    const perturbed: SeasonData = {
+      ...season,
+      games: season.games.map((g) =>
+        g.week === 2 ? { ...g, homePoints: (g.homePoints ?? 0) + 40 } : g,
+      ),
+    };
+    const alt = replaySeason(perturbed, priors, DEFAULT_PARAMS).predictions;
+    const byId = new Map(alt.map((p) => [p.gameId, p]));
+    for (const p of base.filter((p) => p.week <= 2)) {
+      expect(byId.get(p.gameId)?.margin).toBe(p.margin);
+    }
+    const wk3base = base.filter((p) => p.week === 3);
+    expect(wk3base.some((p) => byId.get(p.gameId)?.margin !== p.margin)).toBe(true);
+  });
+});

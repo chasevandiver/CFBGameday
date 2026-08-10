@@ -116,8 +116,8 @@ export function GameCard({
         )
       : null;
 
-  const homeColor = game.home.color ?? "#5b6472";
-  const awayColor = game.away.color ?? "#5b6472";
+  const homeColor = game.home.color ?? "var(--push)";
+  const awayColor = game.away.color ?? "var(--push)";
 
   /* The aura carries one fact: is your money good? Green covering, red not,
      amber on the bubble — and when you have nothing on the game, the two team
@@ -447,7 +447,7 @@ function TeamRow({
   return (
     <div
       className={`trow flex items-center gap-2.5 transition-opacity ${lost ? "opacity-45" : ""}`}
-      style={{ "--tc": team.color ?? "#5b6472" } as React.CSSProperties}
+      style={{ "--tc": team.color ?? "var(--push)" } as React.CSSProperties}
     >
       <span className="trail" aria-hidden />
       <TeamMark team={team} size={showScore ? 44 : 32} glow />
@@ -613,8 +613,8 @@ function CrewLine({ game }: { game: GameView }) {
               title={c.record ? `${c.name} ${c.record}` : c.name}
               className="stat -ml-1 flex h-[18px] w-[18px] items-center justify-center rounded-full border text-[8px] font-bold text-chalk first:ml-0"
               style={{
-                background: `color-mix(in srgb, ${pickTeam?.color ?? "#5b6472"} 32%, var(--elev))`,
-                borderColor: `color-mix(in srgb, ${pickTeam?.color ?? "#5b6472"} 60%, transparent)`,
+                background: `color-mix(in srgb, ${pickTeam?.color ?? "var(--push)"} 32%, var(--elev))`,
+                borderColor: `color-mix(in srgb, ${pickTeam?.color ?? "var(--push)"} 60%, transparent)`,
               }}
             >
               {initials(c.name)}
@@ -647,8 +647,8 @@ function FieldStrip({
 }) {
   return (
     <div className="field-strip" aria-hidden>
-      <span className="field-ez field-ez-l" style={{ background: game.away.color ?? "#5b6472" }} />
-      <span className="field-ez field-ez-r" style={{ background: game.home.color ?? "#5b6472" }} />
+      <span className="field-ez field-ez-l" style={{ background: game.away.color ?? "var(--push)" }} />
+      <span className="field-ez field-ez-r" style={{ background: game.home.color ?? "var(--push)" }} />
       {redZone && <span className={`field-rz ${pos.dir === "right" ? "field-rz-r" : "field-rz-l"}`} />}
       <span className="field-ball" style={{ left: `${pos.x}%` }}>
         {pos.dir === "left" && <span className="field-dir">◂</span>}

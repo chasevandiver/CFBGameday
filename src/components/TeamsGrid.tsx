@@ -18,15 +18,31 @@ export interface TeamCard {
 
 export function TeamsGrid({ teams }: { teams: TeamCard[] }) {
   const [conference, setConference] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const conferences = useMemo(
     () =>
       [...new Set(teams.map((t) => t.conference).filter((c): c is string => c !== null))].sort(),
     [teams],
   );
-  const visible = conference ? teams.filter((t) => t.conference === conference) : teams;
+  // Name search across 136 teams — scanning the conference chips for one team
+  // was the only way in before (audit 08/UX-18).
+  const q = query.trim().toLowerCase();
+  const visible = teams.filter(
+    (t) =>
+      (!conference || t.conference === conference) &&
+      (!q || t.school.toLowerCase().includes(q)),
+  );
 
   return (
     <div className="flex flex-col gap-4">
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search teams…"
+        aria-label="Search teams"
+        className="h-10 w-full rounded-lg border border-chalk/12 bg-elev px-3 text-sm text-chalk placeholder:text-chalk/45 focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-accent"
+      />
       <div className="scroll-thin flex gap-1.5 overflow-x-auto pb-1">
         <Chip label="All" active={conference === null} onClick={() => setConference(null)} />
         {conferences.map((c) => (
