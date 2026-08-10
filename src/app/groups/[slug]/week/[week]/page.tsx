@@ -6,7 +6,7 @@ import {
   MatchupCard,
   type MatchupPick,
 } from "../../../../../components/group/MatchupCard";
-import type { PickRow } from "../../../../../lib/db-types";
+import type { CoverFlipRow, PickRow } from "../../../../../lib/db-types";
 import { fetchGroupMembers, fetchGroupWeek, resolveActiveGroup } from "../../../../../lib/groups";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../../../lib/queries";
 import { EMPTY_TALLY, formatRecord, tallyBy } from "../../../../../lib/records";
@@ -76,6 +76,20 @@ export default async function GroupWeekPage({
     .eq("group_id", active.id)
     .in("game_id", slate.games.length > 0 ? slate.games.map((g) => g.id) : [-1]);
   const picks = (pickRows ?? []) as PickRow[];
+
+  // Late cover swings on this week's board (0026). Neutral rows; the card
+  // turns them into "burned: Jeff" using picks it already has.
+  const { data: flipRows } = await supabase
+    .from("cover_flips")
+    .select("*")
+    .in("game_id", slate.games.length > 0 ? slate.games.map((g) => g.id) : [-1])
+    .order("detected_at", { ascending: true });
+  const flipsByGame = new Map<number, CoverFlipRow[]>();
+  for (const f of (flipRows ?? []) as CoverFlipRow[]) {
+    const arr = flipsByGame.get(f.game_id) ?? [];
+    arr.push(f);
+    flipsByGame.set(f.game_id, arr);
+  }
 
   const inPlay = new Set(groupWeek?.gameIds ?? []);
   const markets = new Set(groupWeek?.markets ?? []);
@@ -272,6 +286,7 @@ export default async function GroupWeekPage({
                 blind={blindFor(game)}
                 blindCount={user ? (blindCounts.get(game.id) ?? 0) : null}
                 dropped={dropped}
+                flips={flipsByGame.get(game.id) ?? []}
               />
             ))}
           </ul>

@@ -8,6 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { cfbd, type CfbdScoreboardGame } from "../../src/lib/cfbd";
 import { modelClv, roundClv, spreadClv, totalClv } from "../../src/lib/clv";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
+import { clockToSeconds, coverMargin, spreadCoverSide, totalCoverSide } from "../../src/lib/cover";
 import { gradePick, type PickMarket } from "../../src/lib/grade";
 import { buildTeamNameIndex } from "../../src/lib/rankings";
 import { fetchCurrentSlate } from "../../src/lib/season";
@@ -228,10 +229,16 @@ export interface ScoreboardRow {
   last_play: string | null;
   possession: string | null;
   tv: string | null;
+  // Not part of the diff — carried so a detected cover flip can be stamped
+  // with its season and week without a second read (0026).
+  season_id: number;
+  week: number;
 }
 
+// scoreboardPatch compares PATCH keys, so the two extra columns here are inert
+// to the diff and only ride along for the flip rows.
 export const SCOREBOARD_COLS =
-  "id, status, home_points, away_points, current_period, current_clock, current_situation, last_play, possession, tv";
+  "id, status, home_points, away_points, current_period, current_clock, current_situation, last_play, possession, tv, season_id, week";
 
 /**
  * The UPDATE a scoreboard game implies, or null when the stored row already
@@ -267,6 +274,84 @@ export function scoreboardPatch(
   return patch;
 }
 
+/** One detected cover flip, ready to insert into `cover_flips` (0026). */
+export interface CoverFlip {
+  market: "spread" | "total";
+  line: number;
+  from_side: string;
+  to_side: string;
+  home_points: number;
+  away_points: number;
+  prev_home_points: number;
+  prev_away_points: number;
+  period: number | null;
+  clock: string | null;
+  seconds_left: number | null;
+  last_play: string | null;
+  winner_changed: boolean;
+}
+
+/**
+ * Bad beats and backdoor covers: did this scoring play flip who's covering?
+ *
+ * Pure, so the thresholds are testable without a database — the same shape as
+ * `scoreboardPatch` and `freezableGames`. Only fires from the 4th quarter on
+ * (`period >= 4` also catches overtime), and only when the score actually
+ * moved, which is what makes a re-run a no-op: after the write, prev === next.
+ *
+ * KNOWN LIMIT: two scores inside one 30s tick collapse into one transition. A
+ * score at 1:00 answered at 0:40 reads as the net move, and if the net cover
+ * side is unchanged nothing is logged. Rare (onside kick and score), real, and
+ * better stated here than rediscovered in November.
+ */
+export function detectCoverFlips(
+  prev: { home_points: number | null; away_points: number | null },
+  next: {
+    homePoints: number | null;
+    awayPoints: number | null;
+    period: number | null;
+    clock: string | null;
+    lastPlay: string | null;
+  },
+  lines: { spread: number | null; total: number | null },
+  lateFromPeriod = 4,
+): CoverFlip[] {
+  const { homePoints: h, awayPoints: a, period } = next;
+  const ph = prev.home_points;
+  const pa = prev.away_points;
+  if (h === null || a === null || ph === null || pa === null) return [];
+  if (h === ph && a === pa) return []; // nothing scored — nothing to flip
+  if (period === null || period < lateFromPeriod) return [];
+
+  const base = {
+    home_points: h,
+    away_points: a,
+    prev_home_points: ph,
+    prev_away_points: pa,
+    period,
+    clock: next.clock,
+    seconds_left: clockToSeconds(next.clock),
+    last_play: next.lastPlay,
+    // A true backdoor leaves the winner alone and only moves the cover.
+    winner_changed: Math.sign(ph - pa) !== Math.sign(h - a),
+  };
+
+  const flips: CoverFlip[] = [];
+  if (lines.spread !== null) {
+    const from = spreadCoverSide(lines.spread, ph, pa);
+    const to = spreadCoverSide(lines.spread, h, a);
+    if (from !== to)
+      flips.push({ ...base, market: "spread", line: lines.spread, from_side: from, to_side: to });
+  }
+  if (lines.total !== null) {
+    const from = totalCoverSide(lines.total, ph, pa);
+    const to = totalCoverSide(lines.total, h, a);
+    if (from !== to)
+      flips.push({ ...base, market: "total", line: lines.total, from_side: from, to_side: to });
+  }
+  return flips;
+}
+
 /** Live scoreboard poll → games status/points/period/clock (slate live states). */
 export async function scoreboardJob(db: SupabaseClient): Promise<Json> {
   const board = await cfbd.scoreboard();
@@ -281,14 +366,72 @@ export async function scoreboardJob(db: SupabaseClient): Promise<Json> {
   if (error) throw new Error(`scoreboard: reading stored rows failed: ${error.message}`);
   const stored = new Map((storedRows as ScoreboardRow[] | null)?.map((r) => [r.id, r]) ?? []);
 
+  // Bad-beat detection needs the number the game is being measured against,
+  // but only for games that are actually late — so most ticks skip this read
+  // entirely, and a 4th-quarter tick pays one narrow round trip (and zero
+  // CFBD calls; lines come from line_snapshots via refresh-lines).
+  const lateIds = active.filter((g) => (g.period ?? 0) >= 4).map((g) => g.id);
+  const linesByGame = new Map<number, { spread: number | null; total: number | null }>();
+  if (lateIds.length > 0) {
+    const { data: lineRows } = await db
+      .from("line_consensus")
+      .select("game_id, spread, total")
+      .in("game_id", lateIds);
+    for (const r of (lineRows ?? []) as Array<{
+      game_id: number;
+      spread: number | null;
+      total: number | null;
+    }>) {
+      linesByGame.set(r.game_id, {
+        spread: r.spread === null ? null : Number(r.spread),
+        total: r.total === null ? null : Number(r.total),
+      });
+    }
+  }
+
   let updated = 0;
+  let flipsLogged = 0;
   for (const g of active) {
-    const patch = scoreboardPatch(g, stored.get(g.id));
+    const before = stored.get(g.id);
+    const patch = scoreboardPatch(g, before);
     if (!patch) continue;
+
+    // Detect BEFORE the write — `before` is the only copy of the pre-tick
+    // score, and `g.lastPlay` is the only copy of what just happened (the
+    // patch nulls last_play the moment a game goes final).
+    const lines = linesByGame.get(g.id);
+    if (before && lines) {
+      const flips = detectCoverFlips(
+        before,
+        {
+          homePoints: g.homeTeam.points,
+          awayPoints: g.awayTeam.points,
+          period: g.period,
+          clock: g.clock,
+          lastPlay: g.lastPlay,
+        },
+        lines,
+      );
+      for (const f of flips) {
+        const { error: flipErr } = await db.from("cover_flips").insert({
+          game_id: g.id,
+          season_id: before.season_id,
+          week: before.week,
+          ...f,
+        });
+        // 23505 = the (game_id, market, score) unique key doing its job on a
+        // retried tick. Anything else is worth knowing about, but never worth
+        // failing the scoreboard poll over.
+        if (!flipErr) flipsLogged++;
+        else if (flipErr.code !== "23505")
+          console.error(`cover_flips insert failed for game ${g.id}: ${flipErr.message}`);
+      }
+    }
+
     const { data: touched } = await db.from("games").update(patch).eq("id", g.id).select("id");
     if (touched && touched.length > 0) updated++;
   }
-  return { live_or_final: active.length, updated };
+  return { live_or_final: active.length, updated, flips: flipsLogged };
 }
 
 /**
@@ -768,8 +911,8 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
       let clv: number | null = null;
       let closingLine: number | null = null;
       if (b.bet_type === "spread" && line !== null && (b.side === "home" || b.side === "away")) {
-        const coverMargin = b.side === "home" ? margin + line : -margin - line;
-        result = coverMargin > 0 ? "win" : coverMargin < 0 ? "loss" : "push";
+        const cm = coverMargin(b.side, line, g.home_points as number, g.away_points as number);
+        result = cm > 0 ? "win" : cm < 0 ? "loss" : "push";
         closingLine = close.spread;
         if (close.spread !== null) clv = roundClv(spreadClv(b.side, line, close.spread));
       } else if (

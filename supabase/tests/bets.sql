@@ -137,3 +137,11 @@ select pg_temp.chk('anon cannot UPDATE predictions',
   not has_table_privilege('anon', 'public.predictions', 'UPDATE'));
 select pg_temp.chk('anon cannot UPDATE line_snapshots',
   not has_table_privilege('anon', 'public.line_snapshots', 'UPDATE'));
+
+\echo '# cover_flips is a receipt too (0026)'
+select pg_temp.chk('authenticated cannot UPDATE cover_flips',
+  not has_table_privilege('authenticated', 'public.cover_flips', 'UPDATE'));
+select pg_temp.chk('authenticated cannot DELETE cover_flips',
+  not has_table_privilege('authenticated', 'public.cover_flips', 'DELETE'));
+select pg_temp.chk('but everyone can read them',
+  has_table_privilege('anon', 'public.cover_flips', 'SELECT'));

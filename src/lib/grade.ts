@@ -9,9 +9,11 @@
  * less than the number, which is the interesting case.
  *
  * The equivalent live-game version lives in `live-status.ts`, which answers
- * "if it ended now" with a label attached. The two agree on the formulas by
- * construction; this one is the settlement.
+ * "if it ended now" with a label attached. They agree on the formulas because
+ * both call `coverMargin` in `cover.ts`; this one is the settlement.
  */
+
+import { coverMargin } from "./cover";
 
 export type PickMarket = "spread" | "total" | "straight_up";
 export type PickResult = "win" | "loss" | "push";
@@ -44,8 +46,8 @@ export function gradePick(
   if (market === "spread") {
     if (side !== "home" && side !== "away") return null;
     // Home-perspective line: a home backer covers when margin + line > 0.
-    const coverMargin = side === "home" ? margin + line : -margin - line;
-    return coverMargin > 0 ? "win" : coverMargin < 0 ? "loss" : "push";
+    const cm = coverMargin(side, line, homePoints, awayPoints);
+    return cm > 0 ? "win" : cm < 0 ? "loss" : "push";
   }
 
   if (side !== "over" && side !== "under") return null;

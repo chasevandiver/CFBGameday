@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CfbdScoreboardGame } from "../../src/lib/cfbd";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
-import { closingConsensus, freezableGames, SNAPSHOT_COLS, SCOREBOARD_COLS, scoreboardPatch, watchdogVerdict, type ScoreboardRow } from "./jobs-core";
+import { closingConsensus, detectCoverFlips, freezableGames, SNAPSHOT_COLS, SCOREBOARD_COLS, scoreboardPatch, watchdogVerdict, type ScoreboardRow } from "./jobs-core";
 
 describe("SNAPSHOT_COLS", () => {
   it("selects spread_open, which the opener silently falls back without", () => {
@@ -68,6 +68,8 @@ describe("scoreboardPatch", () => {
     last_play: null,
     possession: null,
     tv: "ESPN",
+    season_id: 2026,
+    week: 1,
   };
 
   it("returns null for a final the row already records — no write, no realtime fan-out", () => {
@@ -223,5 +225,100 @@ describe("watchdogVerdict (audit 07/OPS-1c)", () => {
   });
   it("a never-run job (Infinity) trips its threshold", () => {
     expect(watchdogVerdict({ ...fresh, refreshLines: Infinity }, false)[0]).toMatch(/refresh-lines/);
+  });
+});
+
+describe("detectCoverFlips — bad beats and backdoor covers (audit 10/G9)", () => {
+  const lines = { spread: -10, total: 45.5 };
+  // Home laying 10, up 24-14 late: home is covering by 0 ... actually +0, so
+  // use 24-13 → home covers by 1. Away scores a TD to make it 24-20.
+  const late = (over: Partial<Parameters<typeof detectCoverFlips>[1]> = {}) => ({
+    homePoints: 24,
+    awayPoints: 20,
+    period: 4,
+    clock: "0:38",
+    lastPlay: "Alston 34 yd pass from Meyer (Kim KICK)",
+    ...over,
+  });
+
+  it("the classic backdoor: dead game, meaningless TD, cover flips", () => {
+    const flips = detectCoverFlips({ home_points: 24, away_points: 13 }, late(), lines);
+    const spread = flips.find((f) => f.market === "spread")!;
+    expect(spread.from_side).toBe("home"); // 24-13 beats -10 by 1
+    expect(spread.to_side).toBe("away"); // 24-20 misses by 6
+    // the home team won by 4 either way — that's what makes it a backdoor
+    expect(spread.winner_changed).toBe(false);
+    expect(spread.seconds_left).toBe(38);
+    expect(spread.last_play).toMatch(/Alston/);
+  });
+
+  it("the same play flips the total, and both are logged", () => {
+    // 24-13 = 37 (under 45.5); 24-20 = 44 (still under) → no total flip
+    expect(
+      detectCoverFlips({ home_points: 24, away_points: 13 }, late(), lines).map((f) => f.market),
+    ).toEqual(["spread"]);
+    // 34-20: the total clears 45.5 and the home side finally beats the 10
+    const both = detectCoverFlips(
+      { home_points: 21, away_points: 20 },
+      late({ homePoints: 34 }),
+      lines,
+    );
+    expect(both.map((f) => f.market).sort()).toEqual(["spread", "total"]);
+    expect(both.find((f) => f.market === "total")!.to_side).toBe("over");
+  });
+
+  it("marks a lead change as a wild finish, not a backdoor", () => {
+    const flips = detectCoverFlips(
+      { home_points: 20, away_points: 17 },
+      late({ homePoints: 20, awayPoints: 24 }),
+      // laying 2.5, not 10: the cover and the game both turn over on this play
+      { spread: -2.5, total: null },
+    );
+    expect(flips[0].winner_changed).toBe(true);
+  });
+
+  it("stays quiet when a score changes but the cover holds", () => {
+    // home -10 up 35-7; a late FG doesn't move who's covering
+    expect(
+      detectCoverFlips({ home_points: 35, away_points: 7 }, late({ homePoints: 38, awayPoints: 7 }), {
+        spread: -10,
+        total: null,
+      }),
+    ).toEqual([]);
+  });
+
+  it("ignores everything before the 4th quarter — a 2nd-quarter swing isn't a bad beat", () => {
+    expect(
+      detectCoverFlips({ home_points: 24, away_points: 13 }, late({ period: 2 }), lines),
+    ).toEqual([]);
+  });
+
+  it("catches overtime, which is period 5 and up", () => {
+    const flips = detectCoverFlips(
+      { home_points: 24, away_points: 13 },
+      late({ period: 5, clock: null }),
+      lines,
+    );
+    expect(flips.length).toBeGreaterThan(0);
+    // an unusable clock logs the flip anyway, with seconds unknown
+    expect(flips[0].seconds_left).toBeNull();
+    expect(flips[0].period).toBe(5);
+  });
+
+  it("no line, no cover, no flip", () => {
+    expect(
+      detectCoverFlips({ home_points: 24, away_points: 13 }, late(), {
+        spread: null,
+        total: null,
+      }),
+    ).toEqual([]);
+  });
+
+  it("an unchanged score is a no-op — this is what makes a retried tick safe", () => {
+    expect(detectCoverFlips({ home_points: 24, away_points: 20 }, late(), lines)).toEqual([]);
+  });
+
+  it("a game seen for the first time has no previous score to compare", () => {
+    expect(detectCoverFlips({ home_points: null, away_points: null }, late(), lines)).toEqual([]);
   });
 });
