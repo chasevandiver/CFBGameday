@@ -155,14 +155,22 @@ jobs:
             # input is still falling back, and we stop there rather than
             # shipping a rating built on last year's talent.
             #
-            # A declined refresh exits 0 — on the daily August cron "not ready
-            # yet" is the expected answer for most of the month, and a red run
-            # every morning would train everyone to ignore it. The standalone
-            # preseason-check task keeps its non-zero exit for when you ask the
-            # question directly.
+            # A declined refresh exits 0 through Aug 19 — early in the month
+            # "not ready yet" is the expected answer, and a red run every
+            # morning would train everyone to ignore it. From Aug 20 a decline
+            # goes RED: openers are Aug 29 and the Thursday freeze stamps
+            # Week 0's receipts from whatever ratings are live on the 28th, so
+            # a quiet green through the 27th would strand launch on the stale
+            # build with nobody told. Red here means a human decision is due:
+            # build on last year's talent deliberately, or launch on the
+            # current ratings with a visible note.
             preseason-refresh|preseason-bootstrap)
               DIR="$RUNNER_TEMP/preseason"
               if ! npx tsx scripts/build-preseason.ts --check --out "$DIR-check"; then
+                if [ "$(date -u +%m)" = "08" ] && [ "$(date -u +%d)" -ge 20 ]; then
+                  echo "::error::preseason inputs STILL not ready with openers on Aug 29 — a decision is due: deliberate stale-talent build, or launch on current ratings"
+                  exit 1
+                fi
                 echo "::notice::preseason inputs not ready — nothing loaded"
                 exit 0
               fi

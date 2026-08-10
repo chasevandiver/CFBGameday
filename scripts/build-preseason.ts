@@ -37,6 +37,7 @@ import {
   MODEL_VERSION,
   churnAdjustment,
   clamp,
+  centeredBlendedHfa,
   coachingAdjustmentContinuous,
   luckCorrection,
   paramsForWeek,
@@ -365,6 +366,15 @@ async function main() {
     if (talentIsStale) {
       problems.push(`talent: ${SEASON} not published, using ${SEASON - 1} (no incoming class)`);
     }
+    // A partially published talent file passes the staleness check above while
+    // every unmatched team silently takes the −8 constant — the 2026.2.0 bug
+    // class at partial scale, feeding an unattended daily auto-load.
+    const talentDefaults = fbs.filter((t) => !talentBaseline.has(t.id)).length;
+    if (talentDefaults > 5) {
+      problems.push(
+        `talent: ${talentDefaults} FBS teams unmatched — each takes the −8 default`,
+      );
+    }
     const missingRet = preseason.filter((p) => p.retOff === null).length;
     if (missingRet > 5) problems.push(`returning production: ${missingRet} teams unmatched`);
     if (newHires === 0) problems.push("coaches: no head-coach changes detected — check the feed");
@@ -386,8 +396,11 @@ async function main() {
 
   const noPrev = preseason.filter((p) => p.finalPrev === null).length;
   const noRet = preseason.filter((p) => p.retOff === null).length;
+  const noTalent = fbs.filter((t) => !talentBaseline.has(t.id)).length;
   if (noPrev > 0) console.log(`  note: ${noPrev} team(s) had no prior-season rating (talent only)`);
   if (noRet > 0) console.log(`  note: ${noRet} team(s) had no returning-production match`);
+  if (noTalent > 0)
+    console.log(`  note: ${noTalent} team(s) had no talent match — each took the −8 default`);
   // A clamp that binds often isn't protecting against outliers, it's erasing
   // real differences — the model stops being able to tell "bad" from "awful".
   const clamped = preseason.filter((p) => Math.abs(Math.abs(p.churn) - 6) < 0.001).length;
@@ -510,17 +523,31 @@ async function main() {
 
   const hfaRows: Row[] = [];
   const hfaById = new Map<number, number>();
+  const rawHfaById = new Map<number, number | null>();
   for (const team of fbs) {
     const h = avg(homeMargins.get(team.id));
     const a = avg(awayMargins.get(team.id));
-    // (home avg − away avg)/2: team strength cancels to first order
-    const raw = h !== null && a !== null ? clamp((h - a) / 2, 0, 6) : null;
-    const blended =
-      raw !== null
-        ? DEFAULT_PARAMS.teamHfaBlend * raw + (1 - DEFAULT_PARAMS.teamHfaBlend) * DEFAULT_PARAMS.baseHfa
-        : DEFAULT_PARAMS.baseHfa;
+    // (home avg − away avg)/2: team strength cancels to first order —
+    // opponent strength does NOT (home slates carry the FCS buy games),
+    // which is why the blend below centers on the observed raw mean.
+    rawHfaById.set(team.id, h !== null && a !== null ? clamp((h - a) / 2, 0, 6) : null);
+  }
+  const rawHfaVals = [...rawHfaById.values()].filter((v): v is number => v !== null);
+  const meanRawHfa =
+    rawHfaVals.length > 0 ? rawHfaVals.reduce((s, v) => s + v, 0) / rawHfaVals.length : null;
+  for (const team of fbs) {
+    const raw = rawHfaById.get(team.id) ?? null;
+    // Centered blend (2026.4.1): mean applied HFA equals the fitted baseHfa,
+    // between-team spread survives. See centeredBlendedHfa in ratings.ts.
+    const blended = centeredBlendedHfa(raw, meanRawHfa);
     hfaById.set(team.id, blended);
     hfaRows.push({ team_id: team.id, raw_hfa: raw !== null ? r2(raw) : null, blended_hfa: r2(blended) });
+  }
+  if (meanRawHfa !== null) {
+    const meanBlended = [...hfaById.values()].reduce((s, v) => s + v, 0) / hfaById.size;
+    console.log(
+      `  team HFA: raw mean ${meanRawHfa.toFixed(2)} → blended mean ${meanBlended.toFixed(2)} (baseHfa ${DEFAULT_PARAMS.baseHfa})`,
+    );
   }
   await emit("team_hfa", hfaRows);
 

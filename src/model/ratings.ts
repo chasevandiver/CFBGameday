@@ -44,7 +44,16 @@
 //     does help, but its fit was still unconverged at the grid edge.
 //   - preseason anchors (week-1 Elo, preseason AP): ΔNLL 0.0026 vs a
 //     pre-registered bar of 0.003. Missed, so not adopted.
-export const MODEL_VERSION = "2026.4.0";
+// 2026.4.1 centers the team-HFA blend (centeredBlendedHfa): raw home/away
+// margin splits are inflated ~+1.9 at the FBS mean by scheduling — FBS teams
+// host their FCS buy games, so home opponents average weaker — and blending
+// toward the raw values would have re-introduced a ~−0.9 home-side bias the
+// moment the preseason build re-ran at baseHfa 3.0, invisible to the backtest
+// because the replay prices with flat baseHfa. Centering makes the mean
+// applied HFA equal the fitted baseHfa while keeping the between-team spread.
+// The per-team component itself is still unvalidated by any replay (audit
+// 03/M-1); the tuner for it can only run once CFBD publishes 2026 data.
+export const MODEL_VERSION = "2026.4.1";
 
 /**
  * Did this model version price totals for real? Rows frozen before 2026.3.0
@@ -607,6 +616,28 @@ export function priceGame(inp: PricingInputs, p: ModelParams = DEFAULT_PARAMS): 
 export function blendedHfa(teamRawHfa: number | null, p: ModelParams = DEFAULT_PARAMS): number {
   if (teamRawHfa === null) return p.baseHfa;
   return p.teamHfaBlend * teamRawHfa + (1 - p.teamHfaBlend) * p.baseHfa;
+}
+
+/**
+ * The blend the preseason build actually writes (2026.4.1).
+ *
+ * `blendedHfa` mixes toward the raw values as stored, which quietly assumes
+ * the raw mean IS the true FBS average. It isn't: raw home/away margin splits
+ * carry a scheduling bias — home slates include the FCS buy games, away
+ * slates don't — so the 2026 raw mean sits ~1.9 above the fitted baseHfa, and
+ * an uncentered blend shifts every game's price toward the home side by half
+ * of that. Centering on the observed raw mean keeps the between-team signal
+ * (the only thing the per-team component can honestly claim) while pinning
+ * the mean applied HFA to the value `--tune-hfa` actually fit. Floored at 0:
+ * a negative home edge is a claim no raw split of this quality supports.
+ */
+export function centeredBlendedHfa(
+  teamRawHfa: number | null,
+  meanRawHfa: number | null,
+  p: ModelParams = DEFAULT_PARAMS,
+): number {
+  if (teamRawHfa === null || meanRawHfa === null) return p.baseHfa;
+  return Math.max(0, p.baseHfa + p.teamHfaBlend * (teamRawHfa - meanRawHfa));
 }
 
 // ---------------------------------------------------------------------------

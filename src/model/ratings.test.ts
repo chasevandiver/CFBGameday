@@ -3,6 +3,7 @@ import {
   DEFAULT_PARAMS,
   blendWithPrior,
   blendedHfa,
+  centeredBlendedHfa,
   churnAdjustment,
   coachingAdjustment,
   luckCorrection,
@@ -280,6 +281,30 @@ describe("HFA blending", () => {
     const base = DEFAULT_PARAMS.baseHfa;
     expect(blendedHfa(4.1)).toBeCloseTo(0.5 * 4.1 + 0.5 * base);
     expect(blendedHfa(null)).toBe(base);
+  });
+
+  it("centered blend: mean applied HFA equals the fitted baseHfa", () => {
+    // Raw home/away splits are inflated at the mean by scheduling (home
+    // slates carry the FCS buy games), so blending toward them re-biases
+    // every price toward the home side. Centering keeps the between-team
+    // spread while pinning the mean to what --tune-hfa actually fit.
+    const base = DEFAULT_PARAMS.baseHfa;
+    const raws = [2.1, 4.9, 6.0, 5.4, 3.8]; // mean 4.44, well above base
+    const mean = raws.reduce((s, v) => s + v, 0) / raws.length;
+    const blended = raws.map((r) => centeredBlendedHfa(r, mean));
+    const blendedMean = blended.reduce((s, v) => s + v, 0) / blended.length;
+    expect(blendedMean).toBeCloseTo(base);
+    // between-team ordering survives at half strength
+    expect(blended[2]).toBeGreaterThan(blended[0]);
+    expect(blended[2] - blended[0]).toBeCloseTo(0.5 * (raws[2] - raws[0]));
+  });
+
+  it("centered blend falls back to baseHfa and never goes negative", () => {
+    const base = DEFAULT_PARAMS.baseHfa;
+    expect(centeredBlendedHfa(null, 4.4)).toBe(base);
+    expect(centeredBlendedHfa(3.0, null)).toBe(base);
+    // an extreme low raw against a high mean floors at 0, not below
+    expect(centeredBlendedHfa(0, 12)).toBe(0);
   });
 });
 
