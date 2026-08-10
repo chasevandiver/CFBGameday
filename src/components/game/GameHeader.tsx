@@ -12,6 +12,7 @@ import {
   fmtSpread,
   fmtTotal,
   isRedZone,
+  lineForSide,
   type LinePoint,
   type MyBetView,
   type TeamView,
@@ -323,7 +324,8 @@ export function GameHeader({
                   key={bet.id}
                   prefix={
                     bet.betType === "spread"
-                      ? `${(bet.side === "home" ? home : away).abbr} ${fmtSpread(bet.line)}`
+                      ? // stored home-perspective; the ticket reads the side's number
+                        `${(bet.side === "home" ? home : away).abbr} ${fmtSpread(lineForSide(bet.side, bet.line))}`
                       : bet.betType === "total"
                         ? `${bet.side === "over" ? "O" : "U"} ${fmtTotal(bet.line)}`
                         : `${(bet.side === "home" ? home : away).abbr} ML`

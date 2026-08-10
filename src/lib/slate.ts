@@ -84,6 +84,16 @@ export function lineForSide(side: string, line: number | null): number | null {
 }
 
 /**
+ * Write-side inverse of `lineForSide`: the bettor states the number their
+ * ticket reads ("UNC +6.5" → +6.5) and the ledger stores home-perspective
+ * (−6.5), which is the convention the grader, live status and CLV all read.
+ * The negation is symmetric so the implementation is shared — the second name
+ * marks the direction of travel, so a write site reads as a conversion rather
+ * than a display formatting call.
+ */
+export const homeLineForSide = lineForSide;
+
+/**
  * How a pick reads: "UNC +6", "Over 51.5", "OSU to win".
  *
  * One implementation. There were five — the weekly grid, the game card, the

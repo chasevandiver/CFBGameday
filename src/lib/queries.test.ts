@@ -31,6 +31,16 @@ describe("snapToHalf", () => {
     expect(snapToHalf(7)).toBe(7);
     expect(snapToHalf(-2.5)).toBe(-2.5);
   });
+
+  it("rounds ties away from zero, matching Postgres round()", () => {
+    // JS Math.round(-6.5) is −6; numeric round(-6.5) in the SQL consensus
+    // sites (0015, 0021's make_pick) is −7. A −3.25 mean must land on −3.5 in
+    // both, or the same snapshots produce two different consensus lines and
+    // grading banks phantom ±0.5 CLV on an unmoved line.
+    expect(snapToHalf(-3.25)).toBe(-3.5);
+    expect(snapToHalf(3.25)).toBe(3.5);
+    expect(snapToHalf(-0.25)).toBe(-0.5);
+  });
 });
 
 describe("consensusFromSnapshots", () => {
