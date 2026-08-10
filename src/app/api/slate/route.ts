@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
-import { ACTIVE_GROUP_COOKIE, resolveActiveGroup } from "../../../lib/groups";
+import { ACTIVE_GROUP_COOKIE, activeOfKind, resolveActiveGroup } from "../../../lib/groups";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../lib/queries";
 import { createClient } from "../../../lib/supabase/server";
 
@@ -30,13 +30,14 @@ export async function GET(request: NextRequest) {
         ? "regular"
         : seasonType;
 
-  // Pick state on a card is group-scoped, so the refresh has to agree with the
-  // server render about which group is in view.
-  const { active } = await resolveActiveGroup(
-    supabase,
-    user?.id ?? null,
-    request.nextUrl.searchParams.get("g") ?? (await cookies()).get(ACTIVE_GROUP_COOKIE)?.value ?? null,
-  );
+  // Pick state and the betting sheet are both group-scoped, so the refresh has
+  // to agree with the server render about which groups are in view — resolved
+  // the same way, or a poll would quietly blank the sheet off every card.
+  const remembered =
+    request.nextUrl.searchParams.get("g") ??
+    (await cookies()).get(ACTIVE_GROUP_COOKIE)?.value ??
+    null;
+  const { mine } = await resolveActiveGroup(supabase, user?.id ?? null, remembered);
 
   const data = await fetchSlateView(
     supabase,
@@ -44,7 +45,8 @@ export async function GET(request: NextRequest) {
     week,
     user?.id ?? null,
     st,
-    active?.id ?? null,
+    activeOfKind(mine, "pickem", remembered)?.id ?? null,
+    activeOfKind(mine, "betting", remembered)?.id ?? null,
   );
   return NextResponse.json(data, { headers: { "cache-control": "no-store" } });
 }

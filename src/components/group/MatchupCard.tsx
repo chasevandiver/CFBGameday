@@ -4,7 +4,7 @@ import { flipHeadline, flipWhen } from "../../lib/cover";
 import type { CoverFlipRow, PickMarket, PickRow } from "../../lib/db-types";
 import { DEFAULT_TZ, kickParts, tzLabel } from "../../lib/kick";
 import { fmtTotal, pickSideLabel, type GameView, type TeamView } from "../../lib/slate";
-import { TeamMark } from "../slate/TeamMark";
+import { TeamLine } from "../slate/TeamLine";
 
 /**
  * One matchup, with the group's picks arranged as a split.
@@ -16,8 +16,8 @@ import { TeamMark } from "../slate/TeamMark";
  * took, with the number they actually got.
  *
  * Every device is one the slate already uses: the 3px team split edge and
- * `TeamMark` from the game card, `.trow`/`.trail` for the team-owned halves,
- * and the accent ring the odds cells use for "this one is yours".
+ * `TeamLine` (mark, rank, record) from the game card, `.trow`/`.trail` for the
+ * team-owned halves, and the accent ring the odds cells use for "yours".
  */
 
 /** Colour fallback: the light-mode value of --push, which is what this is. */
@@ -86,28 +86,44 @@ export function MatchupCard({
         <span className="flex-1" style={{ background: homeColor }} />
       </div>
 
-      {/* The whole row is the link, not just the team names: a 23px strip of
-          abbreviations is under the 44px floor, and there is nothing else in
-          the row to tap. */}
-      <Link
-        href={`/game/${game.id}`}
-        className="flex min-h-11 items-center justify-between gap-2 px-3.5 py-2"
-      >
-        <span className="flex min-w-0 items-center gap-1.5">
-          <TeamMark team={game.away} size={22} />
-          <span className="scorebug truncate text-[15px] text-chalk">{game.away.abbr}</span>
-          <span className="text-[11px] text-dim">at</span>
-          <TeamMark team={game.home} size={22} />
-          <span className="scorebug truncate text-[15px] text-chalk">{game.home.abbr}</span>
+      {/* Both teams stacked rather than "AWAY at HOME" on one line: with a
+          logo, a rank and two records each, the single line ran out of phone
+          long before it ran out of facts. The whole block is the link — two
+          22px rows clear the 44px floor together, and there is nothing else
+          up here to tap. */}
+      <Link href={`/game/${game.id}`} className="flex items-start gap-2 px-3 py-2">
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          {(["away", "home"] as const).map((s) => {
+            const team = s === "away" ? game.away : game.home;
+            const points = s === "away" ? game.awayPoints : game.homePoints;
+            return (
+              <span
+                key={s}
+                className="trow flex min-h-[22px] items-center gap-2"
+                style={{ "--tc": team.color ?? NEUTRAL } as React.CSSProperties}
+              >
+                <span className="trail" aria-hidden />
+                <TeamLine team={team} size={22} className="flex-1" />
+                {(live || final) && (
+                  <span className="stat w-7 shrink-0 text-right text-[15px] font-semibold leading-none text-chalk">
+                    {points ?? 0}
+                  </span>
+                )}
+              </span>
+            );
+          })}
         </span>
-        <span className="stat shrink-0 text-[11px] text-dim">
-          {final
-            ? `Final ${game.awayPoints}–${game.homePoints}`
-            : live
-              ? `${game.awayPoints}–${game.homePoints} live`
-              : kick
-                ? `${kick.day} ${kick.time} ${tzLabel(DEFAULT_TZ)}`
-                : "TBD"}
+        <span className="stat shrink-0 pt-1 text-right text-[11px] leading-tight text-dim">
+          {final ? "Final" : live ? <span className="text-live">Live</span> : kick ? (
+            <>
+              {kick.day}
+              <span className="block text-chalk/70">
+                {kick.time} {tzLabel(DEFAULT_TZ)}
+              </span>
+            </>
+          ) : (
+            "TBD"
+          )}
         </span>
       </Link>
 

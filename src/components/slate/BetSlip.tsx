@@ -1,32 +1,82 @@
 "use client";
 
-import { Check, ChevronDown, ChevronUp, Ticket, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Share, Ticket, X } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { logSlipBets } from "../../app/actions/bets";
-import { slipKey, useBetSlip } from "../../lib/bet-slip-store";
+import { slipKey, useBetSlip, type SlipSelection } from "../../lib/bet-slip-store";
 import { betsChanged } from "../../lib/bets-changed";
 import { REASON_TAGS, REASON_TAG_LABELS } from "../../lib/db-types";
+import { DEFAULT_TZ, kickHeading } from "../../lib/kick";
+import { shareOrCopy } from "../../lib/share-sheet";
+import { betSlipText, type SharePick } from "../../lib/share-text";
 import { fmtMoneyline } from "../../lib/slate";
+
+/** One logged/pending selection as a shareable line, with its kickoff. */
+function toSharePick(s: SlipSelection, units: number, tz: string): SharePick {
+  return {
+    key: slipKey(s),
+    market: "spread",
+    side: s.side,
+    line: s.line,
+    homeAbbr: "",
+    awayAbbr: "",
+    // A slip line is already written the way a ticket reads; rebuilding it
+    // from side + line would only reintroduce the sign bugs `label` avoids.
+    text: `${s.label} ${fmtMoneyline(s.odds)}${units === 1 ? "" : ` (${units}u)`} — ${s.matchup}`,
+    kickTs: s.kickTs,
+    kickLabel: s.kickTs === null ? null : kickHeading(s.kickTs, tz),
+  };
+}
 
 /**
  * Floating bet slip. Selections come from tapping the odds cells on game
  * cards; each one becomes a ledger row (bets action validates + inserts).
+ *
+ * Sharing sits here, at the moment a slip exists, rather than only on the
+ * ledger three taps away: the point at which someone wants to send their bets
+ * to the group chat is the second after placing them. The shared text groups
+ * by kickoff, which is how the person reading it decides what to watch.
  */
-export function BetSlip({ seasonId }: { seasonId: number }) {
+export function BetSlip({ seasonId, week, tz = DEFAULT_TZ }: { seasonId: number; week: number; tz?: string }) {
   const { slip, remove, clear } = useBetSlip();
   const [units, setUnits] = useState<Record<string, string>>({});
-  const [reasonTag, setReasonTag] = useState<string>("model_edge");
+  // A tailed selection knows why it exists, so the slip says so by default —
+  // still overridable, since somebody may have had the same side anyway.
+  // Derived rather than synced: an explicit choice wins, and until there is
+  // one the default follows what is on the slip.
+  const [tagChoice, setTagChoice] = useState<string | null>(null);
+  const tailedFrom = slip.find((s) => s.tailedFrom !== undefined)?.tailedFrom;
+  const reasonTag = tagChoice ?? (tailedFrom === undefined ? "model_edge" : "tail");
   const [open, setOpen] = useState(true);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [logged, setLogged] = useState(false);
+  // What was logged, kept so the confirmation can offer to share it — the
+  // store is cleared on submit, which is what made "share what I just placed"
+  // impossible from here before.
+  const [logged, setLogged] = useState<SharePick[] | null>(null);
+  const loggedUnits = useRef(0);
+  const [shareNote, setShareNote] = useState<string | null>(null);
+
+  const dayLabel = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(new Date());
+
+  const share = async (bets: SharePick[], totalUnits: number) => {
+    const outcome = await shareOrCopy(betSlipText(bets, { day: dayLabel, week, totalUnits }));
+    if (outcome === "shared" || outcome === "dismissed") return;
+    setShareNote(outcome === "copied" ? "Copied" : "Could not share");
+    setTimeout(() => setShareNote(null), 1800);
+  };
 
   // re-open (and drop the "logged" toast) when a fresh selection comes in
   const prevCount = useRef(slip.length);
   useEffect(() => {
     if (slip.length > prevCount.current) {
       setOpen(true);
-      setLogged(false);
+      setLogged(null);
       setError(null);
     }
     prevCount.current = slip.length;
@@ -34,14 +84,29 @@ export function BetSlip({ seasonId }: { seasonId: number }) {
 
   if (slip.length === 0) {
     return logged ? (
-      <div className="fixed bottom-[calc(var(--bottom-nav-h)+env(safe-area-inset-bottom)+0.75rem)] right-4 md:bottom-[max(1rem,env(safe-area-inset-bottom))] z-30">
-        <div className="card flex items-center gap-2 px-4 py-2.5 text-sm text-win">
-          <Check size={15} strokeWidth={3} aria-hidden />
-          Bets logged to your ledger
+      <div
+        role="status"
+        aria-live="polite"
+        className="fixed bottom-[calc(var(--bottom-nav-h)+env(safe-area-inset-bottom)+0.75rem)] right-4 md:bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 max-w-[calc(100vw-2rem)]"
+      >
+        <div className="card flex items-center gap-2 px-3.5 py-2 text-sm">
+          <Check size={15} strokeWidth={3} aria-hidden className="shrink-0 text-win" />
+          <span className="text-win">
+            {logged.length} {logged.length === 1 ? "bet" : "bets"} logged
+          </span>
+          {/* The share offer belongs on the confirmation, not three screens
+              away on the ledger: this is the second someone wants to send it. */}
           <button
-            onClick={() => setLogged(false)}
+            onClick={() => void share(logged, loggedUnits.current)}
+            className="stat inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-chalk/20 px-2.5 text-xs font-semibold text-chalk hover:border-chalk/50"
+          >
+            <Share size={13} aria-hidden />
+            {shareNote ?? "Share slip"}
+          </button>
+          <button
+            onClick={() => setLogged(null)}
             aria-label="Dismiss"
-            className="ml-1 rounded p-0.5 text-dim hover:text-chalk"
+            className="ml-0.5 shrink-0 rounded p-1 text-dim hover:text-chalk"
           >
             <X size={13} aria-hidden />
           </button>
@@ -80,9 +145,11 @@ export function BetSlip({ seasonId }: { seasonId: number }) {
       if (!res.ok) {
         setError(res.message ?? "Something went wrong");
       } else {
+        loggedUnits.current = totalUnits;
+        setLogged(slip.map((s) => toSharePick(s, unitsFor(slipKey(s)), tz)));
         clear();
         setUnits({});
-        setLogged(true);
+        setTagChoice(null);
         // the cards behind the slip are holding a slate that predates these
         // rows; tell them so rather than making the user wait for a poll
         betsChanged();
@@ -154,7 +221,7 @@ export function BetSlip({ seasonId }: { seasonId: number }) {
                 <span className="sr-only">Reason tag</span>
                 <select
                   value={reasonTag}
-                  onChange={(e) => setReasonTag(e.target.value)}
+                  onChange={(e) => setTagChoice(e.target.value)}
                   className="h-8 w-full appearance-none rounded-lg border border-chalk/12 bg-elev pl-3 pr-7 text-xs font-medium text-chalk focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
                 >
                   {REASON_TAGS.map((tag) => (
@@ -177,6 +244,21 @@ export function BetSlip({ seasonId }: { seasonId: number }) {
                   className="h-9 shrink-0 rounded-lg px-3 text-xs font-medium text-dim transition-colors hover:text-chalk disabled:opacity-50"
                 >
                   Clear
+                </button>
+                {/* Shareable before it is logged, too: plenty of slips get
+                    texted round for opinions and never make the ledger. */}
+                <button
+                  onClick={() =>
+                    void share(
+                      slip.map((s) => toSharePick(s, unitsFor(slipKey(s)), tz)),
+                      totalUnits,
+                    )
+                  }
+                  aria-label="Share this slip"
+                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-chalk/15 px-2.5 text-xs font-medium text-dim transition-colors hover:border-chalk/40 hover:text-chalk"
+                >
+                  <Share size={13} aria-hidden />
+                  {shareNote ?? "Share"}
                 </button>
                 <button
                   onClick={submit}

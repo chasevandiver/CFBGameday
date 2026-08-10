@@ -1,7 +1,7 @@
 "use client";
 
-import { ChevronDown, RefreshCw, Search, SearchX } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, RefreshCw, Search, SearchX, Ticket, Users } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { onBetsChanged } from "../../lib/bets-changed";
 import { useFocusedGames, useStarred, useViewerTz } from "../../lib/client-store";
 import type { GameRow } from "../../lib/db-types";
@@ -60,7 +60,12 @@ export function SlateView({
   const [network, setNetwork] = useState("all");
   const [spreadRange, setSpreadRange] = useState<string>("any");
   const [rankedOnly, setRankedOnly] = useState(false);
-  const [myPicksOnly, setMyPicksOnly] = useState(false);
+  // Two products, two filters. "Mine" used to mean "a pool pick OR a bet",
+  // which is unusable the moment you keep a real ledger: you cannot ask "what
+  // do I have money on this Saturday" without the pool's picks coming along.
+  // Both on is the old behaviour, and the legacy `mine=1` link still sets it.
+  const [betsOnly, setBetsOnly] = useState(false);
+  const [picksOnly, setPicksOnly] = useState(false);
   const [sort, setSort] = useState<SortKey>("kickoff");
   const [query, setQuery] = useState("");
 
@@ -80,7 +85,13 @@ export function SlateView({
       const spr = sp.get("spread");
       if (spr && SPREAD_RANGES.some((r) => r.key === spr)) setSpreadRange(spr);
       if (sp.get("ranked") === "1") setRankedOnly(true);
-      if (sp.get("mine") === "1") setMyPicksOnly(true);
+      // `mine=1` predates the split and meant both.
+      if (sp.get("mine") === "1") {
+        setBetsOnly(true);
+        setPicksOnly(true);
+      }
+      if (sp.get("bets") === "1") setBetsOnly(true);
+      if (sp.get("picks") === "1") setPicksOnly(true);
       const s = sp.get("sort");
       if (s && SORTS.some((x) => x.key === s)) setSort(s as SortKey);
       const q = sp.get("q");
@@ -227,13 +238,15 @@ export function SlateView({
     if (network !== "all") sp.set("tv", network);
     if (spreadRange !== "any") sp.set("spread", spreadRange);
     if (rankedOnly) sp.set("ranked", "1");
-    if (myPicksOnly) sp.set("mine", "1");
+    if (betsOnly && picksOnly) sp.set("mine", "1");
+    else if (betsOnly) sp.set("bets", "1");
+    else if (picksOnly) sp.set("picks", "1");
     if (sort !== "kickoff") sp.set("sort", sort);
     if (query.trim()) sp.set("q", query.trim());
     if (day !== "all") sp.set("day", day);
     const qs = sp.toString();
     window.history.replaceState(null, "", qs ? `/slate?${qs}` : "/slate");
-  }, [week, seasonType, currentWeek, conference, network, spreadRange, rankedOnly, myPicksOnly, sort, query, day]);
+  }, [week, seasonType, currentWeek, conference, network, spreadRange, rankedOnly, betsOnly, picksOnly, sort, query, day]);
 
   /* ---- derived --------------------------------------------------------- */
 
@@ -271,10 +284,14 @@ export function SlateView({
         return false;
       if (network !== "all" && g.tv !== network) return false;
       if (rankedOnly && !isRankedMatchup(g)) return false;
-      // "Mine" is both products: a pool pick OR money on the game. Filtering a
-      // game you have a bet on out of your own view was wrong — the ledger and
-      // the pool are independent, and both of them are yours.
-      if (myPicksOnly && g.myPicks.length === 0 && g.myBets.length === 0) return false;
+      // Independent, and OR'd when both are on: "show me everything I'm in on"
+      // is still one tap away, but "show me only what I have money on" is now
+      // expressible at all.
+      if (betsOnly || picksOnly) {
+        const hit =
+          (betsOnly && g.myBets.length > 0) || (picksOnly && g.myPicks.length > 0);
+        if (!hit) return false;
+      }
       if (
         maxSpread !== Infinity &&
         (g.lines.spread === null || Math.abs(g.lines.spread) > maxSpread)
@@ -290,7 +307,7 @@ export function SlateView({
         return false;
       return true;
     });
-  }, [games, day, conference, network, rankedOnly, myPicksOnly, spreadRange, query, tz]);
+  }, [games, day, conference, network, rankedOnly, betsOnly, picksOnly, spreadRange, query, tz]);
 
   const sorted = useMemo(() => {
     const starredSet = new Set([...starred, ...favoriteTeamIds]);
@@ -326,7 +343,8 @@ export function SlateView({
     conference === "all" &&
     network === "all" &&
     !rankedOnly &&
-    !myPicksOnly &&
+    !betsOnly &&
+    !picksOnly &&
     spreadRange === "any" &&
     query.trim() === "";
 
@@ -475,12 +493,20 @@ export function SlateView({
             options={SPREAD_RANGES.map((r): [string, string] => [r.key, r.label])}
           />
           <FilterToggle label="Ranked" active={rankedOnly} onClick={() => setRankedOnly(!rankedOnly)} />
-          {/* "Mine", not "My picks": it covers bets too. The `mine=1` param
-              keeps its name so shared links still work. */}
+          {/* The two products, side by side and independent. Icons because the
+              distinction is the point and two words that both start with "my"
+              do not carry it at a glance. */}
           <FilterToggle
-            label="Mine"
-            active={myPicksOnly}
-            onClick={() => setMyPicksOnly(!myPicksOnly)}
+            label="My bets"
+            icon={Ticket}
+            active={betsOnly}
+            onClick={() => setBetsOnly(!betsOnly)}
+          />
+          <FilterToggle
+            label="My picks"
+            icon={Users}
+            active={picksOnly}
+            onClick={() => setPicksOnly(!picksOnly)}
           />
           <span className="mx-1 h-5 w-px shrink-0 bg-chalk/10" aria-hidden />
           <FilterSelect
@@ -557,7 +583,7 @@ export function SlateView({
         )}
       </div>
 
-      <BetSlip seasonId={data.seasonId} />
+      <BetSlip seasonId={data.seasonId} week={week} tz={tz} />
     </>
   );
 }
@@ -736,21 +762,24 @@ function FilterToggle({
   label,
   active,
   onClick,
+  icon: Icon,
 }: {
   label: string;
   active: boolean;
   onClick: () => void;
+  icon?: ComponentType<{ size?: number; "aria-hidden"?: boolean }>;
 }) {
   return (
     <button
       onClick={onClick}
       aria-pressed={active}
-      className={`h-8 shrink-0 rounded-lg border px-3 text-xs font-medium transition-colors ${
+      className={`flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors ${
         active
           ? "border-accent/60 bg-accent/15 text-accent"
           : "border-chalk/12 bg-surface text-dim hover:text-chalk"
       }`}
     >
+      {Icon && <Icon size={12} aria-hidden />}
       {label}
     </button>
   );

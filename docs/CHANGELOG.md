@@ -141,6 +141,186 @@ shipping it.
 
 ## Log
 
+### Aug 10 — Betting groups: who got there first, who tailed, who faded
+
+A second kind of group. A pick'em group is a **format** — an admin's board,
+one pick per market against it. A betting group is a **lens**: it has no board
+and stores nothing of its own, it reads its members' ledgers and lays them on
+the slate. Whoever is first on a game is the source; everyone behind them is
+tailing or fading.
+
+**The migration is one column, and that is the design.** The obvious schema is
+`bets.group_id` — file each bet into a betting group as it's logged. Rejected
+for three reasons, the third fatal: it asks a filing question at the moment
+someone is placing a bet; it can't express one bet in two groups, which is the
+normal case for anyone in a work pool and a friends pool; and it duplicates a
+fact the ledger already holds, creating a state where the ledger and the sheet
+disagree with no principled way to reconcile them. So `groups.kind` is the
+whole of `0027`, plus two triggers refusing a pick'em board on a betting group
+(a trigger rather than a guard clause inside `make_pick`, which would mean
+re-emitting two amended plpgsql bodies and keeping the copies in step forever).
+
+**Origination is per group, and that is correct.** The same bet can be the
+source in one group and a tail in another because a different member got there
+first — "first" is only meaningful inside a crowd, and each group is a
+different crowd.
+
+**The classification rules** (`src/lib/tailing.ts`, 15 tests):
+
+- Key is **game + bet type**. Being first on the spread says nothing about the
+  total, and someone betting the total hasn't faded your spread.
+- Every follower's counterparty is **the source**, not the person immediately
+  ahead of them. Jeff opens, Mo tails, Sam takes the other side: Sam faded
+  Jeff, not Mo. One source per market keeps "fading Jeff" a single countable
+  relationship instead of a chain whose meaning depends on arrival order.
+- Ties on `placed_at` break on the row id. A slip logs its whole batch in one
+  transaction where `now()` is fixed, so same-microsecond rows are routine, and
+  without the tiebreak "who was first" changed between page loads.
+- A **voided** bet never happened, so it can't hold origination — otherwise a
+  taken-back bet keeps the credit and demotes whoever actually put the number
+  up.
+- Nobody tails themselves; a second bet of your own on the same market is
+  another position, not a follow.
+- **Derived, never stored.** A `tailed_bet_id` column would only be set by the
+  Tail button, making the stats a measure of button usage rather than of who is
+  worth following. Two people on the same side ten minutes apart are a source
+  and a tail whether or not they spoke.
+
+**What the numbers are.** Per member: overall, what they open, what they tail,
+what they fade — plus **how everyone who tailed them did** and **how everyone
+who faded them did**, which is the pair a good bettor who posts late fails.
+Per viewer: a row against every other member, tailing vs fading, which cannot
+be read off anyone's own record because their season counts every bet you never
+saw in time. Hot/cold is a stated threshold, not a feel: ±3 on wins minus
+losses over the last ten graded bets, with units printed beside it because 7-3
+with one 5u loser is a losing week.
+
+**On the slate**, each card grows a Sheet block: the source, the followers
+indented under it, form pips, and a **Tail** button that puts their side on
+your slip *at today's number* — copying their line would write a ledger row you
+never held and a CLV against a price nobody offered you. A tailed selection
+defaults the slip's reason tag to `tail`, so "is tailing profitable for me" is
+answerable from the ledger's existing tag audit rather than from a report
+nobody would build.
+
+**Sharing** a sheet texts every position grouped by kickoff with one CTA back
+to `/slate?g=<slug>`, which opens the slate with that group's sheet on the
+cards. One link, not one per bet — a message with eight URLs is a message
+nobody taps.
+
+One bug caught in review before it shipped: the sheet row printed
+`line_taken` raw, which inverts the sign on every away ticket — the exact bug
+the pick formatter was consolidated to kill. All three call sites now go
+through one `betSideLabel`, with tests.
+
+**Applied to production 2026-08-10** as `betting_groups`, ahead of the merge
+rather than after it: `fetchMyGroups` selects `groups.kind`, and PostgREST
+answers an unknown column with an error that supabase-js hands back as
+`data: null`, which `(data ?? [])` turns into "you are in no groups". Adding a
+defaulted column is invisible to the old code, so migration-first has no window
+where anything is wrong; merge-first has one where everybody's groups vanish.
+
+Verified against the live database rather than assumed: the one existing group
+took the `pickem` default, `create_group` has exactly one overload (the
+three-argument one — the old two-argument function is dropped, so a call can't
+be ambiguous), and both guard triggers were fired by a probe that inserted a
+betting group, tried a week config and a pick against it, collected the errors
+and then raised to roll the whole thing back. Both refused with *"That is a
+betting group — it has no pick'em board"*, and the probe left no rows.
+
+**A gap found while checking:** `0017_rivalries_seed` is not in
+`supabase_migrations.schema_migrations`, though the `rivalries` table exists
+with 29 rows and the slate reads it fine. It was applied outside the tracked
+history at some point. Nothing to repair — recorded because the next person to
+diff the migrations directory against the history table will find the same hole
+and wonder whether a seed is missing.
+
+**Two follow-ups, same day.** The kind is permanent — there is no honest
+conversion between a group that stores a board and picks and one that reads
+everyone's ledger — so the create form now says so *above* the choice rather
+than leaving it to be discovered, and points out that the answer to "I want
+both" is two groups with the same people in them. And the group switcher now
+carries each group's kind on its chip: two identically-styled chips landing on
+two completely different pages is the kind of thing that only reads as a bug
+once somebody is in one of each.
+
+### Aug 10 — Groups become a product: a hub, a board that keeps up with a thumb, and the two ledgers pulled apart
+
+Eight complaints from actually using the site on a Saturday. No model change —
+`DEFAULT_PARAMS` is untouched, no tuner was run, and nothing here can move a
+number.
+
+**The picks now land on the tap.** Every pick went through a server action, and
+a server action revalidates the page that called it — on the group board that
+meant a dozen queries plus a full `fetchSlateView` before the button you pressed
+changed colour. Eight picks, eight of those waits, which is what "the picks take
+a while to lock in" was describing. `PickButtons` is optimistic now: the tap
+paints the pick from the line already on screen, the write goes out behind it,
+and the server's row replaces the guess the moment the two agree on a side (so a
+line that moved between render and tap corrects itself instead of being
+believed). Verified in a browser with every POST delayed 4s — 150ms after the
+tap the button reads `aria-pressed=true`. Reconciliation is a pure merge, not an
+effect; a rejected *or* thrown write reverts the button and says why, where
+before a thrown one took the error boundary and the whole board with it. Buttons
+also stay live during a write, since disabling them mid-flight is half of what
+made rapid picking feel stuck.
+
+**There is somewhere to go when you're done.** There was no submit button —
+correct, picks save on tap — but nothing said so and nothing said where the
+group went next, so the flow ended in silence. The board now carries a footer in
+the thumb zone with a live count ("5 picks in · 3 to go", moving on the tap, not
+on the server) and an exit to the full list of what you took.
+
+**`/groups/[slug]` is a hub, not a board.** It used to be standings, then pick
+controls for every game, then nothing — so the thing you came to do was below a
+table, and the group itself was a header line. The picking moved to
+`/groups/[slug]/picks`; the hub is now a week hero (format, progress, first
+kickoff, one primary action), the members as cards in the slate's idiom, and an
+admin block only an admin sees. `WeekHero`/`MemberCard` live in
+`components/group/GroupHub.tsx` rather than in the page, so `/slate/preview`
+renders them against sample data — the hub needs a database, a group and a
+signed-in member before it draws a pixel, which is a poor loop for design work.
+
+**Teams look like teams everywhere.** One `TeamLine` (mark, poll rank, name,
+records) now identifies a team on the group board, the matchup cards and the
+admin's game picker, all of which previously said "MIA at WMU" in plain text —
+the same information a schedule PDF carries and none of the information a pick
+needs. The rank pip is accent only when a *poll* ranked them and names its
+source, since `displayRank` falls back to the model's own rank and those are
+different claims. `TeamView` gains `confRecord`, off the schedule's own
+`conference_game` flag (not a comparison of the two conference strings, which
+would lie about games already played if a team changed leagues mid-season).
+
+**Pool picks and bets stop pretending to be each other.** They were rendered in
+the same accent chip, so a card carrying both couldn't tell you what you had
+money on. Accent now means money: `PickedChip` is chalk with a group mark,
+`BetChip` keeps the ticket and the ring. The slate's single "Mine" filter (pick
+OR bet) becomes two independent toggles — both on reproduces the old behaviour
+and `mine=1` links still work. The ledger gains a **Group picks** tab with its
+own queries and its own arithmetic, so pool units (flat −110, League Rules #6)
+can never leak into the ROI the ledger exists to compute.
+
+**The cards read as material again.** `--surface` was `#191512` on a `#12100d`
+page, and after the glass mix a card rendered at about `#17130f` — a 4% lightness
+step, which in a dim room is no step at all. Ground, surface and elevation moved
+apart, the line and specular edge came up, and `.card` gained a sheen falling off
+over its top third (`--glass-sheen`, derived from `--glass-edge` — no new hue).
+Same palette, three visible steps instead of one.
+
+**Rankings say whose rankings.** The page was headed "Rankings" with a poll
+switcher that only appeared once two polls existed. All three are always listed
+now — CFP Rankings, AP Poll, Coaches Poll — with the unpublished ones inert and
+the reason on hover, and the heading names the poll you are reading.
+
+**Sharing moved to where the thing being shared is.** A slip can be shared from
+the slip, both before logging and from the "logged" confirmation, which is the
+second someone wants to send it. Shared picks and slips group under their
+kickoff time (`groupByKickoff`) instead of arriving as a flat list, because the
+person reading it in iMessage is working out what they can still watch. The
+share-sheet-or-clipboard dance is one function (`shareOrCopy`) shared by both
+buttons, and the group share context is built once (`buildGroupShareContext`)
+for all three screens that offer it.
+
 ### Aug 10 — The verdict block stops disappearing, and three docs stop lying
 
 **`UX-29`.** The team page rendered its Verdict section as `{verdict && (…)}`,

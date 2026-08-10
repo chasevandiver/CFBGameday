@@ -1,6 +1,6 @@
 import { EyeOff } from "lucide-react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { AppNav } from "../../../../../components/AppNav";
 import {
   MatchupCard,
@@ -57,6 +57,8 @@ export default async function GroupWeekPage({
   } = await supabase.auth.getUser();
   const { active } = await resolveActiveGroup(supabase, user?.id ?? null, slug);
   if (!active || active.slug !== slug) notFound();
+  // Pick'em only — a betting group has no weekly board of picks to list.
+  if (active.kind === "betting") redirect(`/groups/${slug}`);
 
   const { seasonId, seasonType } = await fetchCurrentSeasonWeek(supabase);
   const [groupWeek, members, slate, lifetimeRes] = await Promise.all([

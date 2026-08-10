@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Check, Minus, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Minus, Users, X } from "lucide-react";
 import type { LiveBetStatus } from "../../lib/live-status";
 import { fmtSpread, type MoveRead } from "../../lib/slate";
 
@@ -51,13 +51,26 @@ export function ConsensusChip({ on }: { on: boolean }) {
 }
 
 /**
- * The viewer's pick, named. It used to render the bare word "Picked", which
- * told you that you had one and nothing about which side — the card already
- * knew, and the live and final states already printed it. One chip per market,
- * so a spread and a total on the same game read as two.
+ * The viewer's pool pick, named. It used to render the bare word "Picked",
+ * which told you that you had one and nothing about which side — the card
+ * already knew, and the live and final states already printed it. One chip per
+ * market, so a spread and a total on the same game read as two.
+ *
+ * Deliberately NOT accent-coloured. This app is two products — a pick'em pool
+ * and a bet tracker — and a pick chip that looked identical to a bet chip
+ * (`BetChip`, same tint, same weight) made a card carrying both unreadable:
+ * you could not tell what you had money on. Accent now means money. A pool
+ * pick reads as chalk with the group mark, so the two are separable without
+ * reading either label.
  */
 export function PickedChip({ label }: { label: string }) {
-  return <span className="chip bg-accent/15 text-accent">{label}</span>;
+  return (
+    <span className="chip bg-chalk/10 text-chalk/85">
+      <Users size={10} aria-hidden className="shrink-0 opacity-70" />
+      <span className="sr-only">Group pick: </span>
+      {label}
+    </span>
+  );
 }
 
 /** Pass/fail/push chip — icon + text, never color alone. */

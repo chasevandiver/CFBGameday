@@ -45,6 +45,7 @@ import {
   type TeamView,
 } from "../../lib/slate";
 import { ConsensusChip, EdgeChip, LiveBadge, LiveStatusChip, MoveIndicator, PickedChip, ResultChip } from "./chips";
+import { SheetLine } from "./SheetLine";
 import { TeamMark } from "./TeamMark";
 import { WinProbBar } from "./WinProbBar";
 
@@ -712,7 +713,17 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
     description: string,
     line: number | null,
     odds: number,
-  ): SlipSelection => ({ gameId: game.id, betType, side: selSide, label, matchup, description, line, odds });
+  ): SlipSelection => ({
+    gameId: game.id,
+    betType,
+    side: selSide,
+    label,
+    matchup,
+    description,
+    line,
+    odds,
+    kickTs: game.startTs,
+  });
 
   return (
     <div className="flex shrink-0 gap-1">
@@ -897,6 +908,7 @@ function BetChip({ bet, label }: { bet: MyBetView; label: string }) {
   return (
     <span className="chip pointer-events-auto bg-accent/15 text-accent ring-1 ring-inset ring-accent">
       <Ticket size={10} aria-hidden className="shrink-0" />
+      <span className="sr-only">Logged bet: </span>
       {label}
       <button
         onClick={(e) => {
@@ -974,6 +986,12 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
           {!live && game.myPicks.length > 0 && <CrewSplit game={game} />}
         </div>
       </div>
+
+      {/* The money layer, under the pool layer and visibly separate from it:
+          who in the betting group is on this game and who put it up first.
+          Renders in every state — a settled sheet is how the group finds out
+          whether tailing Jeff was a good idea. */}
+      <SheetLine game={game} />
 
       {settled && betStatuses.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">

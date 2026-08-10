@@ -24,6 +24,15 @@ export interface SlipSelection {
   description: string;
   line: number | null;
   odds: number;
+  /** ISO kickoff, so a shared slip can be grouped by the clock. Null = TBD. */
+  kickTs: string | null;
+  /**
+   * Set when the selection came from a Tail button: whose bet it copies.
+   * Drives the slip's reason tag, which is what makes "is tailing actually
+   * profitable for me" answerable from the ledger's existing tag audit rather
+   * than from a new report nobody would build.
+   */
+  tailedFrom?: string;
 }
 
 let selections: SlipSelection[] = [];

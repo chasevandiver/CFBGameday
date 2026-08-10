@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { AppNav } from "../../components/AppNav";
 import { SlateView } from "../../components/slate/SlateView";
-import { ACTIVE_GROUP_COOKIE, resolveActiveGroup } from "../../lib/groups";
+import { ACTIVE_GROUP_COOKIE, activeOfKind, resolveActiveGroup } from "../../lib/groups";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../lib/queries";
 import { createClient } from "../../lib/supabase/server";
 
@@ -12,7 +12,7 @@ export const metadata = { title: "Slate" };
 export default async function SlatePage({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string; st?: string }>;
+  searchParams: Promise<{ week?: string; st?: string; g?: string }>;
 }) {
   const supabase = await createClient();
   const {
@@ -20,7 +20,7 @@ export default async function SlatePage({
   } = await supabase.auth.getUser();
   const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(supabase);
 
-  const { week: weekParam, st: stParam } = await searchParams;
+  const { week: weekParam, st: stParam, g: groupParam } = await searchParams;
   const parsed = Number(weekParam);
   const hasWeekParam = Number.isInteger(parsed) && parsed >= 1 && parsed <= 20;
   // ?st=post pins the bowls/CFP view; an explicit ?week= means the regular
@@ -36,14 +36,28 @@ export default async function SlatePage({
         ? parsed
         : currentWeek;
 
-  const { active } = await resolveActiveGroup(
-    supabase,
-    user?.id ?? null,
-    (await cookies()).get(ACTIVE_GROUP_COOKIE)?.value ?? null,
-  );
+  // Two layers, two groups. The pool's picks are scoped to a pick'em group and
+  // the sheet to a betting group; someone can be in one, both or neither, and
+  // the remembered group only decides which of its own kind is in view.
+  // `?g=<slug>` is what a shared sheet links to: it opens the slate with that
+  // group's positions on the cards, whatever the reader last looked at. It
+  // does not overwrite the cookie — following someone's link should not
+  // silently re-home the group they see tomorrow.
+  const remembered = groupParam ?? (await cookies()).get(ACTIVE_GROUP_COOKIE)?.value ?? null;
+  const { mine } = await resolveActiveGroup(supabase, user?.id ?? null, remembered);
+  const pickemGroup = activeOfKind(mine, "pickem", remembered);
+  const bettingGroup = activeOfKind(mine, "betting", remembered);
 
   const [initial, favRes] = await Promise.all([
-    fetchSlateView(supabase, seasonId, week, user?.id ?? null, st, active?.id ?? null),
+    fetchSlateView(
+      supabase,
+      seasonId,
+      week,
+      user?.id ?? null,
+      st,
+      pickemGroup?.id ?? null,
+      bettingGroup?.id ?? null,
+    ),
     user
       ? supabase.from("profiles").select("favorite_team_ids").eq("id", user.id).maybeSingle()
       : Promise.resolve({ data: null }),

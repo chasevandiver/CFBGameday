@@ -40,6 +40,10 @@ export interface SharePick {
    * side, and there is no honest way to reconstruct one from the other.
    */
   text?: string;
+  /** ISO kickoff, for ordering. Null when the game has no time yet. */
+  kickTs?: string | null;
+  /** Rendered kickoff, e.g. "SAT 2:30 PM CT". Absent = don't group by time. */
+  kickLabel?: string | null;
 }
 
 export interface ShareContext {
@@ -68,8 +72,109 @@ export function formatPick(p: SharePick): string {
   return `${label} vs ${opponent}`;
 }
 
+/**
+ * Picks in kickoff order, grouped under the time they kick.
+ *
+ * A slip of eight is unreadable as a flat list — the person reading it in
+ * iMessage is trying to work out what they can still watch, and that question
+ * is answered by the clock, not by the order the picks were tapped. Games
+ * without a kickoff sink to the bottom under their own heading rather than
+ * being dropped or silently sorted first.
+ *
+ * Returns a single unlabelled group when nothing carries a kickoff, which is
+ * the ledger's case — a freeform bet has no game to get a time from.
+ */
+export function groupByKickoff(
+  picks: SharePick[],
+): Array<{ label: string | null; picks: SharePick[] }> {
+  if (!picks.some((p) => p.kickLabel)) return [{ label: null, picks }];
+  const sorted = [...picks].sort((a, b) => {
+    // Unscheduled last; among the rest, earliest first. Ties keep input order,
+    // which is the order the picks were made.
+    const at = a.kickTs ?? null;
+    const bt = b.kickTs ?? null;
+    if (at === bt) return 0;
+    if (at === null) return 1;
+    if (bt === null) return -1;
+    return at.localeCompare(bt);
+  });
+  const out: Array<{ label: string | null; picks: SharePick[] }> = [];
+  for (const p of sorted) {
+    const label = p.kickLabel ?? "KICKOFF TBD";
+    const last = out[out.length - 1];
+    if (last && last.label === label) last.picks.push(p);
+    else out.push({ label, picks: [p] });
+  }
+  return out;
+}
+
 const recordLine = (label: string, t: Tally): string =>
   `${label}: ${t.decided > 0 ? formatRecord(t) : "no action yet"}`;
+
+/**
+ * A betting group's sheet, as a text message with something to tap.
+ *
+ * The whole point of texting a sheet is that somebody reads it and gets on.
+ * So the CTA is not decoration: it is a link back to the slate with this
+ * group in view, where every game on the sheet carries a Tail button that
+ * fills a slip at the number available right now. One link rather than one per
+ * bet — a message with eight URLs in it is a message nobody taps.
+ */
+export interface SheetShare {
+  groupName: string;
+  userName: string;
+  week: number;
+  day: string;
+  lines: SharePick[];
+  /** Absolute URL to the slate with this group in view. Null = no CTA. */
+  tailUrl: string | null;
+}
+
+export function bettingSheetText(s: SheetShare): string {
+  const head = [`${HEADER} — ${s.groupName.toUpperCase()}`, `Week ${s.week} · ${s.day}`, ""];
+  if (s.lines.length === 0) {
+    return [...head, "Nothing on the sheet yet."].join("\n");
+  }
+  const body = groupByKickoff(s.lines).flatMap((g, i) =>
+    g.label === null
+      ? g.picks.map(formatPick)
+      : [...(i > 0 ? [""] : []), g.label, ...g.picks.map(formatPick)],
+  );
+  const foot = [
+    "",
+    `${s.lines.length} ${s.lines.length === 1 ? "bet" : "bets"} on the sheet`,
+  ];
+  if (s.tailUrl) foot.push(`Tail any of them: ${s.tailUrl}`);
+  return [...head, ...body, ...foot].join("\n");
+}
+
+/**
+ * A slip of bets, as a text message.
+ *
+ * Separate from `shareText` because a bet slip is not a pick'em week: there is
+ * no group, no lifetime record and no −110 convention, and the thing being
+ * shared is a stake list. Same kickoff grouping, though — a slip is exactly the
+ * case that made the flat list unreadable.
+ */
+export function betSlipText(
+  bets: SharePick[],
+  { day, week, totalUnits }: { day: string; week: number; totalUnits: number },
+): string {
+  const head = [`${HEADER} — BET SLIP`, `Week ${week} · ${day}`, ""];
+  if (bets.length === 0) return [...head, "Nothing on the slip."].join("\n");
+  const body = groupByKickoff(bets).flatMap((g, i) =>
+    g.label === null
+      ? g.picks.map(formatPick)
+      : [...(i > 0 ? [""] : []), g.label, ...g.picks.map(formatPick)],
+  );
+  const unitLabel = Number.isInteger(totalUnits) ? String(totalUnits) : totalUnits.toFixed(1);
+  return [
+    ...head,
+    ...body,
+    "",
+    `${bets.length} ${bets.length === 1 ? "bet" : "bets"} · ${unitLabel}u`,
+  ].join("\n");
+}
 
 export function shareText(mode: ShareMode, c: ShareContext): string {
   const head = `${HEADER} — ${c.groupName}`;
@@ -110,11 +215,17 @@ export function shareText(mode: ShareMode, c: ShareContext): string {
     ].join("\n");
   }
 
+  const body = groupByKickoff(picks).flatMap((g, i) =>
+    g.label === null
+      ? g.picks.map(formatPick)
+      : [...(i > 0 ? [""] : []), g.label, ...g.picks.map(formatPick)],
+  );
+
   return [
     head,
     `${c.userName} · Week ${c.week}`,
     "",
-    ...picks.map(formatPick),
+    ...body,
     "",
     `${picks.length} ${picks.length === 1 ? "pick" : "picks"} · ${c.day}`,
   ].join("\n");

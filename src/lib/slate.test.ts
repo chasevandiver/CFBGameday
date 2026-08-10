@@ -18,6 +18,7 @@ import {
   headlinePick,
   lineForSide,
   pickSideLabel,
+  betSideLabel,
   watchability,
   weekModelRecord,
   type GameView,
@@ -37,6 +38,7 @@ const team = (id: number, rank: number | null = null): TeamView => ({
   pollRank: null,
   poll: null,
   record: null,
+  confRecord: null,
 });
 
 const game = (overrides: Partial<GameView> = {}): GameView => ({
@@ -63,6 +65,7 @@ const game = (overrides: Partial<GameView> = {}): GameView => ({
   situation: null,
   lastPlay: null,
   crewPicks: [],
+  groupBets: [],
   possession: null,
   prediction: null,
   myPicks: [],
@@ -494,5 +497,28 @@ describe("pickSideLabel", () => {
 
   it("renders a missing line as a dash rather than inventing one", () => {
     expect(pickSideLabel("spread", "home", null, "UGA", "BAMA")).toBe("UGA –");
+  });
+});
+
+describe("betSideLabel", () => {
+  // bets.line_taken is stored home-perspective, same as picks.line_at_pick.
+  // Every away ticket therefore reads with the opposite sign to the stored
+  // number, which is the bug this function exists to stop being rewritten.
+  it("flips the sign for an away spread ticket", () => {
+    expect(betSideLabel("spread", "home", -6.5, "UGA", "BAMA")).toBe("UGA -6.5");
+    expect(betSideLabel("spread", "away", -6.5, "UGA", "BAMA")).toBe("BAMA +6.5");
+  });
+
+  it("leaves a total alone — both sides hold the same number", () => {
+    expect(betSideLabel("total", "over", 51.5, "UGA", "BAMA")).toBe("O 51.5");
+    expect(betSideLabel("total", "under", 51.5, "UGA", "BAMA")).toBe("U 51.5");
+  });
+
+  it("names the team for a moneyline and takes no number", () => {
+    expect(betSideLabel("moneyline", "away", null, "UGA", "BAMA")).toBe("BAMA ML");
+  });
+
+  it("says the type rather than inventing a format it cannot price", () => {
+    expect(betSideLabel("first_half", "home", null, "UGA", "BAMA")).toBe("UGA first_half");
   });
 });

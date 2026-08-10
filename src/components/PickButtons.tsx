@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { makePick, removePick } from "../app/actions/picks";
 import type { PickMarket } from "../lib/grade";
 import { forgetPick, rememberPick } from "../lib/session-picks";
@@ -14,6 +14,9 @@ export interface MyPickView {
   result?: string | null;
   clv?: number | null;
 }
+
+/** Fixed reading order, so "your picks" never reshuffles between renders. */
+const MARKET_ORDER: PickMarket[] = ["spread", "total", "straight_up"];
 
 interface Props {
   /** The group these picks belong to. Picks are per group (migration 0021). */
@@ -32,6 +35,15 @@ interface Props {
   /** ISO kickoff for the lock countdown; null = TBD */
   kickoffTs: string | null;
   signedIn: boolean;
+  /**
+   * Fires the instant a tap changes what the viewer holds — before the server
+   * has confirmed it, and again with the old value if the write fails. Lets a
+   * parent keep a running "8 of 10 in" count that moves at the speed of the
+   * tap rather than the speed of the round-trip.
+   */
+  onPickChange?: (gameId: number, market: PickMarket, side: string | null) => void;
+  /** Hides the "tap again to remove" explainer where a board already says it. */
+  quiet?: boolean;
 }
 
 /**
@@ -43,6 +55,22 @@ interface Props {
  * Tapping your current side removes it; tapping another swaps it and
  * re-snapshots the line (League Rule #2). Straight-up takes no number at all,
  * so it has nothing to re-snapshot and no CLV to report.
+ *
+ * ## The tap is instant
+ *
+ * The write is a server action, and a server action revalidates the page that
+ * called it — on the group board that is a dozen queries and a full slate
+ * fetch before the button you pressed changes colour. Making eight picks meant
+ * eight of those waits, which is what "the picks take forever to lock in"
+ * describes.
+ *
+ * So the button state is optimistic: the tap paints the pick immediately from
+ * the line already on screen, the write goes out behind it, and the server's
+ * answer only ever *replaces* the guess (or reverts it, with the error shown).
+ * The pick is still authoritative server-side — `make_pick` snapshots the real
+ * consensus number, and the reconciliation below drops the optimistic value the
+ * moment the true one arrives, so a line that moved between render and tap
+ * corrects itself rather than being believed.
  */
 export function PickButtons({
   groupId,
@@ -56,18 +84,97 @@ export function PickButtons({
   kickoffPassed,
   kickoffTs,
   signedIn,
+  onPickChange,
+  quiet = false,
 }: Props) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  // Which button was tapped, so ONLY that one shows the in-flight state. The
+  // Which button was tapped, so ONLY that one carries the in-flight state. The
   // old treatment dimmed all six at once, which on bar wifi reads as "my tap
   // did nothing" for the whole round-trip (audit 08/UX-10).
   const [pendingKey, setPendingKey] = useState<string | null>(null);
+  // Per-market optimistic overrides. `null` means "removed"; absent means "no
+  // opinion, use the server's row".
+  const [optimistic, setOptimistic] = useState<Map<PickMarket, MyPickView | null>>(new Map());
   // Derived, not synced: the key only means "in flight" while the transition
   // is actually pending, so no effect is needed to clear it.
   const inFlight = pending ? pendingKey : null;
 
-  const pickIn = (m: PickMarket) => myPicks.find((p) => p.market === m) ?? null;
+  /**
+   * The server's rows, with our in-flight guesses laid over the top.
+   *
+   * A guess yields to the server the moment the two agree on the side, which
+   * is what retires it — no effect, no cleanup pass. That ordering matters
+   * beyond tidiness: our guess carries the line we could see, the server's row
+   * carries the line `make_pick` actually snapshotted, and if the market moved
+   * between render and tap those differ. The real number wins as soon as it
+   * exists, and until then the side (which is never in doubt) is shown.
+   */
+  const effective = useMemo(() => {
+    const byMarket = new Map<PickMarket, MyPickView>();
+    for (const p of myPicks) byMarket.set(p.market, p);
+    for (const [market, guess] of optimistic) {
+      const server = byMarket.get(market) ?? null;
+      if (guess === null) byMarket.delete(market);
+      else if (server === null || server.side !== guess.side) byMarket.set(market, guess);
+    }
+    return MARKET_ORDER.map((m) => byMarket.get(m)).filter((p): p is MyPickView => p !== undefined);
+  }, [myPicks, optimistic]);
+
+  const pickIn = useCallback(
+    (m: PickMarket) => effective.find((p) => p.market === m) ?? null,
+    [effective],
+  );
+
+  const tap = (market: PickMarket, side: "home" | "away" | "over" | "under") => {
+    const removing = pickIn(market)?.side === side;
+    // The line we can see is the line the server is about to snapshot; showing
+    // it now is a guess that gets replaced, never a number that gets stored.
+    const guess: MyPickView | null = removing
+      ? null
+      : {
+          market,
+          side,
+          line_at_pick:
+            market === "spread" ? currentSpread : market === "total" ? currentTotal : null,
+        };
+    setOptimistic((cur) => new Map(cur).set(market, guess));
+    setPendingKey(`${market}:${side}`);
+    setError(null);
+    // Feeds the share sheet's "just placed", which is the one thing the server
+    // cannot answer from a timestamp.
+    if (removing) forgetPick(gameId, market);
+    else rememberPick(gameId, market);
+    onPickChange?.(gameId, market, removing ? null : side);
+
+    startTransition(async () => {
+      // A thrown action is the phone-on-bar-wifi case: the fetch never lands.
+      // Untrapped it takes down the error boundary and the whole board with
+      // it, losing every pick already on screen, so it is reported the same
+      // way a rejection is — the pick reverts and the row says what happened.
+      let res: { ok: boolean; message?: string };
+      try {
+        res = removing
+          ? await removePick(groupId, gameId, market)
+          : await makePick(groupId, gameId, market, side);
+      } catch {
+        res = { ok: false, message: "Couldn’t reach the server — tap to try again" };
+      }
+      if (res.ok) return;
+      // Put it back the way it was and say why. Reverting the session-picks
+      // entry too, or "just placed" would share a pick that was never made.
+      setOptimistic((cur) => {
+        const next = new Map(cur);
+        next.delete(market);
+        return next;
+      });
+      const previous = myPicks.find((p) => p.market === market) ?? null;
+      if (previous) rememberPick(gameId, market);
+      else forgetPick(gameId, market);
+      onPickChange?.(gameId, market, previous?.side ?? null);
+      if (res.message) setError(res.message);
+    });
+  };
 
   if (!signedIn) {
     return (
@@ -81,9 +188,9 @@ export function PickButtons({
   }
 
   if (kickoffPassed) {
-    return myPicks.length > 0 ? (
+    return effective.length > 0 ? (
       <div className="flex flex-col gap-1.5">
-        {myPicks.map((p) => (
+        {effective.map((p) => (
           <div key={p.market} className="flex flex-wrap items-center gap-2">
             <p className="stat text-sm text-chalk/70">
               Locked: {pickLabel(p, homeLabel, awayLabel)}
@@ -117,25 +224,6 @@ export function PickButtons({
     );
   }
 
-  const tap = (market: PickMarket, side: "home" | "away" | "over" | "under") => {
-    setPendingKey(`${market}:${side}`);
-    startTransition(async () => {
-      setError(null);
-      const removing = pickIn(market)?.side === side;
-      const res = removing
-        ? await removePick(groupId, gameId, market)
-        : await makePick(groupId, gameId, market, side);
-      if (!res.ok) {
-        if (res.message) setError(res.message);
-        return;
-      }
-      // Feeds the share sheet's "just placed", which is the one thing the
-      // server cannot answer from a timestamp.
-      if (removing) forgetPick(gameId, market);
-      else rememberPick(gameId, market);
-    });
-  };
-
   const awaySpread = currentSpread === null ? null : -currentSpread;
   const has = (m: PickMarket) => markets.includes(m);
 
@@ -146,7 +234,7 @@ export function PickButtons({
           <PickButton
             label={`${awayLabel} ${fmtSpread(awaySpread)}`}
             active={pickIn("spread")?.side === "away"}
-            disabled={pending || currentSpread === null}
+            disabled={currentSpread === null}
             noLine={currentSpread === null}
             pending={inFlight === "spread:away"}
             onClick={() => tap("spread", "away")}
@@ -154,7 +242,7 @@ export function PickButtons({
           <PickButton
             label={`${homeLabel} ${fmtSpread(currentSpread)}`}
             active={pickIn("spread")?.side === "home"}
-            disabled={pending || currentSpread === null}
+            disabled={currentSpread === null}
             noLine={currentSpread === null}
             pending={inFlight === "spread:home"}
             onClick={() => tap("spread", "home")}
@@ -166,7 +254,7 @@ export function PickButtons({
           <PickButton
             label={`Over ${fmtTotal(currentTotal)}`}
             active={pickIn("total")?.side === "over"}
-            disabled={pending || currentTotal === null}
+            disabled={currentTotal === null}
             noLine={currentTotal === null}
             pending={inFlight === "total:over"}
             onClick={() => tap("total", "over")}
@@ -174,7 +262,7 @@ export function PickButtons({
           <PickButton
             label={`Under ${fmtTotal(currentTotal)}`}
             active={pickIn("total")?.side === "under"}
-            disabled={pending || currentTotal === null}
+            disabled={currentTotal === null}
             noLine={currentTotal === null}
             pending={inFlight === "total:under"}
             onClick={() => tap("total", "under")}
@@ -188,34 +276,40 @@ export function PickButtons({
           <PickButton
             label={`${awayLabel} to win`}
             active={pickIn("straight_up")?.side === "away"}
-            disabled={pending}
+            disabled={false}
             pending={inFlight === "straight_up:away"}
             onClick={() => tap("straight_up", "away")}
           />
           <PickButton
             label={`${homeLabel} to win`}
             active={pickIn("straight_up")?.side === "home"}
-            disabled={pending}
+            disabled={false}
             pending={inFlight === "straight_up:home"}
             onClick={() => tap("straight_up", "home")}
           />
         </div>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        {myPicks.length > 0 ? (
+        {effective.length > 0 ? (
           <p className="stat text-xs text-accent">
-            Your {myPicks.length === 1 ? "number" : "picks"}:{" "}
-            {myPicks.map((p) => pickLabel(p, homeLabel, awayLabel)).join(" · ")}{" "}
-            <span className="text-dim">
-              (tap again to remove — re-picking re-snapshots the line)
-            </span>
+            Your {effective.length === 1 ? "number" : "picks"}:{" "}
+            {effective.map((p) => pickLabel(p, homeLabel, awayLabel)).join(" · ")}
+            {!quiet && (
+              <span className="text-dim">
+                {" "}
+                (tap again to remove — re-picking re-snapshots the line)
+              </span>
+            )}
           </p>
         ) : (
           <span />
         )}
         <LockCountdown kickoffTs={kickoffTs} />
       </div>
-      {error && <p className="text-xs text-loss">{error}</p>}
+      {/* A rejected write is an async update: announced, not just coloured. */}
+      <p role="status" aria-live="polite" className="text-xs text-loss empty:hidden">
+        {error}
+      </p>
     </div>
   );
 }
@@ -262,7 +356,7 @@ function PickButton({
   label: string;
   active: boolean;
   disabled: boolean;
-  /** This button's own tap is in flight — the only one that changes look. */
+  /** This button's own write is still in flight — a hairline cue, not a state. */
   pending: boolean;
   /** No number to pick — the one disabled state that should LOOK disabled. */
   noLine?: boolean;
@@ -274,14 +368,16 @@ function PickButton({
       disabled={disabled}
       aria-pressed={active}
       aria-busy={pending || undefined}
-      /* min-h-11 = the 44px tap floor (docs/DESIGN.md); siblings stay full-
-         strength while inert so a slow round-trip doesn't read as a dead tap —
-         only the tapped button pulses. A missing line still dims. */
+      /* min-h-11 = the 44px tap floor (docs/DESIGN.md). The picked look lands
+         on the tap, not on the response; `pending` only softens the border
+         while the write is out, so a slow round-trip is visible without the
+         button ever looking un-picked. Buttons stay live during a write —
+         disabling them mid-flight is what made rapid picking feel stuck. */
       className={`stat min-h-11 flex-1 rounded-lg border px-3 py-2 text-sm transition-colors ${
-        pending
-          ? "animate-pulse border-accent/60 text-chalk/70"
-          : active
-            ? "border-accent bg-accent/20 text-accent"
+        active
+          ? `border-accent bg-accent/20 text-accent ${pending ? "opacity-80" : ""}`
+          : pending
+            ? "border-accent/40 text-chalk/70"
             : "border-chalk/25 text-chalk hover:border-chalk/60"
       } ${noLine ? "opacity-50" : ""}`}
     >
