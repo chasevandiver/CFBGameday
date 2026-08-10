@@ -8,19 +8,23 @@ import { kickParts, DEFAULT_TZ } from "../../lib/kick";
 import { statusForBet, type LiveBetStatus } from "../../lib/live-status";
 import { fetchBetFormGames, fetchCurrentSeasonWeek } from "../../lib/queries";
 import { formatRecord, tally, tallyBy } from "../../lib/records";
-import { fmtSpread, fmtTotal } from "../../lib/slate";
+import { fmtSpread, fmtTotal, lineForSide } from "../../lib/slate";
 import { createClient } from "../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = { title: "Ledger" };
 
-/** Spread-style lines get their sign ("-3.5"/"PK"); totals render bare. */
+/**
+ * Spread-style lines get their sign ("-3.5"/"PK"); totals render bare.
+ * `line_taken` is stored home-perspective; the ledger shows the number the
+ * bettor's ticket actually reads, so away sides convert through `lineForSide`.
+ */
 function fmtBetLine(b: BetRow): string {
   if (b.line_taken === null) return "–";
   const n = Number(b.line_taken);
   if (b.bet_type === "total" || b.bet_type === "team_total") return fmtTotal(n);
-  return fmtSpread(n);
+  return fmtSpread(b.side ? lineForSide(b.side, n) : n);
 }
 
 const abbrOf = (t: TeamRow | undefined): string =>

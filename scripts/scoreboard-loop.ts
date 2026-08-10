@@ -23,7 +23,7 @@
 import { cfbdCallCount } from "../src/lib/cfbd";
 import { createServiceClient } from "../src/lib/supabase/service";
 import { idleSkip, envDays } from "./lib/idle";
-import { SEASON, logCfbdCalls, scoreboardJob } from "./lib/jobs-core";
+import { SEASON, logCfbdCalls, recordJobRun, scoreboardJob } from "./lib/jobs-core";
 
 const MONTHLY_BUDGET = Number(process.env.CFBD_MONTHLY_BUDGET ?? 30_000);
 
@@ -112,28 +112,33 @@ async function main() {
       `${spent}/${MONTHLY_BUDGET} calls used this month`,
   );
 
-  let ticks = 0;
-  while (Date.now() < deadline) {
-    let waitMs = 60_000;
-    try {
-      const state = await activity(db);
-      if (state !== "idle") {
-        const before = cfbdCallCount();
-        const result = await scoreboardJob(db);
-        await logCfbdCalls(db, "scoreboard", cfbdCallCount() - before);
-        ticks++;
-        if (ticks % 10 === 1) console.log(`[${state}]`, JSON.stringify(result));
-        waitMs = state === "live" ? liveMs : 120_000;
+  // One job_runs row per launch (not per tick — a Saturday would write
+  // thousands); the freshness card reads the latest launch.
+  await recordJobRun(db, "scoreboard-loop", async () => {
+    let ticks = 0;
+    while (Date.now() < deadline) {
+      let waitMs = 60_000;
+      try {
+        const state = await activity(db);
+        if (state !== "idle") {
+          const before = cfbdCallCount();
+          const result = await scoreboardJob(db);
+          await logCfbdCalls(db, "scoreboard", cfbdCallCount() - before);
+          ticks++;
+          if (ticks % 10 === 1) console.log(`[${state}]`, JSON.stringify(result));
+          waitMs = state === "live" ? liveMs : 120_000;
+        }
+      } catch (err) {
+        // one bad tick never kills the hour
+        console.error("tick failed:", err instanceof Error ? err.message : err);
+        waitMs = 60_000;
       }
-    } catch (err) {
-      // one bad tick never kills the hour
-      console.error("tick failed:", err instanceof Error ? err.message : err);
-      waitMs = 60_000;
+      if (Date.now() + waitMs > deadline) break;
+      await sleep(waitMs);
     }
-    if (Date.now() + waitMs > deadline) break;
-    await sleep(waitMs);
-  }
-  console.log(`done: ${ticks} scoreboard polls, ${cfbdCallCount()} CFBD calls this run`);
+    console.log(`done: ${ticks} scoreboard polls, ${cfbdCallCount()} CFBD calls this run`);
+    return { ticks, cfbd_calls: cfbdCallCount() };
+  });
 }
 
 main().catch((err) => {

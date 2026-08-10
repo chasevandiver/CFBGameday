@@ -40,6 +40,7 @@ import {
   type MyBetView,
   type TeamView,
 } from "../../../lib/slate";
+import { clockTime, tzLabel, DEFAULT_TZ } from "../../../lib/kick";
 import { createClient } from "../../../lib/supabase/server";
 import { hasCalibratedTotals } from "../../../model/ratings";
 
@@ -170,6 +171,10 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   const snapshots = (linesRes.data ?? []) as LineSnapshotRow[];
   const consensus = consensusFromSnapshots(snapshots);
   const history = consensusHistory(snapshots, consensus.open);
+  const linesAsOf = snapshots.reduce<string | null>(
+    (max, s) => (max === null || s.captured_at > max ? s.captured_at : max),
+    null,
+  );
   const predictions = (predRes.data ?? []) as PredictionRow[];
   let prediction = predictions.find((p) => p.frozen) ?? predictions[0] ?? null;
   // append-only history: rows from pre-2026.3.0 versions priced totals as a
@@ -250,9 +255,12 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
       const h = sysLatest.get(`${system}:${game.home_team_id}`);
       const a = sysLatest.get(`${system}:${game.away_team_id}`);
       if (h === undefined || a === undefined) return null;
-      // Home perspective, and Elo divided down first — the conversion lives in
+      // Market convention (negative = home favored), same as the Model row
+      // below and the table's own footnote — this was negated into
+      // home-positive, so SP+ and Model printed opposite signs for the same
+      // directional lean. Elo is divided down first; the conversion lives in
       // rating-scales rather than being written out at each call site.
-      const margin = -(systemMargin(system, h, a) ?? 0);
+      const margin = systemMargin(system, h, a) ?? 0;
       return { system, home: h, away: a, margin };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
@@ -423,11 +431,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                   <li key={p.id} className="stat flex justify-between text-sm">
                     <span>{profiles.get(p.user_id)?.display_name ?? "?"}</span>
                     <span>
-                      {p.side === "home"
-                        ? `${home.abbr} ${fmtSpread(Number(p.line_at_pick))}`
-                        : p.side === "away"
-                          ? `${away.abbr} ${fmtSpread(Number(p.line_at_pick))}`
-                          : `${p.side === "over" ? "O" : "U"} ${fmtTotal(Number(p.line_at_pick))}`}
+                      {pickText(p, home.abbr, away.abbr)}
                       {p.result && (
                         <span
                           className={`ml-2 uppercase ${
@@ -455,6 +459,13 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             <h2 className="text-sm text-accent">Market</h2>
             <span className="flex items-center gap-2 text-dim">
               {history.length >= 2 && <Sparkline points={history} width={72} height={20} />}
+              {/* capture time of the newest snapshot — staleness is by design
+                  with the minimal cadence, so it's stated, not implied */}
+              {linesAsOf && (
+                <span className="stat text-[10.5px] text-chalk/40">
+                  as of {clockTime(linesAsOf, DEFAULT_TZ)} {tzLabel(DEFAULT_TZ)}
+                </span>
+              )}
             </span>
           </header>
           <div className="overflow-x-auto">

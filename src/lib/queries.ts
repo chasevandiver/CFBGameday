@@ -132,28 +132,21 @@ export async function fetchSlateView(
     .order("start_ts", { ascending: true });
   if (error) throw error;
   if (!games || games.length === 0)
-    return { seasonId, week, seasonType, fetchedAt, games: [] };
+    return { seasonId, week, seasonType, fetchedAt, linesAsOf: null, games: [] };
 
   const gameRows = games as GameRow[];
   const gameIds = gameRows.map((g) => g.id);
   const teamIds = [...new Set(gameRows.flatMap((g) => [g.home_team_id, g.away_team_id]))];
   const venueIds = [...new Set(gameRows.map((g) => g.venue_id).filter((v): v is number => v !== null))];
 
-  // History window: the sparkline shows the trailing 24 consensus changes;
-  // a week of snapshots more than covers it and bounds the row count.
-  const historyStart = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
-
-  const [teamsRes, consensusRes, historyRes, predsRes, picksRes, betsRes, weatherRes, venuesRes, seasonGamesRes, ratingsRes, pollsRes, crewPicksRes, profilesRes, systemsRes, rivalriesRes] =
+  const [teamsRes, consensusRes, predsRes, picksRes, betsRes, weatherRes, venuesRes, seasonGamesRes, ratingsRes, pollsRes, crewPicksRes, profilesRes, systemsRes, rivalriesRes] =
     await Promise.all([
       supabase.from("teams").select("*").in("id", teamIds),
       // one consensus row per game, reduced in Postgres (migration 0015) —
-      // not the full snapshot history (audit §8)
+      // never raw snapshots: a week of them was ~1 MB per poll tick, fetched
+      // for a per-card sparkline that was removed on Aug 9. Movement detail
+      // lives on /game/[id], which fetches its own single game's snapshots.
       supabase.from("line_consensus").select("*").in("game_id", gameIds),
-      supabase
-        .from("line_snapshots")
-        .select("game_id, provider, spread, captured_at")
-        .in("game_id", gameIds)
-        .gte("captured_at", historyStart),
       supabase
         .from("predictions")
         .select("*")
@@ -224,13 +217,6 @@ export async function fetchSlateView(
   const consensusByGame = new Map(
     ((consensusRes.data ?? []) as LineConsensusRow[]).map((c) => [c.game_id, c]),
   );
-  const historyByGame = new Map<number, Array<HistorySnapshot & { game_id: number }>>();
-  for (const s of (historyRes.data ?? []) as Array<HistorySnapshot & { game_id: number }>) {
-    const arr = historyByGame.get(s.game_id) ?? [];
-    arr.push(s);
-    historyByGame.set(s.game_id, arr);
-  }
-
   // newest prediction wins; prefer frozen (Thursday receipts) rows
   const predByGame = new Map<number, PredictionRow>();
   for (const p of (predsRes.data ?? []) as PredictionRow[]) {
@@ -374,6 +360,7 @@ export async function fetchSlateView(
 
   const nullConsensus: LineConsensusRow = {
     game_id: 0,
+    as_of: null,
     spread: null,
     spread_open: null,
     total: null,
@@ -421,7 +408,6 @@ export async function fetchSlateView(
           mlHome: consensus.mlHome,
           mlAway: consensus.mlAway,
         },
-        spreadHistory: consensusHistory(historyByGame.get(game.id) ?? [], consensus.open),
         prediction: pred
           ? {
               spread: Number(pred.spread),
@@ -471,7 +457,15 @@ export async function fetchSlateView(
     ];
   });
 
-  return { seasonId, week, seasonType, fetchedAt, games: views };
+  // When the lines on screen were captured, not when the page was rendered —
+  // with the minimal refresh cadence those differ by design, and the header
+  // says which one it is showing.
+  let linesAsOf: string | null = null;
+  for (const c of consensusByGame.values()) {
+    if (c.as_of !== null && (linesAsOf === null || c.as_of > linesAsOf)) linesAsOf = c.as_of;
+  }
+
+  return { seasonId, week, seasonType, fetchedAt, linesAsOf, games: views };
 }
 
 export interface TeamAtsSummary {

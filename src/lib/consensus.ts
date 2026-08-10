@@ -25,9 +25,19 @@ export interface Consensus {
   mlAway: number | null;
 }
 
-/** Books only hang lines in half-point increments, so consensus must land on one. */
+/**
+ * Books only hang lines in half-point increments, so consensus must land on one.
+ *
+ * Ties round half away from zero to match Postgres `round()` — the SQL
+ * consensus sites (`line_consensus` in 0015, `make_pick` in 0021) use
+ * `round(avg * 2) / 2`, and numeric `round(-6.5)` is −7 where JS
+ * `Math.round(-6.5)` is −6. Before this matched, a −3.25 mean snapped to −3.0
+ * here and −3.5 in SQL: the same snapshots produced two different "consensus"
+ * lines, and a pick graded against the JS close could bank ±0.5 of phantom CLV
+ * on a line that never moved.
+ */
 export function snapToHalf(v: number): number {
-  return Math.round(v * 2) / 2;
+  return v < 0 ? -Math.round(-v * 2) / 2 : Math.round(v * 2) / 2;
 }
 
 /**

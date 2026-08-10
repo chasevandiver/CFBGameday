@@ -12,6 +12,8 @@ import {
   fmtSpread,
   fmtTotal,
   isRedZone,
+  lineForSide,
+  pickSideLabel,
   type LinePoint,
   type MyBetView,
   type TeamView,
@@ -308,13 +310,7 @@ export function GameHeader({
             <div className="flex flex-wrap items-center justify-center gap-1.5">
               {myPickStatus && myPick && (
                 <LiveStatusChip
-                  prefix={`Pick ${
-                    myPick.side === "home"
-                      ? `${home.abbr} ${fmtSpread(myPick.line)}`
-                      : myPick.side === "away"
-                        ? `${away.abbr} ${fmtSpread(myPick.line)}`
-                        : `${myPick.side === "over" ? "O" : "U"} ${fmtTotal(myPick.line)}`
-                  }`}
+                  prefix={`Pick ${pickSideLabel(myPick.market, myPick.side, myPick.line, home.abbr, away.abbr, { compact: true })}`}
                   status={myPickStatus}
                 />
               )}
@@ -323,7 +319,8 @@ export function GameHeader({
                   key={bet.id}
                   prefix={
                     bet.betType === "spread"
-                      ? `${(bet.side === "home" ? home : away).abbr} ${fmtSpread(bet.line)}`
+                      ? // stored home-perspective; the ticket reads the side's number
+                        `${(bet.side === "home" ? home : away).abbr} ${fmtSpread(lineForSide(bet.side ?? "home", bet.line))}`
                       : bet.betType === "total"
                         ? `${bet.side === "over" ? "O" : "U"} ${fmtTotal(bet.line)}`
                         : `${(bet.side === "home" ? home : away).abbr} ML`

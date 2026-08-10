@@ -2,7 +2,20 @@
 
 import { revalidatePath } from "next/cache";
 import { REASON_TAGS } from "../../lib/db-types";
+import { homeLineForSide } from "../../lib/slate";
 import { createClient } from "../../lib/supabase/server";
+
+/**
+ * Bet forms and the slip speak in the bettor's number ("UNC +6.5"); the
+ * `bets` table stores spread-style lines home-perspective (−6.5), which is
+ * what the grader (`jobs-core`), `liveSpreadStatus` and `spreadClv` all read.
+ * Totals are side-agnostic and pass through.
+ */
+const SPREAD_STYLE = new Set(["spread", "first_half"]);
+function storedLine(betType: string, side: string | null, line: number | null): number | null {
+  if (line === null || side === null || !SPREAD_STYLE.has(betType)) return line;
+  return homeLineForSide(side, line);
+}
 
 export interface BetActionResult {
   ok: boolean;
@@ -50,7 +63,7 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
     bet_type: betType,
     description,
     side,
-    line_taken: lineRaw === "" ? null : Number(lineRaw),
+    line_taken: storedLine(betType, side, lineRaw === "" ? null : Number(lineRaw)),
     odds,
     units,
     book: book || null,
@@ -115,7 +128,7 @@ export async function logSlipBets(
       bet_type: b.betType,
       description: b.description.trim(),
       side: b.side,
-      line_taken: b.line,
+      line_taken: storedLine(b.betType, b.side, b.line),
       odds: b.odds,
       units: b.units,
       reason_tag: reasonTag,

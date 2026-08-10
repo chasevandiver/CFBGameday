@@ -84,6 +84,16 @@ export function lineForSide(side: string, line: number | null): number | null {
 }
 
 /**
+ * Write-side inverse of `lineForSide`: the bettor states the number their
+ * ticket reads ("UNC +6.5" → +6.5) and the ledger stores home-perspective
+ * (−6.5), which is the convention the grader, live status and CLV all read.
+ * The negation is symmetric so the implementation is shared — the second name
+ * marks the direction of travel, so a write site reads as a conversion rather
+ * than a display formatting call.
+ */
+export const homeLineForSide = lineForSide;
+
+/**
  * How a pick reads: "UNC +6", "Over 51.5", "OSU to win".
  *
  * One implementation. There were five — the weekly grid, the game card, the
@@ -159,7 +169,6 @@ export interface GameView {
     mlHome: number | null;
     mlAway: number | null;
   };
-  spreadHistory: LinePoint[];
   prediction: PredictionView | null;
   /** The viewer's picks in the active group — at most one per market. */
   myPicks: MyPickView[];
@@ -193,6 +202,13 @@ export interface SlateData {
   week: number;
   seasonType: "regular" | "postseason";
   fetchedAt: string;
+  /**
+   * Newest line snapshot across the week's games — when the lines on screen
+   * were actually captured. Distinct from fetchedAt on purpose: the page can
+   * be fresh while the lines are hours old (that's the designed cadence), and
+   * a betting product must not dress one up as the other.
+   */
+  linesAsOf: string | null;
   games: GameView[];
 }
 

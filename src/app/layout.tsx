@@ -57,6 +57,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
         {children}
+        {/* pb clears the fixed bottom nav on mobile */}
+        <footer className="mx-auto w-full max-w-7xl px-4 pb-20 pt-6 text-center text-[11px] leading-relaxed text-chalk/40 sm:pb-6">
+          No money moves through this site — it&rsquo;s a scorekeeping ledger for a private group.
+          If gambling stops being fun, call 1-800-GAMBLER.
+        </footer>
       </body>
     </html>
   );

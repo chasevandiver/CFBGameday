@@ -65,6 +65,8 @@ export interface LineConsensusRow {
   total_open: number | null;
   ml_home: number | null;
   ml_away: number | null;
+  /** Newest snapshot feeding this consensus (migration 0024) — when the line was captured. */
+  as_of: string | null;
 }
 
 export interface PredictionRow {

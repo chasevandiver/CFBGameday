@@ -64,7 +64,6 @@ const game = (overrides: Partial<GameView> = {}): GameView => ({
   lastPlay: null,
   crewPicks: [],
   possession: null,
-  spreadHistory: [],
   prediction: null,
   myPicks: [],
   myBets: [],

@@ -12,7 +12,7 @@
  */
 
 import { cfbd, cfbdCallCount } from "../src/lib/cfbd";
-import { logCfbdCalls } from "./lib/jobs-core";
+import { logCfbdCalls, recordJobRun } from "./lib/jobs-core";
 import { DAY_MS, envDays, idleOverridden, msUntilNextGame } from "./lib/idle";
 import { SEASON, chunk, createSink } from "./lib/ingest";
 
@@ -20,6 +20,15 @@ const MONDAY = 1;
 
 async function main() {
   const { sink, db } = createSink();
+  // job_runs is the dead-man's record (audit 07 / migration 0024).
+  const result = db ? await recordJobRun(db, "sync-games", () => run(sink, db)) : await run(sink, db);
+  console.log("sync-games", JSON.stringify(result));
+}
+
+async function run(
+  sink: ReturnType<typeof createSink>["sink"],
+  db: ReturnType<typeof createSink>["db"],
+): Promise<Record<string, unknown>> {
   const weekArg = process.argv.indexOf("--week");
   const week = weekArg > -1 ? Number(process.argv[weekArg + 1]) : undefined;
 
@@ -39,7 +48,7 @@ async function main() {
           days_to_kickoff: Math.round(days * 10) / 10,
         }),
       );
-      return;
+      return { skipped: `next_game_gt_${horizon}d_and_not_monday` };
     }
   }
 
@@ -73,6 +82,7 @@ async function main() {
   for (const batch of chunk(rows, 500)) await sink.upsert("games", batch);
   if (db) await logCfbdCalls(db, "sync-games", cfbdCallCount());
   console.log(`  ${rows.length} games upserted`);
+  return { games: rows.length };
 }
 
 main().catch((err) => {

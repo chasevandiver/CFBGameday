@@ -398,9 +398,14 @@ export function SlateView({
                 {liveCount} live
               </span>
             )}
+            {/* the LINES' capture time, not the page fetch — with 2x-daily
+                refreshes plus close passes those differ by hours, and a
+                betting product must say which clock it is showing */}
             <span className="stat hidden items-center gap-1 text-[10.5px] text-chalk/35 sm:flex">
               <RefreshCw size={10} aria-hidden className={loading ? "animate-spin" : ""} />
-              {clockTime(data.fetchedAt, tz)} {tzLabel(tz)}
+              {data.linesAsOf
+                ? `lines ${clockTime(data.linesAsOf, tz)} ${tzLabel(tz)}`
+                : `${clockTime(data.fetchedAt, tz)} ${tzLabel(tz)}`}
             </span>
           </div>
         </div>

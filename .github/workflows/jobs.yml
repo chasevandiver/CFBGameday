@@ -1,9 +1,15 @@
 # The CFB Slate — scheduled jobs (docs/SPEC.md §8).
 # GitHub Actions is the v1 scheduler; the pg_cron + edge-function path lives in
 # supabase/functions/jobs/ for when it can be deployed. Actions schedules can
-# lag 5–30 min, which is fine for everything except the closing-line burst —
-# that one runs every 10 min in a window, so worst case the "closing" snapshot
-# is a bit stale (documented proxy, docs/SPEC.md §5.3).
+# lag 5–30 min, which the close passes budget for: each is scheduled ~40 min
+# before its kickoff wave, so a worst-case-late run still lands pre-kickoff
+# and a post-kickoff snapshot is never selected as the close.
+#
+# Line cadence is deliberately minimal (owner decision, Aug 2026): lines barely
+# move intraday and nobody here bets the moves — the one line that matters is
+# the close, because CLV is graded against it (docs/SPEC.md §5.3). So: two
+# daily refreshes for display, plus one close pass per kickoff wave, including
+# the Thursday/Friday night waves the old schedule missed entirely.
 #
 # Required repository secrets (Settings → Secrets and variables → Actions):
 #   CFBD_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
@@ -48,13 +54,16 @@ on:
           # twice duplicates them, so it is dispatch-only and never scheduled.
           - preseason-bootstrap
   schedule:
-    # Lines 4x daily (8am/1pm/6pm/11pm ET)
-    - cron: "0 3,12,17,22 * * *"
-    # Lines hourly on Saturdays (daytime UTC)
-    - cron: "0 13-23 * * 6"
-    # Closing-line burst: every 10 min around Saturday kickoff waves
-    - cron: "*/10 15-23 * * 6"
-    - cron: "*/10 0-3 * * 0"
+    # Lines 2x daily (8am/6pm ET) — display freshness only
+    - cron: "0 12,22 * * *"
+    # Close passes: one refresh ~40 min before each kickoff wave.
+    # Saturday noon / 3:30 / 7-7:30 ET waves, and the late (Pac-after-dark) wave:
+    - cron: "20 15 * * 6"
+    - cron: "50 18 * * 6"
+    - cron: "20 22 * * 6"
+    - cron: "50 1 * * 0"
+    # Thursday/Friday night games (7-8pm ET kicks — MACtion joins in November):
+    - cron: "50 22 * * 4,5"
     # Games sync daily
     - cron: "0 9 * * *"
     # Scoreboard: hourly launches of a continuous polling loop (Actions cron
@@ -66,6 +75,12 @@ on:
     - cron: "0 15-23 * * 6"
     - cron: "0 0-4 * * 0"
     - cron: "0 0-3 * * 5,6"
+    # Sunday/Monday slates (Week 1 is Labor Day weekend; there are real games
+    # both nights, and none of the windows above covers them). idleSkip's
+    # 2-day horizon exits these launches in under a minute on the ~13 weeks a
+    # year with no Sun/Mon game, so the coverage is nearly free.
+    - cron: "0 16-23 * * 0,1"
+    - cron: "0 0-3 * * 1,2"
     # Weather Saturday mornings
     - cron: "0 10 * * 6"
     # Sunday ratings update + grading (8am ET)
@@ -114,10 +129,9 @@ jobs:
         id: task
         run: |
           case "${{ github.event.schedule }}" in
-            "0 3,12,17,22 * * *"|"0 13-23 * * 6") echo "task=refresh-lines" >> "$GITHUB_OUTPUT" ;;
-            "*/10 15-23 * * 6"|"*/10 0-3 * * 0") echo "task=refresh-lines-burst" >> "$GITHUB_OUTPUT" ;;
+            "0 12,22 * * *"|"20 15 * * 6"|"50 18 * * 6"|"20 22 * * 6"|"50 1 * * 0"|"50 22 * * 4,5") echo "task=refresh-lines" >> "$GITHUB_OUTPUT" ;;
             "0 9 * * *") echo "task=sync-games" >> "$GITHUB_OUTPUT" ;;
-            "0 15-23 * * 6"|"0 0-4 * * 0"|"0 0-3 * * 5,6") echo "task=scoreboard-loop" >> "$GITHUB_OUTPUT" ;;
+            "0 15-23 * * 6"|"0 0-4 * * 0"|"0 0-3 * * 5,6"|"0 16-23 * * 0,1"|"0 0-3 * * 1,2") echo "task=scoreboard-loop" >> "$GITHUB_OUTPUT" ;;
             "0 10 * * 6") echo "task=weather" >> "$GITHUB_OUTPUT" ;;
             "0 13 * * 0") echo "task=ratings-update" >> "$GITHUB_OUTPUT" ;;
             "0 3 * * 5") echo "task=freeze" >> "$GITHUB_OUTPUT" ;;
@@ -147,14 +161,22 @@ jobs:
             # input is still falling back, and we stop there rather than
             # shipping a rating built on last year's talent.
             #
-            # A declined refresh exits 0 — on the daily August cron "not ready
-            # yet" is the expected answer for most of the month, and a red run
-            # every morning would train everyone to ignore it. The standalone
-            # preseason-check task keeps its non-zero exit for when you ask the
-            # question directly.
+            # A declined refresh exits 0 through Aug 19 — early in the month
+            # "not ready yet" is the expected answer, and a red run every
+            # morning would train everyone to ignore it. From Aug 20 a decline
+            # goes RED: openers are Aug 29 and the Thursday freeze stamps
+            # Week 0's receipts from whatever ratings are live on the 28th, so
+            # a quiet green through the 27th would strand launch on the stale
+            # build with nobody told. Red here means a human decision is due:
+            # build on last year's talent deliberately, or launch on the
+            # current ratings with a visible note.
             preseason-refresh|preseason-bootstrap)
               DIR="$RUNNER_TEMP/preseason"
               if ! npx tsx scripts/build-preseason.ts --check --out "$DIR-check"; then
+                if [ "$(date -u +%m)" = "08" ] && [ "$(date -u +%d)" -ge 20 ]; then
+                  echo "::error::preseason inputs STILL not ready with openers on Aug 29 — a decision is due: deliberate stale-talent build, or launch on current ratings"
+                  exit 1
+                fi
                 echo "::notice::preseason inputs not ready — nothing loaded"
                 exit 0
               fi
@@ -174,3 +196,18 @@ jobs:
               fi ;;
             *) echo "no task matched schedule '${{ github.event.schedule }}'" && exit 1 ;;
           esac
+      # Dead-man's switch (audit 07): failure emails only fire when a run
+      # ERRORS — a cron that silently stops firing (Actions outage, schedule
+      # drift, the 60-day inactivity auto-disable) alerts nobody. Pinging an
+      # absence-alerting service (healthchecks.io or similar) on every
+      # successful run flips that: the alert fires when the ping STOPS.
+      # Inert until the HEALTHCHECK_PING_URL secret exists; the task name is
+      # appended so one project can hold a check per job (slug-mode URLs).
+      - name: Dead-man ping
+        if: ${{ success() }}
+        env:
+          HEALTHCHECK_PING_URL: ${{ secrets.HEALTHCHECK_PING_URL }}
+        run: |
+          if [ -n "$HEALTHCHECK_PING_URL" ]; then
+            curl -fsS -m 10 --retry 3 "$HEALTHCHECK_PING_URL/${{ steps.task.outputs.task }}" > /dev/null || true
+          fi

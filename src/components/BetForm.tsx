@@ -126,13 +126,13 @@ export function BetForm({ seasonId, games = [] }: { seasonId: number; games?: Be
             </select>
           </Field>
         )}
-        <Field label="Line" htmlFor="bet-line">
+        <Field label="Line" htmlFor="bet-line" hint="as your ticket reads">
           <input
             id="bet-line"
             name="line_taken"
             inputMode="decimal"
             pattern="-?[0-9]+(\.[05])?"
-            title="Half-point increments, e.g. -3.5 or 48.5"
+            title="The number your side holds, half-point increments — e.g. +6.5 for the dog, -3.5 for the favorite, 48.5 for a total"
             placeholder="-3.5"
             className={input}
           />
