@@ -28,6 +28,7 @@ export function WeekHero({
   currentWeek,
   groupWeek,
   gameCount,
+  pickSlots,
   myPickCount,
   minPicks,
   firstKick,
@@ -40,6 +41,8 @@ export function WeekHero({
   currentWeek: number;
   groupWeek: GroupWeek | null;
   gameCount: number;
+  /** Picks this board actually offers — games times their live markets. */
+  pickSlots: number;
   myPickCount: number;
   minPicks: number;
   firstKick: string | null;
@@ -47,7 +50,7 @@ export function WeekHero({
   signedIn: boolean;
   share: Parameters<typeof ShareButton>[0]["context"] | null;
 }) {
-  const target = minPicks > 0 ? minPicks : gameCount;
+  const target = minPicks > 0 ? minPicks : pickSlots;
   const done = target > 0 && myPickCount >= target;
   const pct = target > 0 ? Math.min(100, Math.round((myPickCount / target) * 100)) : 0;
   const kick = firstKick === null ? null : kickParts(firstKick, DEFAULT_TZ);
@@ -121,14 +124,16 @@ export function WeekHero({
               <p className="leading-none">
                 <span className="scorebug text-[34px] leading-none text-chalk">{myPickCount}</span>
                 <span className="stat ml-1 text-sm text-dim">
-                  {minPicks > 0 ? `of ${minPicks} required` : `of ${gameCount}`}
+                  {minPicks > 0
+                    ? `of ${minPicks} required`
+                    : `of ${pickSlots} ${pickSlots === 1 ? "pick" : "picks"}`}
                 </span>
                 <span className="stat mt-1 block text-[11px] text-chalk/50">
                   {done
                     ? "you’re in — change any pick until it kicks"
                     : minPicks > 0
                       ? `${minPicks - myPickCount} more to meet the minimum`
-                      : "picks save the moment you tap"}
+                      : `${gameCount} ${gameCount === 1 ? "game" : "games"} · saved as you tap`}
                 </span>
               </p>
               {kick && (

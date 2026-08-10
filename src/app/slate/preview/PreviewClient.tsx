@@ -426,9 +426,10 @@ export function SlatePreviewClient() {
               week={12}
               currentWeek={12}
               groupWeek={GROUP_WEEK}
-              gameCount={8}
+              gameCount={4}
+              pickSlots={8}
               myPickCount={5}
-              minPicks={8}
+              minPicks={0}
               firstKick={at(20)}
               isAdmin
               signedIn

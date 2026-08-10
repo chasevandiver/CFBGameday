@@ -16,7 +16,7 @@
      The glass idiom needs the material to be visibly material. Same hue, same
      family, more separation. */
   --bg: #100e0b;
-  --surface: #221c15;
+  --surface: #241d16;
   --elev: #2c251c;
   --line: rgba(244, 236, 220, 0.13);
   --line-strong: rgba(244, 236, 220, 0.24);
@@ -49,12 +49,23 @@
 
   /* Liquid glass. Derived from the existing surface rather than new hues:
      the card is the same colour, just letting the aura through. */
-  --glass-surface: color-mix(in srgb, var(--surface) 88%, transparent);
+  /* 80%, not 88%. The card is the only glass on the site with something
+     BEHIND it — the aura — and at 88% only 12% of that aura reached the face,
+     so the game cards went opaque the moment the surfaces were lightened to
+     make cards read against the page. --surface is raised to match, so the
+     face lands on the same colour over a plain background and the difference
+     is entirely in what it transmits. */
+  --glass-surface: color-mix(in srgb, var(--surface) 80%, transparent);
   --glass-edge: rgba(244, 236, 220, 0.16);
   --glass-bar: color-mix(in srgb, var(--bg) 72%, transparent);
   /* The sheen down the face of the glass. Same white the specular edge uses,
      which is why it is derived from it rather than being a new value. */
-  --glass-sheen: color-mix(in srgb, var(--glass-edge) 55%, transparent);
+  --glass-sheen: var(--glass-edge);
+  /* The bounce along the bottom lip. A pane lit from one side has two visible
+     edges, not one — without it a 434px card reads as a sheet of paper with a
+     highlight painted on the top. Deliberately weaker than the top: it is
+     reflected light, not the source. */
+  --glass-floor: color-mix(in srgb, var(--glass-edge) 45%, transparent);
 }
 
 html[data-theme="light"] {
@@ -84,6 +95,7 @@ html[data-theme="light"] {
   /* On white the sheen would be invisible anyway; the light ground separates
      card from page with the shadow and the border instead. */
   --glass-sheen: transparent;
+  --glass-floor: transparent;
 }
 
 @theme inline {
@@ -177,14 +189,23 @@ h2,
      The sheen is what makes a large card read as a curved pane rather than a
      flat rectangle — without it, only the 1px specular edge distinguishes
      glass from paper, and at card size that edge is not enough. */
+  /* The sheen falls off over a fixed 88px, not a percentage of height. A
+     percentage made the highlight scale with the card: 22px on a 59px member
+     row (specular, correct) and 165px on a 434px game card, where the same
+     gradient spread over 7x the distance stops reading as a lit edge and
+     starts reading as a flat wash. Glass does not get glossier because the
+     pane is taller. */
   background:
-    linear-gradient(180deg, var(--glass-sheen), transparent 38%),
+    linear-gradient(180deg, var(--glass-sheen), transparent 88px),
     var(--glass-surface);
   border: 1px solid var(--line);
   border-radius: 12px;
   /* the specular top edge is what makes it read as glass rather than as a
      flat panel that happens to be see-through */
-  box-shadow: inset 0 1px 0 var(--glass-edge), var(--shadow-card);
+  box-shadow:
+    inset 0 1px 0 var(--glass-edge),
+    inset 0 -1px 0 var(--glass-floor),
+    var(--shadow-card);
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 .card-hover:hover {

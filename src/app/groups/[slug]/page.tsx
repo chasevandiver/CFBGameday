@@ -15,6 +15,7 @@ import {
 } from "../../../lib/groups";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../lib/queries";
 import { byLeagueRules, EMPTY_TALLY, tallyBy } from "../../../lib/records";
+import { pickableSlots } from "../../../lib/slate";
 import { createClient } from "../../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -169,6 +170,7 @@ export default async function GroupHomePage({
           currentWeek={currentWeek}
           groupWeek={groupWeek}
           gameCount={boardGames.length}
+          pickSlots={pickableSlots(boardGames, groupWeek?.markets ?? [])}
           myPickCount={myPickCount}
           minPicks={minPicks}
           firstKick={firstKick}
