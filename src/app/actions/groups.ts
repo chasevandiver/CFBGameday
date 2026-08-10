@@ -56,10 +56,14 @@ export async function createGroup(formData: FormData): Promise<ActionResult> {
 
   const name = String(formData.get("name") ?? "");
   const visibility = formData.get("visibility") === "public" ? "public" : "private";
+  // Pick'em is the default because it is the one that needs setting up; a
+  // betting group starts working the moment somebody logs a bet.
+  const kind = formData.get("kind") === "betting" ? "betting" : "pickem";
 
   const { data, error } = await supabase.rpc("create_group", {
     p_name: name,
     p_visibility: visibility,
+    p_kind: kind,
   });
   if (error) return { ok: false, message: error.message };
 

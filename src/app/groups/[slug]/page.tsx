@@ -2,6 +2,7 @@ import { Crown, Settings, Users } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppNav } from "../../../components/AppNav";
+import { BettingHome } from "./BettingHome";
 import { GroupSwitcher, JoinCode } from "../../../components/group/GroupForms";
 import { MemberCard, WeekHero } from "../../../components/group/GroupHub";
 import type { PickRow } from "../../../lib/db-types";
@@ -57,6 +58,26 @@ export default async function GroupHomePage({
   const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(supabase);
   const parsed = Number(weekParam);
   const week = Number.isInteger(parsed) && parsed >= 1 && parsed <= 20 ? parsed : currentWeek;
+
+  // Two kinds of group, two entirely different homes. A betting group has no
+  // board to configure, no picks and no minimum — it reads its members'
+  // ledgers — so it branches before any of the pick'em queries below run.
+  if (active.kind === "betting") {
+    return (
+      <>
+        <AppNav />
+        <BettingHome
+          supabase={supabase}
+          group={active}
+          mine={mine}
+          userId={user?.id ?? null}
+          seasonId={seasonId}
+          week={week}
+          seasonType={seasonType}
+        />
+      </>
+    );
+  }
 
   const [groupWeek, members, slate, joinRes, seasonPicksRes, lifetimeRes] = await Promise.all([
     fetchGroupWeek(supabase, active.id, seasonId, week, seasonType),

@@ -40,7 +40,13 @@ function toSharePick(s: SlipSelection, units: number, tz: string): SharePick {
 export function BetSlip({ seasonId, week, tz = DEFAULT_TZ }: { seasonId: number; week: number; tz?: string }) {
   const { slip, remove, clear } = useBetSlip();
   const [units, setUnits] = useState<Record<string, string>>({});
-  const [reasonTag, setReasonTag] = useState<string>("model_edge");
+  // A tailed selection knows why it exists, so the slip says so by default —
+  // still overridable, since somebody may have had the same side anyway.
+  // Derived rather than synced: an explicit choice wins, and until there is
+  // one the default follows what is on the slip.
+  const [tagChoice, setTagChoice] = useState<string | null>(null);
+  const tailedFrom = slip.find((s) => s.tailedFrom !== undefined)?.tailedFrom;
+  const reasonTag = tagChoice ?? (tailedFrom === undefined ? "model_edge" : "tail");
   const [open, setOpen] = useState(true);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -143,6 +149,7 @@ export function BetSlip({ seasonId, week, tz = DEFAULT_TZ }: { seasonId: number;
         setLogged(slip.map((s) => toSharePick(s, unitsFor(slipKey(s)), tz)));
         clear();
         setUnits({});
+        setTagChoice(null);
         // the cards behind the slip are holding a slate that predates these
         // rows; tell them so rather than making the user wait for a poll
         betsChanged();
@@ -214,7 +221,7 @@ export function BetSlip({ seasonId, week, tz = DEFAULT_TZ }: { seasonId: number;
                 <span className="sr-only">Reason tag</span>
                 <select
                   value={reasonTag}
-                  onChange={(e) => setReasonTag(e.target.value)}
+                  onChange={(e) => setTagChoice(e.target.value)}
                   className="h-8 w-full appearance-none rounded-lg border border-chalk/12 bg-elev pl-3 pr-7 text-xs font-medium text-chalk focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
                 >
                   {REASON_TAGS.map((tag) => (

@@ -45,6 +45,7 @@ import {
   type TeamView,
 } from "../../lib/slate";
 import { ConsensusChip, EdgeChip, LiveBadge, LiveStatusChip, MoveIndicator, PickedChip, ResultChip } from "./chips";
+import { SheetLine } from "./SheetLine";
 import { TeamMark } from "./TeamMark";
 import { WinProbBar } from "./WinProbBar";
 
@@ -985,6 +986,12 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
           {!live && game.myPicks.length > 0 && <CrewSplit game={game} />}
         </div>
       </div>
+
+      {/* The money layer, under the pool layer and visibly separate from it:
+          who in the betting group is on this game and who put it up first.
+          Renders in every state — a settled sheet is how the group finds out
+          whether tailing Jeff was a good idea. */}
+      <SheetLine game={game} />
 
       {settled && betStatuses.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">

@@ -112,6 +112,43 @@ const recordLine = (label: string, t: Tally): string =>
   `${label}: ${t.decided > 0 ? formatRecord(t) : "no action yet"}`;
 
 /**
+ * A betting group's sheet, as a text message with something to tap.
+ *
+ * The whole point of texting a sheet is that somebody reads it and gets on.
+ * So the CTA is not decoration: it is a link back to the slate with this
+ * group in view, where every game on the sheet carries a Tail button that
+ * fills a slip at the number available right now. One link rather than one per
+ * bet — a message with eight URLs in it is a message nobody taps.
+ */
+export interface SheetShare {
+  groupName: string;
+  userName: string;
+  week: number;
+  day: string;
+  lines: SharePick[];
+  /** Absolute URL to the slate with this group in view. Null = no CTA. */
+  tailUrl: string | null;
+}
+
+export function bettingSheetText(s: SheetShare): string {
+  const head = [`${HEADER} — ${s.groupName.toUpperCase()}`, `Week ${s.week} · ${s.day}`, ""];
+  if (s.lines.length === 0) {
+    return [...head, "Nothing on the sheet yet."].join("\n");
+  }
+  const body = groupByKickoff(s.lines).flatMap((g, i) =>
+    g.label === null
+      ? g.picks.map(formatPick)
+      : [...(i > 0 ? [""] : []), g.label, ...g.picks.map(formatPick)],
+  );
+  const foot = [
+    "",
+    `${s.lines.length} ${s.lines.length === 1 ? "bet" : "bets"} on the sheet`,
+  ];
+  if (s.tailUrl) foot.push(`Tail any of them: ${s.tailUrl}`);
+  return [...head, ...body, ...foot].join("\n");
+}
+
+/**
  * A slip of bets, as a text message.
  *
  * Separate from `shareText` because a bet slip is not a pick'em week: there is

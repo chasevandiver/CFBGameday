@@ -37,8 +37,33 @@ export function CreateGroupForm() {
         placeholder="Saturday Boys"
         className="min-h-11 rounded-lg border border-chalk/25 bg-elev px-3 text-sm text-chalk"
       />
+      {/* The kind is the first real decision and it cannot be changed later —
+          the two are different products sharing a roster — so it is a pair of
+          described choices rather than a toggle with a label. */}
       <fieldset className="flex flex-col gap-1.5">
-        <legend className="mb-1 text-xs text-dim">Who can see the board</legend>
+        <legend className="mb-1 text-xs text-dim">What kind of group</legend>
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-chalk/15 p-2.5 text-sm has-[:checked]:border-accent/60 has-[:checked]:bg-accent/8">
+          <input type="radio" name="kind" value="pickem" defaultChecked className="mt-0.5" />
+          <span>
+            <span className="block text-chalk">Pick&rsquo;em pool</span>
+            <span className="block text-[11px] leading-snug text-dim">
+              An admin sets the games and bet types each week. Everyone picks the same board.
+            </span>
+          </span>
+        </label>
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-chalk/15 p-2.5 text-sm has-[:checked]:border-accent/60 has-[:checked]:bg-accent/8">
+          <input type="radio" name="kind" value="betting" className="mt-0.5" />
+          <span>
+            <span className="block text-chalk">Betting group</span>
+            <span className="block text-[11px] leading-snug text-dim">
+              No board. Bets you log from the slate show up on a shared sheet — first one on a
+              game gets the credit, everyone after is tailing or fading.
+            </span>
+          </span>
+        </label>
+      </fieldset>
+      <fieldset className="flex flex-col gap-1.5">
+        <legend className="mb-1 text-xs text-dim">Who can see it</legend>
         <label className="flex items-center gap-2 text-sm text-chalk">
           <input type="radio" name="visibility" value="private" defaultChecked /> Members only
         </label>

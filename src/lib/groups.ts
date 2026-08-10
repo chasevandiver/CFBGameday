@@ -8,7 +8,13 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { GroupMemberRow, GroupRow, GroupWeekConfigRow, PickMarket } from "./db-types";
+import type {
+  GroupKind,
+  GroupMemberRow,
+  GroupRow,
+  GroupWeekConfigRow,
+  PickMarket,
+} from "./db-types";
 import type { SeasonType } from "./season";
 
 /**
@@ -23,6 +29,15 @@ export interface GroupSummary {
   name: string;
   slug: string;
   visibility: "private" | "public";
+  /**
+   * What kind of group this is (migration 0027).
+   *
+   * `pickem` has a board an admin configures and picks made against it.
+   * `betting` has neither: it reads its members' own ledgers and shows who
+   * got to each game first. The two share membership, join codes and slugs,
+   * and nothing else — every screen branches on this.
+   */
+  kind: GroupKind;
   /** Others' picks stay unreadable until each game kicks off (migration 0023). */
   picksHiddenUntilKickoff: boolean;
   /** The viewer's role, or null when they are only looking at a public group. */
@@ -34,6 +49,8 @@ const toSummary = (g: GroupRow, role: GroupSummary["role"]): GroupSummary => ({
   name: g.name,
   slug: g.slug,
   visibility: g.visibility,
+  // Rows written before 0027 have no kind; they are all pick'em by history.
+  kind: g.kind ?? "pickem",
   picksHiddenUntilKickoff: g.picks_hidden_until_kickoff ?? false,
   role,
 });
@@ -47,7 +64,7 @@ export async function fetchMyGroups(
   const { data } = await supabase
     .from("group_members")
     .select(
-      "role, joined_at, groups!inner(id, name, slug, visibility, picks_hidden_until_kickoff, archived_at)",
+      "role, joined_at, groups!inner(id, name, slug, visibility, kind, picks_hidden_until_kickoff, archived_at)",
     )
     .eq("user_id", userId)
     .is("removed_at", null)
@@ -79,7 +96,7 @@ export async function resolveActiveGroup(
     // doubles as the visibility check.
     const { data } = await supabase
       .from("groups")
-      .select("id, name, slug, visibility, picks_hidden_until_kickoff, archived_at")
+      .select("id, name, slug, visibility, kind, picks_hidden_until_kickoff, archived_at")
       .eq("slug", slug)
       .is("archived_at", null)
       .maybeSingle();
@@ -87,6 +104,26 @@ export async function resolveActiveGroup(
   }
 
   return { active: mine[0] ?? null, mine };
+}
+
+/**
+ * The group of one kind the viewer is looking at.
+ *
+ * The slate needs both at once — a pick'em group to scope its picks and a
+ * betting group to scope its sheet — and `resolveActiveGroup` can only answer
+ * for one. The remembered slug wins when it happens to be of the right kind;
+ * otherwise the viewer's first group of that kind stands in, and null means
+ * they are in none, which every caller renders as an absence rather than as an
+ * empty board.
+ */
+export function activeOfKind(
+  mine: GroupSummary[],
+  kind: GroupKind,
+  preferSlug?: string | null,
+): GroupSummary | null {
+  const preferred = preferSlug ? mine.find((g) => g.slug === preferSlug) : undefined;
+  if (preferred && preferred.kind === kind) return preferred;
+  return mine.find((g) => g.kind === kind) ?? null;
 }
 
 /**

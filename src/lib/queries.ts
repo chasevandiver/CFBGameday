@@ -12,6 +12,8 @@ import type {
 import { hasCalibratedTotals } from "../model/ratings";
 import { pickPollRanks, pollShortName } from "./rankings";
 import { tallyBy } from "./records";
+import { toSheetBet } from "./betting-groups";
+import { classifyBets, recentForm, statsByMember, type GroupBetView } from "./tailing";
 import { fetchCurrentSlate, type SeasonType } from "./season";
 import { atsRecord, ouRecord } from "./slate";
 import type {
@@ -124,6 +126,13 @@ export async function fetchSlateView(
   userId: string | null,
   seasonType: SeasonType = "regular",
   groupId: string | null = null,
+  /**
+   * The viewer's betting group, if they're in one. Independent of `groupId`:
+   * the pool and the ledger are two products, so a viewer can be in a pick'em
+   * group, a betting group, both or neither, and each layer is loaded on its
+   * own terms.
+   */
+  bettingGroupId: string | null = null,
 ): Promise<SlateData> {
   const fetchedAt = new Date().toISOString();
   const { data: games, error } = await supabase
@@ -142,7 +151,7 @@ export async function fetchSlateView(
   const teamIds = [...new Set(gameRows.flatMap((g) => [g.home_team_id, g.away_team_id]))];
   const venueIds = [...new Set(gameRows.map((g) => g.venue_id).filter((v): v is number => v !== null))];
 
-  const [teamsRes, consensusRes, predsRes, picksRes, betsRes, weatherRes, venuesRes, seasonGamesRes, ratingsRes, pollsRes, crewPicksRes, profilesRes, systemsRes, rivalriesRes] =
+  const [teamsRes, consensusRes, predsRes, picksRes, betsRes, weatherRes, venuesRes, seasonGamesRes, ratingsRes, pollsRes, crewPicksRes, profilesRes, systemsRes, rivalriesRes, sheetMembersRes] =
     await Promise.all([
       supabase.from("teams").select("*").in("id", teamIds),
       // one consensus row per game, reduced in Postgres (migration 0015) —
@@ -215,6 +224,14 @@ export async function fetchSlateView(
       // so it is cheaper to pull once and pair in memory than to build an
       // OR filter per game.
       supabase.from("rivalries").select("team_a_id, team_b_id, name, trophy"),
+      // The betting group's roster. Its sheet is these people's ledgers.
+      bettingGroupId
+        ? supabase
+            .from("group_members")
+            .select("user_id")
+            .eq("group_id", bettingGroupId)
+            .is("removed_at", null)
+        : Promise.resolve({ data: [], error: null }),
     ]);
 
   const teams = new Map(((teamsRes.data ?? []) as TeamRow[]).map((t) => [t.id, t]));
@@ -270,6 +287,70 @@ export async function fetchSlateView(
       record: rec && rec.decided > 0 ? `${rec.wins}-${rec.losses}` : null,
     });
     crewByGame.set(p.game_id, arr);
+  }
+
+  /* ---- the betting group's sheet on this week's games -------------------
+   *
+   * Classified across the whole season, then filtered to this week. It has to
+   * be that way round: origination is decided against every bet in the group,
+   * and the source's record — the number that makes a position worth copying —
+   * is a season figure. Scoping the query to this week's game ids would still
+   * classify correctly (the market key carries the game), but every record on
+   * every card would read as a one-week sample.
+   */
+  const sheetMemberIds = ((sheetMembersRes.data ?? []) as Array<{ user_id: string }>).map(
+    (r) => r.user_id,
+  );
+  const groupBetsByGame = new Map<number, GroupBetView[]>();
+  if (bettingGroupId !== null && sheetMemberIds.length > 0) {
+    const { data: sheetRows } = await supabase
+      .from("bets")
+      .select("*")
+      .eq("season_id", seasonId)
+      .in("user_id", sheetMemberIds);
+    const sheetBets = ((sheetRows ?? []) as BetRow[]).map(toSheetBet);
+    const classified = classifyBets(sheetBets);
+    const memberStats = statsByMember(classified, sheetMemberIds);
+    const formByUser = new Map(
+      sheetMemberIds.map((id) => [
+        id,
+        recentForm(sheetBets.filter((b) => b.userId === id)).label,
+      ]),
+    );
+    const nameOf = (id: string) => nameByUser.get(id) ?? "A member";
+    const weekGameIds = new Set(gameIds);
+    for (const b of classified) {
+      if (b.gameId === null || !weekGameIds.has(b.gameId)) continue;
+      const overall = memberStats.get(b.userId)?.overall;
+      const arr = groupBetsByGame.get(b.gameId) ?? [];
+      arr.push({
+        betId: b.id,
+        userId: b.userId,
+        name: nameOf(b.userId),
+        betType: b.betType,
+        side: b.side,
+        line: b.line,
+        odds: b.odds,
+        units: b.units,
+        relation: b.relation,
+        isViewer: b.userId === userId,
+        record: overall && overall.decided > 0 ? `${overall.wins}-${overall.losses}` : null,
+        form: formByUser.get(b.userId) ?? "level",
+        sourceName: b.sourceUserId === null ? null : nameOf(b.sourceUserId),
+        tailedBy: b.tailedBy,
+        fadedBy: b.fadedBy,
+        result: b.result,
+      });
+      groupBetsByGame.set(b.gameId, arr);
+    }
+    // Source first, then whoever followed, in the order they arrived — the
+    // card is a timeline of who got there when.
+    for (const arr of groupBetsByGame.values()) {
+      arr.sort(
+        (x, y) =>
+          Number(y.relation === "origin") - Number(x.relation === "origin") || x.betId - y.betId,
+      );
+    }
   }
 
   const betsByGame = new Map<number, MyBetView[]>();
@@ -462,6 +543,7 @@ export async function fetchSlateView(
         })),
         myBets: betsByGame.get(game.id) ?? [],
         crewPicks: crewByGame.get(game.id) ?? [],
+        groupBets: groupBetsByGame.get(game.id) ?? [],
         weather: weather
           ? { tempF: weather.temp_f, windMph: weather.wind_mph, precipProb: weather.precip_prob }
           : null,

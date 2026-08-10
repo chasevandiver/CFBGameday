@@ -141,6 +141,78 @@ shipping it.
 
 ## Log
 
+### Aug 10 — Betting groups: who got there first, who tailed, who faded
+
+A second kind of group. A pick'em group is a **format** — an admin's board,
+one pick per market against it. A betting group is a **lens**: it has no board
+and stores nothing of its own, it reads its members' ledgers and lays them on
+the slate. Whoever is first on a game is the source; everyone behind them is
+tailing or fading.
+
+**The migration is one column, and that is the design.** The obvious schema is
+`bets.group_id` — file each bet into a betting group as it's logged. Rejected
+for three reasons, the third fatal: it asks a filing question at the moment
+someone is placing a bet; it can't express one bet in two groups, which is the
+normal case for anyone in a work pool and a friends pool; and it duplicates a
+fact the ledger already holds, creating a state where the ledger and the sheet
+disagree with no principled way to reconcile them. So `groups.kind` is the
+whole of `0027`, plus two triggers refusing a pick'em board on a betting group
+(a trigger rather than a guard clause inside `make_pick`, which would mean
+re-emitting two amended plpgsql bodies and keeping the copies in step forever).
+
+**Origination is per group, and that is correct.** The same bet can be the
+source in one group and a tail in another because a different member got there
+first — "first" is only meaningful inside a crowd, and each group is a
+different crowd.
+
+**The classification rules** (`src/lib/tailing.ts`, 15 tests):
+
+- Key is **game + bet type**. Being first on the spread says nothing about the
+  total, and someone betting the total hasn't faded your spread.
+- Every follower's counterparty is **the source**, not the person immediately
+  ahead of them. Jeff opens, Mo tails, Sam takes the other side: Sam faded
+  Jeff, not Mo. One source per market keeps "fading Jeff" a single countable
+  relationship instead of a chain whose meaning depends on arrival order.
+- Ties on `placed_at` break on the row id. A slip logs its whole batch in one
+  transaction where `now()` is fixed, so same-microsecond rows are routine, and
+  without the tiebreak "who was first" changed between page loads.
+- A **voided** bet never happened, so it can't hold origination — otherwise a
+  taken-back bet keeps the credit and demotes whoever actually put the number
+  up.
+- Nobody tails themselves; a second bet of your own on the same market is
+  another position, not a follow.
+- **Derived, never stored.** A `tailed_bet_id` column would only be set by the
+  Tail button, making the stats a measure of button usage rather than of who is
+  worth following. Two people on the same side ten minutes apart are a source
+  and a tail whether or not they spoke.
+
+**What the numbers are.** Per member: overall, what they open, what they tail,
+what they fade — plus **how everyone who tailed them did** and **how everyone
+who faded them did**, which is the pair a good bettor who posts late fails.
+Per viewer: a row against every other member, tailing vs fading, which cannot
+be read off anyone's own record because their season counts every bet you never
+saw in time. Hot/cold is a stated threshold, not a feel: ±3 on wins minus
+losses over the last ten graded bets, with units printed beside it because 7-3
+with one 5u loser is a losing week.
+
+**On the slate**, each card grows a Sheet block: the source, the followers
+indented under it, form pips, and a **Tail** button that puts their side on
+your slip *at today's number* — copying their line would write a ledger row you
+never held and a CLV against a price nobody offered you. A tailed selection
+defaults the slip's reason tag to `tail`, so "is tailing profitable for me" is
+answerable from the ledger's existing tag audit rather than from a report
+nobody would build.
+
+**Sharing** a sheet texts every position grouped by kickoff with one CTA back
+to `/slate?g=<slug>`, which opens the slate with that group's sheet on the
+cards. One link, not one per bet — a message with eight URLs is a message
+nobody taps.
+
+One bug caught in review before it shipped: the sheet row printed
+`line_taken` raw, which inverts the sign on every away ticket — the exact bug
+the pick formatter was consolidated to kill. All three call sites now go
+through one `betSideLabel`, with tests.
+
 ### Aug 10 — Groups become a product: a hub, a board that keeps up with a thumb, and the two ledgers pulled apart
 
 Eight complaints from actually using the site on a Saturday. No model change —

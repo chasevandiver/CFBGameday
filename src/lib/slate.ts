@@ -7,6 +7,7 @@
  */
 
 import { liveWinProb } from "../model/live";
+import type { GroupBetView } from "./tailing";
 import { spreadCoverSide, totalCoverSide } from "./cover";
 import type { PickMarket } from "./grade";
 
@@ -130,6 +131,33 @@ export function pickSideLabel(
 }
 
 /**
+ * How a logged BET reads as a ticket: "UGA +6.5", "O 54.5", "OSU ML".
+ *
+ * The bet-side twin of `pickSideLabel`, and it exists for the same reason:
+ * `bets.line_taken` is stored home-perspective, so printing it raw shows every
+ * away ticket with its sign inverted. That bug has already been fixed once
+ * across five copies of the pick formatter — this is the function that stops
+ * the sheet, the card and the share text growing three more.
+ *
+ * `bet_type` is a free-text column with types the model never prices
+ * (team_total, first_half, future); those get the type name rather than a
+ * number, which is the honest rendering of "we can't format this".
+ */
+export function betSideLabel(
+  betType: string,
+  side: string | null,
+  line: number | null,
+  homeAbbr: string,
+  awayAbbr: string,
+): string {
+  const team = side === "home" ? homeAbbr : awayAbbr;
+  if (betType === "total") return `${side === "over" ? "O" : "U"} ${fmtTotal(line)}`;
+  if (betType === "moneyline") return `${team} ML`;
+  if (betType === "spread") return `${team} ${fmtSpread(lineForSide(side ?? "home", line))}`;
+  return line === null ? `${team} ${betType}` : `${team} ${betType} ${fmtTotal(line)}`;
+}
+
+/**
  * The pick a card leads with when it can only show one.
  *
  * A game can carry three of them now, but a card has one cover strip and one
@@ -182,6 +210,13 @@ export interface GameView {
   myBets: MyBetView[];
   /** Everyone else's picks on this game — who's riding which side */
   crewPicks: CrewPickView[];
+  /**
+   * The viewer's betting group on this game: who has money down, which side,
+   * and who got there first. Empty when they're in no betting group — this is
+   * the money layer, and it is deliberately independent of `crewPicks`, which
+   * is the pool layer.
+   */
+  groupBets: GroupBetView[];
   weather: { tempF: number | null; windMph: number | null; precipProb: number | null } | null;
   dome: boolean;
   /** Seeded rivalry for this pairing (migration 0017); null when it isn't one */

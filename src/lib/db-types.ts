@@ -135,11 +135,16 @@ export interface ProfileRow {
   is_admin: boolean;
 }
 
+export type GroupKind = "pickem" | "betting";
+
 export interface GroupRow {
   id: string;
   name: string;
   slug: string;
   visibility: "private" | "public";
+  /** `pickem` runs an admin's board; `betting` is a lens over members' own
+   *  ledgers, with no board and no picks at all (migration 0027). */
+  kind: GroupKind;
   /** Others' picks are unreadable until each game kicks off (migration 0023). */
   picks_hidden_until_kickoff: boolean;
   join_code: string;

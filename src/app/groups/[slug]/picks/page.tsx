@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { AppNav } from "../../../../components/AppNav";
 import { PickBoard, type BoardEntry } from "../../../../components/group/PickBoard";
 import type { PickRow } from "../../../../lib/db-types";
@@ -40,6 +40,10 @@ export default async function GroupPicksPage({
 
   const { active } = await resolveActiveGroup(supabase, user?.id ?? null, slug);
   if (!active || active.slug !== slug) notFound();
+
+  // A betting group has no board: send them to the one page it does have
+  // rather than rendering an empty week.
+  if (active.kind === "betting") redirect(`/groups/${slug}`);
 
   const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(supabase);
   const parsed = Number(weekParam);
