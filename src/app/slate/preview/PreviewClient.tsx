@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { AppNav } from "../../../components/AppNav";
 import { PairPanel, SheetGameRow, SourceCard } from "../../../components/group/BettingHub";
+import { CreateGroupForm, GroupSwitcher } from "../../../components/group/GroupForms";
 import { MemberCard, WeekHero } from "../../../components/group/GroupHub";
 import { PickBoard } from "../../../components/group/PickBoard";
 import type { GroupWeek } from "../../../lib/groups";
@@ -408,8 +409,18 @@ export function SlatePreviewClient() {
         {/* The group screens need a database, a group and a signed-in member
             before they draw anything, so their two card systems are previewed
             here against the same sample slate. */}
-        <Section title="Group hub — week hero, standings">
+        <Section title="Group hub — switcher, week hero, standings">
           <div className="mx-auto max-w-3xl">
+            <div className="mb-3">
+              <GroupSwitcher
+                activeSlug="saturday-boys"
+                groups={[
+                  { slug: "saturday-boys", name: "Saturday Boys", kind: "pickem" },
+                  { slug: "the-sheet", name: "The Sheet", kind: "betting" },
+                  { slug: "work-pool", name: "Work Pool", kind: "pickem" },
+                ]}
+              />
+            </div>
             <WeekHero
               slug="saturday-boys"
               week={12}
@@ -468,6 +479,15 @@ export function SlatePreviewClient() {
                 { game: LIVE, myPicks: [{ market: "total", side: "over", line_at_pick: 44.5 }], takers: 6 },
               ]}
             />
+          </div>
+        </Section>
+
+        <Section title="Create a group — the kind is the first choice">
+          <div className="mx-auto max-w-sm">
+            <div className="card px-4 py-4">
+              <h3 className="mb-3 text-sm text-accent">Start a group</h3>
+              <CreateGroupForm />
+            </div>
           </div>
         </Section>
 

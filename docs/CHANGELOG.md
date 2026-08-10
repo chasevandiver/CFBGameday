@@ -213,6 +213,15 @@ One bug caught in review before it shipped: the sheet row printed
 the pick formatter was consolidated to kill. All three call sites now go
 through one `betSideLabel`, with tests.
 
+**Two follow-ups, same day.** The kind is permanent — there is no honest
+conversion between a group that stores a board and picks and one that reads
+everyone's ledger — so the create form now says so *above* the choice rather
+than leaving it to be discovered, and points out that the answer to "I want
+both" is two groups with the same people in them. And the group switcher now
+carries each group's kind on its chip: two identically-styled chips landing on
+two completely different pages is the kind of thing that only reads as a bug
+once somebody is in one of each.
+
 ### Aug 10 — Groups become a product: a hub, a board that keeps up with a thumb, and the two ledgers pulled apart
 
 Eight complaints from actually using the site on a Saturday. No model change —
