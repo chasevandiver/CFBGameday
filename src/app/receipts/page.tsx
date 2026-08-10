@@ -170,7 +170,9 @@ export default async function ReceiptsPage() {
               went 49.2% against the close in the 2023–25 backtest, under the 52.4% that breaks
               even. What&rsquo;s worth knowing is whether the market moves toward the model after
               Thursday, and that answer arrives in one season where a win rate would take several.
-              Positive means it did.
+              Positive means it did. A dash in the CLV column means no closing snapshot was
+              captured near that kickoff — those games stay ungraded rather than being measured
+              against a days-old line.
             </p>
           </section>
         )}
@@ -261,7 +263,10 @@ function ReceiptRow({ r }: { r: Receipt }) {
       </td>
       <td className="py-2 pr-3 text-right">
         {clv === null ? (
-          <span className="text-dim" title={final ? "no closing line" : "graded after kickoff"}>
+          <span
+            className="text-dim"
+            title={final ? "no closing snapshot near kickoff" : "graded after kickoff"}
+          >
             –
           </span>
         ) : (

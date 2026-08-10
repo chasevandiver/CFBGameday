@@ -169,7 +169,6 @@ export interface GameView {
     mlHome: number | null;
     mlAway: number | null;
   };
-  spreadHistory: LinePoint[];
   prediction: PredictionView | null;
   /** The viewer's picks in the active group — at most one per market. */
   myPicks: MyPickView[];

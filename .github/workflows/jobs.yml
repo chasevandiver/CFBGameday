@@ -1,9 +1,15 @@
 # The CFB Slate — scheduled jobs (docs/SPEC.md §8).
 # GitHub Actions is the v1 scheduler; the pg_cron + edge-function path lives in
 # supabase/functions/jobs/ for when it can be deployed. Actions schedules can
-# lag 5–30 min, which is fine for everything except the closing-line burst —
-# that one runs every 10 min in a window, so worst case the "closing" snapshot
-# is a bit stale (documented proxy, docs/SPEC.md §5.3).
+# lag 5–30 min, which the close passes budget for: each is scheduled ~40 min
+# before its kickoff wave, so a worst-case-late run still lands pre-kickoff
+# and a post-kickoff snapshot is never selected as the close.
+#
+# Line cadence is deliberately minimal (owner decision, Aug 2026): lines barely
+# move intraday and nobody here bets the moves — the one line that matters is
+# the close, because CLV is graded against it (docs/SPEC.md §5.3). So: two
+# daily refreshes for display, plus one close pass per kickoff wave, including
+# the Thursday/Friday night waves the old schedule missed entirely.
 #
 # Required repository secrets (Settings → Secrets and variables → Actions):
 #   CFBD_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
@@ -48,13 +54,16 @@ on:
           # twice duplicates them, so it is dispatch-only and never scheduled.
           - preseason-bootstrap
   schedule:
-    # Lines 4x daily (8am/1pm/6pm/11pm ET)
-    - cron: "0 3,12,17,22 * * *"
-    # Lines hourly on Saturdays (daytime UTC)
-    - cron: "0 13-23 * * 6"
-    # Closing-line burst: every 10 min around Saturday kickoff waves
-    - cron: "*/10 15-23 * * 6"
-    - cron: "*/10 0-3 * * 0"
+    # Lines 2x daily (8am/6pm ET) — display freshness only
+    - cron: "0 12,22 * * *"
+    # Close passes: one refresh ~40 min before each kickoff wave.
+    # Saturday noon / 3:30 / 7-7:30 ET waves, and the late (Pac-after-dark) wave:
+    - cron: "20 15 * * 6"
+    - cron: "50 18 * * 6"
+    - cron: "20 22 * * 6"
+    - cron: "50 1 * * 0"
+    # Thursday/Friday night games (7-8pm ET kicks — MACtion joins in November):
+    - cron: "50 22 * * 4,5"
     # Games sync daily
     - cron: "0 9 * * *"
     # Scoreboard: hourly launches of a continuous polling loop (Actions cron
@@ -114,8 +123,7 @@ jobs:
         id: task
         run: |
           case "${{ github.event.schedule }}" in
-            "0 3,12,17,22 * * *"|"0 13-23 * * 6") echo "task=refresh-lines" >> "$GITHUB_OUTPUT" ;;
-            "*/10 15-23 * * 6"|"*/10 0-3 * * 0") echo "task=refresh-lines-burst" >> "$GITHUB_OUTPUT" ;;
+            "0 12,22 * * *"|"20 15 * * 6"|"50 18 * * 6"|"20 22 * * 6"|"50 1 * * 0"|"50 22 * * 4,5") echo "task=refresh-lines" >> "$GITHUB_OUTPUT" ;;
             "0 9 * * *") echo "task=sync-games" >> "$GITHUB_OUTPUT" ;;
             "0 15-23 * * 6"|"0 0-4 * * 0"|"0 0-3 * * 5,6") echo "task=scoreboard-loop" >> "$GITHUB_OUTPUT" ;;
             "0 10 * * 6") echo "task=weather" >> "$GITHUB_OUTPUT" ;;

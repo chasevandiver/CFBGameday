@@ -5,7 +5,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { cfbd } from "../../src/lib/cfbd";
+import { cfbd, type CfbdScoreboardGame } from "../../src/lib/cfbd";
 import { modelClv, roundClv, spreadClv, totalClv } from "../../src/lib/clv";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
 import { gradePick, type PickMarket } from "../../src/lib/grade";
@@ -60,6 +60,35 @@ const consensus = (snapshots: Snapshot[], before?: string) =>
   consensusFromSnapshots(snapshots, before);
 
 /**
+ * A close only counts as a close if somebody captured it near kickoff. With
+ * one close pass per kickoff wave (jobs.yml) the last pre-kick snapshot is
+ * normally under an hour old; if the pass missed — cron skipped, kickoff moved,
+ * TBD start — the newest pre-kick snapshot might be Tuesday's, and grading CLV
+ * against Tuesday's line produces a plausible-looking wrong number that is
+ * worse than no number. So a close older than STALE_CLOSE_MS at kickoff nulls
+ * the priced fields: results still grade (they read the line *taken*, not the
+ * close) and CLV stays null in the ungraded set, exactly like a game with no
+ * snapshots at all.
+ */
+export const STALE_CLOSE_MS = 6 * 3600 * 1000;
+export function closingConsensus(
+  snapshots: Snapshot[],
+  startTs: string | null,
+  maxAgeMs: number = STALE_CLOSE_MS,
+): ReturnType<typeof consensusFromSnapshots> {
+  const c = consensusFromSnapshots(snapshots, startTs ?? undefined);
+  if (startTs === null) return c;
+  const kick = Date.parse(startTs);
+  let newest = -Infinity;
+  for (const s of snapshots) {
+    const t = Date.parse(s.captured_at);
+    if (t < kick && t > newest) newest = t;
+  }
+  if (kick - newest > maxAgeMs) return { ...c, spread: null, total: null, mlHome: null, mlAway: null };
+  return c;
+}
+
+/**
  * Meter CFBD usage into api_call_log (one row per call — the table existed
  * since 0001 but nothing ever wrote it). The scoreboard loop throttles and
  * stops off this table, and the Crew admin panel shows the month's total.
@@ -77,37 +106,79 @@ export async function logCfbdCalls(
 
 // ---------------------------------------------------------------------------
 
+/** The games columns the scoreboard poll owns, as stored. */
+export interface ScoreboardRow {
+  id: number;
+  status: string;
+  home_points: number | null;
+  away_points: number | null;
+  current_period: number | null;
+  current_clock: string | null;
+  current_situation: string | null;
+  last_play: string | null;
+  possession: string | null;
+  tv: string | null;
+}
+
+export const SCOREBOARD_COLS =
+  "id, status, home_points, away_points, current_period, current_clock, current_situation, last_play, possession, tv";
+
+/**
+ * The UPDATE a scoreboard game implies, or null when the stored row already
+ * says all of it. The null matters: every games UPDATE fans out as a realtime
+ * message to every connected client, and an unconditional write loop re-wrote
+ * every final unchanged each 30s tick — by the evening slate, finished games
+ * were most of the message volume, spent broadcasting nothing.
+ */
+export function scoreboardPatch(
+  g: CfbdScoreboardGame,
+  stored: ScoreboardRow | undefined,
+): Partial<ScoreboardRow> | null {
+  const status =
+    g.status === "in_progress" ? "in_progress" : g.status === "completed" ? "final" : "scheduled";
+  if (status === "scheduled") return null;
+  const inProgress = status === "in_progress";
+  const patch = {
+    status,
+    home_points: g.homeTeam.points,
+    away_points: g.awayTeam.points,
+    current_period: g.period,
+    current_clock: g.clock,
+    // nulled once final so finished games never show a stale down-and-distance
+    current_situation: inProgress ? g.situation : null,
+    last_play: inProgress ? (g.lastPlay ?? null) : null,
+    possession:
+      inProgress && (g.possession === "home" || g.possession === "away") ? g.possession : null,
+    // null TV from the board never clobbers a stored assignment
+    tv: g.tv ?? stored?.tv ?? null,
+  };
+  if (stored && (Object.keys(patch) as Array<keyof typeof patch>).every((k) => stored[k] === patch[k]))
+    return null;
+  return patch;
+}
+
 /** Live scoreboard poll → games status/points/period/clock (slate live states). */
 export async function scoreboardJob(db: SupabaseClient): Promise<Json> {
   const board = await cfbd.scoreboard();
+  const active = board.filter((g) => g.status === "in_progress" || g.status === "completed");
+  if (active.length === 0) return { live_or_final: 0, updated: 0 };
+
+  // one read of what's stored, so unchanged games cost zero writes
+  const { data: storedRows, error } = await db
+    .from("games")
+    .select(SCOREBOARD_COLS)
+    .in("id", active.map((g) => g.id));
+  if (error) throw new Error(`scoreboard: reading stored rows failed: ${error.message}`);
+  const stored = new Map((storedRows as ScoreboardRow[] | null)?.map((r) => [r.id, r]) ?? []);
+
   let updated = 0;
-  for (const g of board) {
-    const status =
-      g.status === "in_progress" ? "in_progress" : g.status === "completed" ? "final" : "scheduled";
-    if (status === "scheduled") continue;
-    const inProgress = status === "in_progress";
-    const { data: touched } = await db
-      .from("games")
-      .update({
-        status,
-        home_points: g.homeTeam.points,
-        away_points: g.awayTeam.points,
-        current_period: g.period,
-        current_clock: g.clock,
-        // nulled once final so finished games never show a stale down-and-distance
-        current_situation: inProgress ? g.situation : null,
-        last_play: inProgress ? (g.lastPlay ?? null) : null,
-        possession:
-          inProgress && (g.possession === "home" || g.possession === "away")
-            ? g.possession
-            : null,
-        tv: g.tv ?? undefined,
-      })
-      .eq("id", g.id)
-      .select("id");
+  for (const g of active) {
+    const patch = scoreboardPatch(g, stored.get(g.id));
+    if (!patch) continue;
+    const { data: touched } = await db.from("games").update(patch).eq("id", g.id).select("id");
     if (touched && touched.length > 0) updated++;
   }
-  return { live_or_final: updated };
+  return { live_or_final: active.length, updated };
 }
 
 /**
@@ -466,7 +537,7 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
     }
     const closing = (gameId: number) => {
       const g = gameById.get(gameId);
-      return consensus(snapsByGame.get(gameId) ?? [], g?.start_ts ?? undefined);
+      return closingConsensus(snapsByGame.get(gameId) ?? [], g?.start_ts ?? null);
     };
 
     // Model CLV. The leans are published as information rather than bets, so

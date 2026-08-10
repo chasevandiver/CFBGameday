@@ -95,7 +95,6 @@ const PREGAME: GameView = {
   home: ALABAMA,
   away: GEORGIA,
   lines: { spread: -1.5, spreadOpen: -3, total: 51.5, totalOpen: 49.5, mlHome: -125, mlAway: 105 },
-  spreadHistory: hist([-3, -3, -2.5, -2.5, -2, -1.5]),
   prediction: {
     spread: -4.5,
     total: 54,
@@ -145,7 +144,6 @@ const LIVE: GameView = {
     { name: "Sam", side: "home", record: "9-11" },
   ],
   lines: { spread: 3.5, spreadOpen: 2.5, total: 44.5, totalOpen: 45.5, mlHome: 150, mlAway: -175 },
-  spreadHistory: hist([2.5, 3, 3, 3.5]),
   prediction: {
     spread: 2.8,
     total: 46,
@@ -175,7 +173,6 @@ const FINAL_GAME: GameView = {
   away: OKLAHOMA,
   rivalry: { name: "Red River Rivalry", trophy: "Golden Hat" },
   lines: { spread: -6.5, spreadOpen: -7.5, total: 57.5, totalOpen: 58.5, mlHome: -260, mlAway: 210 },
-  spreadHistory: hist([-7.5, -7, -7, -6.5]),
   prediction: {
     spread: -9.2,
     total: 55.5,
@@ -204,7 +201,6 @@ const FINAL_OT: GameView = {
   home: PENN_STATE,
   away: OREGON,
   lines: { spread: 2.5, spreadOpen: 3.5, total: 52.5, totalOpen: 51.5, mlHome: 125, mlAway: -145 },
-  spreadHistory: hist([3.5, 3, 2.5]),
   prediction: {
     spread: 1.9,
     total: 49.5,
@@ -233,7 +229,6 @@ const NO_LINE: GameView = {
   home: { ...team(2440, "Nevada", "NEV", "Mountain West", "#003366", null, "3-6"), logo: logo(2440) },
   away: { ...team(21, "San José State", "SJSU", "Mountain West", "#0055a2", null, "5-4"), logo: logo(21) },
   lines: { spread: null, spreadOpen: null, total: null, totalOpen: null, mlHome: null, mlAway: null },
-  spreadHistory: [],
   prediction: null,
 };
 

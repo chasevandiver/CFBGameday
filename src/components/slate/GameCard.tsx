@@ -876,7 +876,7 @@ function pickPrefix(g: GameView, p: MyPickView | null = headlinePick(g.myPicks))
 function betPrefix(g: GameView, b: MyBetView): string {
   const team = b.side === "home" ? g.home : g.away;
   // stored home-perspective; the ticket reads the side's number
-  if (b.betType === "spread") return `${team.abbr} ${fmtSpread(lineForSide(b.side, b.line))}`;
+  if (b.betType === "spread") return `${team.abbr} ${fmtSpread(lineForSide(b.side ?? "home", b.line))}`;
   if (b.betType === "total") return `${b.side === "over" ? "O" : "U"} ${fmtTotal(b.line)}`;
   return `${team.abbr} ML`;
 }

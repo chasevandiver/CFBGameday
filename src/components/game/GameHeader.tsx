@@ -325,7 +325,7 @@ export function GameHeader({
                   prefix={
                     bet.betType === "spread"
                       ? // stored home-perspective; the ticket reads the side's number
-                        `${(bet.side === "home" ? home : away).abbr} ${fmtSpread(lineForSide(bet.side, bet.line))}`
+                        `${(bet.side === "home" ? home : away).abbr} ${fmtSpread(lineForSide(bet.side ?? "home", bet.line))}`
                       : bet.betType === "total"
                         ? `${bet.side === "over" ? "O" : "U"} ${fmtTotal(bet.line)}`
                         : `${(bet.side === "home" ? home : away).abbr} ML`
