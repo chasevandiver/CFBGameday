@@ -723,6 +723,28 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
 }
 
 /**
+ * Which of a week's scheduled games this freeze run should stamp: games whose
+ * OWN kickoff is inside the horizon and which have no frozen prediction yet.
+ * A TBD kickoff (null start_ts) in the current week freezes rather than
+ * waiting on a timestamp that may never firm up. `ignoreHorizon` is the
+ * manual --force path — it widens the window but can never mint a duplicate,
+ * because the already-frozen skip is not bypassable.
+ */
+export function freezableGames<G extends { id: number; start_ts: string | null }>(
+  games: G[],
+  alreadyFrozen: ReadonlySet<number>,
+  now: number,
+  horizonDays: number,
+  ignoreHorizon = false,
+): G[] {
+  return games.filter((g) => {
+    if (alreadyFrozen.has(g.id)) return false;
+    if (ignoreHorizon || g.start_ts === null) return true;
+    return (Date.parse(g.start_ts) - now) / DAY_MS <= horizonDays;
+  });
+}
+
+/**
  * Thursday job: freeze predictions for the upcoming week (receipts), pricing
  * with current ratings + team HFA + admin-CONFIRMED rating adjustments.
  */
@@ -745,25 +767,33 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
   }>;
   if (games.length === 0) return { week, frozen: 0 };
 
-  // A freeze is a Thursday-night receipt for THIS week's slate. The cron fires
-  // every Friday 03:00 UTC year-round, so without a horizon each August
-  // Thursday would append a full week-1 batch priced off mid-August lines —
-  // predictions is append-only, so those batches are permanent clutter on the
-  // receipts page even though the latest-first read hides them.
+  // One game, one freeze, the Thursday before IT kicks. The old gate checked
+  // only the week's EARLIEST kickoff and then froze the whole week — harmless
+  // when a week is one weekend, wrong for CFBD's merged Week 0/1 (2026: 99
+  // games across Aug 29–Sep 7): the Aug 27 run would stamp the Sep 5 slate
+  // nine days early on preseason ratings and stale lines, and the Sep 3 run
+  // would stamp it AGAIN — predictions is append-only, so the first batch
+  // becomes a silently superseded "receipt", and both batches grade for CLV.
+  // Per-game horizon + already-frozen skip gives each game exactly one
+  // receipt, priced with everything known the Thursday before its kickoff.
   const horizonDays = envDays("FREEZE_HORIZON_DAYS", 8);
-  const kickoffs = games
-    .map((g) => (g.start_ts ? new Date(g.start_ts).getTime() : NaN))
-    .filter((t) => Number.isFinite(t));
-  if (!idleOverridden() && kickoffs.length > 0) {
-    const days = (Math.min(...kickoffs) - Date.now()) / DAY_MS;
-    if (days > horizonDays) {
-      return {
-        week,
-        frozen: 0,
-        skipped: `kickoff_gt_${horizonDays}d`,
-        days_to_kickoff: Math.round(days * 10) / 10,
-      };
-    }
+  const { data: frozenRows } = await db
+    .from("predictions")
+    .select("game_id")
+    .eq("frozen", true)
+    .in("game_id", games.map((g) => g.id));
+  const alreadyFrozen = new Set(
+    ((frozenRows ?? []) as Array<{ game_id: number }>).map((r) => r.game_id),
+  );
+  const toFreeze = freezableGames(games, alreadyFrozen, Date.now(), horizonDays, idleOverridden());
+  if (toFreeze.length === 0) {
+    return {
+      week,
+      frozen: 0,
+      scheduled: games.length,
+      already_frozen: alreadyFrozen.size,
+      skipped: "nothing_inside_horizon",
+    };
   }
 
   const { data: ratingRows } = await db
@@ -847,7 +877,7 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
   const params = paramsForWeek(week, DEFAULT_PARAMS);
 
   const rows: Json[] = [];
-  for (const g of games) {
+  for (const g of toFreeze) {
     const homeR = latest.get(g.home_team_id);
     const awayR = latest.get(g.away_team_id);
     if (homeR === undefined && awayR === undefined) continue;

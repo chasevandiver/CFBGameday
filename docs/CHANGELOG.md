@@ -141,6 +141,34 @@ shipping it.
 
 ## Log
 
+### Aug 10 — One game, one freeze: the merged Week 0/1 would have double-stamped the receipts
+
+Checking whether Week 0 "messes with" week 1 turned up the real answer:
+CFBD stores Week 0 *inside* week 1. Verified against the live project: 2026's
+week 1 is **99 games across ten days** (Aug 29 → Sep 7), with 12 teams playing
+twice. The product is per-game everywhere — picks, grading, CLV, cards — and
+the ratings replay batches by week under the same convention the 2023–25
+backtest was tuned on (those seasons merge Week 0 too), so nothing collides.
+
+Except the freeze. `freezeJob` gated on the week's **earliest** kickoff and
+then froze the whole week: the Aug 27 run would stamp the Sep 5–7 slate nine
+days early on preseason ratings and stale lines, and the Sep 3 run would stamp
+those games **again** — predictions is append-only, so the first batch becomes
+a silently superseded "receipt" (newest-per-game hides it everywhere) and both
+batches grade for CLV. A soft edit wearing a freeze's clothes.
+
+Now: `freezableGames` — per-game horizon (a game freezes when *its own*
+kickoff is inside `FREEZE_HORIZON_DAYS`) plus an already-frozen skip that even
+`--force` cannot bypass, so a game gets exactly one receipt, priced with
+everything known the Thursday before it kicks. The second Saturday's numbers
+therefore include the opening weekend's results, which is what "frozen
+Thursday night" honestly means in a ten-day week. Tested against the real
+week-1 shape, including the re-run-freezes-nothing case.
+
+Worth knowing for the week-1 board: `group_week_is_locked` reads the week's
+**first** kickoff, so group boards for week 1 lock at the Aug 29 kick and
+cover both Saturdays — configure them before then.
+
 ### Aug 10 — The audit's fix list: ledger integrity, quota-proofing, and the fence around the refresh
 
 The full audit landed as PR #19 (`audit/00-SUMMARY.md`); this pass implements

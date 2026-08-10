@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CfbdScoreboardGame } from "../../src/lib/cfbd";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
-import { closingConsensus, SNAPSHOT_COLS, SCOREBOARD_COLS, scoreboardPatch, type ScoreboardRow } from "./jobs-core";
+import { closingConsensus, freezableGames, SNAPSHOT_COLS, SCOREBOARD_COLS, scoreboardPatch, type ScoreboardRow } from "./jobs-core";
 
 describe("SNAPSHOT_COLS", () => {
   it("selects spread_open, which the opener silently falls back without", () => {
@@ -155,5 +155,49 @@ describe("closingConsensus (stale-close guard)", () => {
 
   it("passes through untouched when kickoff is unknown", () => {
     expect(closingConsensus([snapAt("2026-09-01T22:45:00Z")], null).spread).toBe(-3.5);
+  });
+});
+
+describe("freezableGames (the merged Week 0/1 shape)", () => {
+  // CFBD stores Week 0 inside week 1: 2026's week 1 spans Aug 29 – Sep 7.
+  const g = (id: number, start_ts: string | null) => ({ id, start_ts });
+  const week1 = [
+    g(1, "2026-08-29T16:00:00Z"), // opening Saturday
+    g(2, "2026-08-30T02:00:00Z"),
+    g(3, "2026-09-03T23:00:00Z"), // weeknight
+    g(4, "2026-09-05T19:30:00Z"), // second Saturday
+    g(5, "2026-09-07T23:30:00Z"), // Labor Day Monday
+  ];
+  const none = new Set<number>();
+  const HORIZON = 8;
+  const thuAug27 = Date.parse("2026-08-28T03:00:00Z"); // Fri 03:00 UTC cron
+  const thuSep3 = Date.parse("2026-09-04T03:00:00Z");
+
+  it("the Aug 27 freeze takes only games kicking inside its horizon", () => {
+    const ids = freezableGames(week1, none, thuAug27, HORIZON).map((x) => x.id);
+    // Sep 5 is 8.7 days out, Sep 7 is 10.9 — both wait for their own Thursday
+    expect(ids).toEqual([1, 2, 3]);
+  });
+
+  it("the Sep 3 freeze takes the rest, exactly once", () => {
+    const frozen = new Set([1, 2, 3]);
+    const ids = freezableGames(week1, frozen, thuSep3, HORIZON).map((x) => x.id);
+    expect(ids).toEqual([4, 5]);
+  });
+
+  it("a re-run freezes nothing — no duplicate receipts", () => {
+    const frozen = new Set([1, 2, 3, 4, 5]);
+    expect(freezableGames(week1, frozen, thuSep3, HORIZON)).toEqual([]);
+  });
+
+  it("--force widens the horizon but still can't mint a duplicate", () => {
+    const frozen = new Set([1, 2]);
+    const ids = freezableGames(week1, frozen, thuAug27, HORIZON, true).map((x) => x.id);
+    expect(ids).toEqual([3, 4, 5]);
+  });
+
+  it("a TBD kickoff in the current week freezes rather than waiting forever", () => {
+    const ids = freezableGames([g(9, null)], none, thuAug27, HORIZON).map((x) => x.id);
+    expect(ids).toEqual([9]);
   });
 });
