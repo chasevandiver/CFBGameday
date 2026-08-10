@@ -213,6 +213,28 @@ One bug caught in review before it shipped: the sheet row printed
 the pick formatter was consolidated to kill. All three call sites now go
 through one `betSideLabel`, with tests.
 
+**Applied to production 2026-08-10** as `betting_groups`, ahead of the merge
+rather than after it: `fetchMyGroups` selects `groups.kind`, and PostgREST
+answers an unknown column with an error that supabase-js hands back as
+`data: null`, which `(data ?? [])` turns into "you are in no groups". Adding a
+defaulted column is invisible to the old code, so migration-first has no window
+where anything is wrong; merge-first has one where everybody's groups vanish.
+
+Verified against the live database rather than assumed: the one existing group
+took the `pickem` default, `create_group` has exactly one overload (the
+three-argument one — the old two-argument function is dropped, so a call can't
+be ambiguous), and both guard triggers were fired by a probe that inserted a
+betting group, tried a week config and a pick against it, collected the errors
+and then raised to roll the whole thing back. Both refused with *"That is a
+betting group — it has no pick'em board"*, and the probe left no rows.
+
+**A gap found while checking:** `0017_rivalries_seed` is not in
+`supabase_migrations.schema_migrations`, though the `rivalries` table exists
+with 29 rows and the slate reads it fine. It was applied outside the tracked
+history at some point. Nothing to repair — recorded because the next person to
+diff the migrations directory against the history table will find the same hole
+and wonder whether a seed is missing.
+
 **Two follow-ups, same day.** The kind is permanent — there is no honest
 conversion between a group that stores a board and picks and one that reads
 everyone's ledger — so the create form now says so *above* the choice rather
