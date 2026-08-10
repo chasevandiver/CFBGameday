@@ -685,13 +685,14 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
   const { slip, toggle } = useBetSlip();
   const dead = isDead(game);
   const team = side === "home" ? game.home : game.away;
-  /** Did the viewer take this exact cell in the group they're viewing? */
-  const took = (market: MyPickView["market"], pickSide: string) =>
-    game.myPicks.some((p) => p.market === market && p.side === pickSide);
   /**
-   * Do you have MONEY on this exact cell? Separate question from `took` on
-   * purpose: the ledger and the pick'em pool are independent, and a card has
-   * to be able to say you're on both — or on opposite sides of the same game.
+   * Do you have MONEY on this exact cell?
+   *
+   * The only question the odds grid asks. It used to also mark the cell you
+   * took in the pool, which put a pick'em pick and a logged bet in nearly the
+   * same amber on the same control — so a card with a pool pick and no money
+   * read as a card with money on it. The pool's answer lives one row down, in
+   * the chips, where it is labelled.
    */
   const betOn = (betType: MyBetView["betType"], betSide: string) =>
     game.myBets.some((b) => b.betType === betType && b.side === betSide);
@@ -730,10 +731,9 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
       <OddsCell
         value={fmtSpread(teamSpread)}
         active={inSlip(slip, game.id, "spread", side)}
-        picked={took("spread", side)}
         bet={betOn("spread", side)}
         disabled={dead || teamSpread === null}
-        aria={`${team.abbr} ${fmtSpread(teamSpread)} spread${took("spread", side) ? " — your pick" : ""} — add to bet slip`}
+        aria={`${team.abbr} ${fmtSpread(teamSpread)} spread — add to bet slip`}
         onToggle={() =>
           toggle(
             sel("spread", side, `${team.abbr} ${fmtSpread(teamSpread)}`,
@@ -744,10 +744,9 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
       <OddsCell
         value={totalLabel}
         active={inSlip(slip, game.id, "total", totalSide)}
-        picked={took("total", totalSide)}
         bet={betOn("total", totalSide)}
         disabled={dead || total === null}
-        aria={`${totalSide === "over" ? "Over" : "Under"} ${fmtTotal(total)}${took("total", totalSide) ? " — your pick" : ""} — add to bet slip`}
+        aria={`${totalSide === "over" ? "Over" : "Under"} ${fmtTotal(total)} — add to bet slip`}
         onToggle={() =>
           toggle(
             sel("total", totalSide, `${totalSide === "over" ? "O" : "U"} ${fmtTotal(total)}`,
@@ -758,10 +757,9 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
       <OddsCell
         value={fmtMoneyline(ml)}
         active={inSlip(slip, game.id, "moneyline", side)}
-        picked={took("straight_up", side)}
         bet={betOn("moneyline", side)}
         disabled={dead || ml === null}
-        aria={`${team.abbr} moneyline ${fmtMoneyline(ml)}${took("straight_up", side) ? " — your pick to win" : ""} — add to bet slip`}
+        aria={`${team.abbr} moneyline ${fmtMoneyline(ml)} — add to bet slip`}
         wide
         onToggle={() =>
           toggle(sel("moneyline", side, `${team.abbr} ML`, `${team.school} ML (${matchup})`, null, ml ?? -110))
@@ -786,7 +784,6 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
 function OddsCell({
   value,
   active,
-  picked = false,
   bet = false,
   disabled,
   aria,
@@ -795,8 +792,8 @@ function OddsCell({
 }: {
   value: string;
   active: boolean;
-  picked?: boolean;
-  /** A logged ledger bet sits on this cell — money, not a pool pick. */
+  /** A logged ledger bet sits on this cell. The only state this grid marks:
+   *  pool picks are the chips below, not a treatment on the odds. */
   bet?: boolean;
   disabled: boolean;
   aria: string;
@@ -822,14 +819,12 @@ function OddsCell({
           ? "bg-accent text-accent-ink ring-1 ring-inset ring-accent"
           : bet
             ? "bg-accent/15 text-accent ring-1 ring-inset ring-accent"
-            : picked
-              ? "bg-accent/15 text-accent ring-1 ring-inset ring-accent/45"
-              : "bg-elev text-chalk ring-1 ring-inset ring-chalk/8 hover:ring-accent/60"
+            : "bg-elev text-chalk ring-1 ring-inset ring-chalk/8 hover:ring-accent/60"
       } disabled:cursor-default disabled:opacity-40 disabled:hover:ring-chalk/8`}
     >
-      {/* Money and a pool pick can both sit on one cell, so the difference is
-          shape, not just tint: a bet gets a corner pip. Colour is never the
-          only carrier (docs/DESIGN.md), and the chips below say it in words. */}
+      {/* Colour is never the only carrier (docs/DESIGN.md): money also gets a
+          corner pip, so "I have a bet here" survives a colourblind read and a
+          bright phone in the sun. */}
       {bet && !active && (
         <span
           aria-hidden

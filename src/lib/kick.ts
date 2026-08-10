@@ -62,6 +62,42 @@ export function dayTabLabel(iso: string, tz: string): string {
   );
 }
 
+/**
+ * Day-tab labels for a week, disambiguated only where they collide.
+ *
+ * Week 1 opens on a Saturday and closes on the Monday nine days later, so it
+ * contains two of them — and a row reading "Sat · Thu · Fri · Sat · Sun · Mon"
+ * gives you no way to tell which Saturday is which, or why a Saturday sorts
+ * ahead of a Thursday. Championship week and the bowl slate have the same
+ * shape.
+ *
+ * The date is added to *every* member of a colliding weekday and never to a
+ * unique one: an ordinary week keeps its clean chips, and the week that needs
+ * the help gets it on both sides of the ambiguity rather than on one.
+ */
+export function dayTabLabels(
+  isos: string[],
+  tz: string,
+): Array<{ key: string; label: string }> {
+  const byKey = new Map<string, string>();
+  for (const iso of isos) {
+    const k = dayKey(iso, tz);
+    if (!byKey.has(k)) byKey.set(k, dayTabLabel(iso, tz));
+  }
+  const counts = new Map<string, number>();
+  for (const w of byKey.values()) counts.set(w, (counts.get(w) ?? 0) + 1);
+
+  return [...byKey.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, w]) => {
+      if ((counts.get(w) ?? 0) < 2) return { key, label: w };
+      // "Sat 8/29" — the numeric date, which is how anybody reading a
+      // schedule tells two of the same weekday apart.
+      const [, m, d] = key.split("-");
+      return { key, label: `${w} ${Number(m)}/${Number(d)}` };
+    });
+}
+
 /** "12:41:07 PM" for the last-updated stamp. */
 export function clockTime(iso: string, tz: string): string {
   return new Intl.DateTimeFormat("en-US", {

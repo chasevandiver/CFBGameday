@@ -141,6 +141,42 @@ shipping it.
 
 ## Log
 
+### Aug 10 — The odds grid marks money only, and week 1 stops having two Saturdays
+
+Both found by looking at a real slate card on a phone.
+
+**A pool pick was lighting up the odds cell.** `OddsCell` had three tinted
+states — in-the-slip, a logged bet, and *the cell you took in the pool* — and
+the last two were nearly the same amber. So a card with a pick'em pick and no
+money read as a card with money on it. Confirmed from the database rather than
+inferred: the account had **0 live bets and 8 voided**, and 8 picks, so every
+highlight on screen was a pool pick.
+
+The pool's answer already lives one row down, in a labelled chip with the group
+mark. The grid now marks exactly one thing — money — with the in-slip state on
+top of it, and the corner pip stays so colour is not the only carrier. The
+"— your pick" suffix comes off the odds-cell `aria-label` too: the chip below
+announces it, and a screen reader should hear what the screen shows.
+
+**Week 1 rendered "Sat · Thu · Fri · Sat".** The tab label was the weekday
+alone, and week 1 opens Sat Aug 22 and closes Mon Aug 31 — so it contains two
+Saturdays, with nothing to tell them apart and no visible reason a Saturday
+sorted ahead of a Thursday. `dayTabLabels` now dates *both* members of any
+colliding weekday ("Sat 8/22", "Sat 8/29") and leaves unique days clean, so an
+ordinary week keeps its four bare chips. Championship week and the bowl slate
+have the same shape and get the same treatment. Four tests.
+
+`dayTabLabel` was also passing `tz` in and then formatting in the *server's*
+zone — the parameter was accepted and dropped. Fixed in passing; it only ever
+showed up on a kickoff near midnight.
+
+**Checked and correct** on the same card, for the record: `BIG EDGE 4.8` is
+exactly `|−11.8 − (−7)|`, and the 77% win probability is exactly
+`logistic(0.101 × 11.8) = 76.7%`. The Noon/Afternoon banding is right too
+(11:00 CT is 12:00 ET, under the 14:00 cut). What is *not* current is the model
+behind those numbers: `ratings` in production are still `2026.2.0` against code
+at `2026.4.1` — see Open items, unchanged.
+
 ### Aug 10 — Betting groups: who got there first, who tailed, who faded
 
 A second kind of group. A pick'em group is a **format** — an admin's board,

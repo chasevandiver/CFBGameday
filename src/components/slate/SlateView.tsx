@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType }
 import { onBetsChanged } from "../../lib/bets-changed";
 import { useFocusedGames, useStarred, useViewerTz } from "../../lib/client-store";
 import type { GameRow } from "../../lib/db-types";
-import { clockTime, dayKey, dayTabLabel, kickSlot, DEFAULT_TZ, tzLabel } from "../../lib/kick";
+import { clockTime, dayKey, dayTabLabel, dayTabLabels, kickSlot, DEFAULT_TZ, tzLabel } from "../../lib/kick";
 import { liveUrgency } from "../../lib/live-status";
 import { useGamesRealtime } from "../../lib/use-games-realtime";
 import {
@@ -253,15 +253,12 @@ export function SlateView({
   const games = data.games;
   const liveCount = games.filter(isLive).length;
 
-  const dayTabs = useMemo(() => {
-    const seen = new Map<string, string>();
-    for (const g of games) {
-      if (!g.startTs) continue;
-      const k = dayKey(g.startTs, tz);
-      if (!seen.has(k)) seen.set(k, dayTabLabel(g.startTs, tz));
-    }
-    return [...seen.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [games, tz]);
+  // Labels come back disambiguated: week 1 has two Saturdays, and two chips
+  // both reading "Sat" are unusable.
+  const dayTabs = useMemo(
+    () => dayTabLabels(games.map((g) => g.startTs).filter((t): t is string => t !== null), tz),
+    [games, tz],
+  );
 
   const conferences = useMemo(
     () =>
@@ -418,8 +415,8 @@ export function SlateView({
           {/* toggle buttons, not ARIA tabs — no tabpanel/arrow-key contract here */}
           <div className="flex items-center gap-1" aria-label="Filter by day">
             <DayTab label="All" active={day === "all"} onClick={() => setDay("all")} />
-            {dayTabs.map(([k, label]) => (
-              <DayTab key={k} label={label} active={day === k} onClick={() => setDay(k)} />
+            {dayTabs.map(({ key, label }) => (
+              <DayTab key={key} label={label} active={day === key} onClick={() => setDay(key)} />
             ))}
           </div>
 
