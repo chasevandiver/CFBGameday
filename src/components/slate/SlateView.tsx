@@ -505,8 +505,8 @@ export function SlateView({
           <SkeletonSlate />
         ) : games.length === 0 ? (
           <EmptyState
-            title={`No games loaded for week ${week} yet`}
-            hint="The slate fills in when data ingestion runs."
+            title={`No games on the board for week ${week} yet`}
+            hint="Games appear here once the week's schedule is posted — check back closer to kickoff."
           />
         ) : sorted.length === 0 ? (
           <EmptyState

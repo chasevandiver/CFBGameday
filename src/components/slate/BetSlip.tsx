@@ -130,7 +130,7 @@ export function BetSlip({ seasonId }: { seasonId: number }) {
                         placeholder="1"
                         inputMode="decimal"
                         aria-label={`Units for ${s.label}`}
-                        className="stat h-7 w-12 rounded-md border border-chalk/12 bg-elev px-1.5 text-right text-xs text-chalk focus:border-accent/60 focus:outline-none"
+                        className="stat h-7 w-12 rounded-md border border-chalk/12 bg-elev px-1.5 text-right text-xs text-chalk focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
                       />
                     </label>
                     <button
@@ -151,7 +151,7 @@ export function BetSlip({ seasonId }: { seasonId: number }) {
                 <select
                   value={reasonTag}
                   onChange={(e) => setReasonTag(e.target.value)}
-                  className="h-8 w-full appearance-none rounded-lg border border-chalk/12 bg-elev pl-3 pr-7 text-xs font-medium text-chalk focus:border-accent/60 focus:outline-none"
+                  className="h-8 w-full appearance-none rounded-lg border border-chalk/12 bg-elev pl-3 pr-7 text-xs font-medium text-chalk focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
                 >
                   {REASON_TAGS.map((tag) => (
                     <option key={tag} value={tag}>

@@ -17,7 +17,7 @@ export function TeamMark({
   glow?: boolean;
 }) {
   const [broken, setBroken] = useState(false);
-  const color = team.color ?? "#5b6472";
+  const color = team.color ?? "var(--push)";
 
   return (
     <span

@@ -158,7 +158,7 @@ Ambiguity here is the #1 source of arguments in betting groups, so the rules are
 
 ## 5.1 Where CFB markets are soft (permanent "Edges" page)
 - G5 games and FCS matchups; weekday MACtion
-- September lines before the market learns new rosters (pairs with churn analysis — the site's biggest structural edge)
+- September lines before the market learns new rosters (pairs with churn analysis). **[amended Aug 2026]** Originally called "the site's biggest structural edge"; the edge investigation (`docs/CHANGELOG.md`) demoted that claim. The defensible version: our numbers are priced *before* the market finishes learning rosters, and the market drifts toward our side after the opener (avg CLV +0.27 in the 4+ bucket) — not by enough to beat −110, but the disagreement is real and CLV is how we'd know. The value is disagreement selection verified by CLV, not raw accuracy.
 - Backup QB situations; big-spread backdoor dynamics; small-conference totals; August win totals
 
 ## 5.2 Derivative markets

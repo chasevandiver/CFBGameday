@@ -33,6 +33,10 @@ export function LoginForm({ linkFailed }: { linkFailed: boolean }) {
     <main id="main" className="flex flex-1 flex-col items-center justify-center gap-6 px-6 py-16 text-center">
       <p className="stat text-sm tracking-[0.3em] text-accent uppercase">Game day, every day</p>
       <h1 className="text-4xl sm:text-5xl">The CFB Slate</h1>
+      {/* the login page had no way back to the public site (audit 08/UX-19) */}
+      <a href="/slate" className="stat text-xs text-accent underline-offset-2 hover:underline">
+        Browse this week&rsquo;s slate without signing in →
+      </a>
 
       {status === "sent" ? (
         <div className="max-w-sm rounded-lg border border-accent/40 bg-surface p-6">

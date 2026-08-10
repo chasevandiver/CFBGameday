@@ -39,7 +39,9 @@ export default function RulesPage() {
           </Rule>
           <Rule n={5} title="Standings & tiebreakers.">
             The season leaderboard shows record, units (graded at −110: a win pays 0.909u per
-            unit), ROI, and average CLV. Ordering is units, then ROI, then average CLV.
+            unit), ROI, and average CLV. Ordering is units, then ROI, then average CLV. ROI is
+            profit over units <em>risked</em> (pushes and voids don&rsquo;t count as risk), so a
+            +3u season on 30u risked reads +10%.
           </Rule>
           <Rule n={6} title="Your group sets the format.">
             Which games are in play each week, and which bet types you may pick, are set by your

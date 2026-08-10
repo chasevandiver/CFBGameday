@@ -16,8 +16,8 @@ export function WinProbBar({
 }) {
   const homePct = Math.round(homeWinProb * 100);
   const awayPct = 100 - homePct;
-  const homeColor = home.color ?? "#5b6472";
-  const awayColor = away.color ?? "#9aa1ad";
+  const homeColor = home.color ?? "var(--push)";
+  const awayColor = away.color ?? "var(--push)";
 
   return (
     <div aria-label={`Win probability: ${away.abbr} ${awayPct}%, ${home.abbr} ${homePct}%`}>

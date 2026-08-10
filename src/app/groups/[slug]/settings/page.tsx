@@ -117,7 +117,9 @@ export default async function GroupSettingsPage({
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
               <h2 className="text-sm text-accent">Week {week}</h2>
               <nav className="scroll-thin -mx-1 flex max-w-full gap-1 overflow-x-auto px-1">
-                {Array.from({ length: 15 }, (_, i) => i + 1).map((w) => (
+                {/* 16 to match the slate's regular-season range — week 16 was
+                    unreachable from the admin UI (audit 08/UX-17). */}
+                {Array.from({ length: 16 }, (_, i) => i + 1).map((w) => (
                   <Link
                     key={w}
                     href={`/groups/${slug}/settings?week=${w}`}

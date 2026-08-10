@@ -190,8 +190,8 @@ export function GameHeader({
 
   const homeLost = final && g.homePoints !== null && g.awayPoints !== null && hPts < aPts;
   const awayLost = final && g.homePoints !== null && g.awayPoints !== null && aPts < hPts;
-  const homeColor = home.color ?? "#5b6472";
-  const awayColor = away.color ?? "#5b6472";
+  const homeColor = home.color ?? "var(--push)";
+  const awayColor = away.color ?? "var(--push)";
 
   return (
     <section className={`card relative overflow-hidden ${live ? "card-live" : ""}`}>

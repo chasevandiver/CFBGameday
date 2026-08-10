@@ -50,7 +50,7 @@ export function BetForm({ seasonId, games = [] }: { seasonId: number; games?: Be
   }
 
   const input =
-    "w-full rounded-lg border border-chalk/12 bg-elev px-3 py-2 text-sm text-chalk placeholder:text-chalk/35 focus:border-accent/60 focus:outline-none";
+    "w-full rounded-lg border border-chalk/12 bg-elev px-3 py-2 text-sm text-chalk placeholder:text-chalk/35 focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent";
 
   const game = games.find((g) => String(g.id) === gameId) ?? null;
   const sideOptions: Array<[string, string]> = TEAM_SIDED.has(betType)
