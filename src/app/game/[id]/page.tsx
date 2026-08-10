@@ -627,7 +627,10 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
               SP+ and FPI are points better than an average FBS team on a neutral field, the
               same scale our rating uses, so they read against each other directly. Elo is not —
               margins convert at about {ELO_PER_POINT} Elo per point. Margins are in the
-              market&rsquo;s convention (negative = {home.abbr} favored); consensus flags fire
+              market&rsquo;s convention (negative = {home.abbr} favored). The rows here are
+              neutral-field differentials; the consensus flag adds home field before comparing
+              against the line, so the flag and this table can legitimately disagree by ~3 points.
+              Consensus flags fire
               when every system disagrees with the line the same way.
             </p>
           </section>

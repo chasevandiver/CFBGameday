@@ -46,18 +46,34 @@ async function get<T>(endpoint: string, query: Query = {}): Promise<T> {
     if (v !== undefined) url.searchParams.set(k, String(v));
   }
 
-  callCount++;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
-  });
-  if (!res.ok) {
-    throw new CfbdError(
-      `CFBD ${endpoint} failed: ${res.status} ${res.statusText}`,
-      res.status,
-      endpoint,
-    );
+  // One jittered retry on 429/5xx/network + a hard timeout: a hung fetch on a
+  // Saturday morning used to hold the whole job run hostage, and a transient
+  // CFBD hiccup failed it outright (audit 07/OPS-10).
+  for (let attempt = 0; ; attempt++) {
+    callCount++;
+    try {
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!res.ok) {
+        if ((res.status === 429 || res.status >= 500) && attempt === 0) {
+          await new Promise((r) => setTimeout(r, 1000 + Math.random() * 2000));
+          continue;
+        }
+        throw new CfbdError(
+          `CFBD ${endpoint} failed: ${res.status} ${res.statusText}`,
+          res.status,
+          endpoint,
+        );
+      }
+      return (await res.json()) as T;
+    } catch (err) {
+      if (err instanceof CfbdError || attempt > 0) throw err;
+      // network error / timeout — one more try
+      await new Promise((r) => setTimeout(r, 1000 + Math.random() * 2000));
+    }
   }
-  return (await res.json()) as T;
 }
 
 // ---------------------------------------------------------------------------

@@ -153,8 +153,8 @@ describe("closingConsensus (stale-close guard)", () => {
     expect(c.spread).toBeNull();
   });
 
-  it("passes through untouched when kickoff is unknown", () => {
-    expect(closingConsensus([snapAt("2026-09-01T22:45:00Z")], null).spread).toBe(-3.5);
+  it("unknown kickoff = no close (a TBD-then-played game could bank a post-hoc line)", () => {
+    expect(closingConsensus([snapAt("2026-09-01T22:45:00Z")], null).spread).toBeNull();
   });
 });
 

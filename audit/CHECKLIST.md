@@ -14,19 +14,19 @@ explain themselves.
 
 ## Package A — Correctness hardening
 
-- [ ] **03:M-1b** Spec-compliant `team_hfa` source: drop non-FBS-opponent games from the home/away margin averages (FCS buy-game inflation at its source), keep the centered blend — `scripts/build-preseason.ts` · S · must merge before the refresh goes green
-- [ ] **02:M-03** Consensus flag compares like with like: add the game's blended HFA to each `sysMargin` before the sign test in `freezeJob`; "HFA-adjusted" footnote on the game-page Systems table — `scripts/lib/jobs-core.ts` · S
-- [ ] **05:N4** Grading reads throw on error (snapshots/predictions/picks/bets) + chunk `.in("game_id", …)` at 500 — `scripts/lib/jobs-core.ts:499-560` · S
-- [ ] **05:N3** Postseason finals grade: grading pass fetches both season types (ratings replay stays regular-only) — `scripts/lib/jobs-core.ts:349-356` · S–M
-- [ ] **05:N6** TBD kickoff (`start_ts` null) = no close, CLV null (today `closingConsensus` passes through and can bank a post-game snapshot) — `scripts/lib/jobs-core.ts` + test · S
-- [ ] **05:N9** Rule #4 enforced: picks/bets on postponed/canceled games grade `void` — grading pass + test · S–M
-- [ ] **02:M-06** Lookahead regression test: perturb week-N scores ⇒ week-N predictions unchanged — `scripts/lib/replay.test.ts` · S
-- [ ] **07:OPS-12c** `sync-games` upsert never flips `in_progress` → `scheduled` (omit status unless completed) — `scripts/sync-games.ts` · S
-- [ ] **07:OPS-10** CFBD `get()`: one jittered retry on 429/5xx + 30s timeout — `src/lib/cfbd.ts` · S
-- [ ] **05:N10** Recap renders 0.00 avg CLV as "CLV PK" (`fmtSpread` misuse on an average) — `src/app/recap/` · S
-- [ ] **05:N11** Predictions with null edge/vegas_spread still get `close_spread` written so they leave the ungraded partial index — `scripts/lib/jobs-core.ts:523-551` · S
-- [ ] **SEC-11** `confirmAdjustment`/`removeAdjustment` get an app-level admin check (no silent `ok:true` no-op) — `src/app/actions/adjustments.ts:57-81` · S
-- [ ] **SEC-14** DB assertions that `predictions`/`line_snapshots` UPDATE/DELETE stay revoked (`has_table_privilege`) — `supabase/tests/` · S
+- [x] **03:M-1b** Spec-compliant `team_hfa` source: drop non-FBS-opponent games from the home/away margin averages (FCS buy-game inflation at its source), keep the centered blend — `scripts/build-preseason.ts` · S · must merge before the refresh goes green
+- [x] **02:M-03** Consensus flag compares like with like: add the game's blended HFA to each `sysMargin` before the sign test in `freezeJob`; "HFA-adjusted" footnote on the game-page Systems table — `scripts/lib/jobs-core.ts` · S
+- [x] **05:N4** Grading reads throw on error (snapshots/predictions/picks/bets) + chunk `.in("game_id", …)` at 500 — `scripts/lib/jobs-core.ts:499-560` · S
+- [x] **05:N3** Postseason finals grade: grading pass fetches both season types (ratings replay stays regular-only) — `scripts/lib/jobs-core.ts:349-356` · S–M
+- [x] **05:N6** TBD kickoff (`start_ts` null) = no close, CLV null (today `closingConsensus` passes through and can bank a post-game snapshot) — `scripts/lib/jobs-core.ts` + test · S
+- [x] **05:N9** Rule #4 enforced: picks/bets on postponed/canceled games grade `void` — grading pass + test · S–M
+- [x] **02:M-06** Lookahead regression test: perturb week-N scores ⇒ week-N predictions unchanged — `scripts/lib/replay.test.ts` · S
+- [x] **07:OPS-12c** `sync-games` upsert never flips `in_progress` → `scheduled` (omit status unless completed) — `scripts/sync-games.ts` · S
+- [x] **07:OPS-10** CFBD `get()`: one jittered retry on 429/5xx + 30s timeout — `src/lib/cfbd.ts` · S
+- [x] **05:N10** Recap renders 0.00 avg CLV as "CLV PK" (`fmtSpread` misuse on an average) — `src/app/recap/` · S
+- [x] **05:N11** Predictions with null edge/vegas_spread still get `close_spread` written so they leave the ungraded partial index — `scripts/lib/jobs-core.ts:523-551` · S
+- [x] **SEC-11** `confirmAdjustment`/`removeAdjustment` get an app-level admin check (no silent `ok:true` no-op) — `src/app/actions/adjustments.ts:57-81` · S
+- [x] **SEC-14** DB assertions that `predictions`/`line_snapshots` UPDATE/DELETE stay revoked (`has_table_privilege`) — `supabase/tests/` · S
 
 ## Package B — Ops & perf before the first Saturday
 

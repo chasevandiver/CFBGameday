@@ -431,12 +431,19 @@ async function main() {
 
   // ---- 7. Team HFA quick estimate (2015–2024) -------------------------------
   console.log("Estimating team HFA from 2015–2024…");
+  const fbsIds = new Set(fbs.map((t) => t.id));
   const homeMargins = new Map<number, number[]>();
   const awayMargins = new Map<number, number[]>();
   for (let year = 2015; year <= 2024; year++) {
     const games = await cached(`games-${year}`, () => cfbd.games(year), true);
     for (const g of games) {
       if (g.homePoints === null || g.awayPoints === null || g.neutralSite) continue;
+      // FBS-vs-FBS only (approximated by 2026 membership): home slates carry
+      // the FCS buy games, so raw home averages were inflated ~+2 points by
+      // scheduling rather than home field — SPEC §2.3 asks for residuals, and
+      // this is the same-source version of that fix (audit 03/M-1b). The
+      // centered blend on top pins the mean; this repairs the per-team spread.
+      if (!fbsIds.has(g.homeId) || !fbsIds.has(g.awayId)) continue;
       const margin = g.homePoints - g.awayPoints;
       if (!homeMargins.has(g.homeId)) homeMargins.set(g.homeId, []);
       homeMargins.get(g.homeId)!.push(margin);

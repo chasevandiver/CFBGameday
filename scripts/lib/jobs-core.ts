@@ -77,7 +77,11 @@ export function closingConsensus(
   maxAgeMs: number = STALE_CLOSE_MS,
 ): ReturnType<typeof consensusFromSnapshots> {
   const c = consensusFromSnapshots(snapshots, startTs ?? undefined);
-  if (startTs === null) return c;
+  // Unknown kickoff = no close. With no `before` cutoff the newest snapshot
+  // wins, which for a TBD-then-played game can be one captured AFTER the
+  // game — a post-hoc line graded as "the close" (audit 05/N6).
+  if (startTs === null)
+    return { ...c, spread: null, total: null, mlHome: null, mlAway: null };
   const kick = Date.parse(startTs);
   let newest = -Infinity;
   for (const s of snapshots) {
@@ -459,17 +463,20 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
     priorDef.set(r.team_id, r.defense === null ? overall / 2 : Number(r.defense));
   }
 
+  // BOTH season types: grading must settle bowls and the CFP (groups support
+  // postseason weeks), while the ratings replay below stays regular-only —
+  // the tuned parameters were fit on regular seasons.
   const { data: gameRows } = await db
     .from("games")
     .select(
-      "id, week, home_team_id, away_team_id, home_points, away_points, neutral_site, status, start_ts",
+      "id, week, season_type, home_team_id, away_team_id, home_points, away_points, neutral_site, status, start_ts",
     )
     .eq("season_id", SEASON)
-    .eq("season_type", "regular")
     .order("week");
-  const games = (gameRows ?? []) as Array<{
+  const allGames = (gameRows ?? []) as Array<{
     id: number;
     week: number;
+    season_type: string;
     home_team_id: number;
     away_team_id: number;
     home_points: number | null;
@@ -478,9 +485,16 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
     status: string;
     start_ts: string | null;
   }>;
+  const games = allGames.filter((g) => g.season_type === "regular");
   const finals = games.filter(
     (g) => g.status === "final" && g.home_points !== null && g.away_points !== null,
   );
+  // What grading settles: finals of either season type, plus the dead games
+  // League Rule #4 voids.
+  const gradableFinals = allGames.filter(
+    (g) => g.status === "final" && g.home_points !== null && g.away_points !== null,
+  );
+  const deadGames = allGames.filter((g) => g.status === "postponed" || g.status === "canceled");
 
   const { data: hfaRows } = await db.from("team_hfa").select("team_id, blended_hfa");
   const hfa = new Map<number, number>(
@@ -561,21 +575,28 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
   }
 
   // ---- Grading + CLV ----
-  const finalIds = finals.map((g) => g.id);
+  const finalIds = gradableFinals.map((g) => g.id);
   let picksGraded = 0;
   let betsGraded = 0;
   let predictionsGraded = 0;
+  let voided = 0;
   if (finalIds.length > 0) {
-    const gameById = new Map(finals.map((g) => [g.id, g]));
-    const { data: snaps } = await db
-      .from("line_snapshots")
-      .select(SNAPSHOT_COLS)
-      .in("game_id", finalIds);
+    const gameById = new Map(gradableFinals.map((g) => [g.id, g]));
+    // Chunked (PostgREST .in() is a URL; ~800 final ids by December) and
+    // THROWING: a swallowed read error here used to grade the week without
+    // CLV permanently, with the Action green (audit 05/N4).
     const snapsByGame = new Map<number, Snapshot[]>();
-    for (const s of (snaps ?? []) as Snapshot[]) {
-      const arr = snapsByGame.get(s.game_id) ?? [];
-      arr.push(s);
-      snapsByGame.set(s.game_id, arr);
+    for (let i = 0; i < finalIds.length; i += 300) {
+      const { data: snaps, error: snapsErr } = await db
+        .from("line_snapshots")
+        .select(SNAPSHOT_COLS)
+        .in("game_id", finalIds.slice(i, i + 300));
+      if (snapsErr) throw new Error(`grading: snapshots read failed: ${snapsErr.message}`);
+      for (const s of (snaps ?? []) as Snapshot[]) {
+        const arr = snapsByGame.get(s.game_id) ?? [];
+        arr.push(s);
+        snapsByGame.set(s.game_id, arr);
+      }
     }
     const closing = (gameId: number) => {
       const g = gameById.get(gameId);
@@ -591,17 +612,22 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
     // append-only history, and re-grading would rewrite a receipt. The two
     // prediction fields written here didn't exist at freeze time; every number
     // the model committed to stays exactly as it was stored.
-    const { data: preds } = await db
+    const { data: preds, error: predsErr } = await db
       .from("predictions")
-      .select("id, game_id, edge, vegas_spread")
+      .select("id, game_id, edge, vegas_spread, close_spread")
       .eq("frozen", true)
       .in("game_id", finalIds)
-      .is("clv", null);
+      // close_spread, not clv, marks "graded": a row priced without a line
+      // has clv null forever by construction, and keying the ungraded set on
+      // clv would re-fetch it every Sunday until January (audit 05/N11).
+      .is("close_spread", null);
+    if (predsErr) throw new Error(`grading: predictions read failed: ${predsErr.message}`);
     for (const p of (preds ?? []) as Array<{
       id: number;
       game_id: number;
       edge: number | null;
       vegas_spread: number | null;
+      close_spread: number | null;
     }>) {
       const close = closing(p.game_id).spread;
       // No closing line means nothing to measure. Leave clv null so the row
@@ -613,19 +639,22 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
         p.vegas_spread === null ? null : Number(p.vegas_spread),
         close,
       );
-      if (clv === null) continue;
+      // A row priced without a line (edge/vegas_spread null) can never grow a
+      // CLV — still record the close so it stops being re-fetched from the
+      // ungraded set every Sunday forever (audit 05/N11).
       const { error } = await db
         .from("predictions")
-        .update({ clv: roundClv(clv), close_spread: close })
+        .update(clv === null ? { close_spread: close } : { clv: roundClv(clv), close_spread: close })
         .eq("id", p.id);
-      if (!error) predictionsGraded++;
+      if (!error && clv !== null) predictionsGraded++;
     }
 
-    const { data: picks } = await db
+    const { data: picks, error: picksErr } = await db
       .from("picks")
       .select("id, game_id, market, side, line_at_pick, result")
       .in("game_id", finalIds)
       .is("result", null);
+    if (picksErr) throw new Error(`grading: picks read failed: ${picksErr.message}`);
     for (const p of picks ?? []) {
       const g = gameById.get(p.game_id)!;
       const line = Number(p.line_at_pick);
@@ -653,12 +682,13 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
       if (!error) picksGraded++;
     }
 
-    const { data: bets } = await db
+    const { data: bets, error: betsErr } = await db
       .from("bets")
       .select("id, game_id, bet_type, side, line_taken, odds, units, result")
       .in("game_id", finalIds)
       .is("result", null)
       .is("voided_at", null);
+    if (betsErr) throw new Error(`grading: bets read failed: ${betsErr.message}`);
     for (const b of bets ?? []) {
       // A moneyline bet has no line to take, so `line_taken` being null is
       // normal for it rather than a reason to skip. It used to be caught by
@@ -713,12 +743,39 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
     }
   }
 
+  // League Rule #4: postponed/canceled = void, for picks and bets alike. A
+  // postponed-then-rescheduled game flips back to `scheduled` on the next
+  // sync, so this only ever voids wagers on games that are dead RIGHT NOW —
+  // and a game that later revives simply grades normally when it goes final,
+  // because voided rows are excluded from the grading queries above... for
+  // bets. Voided picks stay voided; the member re-picks on the revived game.
+  if (deadGames.length > 0) {
+    const deadIds = deadGames.map((g) => g.id);
+    const { data: vp, error: vpErr } = await db
+      .from("picks")
+      .update({ result: "void" })
+      .in("game_id", deadIds)
+      .is("result", null)
+      .select("id");
+    if (vpErr) throw new Error(`grading: voiding picks failed: ${vpErr.message}`);
+    const { data: vb, error: vbErr } = await db
+      .from("bets")
+      .update({ result: "void", voided_at: new Date().toISOString() })
+      .in("game_id", deadIds)
+      .is("result", null)
+      .is("voided_at", null)
+      .select("id");
+    if (vbErr) throw new Error(`grading: voiding bets failed: ${vbErr.message}`);
+    voided = (vp?.length ?? 0) + (vb?.length ?? 0);
+  }
+
   return {
     weeks: weeksPlayed.length,
     ratingRows: ratingRows.length,
     picksGraded,
     betsGraded,
     predictionsGraded,
+    voided,
   };
 }
 
@@ -889,6 +946,12 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
     });
     const situational = adjFor(g.home_team_id, g.id) - adjFor(g.away_team_id, g.id);
     const vegas = consensus(snapsByGame.get(g.id) ?? []);
+    // The consensus flag compares each system to an HFA-inclusive market
+    // margin, but SP+/FPI/Elo differentials are neutral-field. Without adding
+    // home field the comparison is asymmetric by ~2×HFA: a home lean needed
+    // ~6 more points of agreement to fire than an away lean (audit 02/M-03).
+    const sysHfa = g.neutral_site ? 0 : (hfa.get(g.home_team_id) ?? DEFAULT_PARAMS.baseHfa);
+    const withHfa = (m: number | null) => (m === null ? null : m + sysHfa);
     const price = priceGame(
       {
         home: rating(homeR),
@@ -899,9 +962,9 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
         vegasSpread: vegas.spread,
         // real inputs for the consensus flag (spec §2.4) — previously never
         // passed, so the flag could only ever be false
-        spPlusMargin: sysMargin("sp", g.home_team_id, g.away_team_id),
-        fpiMargin: sysMargin("fpi", g.home_team_id, g.away_team_id),
-        eloMargin: sysMargin("elo", g.home_team_id, g.away_team_id),
+        spPlusMargin: withHfa(sysMargin("sp", g.home_team_id, g.away_team_id)),
+        fpiMargin: withHfa(sysMargin("fpi", g.home_team_id, g.away_team_id)),
+        eloMargin: withHfa(sysMargin("elo", g.home_team_id, g.away_team_id)),
       },
       params,
     );

@@ -123,3 +123,17 @@ begin;
   select pg_temp.chk('anon cannot plant a bet on someone''s ledger',
     (select count(*) = 1 from bets));
 rollback;
+
+\echo '# the append-only tables stay append-only (grants, not policies)'
+select pg_temp.chk('authenticated cannot UPDATE predictions',
+  not has_table_privilege('authenticated', 'public.predictions', 'UPDATE'));
+select pg_temp.chk('authenticated cannot DELETE predictions',
+  not has_table_privilege('authenticated', 'public.predictions', 'DELETE'));
+select pg_temp.chk('authenticated cannot UPDATE line_snapshots',
+  not has_table_privilege('authenticated', 'public.line_snapshots', 'UPDATE'));
+select pg_temp.chk('authenticated cannot DELETE line_snapshots',
+  not has_table_privilege('authenticated', 'public.line_snapshots', 'DELETE'));
+select pg_temp.chk('anon cannot UPDATE predictions',
+  not has_table_privilege('anon', 'public.predictions', 'UPDATE'));
+select pg_temp.chk('anon cannot UPDATE line_snapshots',
+  not has_table_privilege('anon', 'public.line_snapshots', 'UPDATE'));
