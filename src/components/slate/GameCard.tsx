@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { voidBet } from "../../app/actions/bets";
 import { inSlip, useBetSlip, type SlipSelection } from "../../lib/bet-slip-store";
+import { betsChanged } from "../../lib/bets-changed";
 import { kickParts, periodLabel } from "../../lib/kick";
 import {
   pickCoverView,
@@ -886,7 +887,8 @@ function WatchRating({ score }: { score: number | null }) {
  * The ledger is append-only, so "remove" is a void — the row survives, marked.
  * It lives here because a bet placed from the slate could only be undone by
  * navigating to the ledger and finding it, which nobody was going to do after
- * a mis-tap. The chip hides itself immediately and the next poll confirms.
+ * a mis-tap. The chip hides itself immediately and the refetch confirms — it
+ * used to wait on the poll, so an in-flight one could bring the chip back.
  */
 function BetChip({ bet, label }: { bet: MyBetView; label: string }) {
   const [gone, setGone] = useState(false);
@@ -902,7 +904,7 @@ function BetChip({ bet, label }: { bet: MyBetView; label: string }) {
           e.stopPropagation();
           if (!confirm(`Void this bet (${label})? It stays on the ledger, marked void.`)) return;
           setGone(true);
-          startTransition(() => voidBet(bet.id).then(() => undefined));
+          startTransition(() => voidBet(bet.id).then(() => betsChanged()));
         }}
         disabled={pending}
         aria-label={`Void bet ${label}`}
