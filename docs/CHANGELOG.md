@@ -27,8 +27,8 @@ carries the number that killed it.
 
 ## Current state
 
-**`MODEL_VERSION` 2026.4.0** (`src/model/ratings.ts`), on `main` via PR #12
-(2026-08-07).
+**`MODEL_VERSION` 2026.4.1** (`src/model/ratings.ts`) — 2026.4.0 (PR #12,
+2026-08-07) plus the centered team-HFA blend (Aug 10, below).
 
 ⚠️ **In the code, not yet in production.** As of 2026-08-07 the database serves
 `ratings` at **2026.2.0** — the site is running a model three versions behind
@@ -140,6 +140,86 @@ shipping it.
 ---
 
 ## Log
+
+### Aug 10 — The audit's fix list: ledger integrity, quota-proofing, and the fence around the refresh
+
+The full audit landed as PR #19 (`audit/00-SUMMARY.md`); this pass implements
+its P0s and the P1s that need no CFBD data, shaped by two owner decisions:
+stay inside the free tiers, and stop polling lines nobody bets — only the
+close matters. Five commits, one per track.
+
+**Ledger integrity (the P0).** The bet slip inserted the ticket's
+side-perspective `line_taken` (+6.5 for an away dog) while the grader,
+`liveSpreadStatus` and `spreadClv` all read home-perspective — so every away
+spread bet would have graded backwards from the first Sunday, invisibly,
+because the ledger displayed the raw stored number and therefore *looked*
+right. Conversion now happens at the write boundary (`storedLine` in
+`actions/bets.ts`, via `homeLineForSide`), displays convert back through
+`lineForSide`, and `bet-line-convention.test.ts` walks write → grade → CLV →
+display so no boundary can regress alone. Zero rows were affected: nothing
+had been graded. In the same commit, `snapToHalf` now rounds ties away from
+zero to match Postgres `round()` — a −3.25 consensus mean previously snapped
+to −3.0 in JS and −3.5 in SQL, two different closes from the same snapshots.
+
+**Quota-proofing, without giving up 30-second scores.** The binding quotas
+are Supabase egress and realtime messages, not CFBD calls. Three changes:
+`fetchSlateView` stops fetching a week of raw `line_snapshots` (~1 MB per
+poll tick) that fed `spreadHistory` — a field with zero consumers since the
+sparkline came off the card on Aug 9 (reduction is by construction; not
+measured against a live server). `scoreboardJob` diffs against stored rows
+(`scoreboardPatch`, pure + tested) so finals stop being rewritten identically
+every 30s — previously most of a Saturday's realtime fan-out. And the line
+schedule went minimal by owner decision: 2×-daily refresh plus one close pass
+~40 min before each kickoff wave, now including Thu/Fri nights, which the old
+schedule missed entirely. Paired with `closingConsensus`: a close whose last
+pre-kick snapshot is >6 h old grades as no-close (CLV null, stated on
+Receipts) rather than banking Tuesday's line as Saturday's.
+
+**Sign display.** Four hand-rolled spread labels could print the wrong sign:
+the `/edges` "Model lean" (away leans shown home-perspective), the game-page
+Systems table (negated into home-positive under a footnote declaring market
+convention — SP+ and Model disagreed about what a minus means), and the
+game-page crew list + GameHeader pick chip (away flips, straight-up as "PK").
+All four now go through `lineForSide`/`pickSideLabel`/`systemMargin`. The
+`/edges` cover-prob stat is gone: it priced the model at weight 1.0 when
+`--diagnose-edges` measured 0.034, three lines under the page's own
+disclaimer.
+
+**MODEL_VERSION 2026.4.1 — centered team HFA** (`centeredBlendedHfa`). Raw
+home/away margin splits are inflated ~+1.9 at the FBS mean by scheduling —
+home slates carry the FCS buy games — so production's mean raw HFA
+back-computes to 4.91 against the fitted 3.0, and the old blend would have
+re-introduced a ≈−0.9 home-side bias the moment `preseason-refresh` rebuilt
+`team_hfa` at baseHfa 3.0. Invisible to the backtest: the replay prices with
+flat `baseHfa` and never touches `team_hfa`. Centering pins the mean applied
+HFA to the fitted value and keeps the between-team spread at half strength.
+**Not tuner-validated** — the per-team component has never been replayed, and
+its tuner can only run once CFBD publishes 2026 data; the gate here is
+arithmetic (mean(blended) ≡ baseHfa, pinned by test), not a fitted gain.
+Alongside it, `--check` now fails when >5 FBS teams miss the talent join (a
+partially published file used to pass while unmatched teams silently took the
+−8 constant), and a declined `preseason-refresh` goes red from Aug 20 instead
+of quiet green through the window's end.
+
+**Ops.** Migration `0024`: `job_runs` (written by every scheduled job via
+`recordJobRun`; bookkeeping failure never breaks the job) with a Jobs
+freshness card on `/admin` — red on a failed run, amber past cadence, which
+is the absence check no error email provides. An inert dead-man ping step in
+`jobs.yml` activates when a `HEALTHCHECK_PING_URL` secret exists.
+`line_consensus` gains `as_of`, and both the slate header and the game-page
+market table now stamp when the lines were captured — under the minimal
+cadence staleness is by design, so it is said on screen. Scoreboard crons now
+cover Sunday/Monday slates (Week 1 is Labor Day weekend; `idleSkip` exits the
+no-game weeks in under a minute). Every page carries a footer: no money moves
+through the site, 1-800-GAMBLER.
+
+322 unit tests, 90 database assertions, production build green. Also verified
+against the live project: the Aug 29–30 opener slate is stored as `week = 1,
+regular` (8 games) — CFBD delivers "Week 0" as week 1, so the audit's worry
+that a literal `week: 0` would make the launch slate unreachable (08/H3)
+closes as a non-issue. Not done, on purpose: everything the audit marked
+data-dependent (Aug 26 checkpoint, top-25 smell tests, verdicts batch, first
+supervised grading run) and everything it marked in-season.
 
 ### Aug 9 — The group week page: matchups first, and who's on which side
 
