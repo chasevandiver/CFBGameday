@@ -339,6 +339,24 @@ before a thrown one took the error boundary and the whole board with it. Buttons
 also stay live during a write, since disabling them mid-flight is half of what
 made rapid picking feel stuck.
 
+**And every tap on the site got ~300ms faster**, which was the other half.
+`touch-action: manipulation` now applies to `button`, `a`, `[role="button"]`
+and `label` in `globals.css`. Safari holds a tap to see whether a second one is
+coming, so it can offer double-tap zoom; on a board whose entire interaction is
+tapping in sequence, that hold *is* the latency, and no amount of optimistic
+rendering removes it. Pinch zoom is untouched — nothing here sets
+`user-scalable=no`, which the guidelines flag as an anti-pattern and which this
+does not need.
+
+**Three async messages started announcing themselves.** A rejected pick, the
+bet slip's "N bets logged" confirmation and its share result are all updates
+that happen without the reader doing anything, so they now sit in
+`role="status" aria-live="polite"` regions rather than appearing silently. The
+group-admin crown also stopped carrying its label on the SVG — `aria-label` on
+an `<svg>` is unreliable without `role="img"`, so the text node does the work.
+Found by running the `web-design-guidelines` review on my own diff, which
+`docs/DESIGN.md` asks for and which had not been done on this batch until then.
+
 **There is somewhere to go when you're done.** There was no submit button —
 correct, picks save on tap — but nothing said so and nothing said where the
 group went next, so the flow ended in silence. The board now carries a footer in
