@@ -19,6 +19,7 @@ import {
   lineForSide,
   pickSideLabel,
   betSideLabel,
+  pickableSlots,
   watchability,
   weekModelRecord,
   type GameView,
@@ -520,5 +521,33 @@ describe("betSideLabel", () => {
 
   it("says the type rather than inventing a format it cannot price", () => {
     expect(betSideLabel("first_half", "home", null, "UGA", "BAMA")).toBe("UGA first_half");
+  });
+});
+
+describe("pickableSlots", () => {
+  const priced = (over: Partial<GameView["lines"]> = {}) =>
+    game({ lines: { spread: -3, spreadOpen: -3, total: 51.5, totalOpen: 51.5, mlHome: -150, mlAway: 130, ...over } });
+
+  it("counts picks, not games — four games on spreads and totals is eight", () => {
+    // The bug this replaces read "8 of 4" once somebody made them all.
+    const games = [priced(), priced(), priced(), priced()];
+    expect(pickableSlots(games, ["spread", "total"])).toBe(8);
+    expect(pickableSlots(games, ["spread"])).toBe(4);
+    expect(pickableSlots(games, ["spread", "total", "straight_up"])).toBe(12);
+  });
+
+  it("does not count a priced market with no posted line", () => {
+    // Those buttons render disabled, so promising them overstates the board.
+    const games = [priced(), priced({ total: null })];
+    expect(pickableSlots(games, ["spread", "total"])).toBe(3);
+  });
+
+  it("always counts straight-up, which needs no number", () => {
+    const games = [priced({ spread: null, total: null })];
+    expect(pickableSlots(games, ["spread", "total", "straight_up"])).toBe(1);
+  });
+
+  it("is zero for an empty board", () => {
+    expect(pickableSlots([], ["spread", "total"])).toBe(0);
   });
 });

@@ -151,8 +151,8 @@ export function GameCard({
         ? 0.42
         : 0.14
       : final
-        ? 0.12
-        : 0.3;
+        ? 0.14
+        : 0.36;
 
   return (
     <div

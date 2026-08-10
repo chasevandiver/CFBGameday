@@ -131,6 +131,27 @@ export function pickSideLabel(
 }
 
 /**
+ * How many picks a board actually offers.
+ *
+ * Not games — a week with four games and both spreads and totals turned on is
+ * eight picks, and the board said "8 of 4" to anyone who made them all. And
+ * not games times markets either: a priced market with no posted line cannot
+ * be picked at all, so a game nobody has hung a total on contributes its
+ * spread and nothing else. Counting the buttons that exist is the only figure
+ * that can't overstate what is achievable.
+ */
+export function pickableSlots(games: GameView[], markets: PickMarket[]): number {
+  return games.reduce(
+    (n, g) =>
+      n +
+      markets.filter((m) =>
+        m === "spread" ? g.lines.spread !== null : m === "total" ? g.lines.total !== null : true,
+      ).length,
+    0,
+  );
+}
+
+/**
  * How a logged BET reads as a ticket: "UGA +6.5", "O 54.5", "OSU ML".
  *
  * The bet-side twin of `pickSideLabel`, and it exists for the same reason:

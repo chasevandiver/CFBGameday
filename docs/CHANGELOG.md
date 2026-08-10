@@ -141,6 +141,44 @@ shipping it.
 
 ## Log
 
+### Aug 10 — "8 of 4 picks", and why the game cards stopped being glass
+
+**A board of four games with spreads and totals on is eight picks, and it said
+"8 of 4".** The numerator counted picks — one per market per game — and the
+denominator counted games. `pickableSlots` now counts the buttons that actually
+exist, which is not games × markets either: a priced market with no posted line
+cannot be picked, so a game nobody has hung a total on contributes its spread
+and nothing else. Anything else can promise a total the board can't take. The
+hero reads "5 of 8 picks · 4 games", so the two numbers can't be confused
+again. Four tests. A weekly minimum still overrides it — "of 8 required" is a
+different claim from "of 8 available".
+
+**The game cards went opaque on Aug 10 and it was self-inflicted.** Measured
+rather than guessed, on a rendered card:
+
+| | member card | game card |
+|---|---|---|
+| height | 59px | **434px** |
+| sheen falloff at `38%` of height | 22px — specular | 165px — a flat wash |
+| aura transmitted through the face | n/a (no aura) | **12%** |
+
+Two compounding causes, both introduced by the earlier "make the cards pop"
+pass, and both landing only on the tall aura-backed cards:
+
+1. `--glass-surface` went 74% → 88% to lift cards off the page. The game card
+   is the only glass on the site with something *behind* it, so that traded the
+   aura away for contrast. Now 80%, with `--surface` raised to `#241d16` so the
+   face lands on the same colour over a plain background — the entire
+   difference is in what it transmits, which is up two thirds.
+2. The sheen fell off over a *percentage* of height, so the highlight scaled
+   with the card: correct at 22px, a wash at 165px. Now a fixed 88px band.
+   Glass does not get glossier because the pane is taller.
+
+Plus a second lit edge (`--glass-floor`, inset along the bottom lip at 45% of
+the top edge). A pane lit from one side shows two edges; with one, a 434px card
+reads as paper with a highlight painted on it. Light mode opts out of both —
+on white there is nothing for a white sheen to do.
+
 ### Aug 10 — The odds grid marks money only, and week 1 stops having two Saturdays
 
 Both found by looking at a real slate card on a phone.

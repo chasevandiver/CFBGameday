@@ -6,7 +6,7 @@ import { useCallback, useMemo, useState } from "react";
 import type { PickMarket } from "../../lib/db-types";
 import { DEFAULT_TZ, kickParts, tzLabel } from "../../lib/kick";
 import type { ShareContext } from "../../lib/share-text";
-import type { GameView } from "../../lib/slate";
+import { pickableSlots, type GameView } from "../../lib/slate";
 import { PickButtons, type MyPickView } from "../PickButtons";
 import { ShareButton } from "../ShareButton";
 import { TeamLine } from "../slate/TeamLine";
@@ -77,6 +77,8 @@ export function PickBoard({
     () => new Set([...held.keys()].map((k) => k.split(":")[0])).size,
     [held],
   );
+  // Same figure as the hub's: what this board can actually take.
+  const slots = pickableSlots(entries.map((e) => e.game), markets);
   const openGames = entries.filter(
     (e) => e.game.startTs === null || new Date(e.game.startTs) > new Date(),
   ).length;
@@ -117,8 +119,8 @@ export function PickBoard({
             <p className="stat min-w-0 flex-1 text-xs leading-tight">
               <span className="text-base font-semibold text-chalk">{pickCount}</span>
               <span className="text-dim">
-                {" "}
-                {pickCount === 1 ? "pick" : "picks"} in
+                {minPicks > 0 ? ` of ${minPicks}` : ` of ${slots}`}{" "}
+                {slots === 1 ? "pick" : "picks"} in
                 {minPicks > 0 && pickCount < minPicks
                   ? ` · ${minPicks - pickCount} to go`
                   : minPicks > 0
