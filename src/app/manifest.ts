@@ -7,7 +7,9 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: "CFB Slate",
     description:
       "College football ratings, edges, pick'em, and the crew ledger — what matters right now, every Saturday.",
-    start_url: "/slate",
+    // The hub, not the slate: an installed app opens on what you have going
+    // on, with the slate one tap away from it.
+    start_url: "/",
     display: "standalone",
     background_color: "#12100D",
     theme_color: "#12100D",

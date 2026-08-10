@@ -4,12 +4,14 @@ import { PicksTab } from "./PicksTab";
 import { BetForm, type BetFormGame } from "../../components/BetForm";
 import { LiveStatusChip } from "../../components/slate/chips";
 import { ShareButton } from "../../components/ShareButton";
+import { StatTile } from "../../components/StatTile";
+import { UnitsCurve } from "../../components/UnitsCurve";
 import { VoidBetButton } from "../../components/VoidBetButton";
 import { REASON_TAGS, REASON_TAG_LABELS, type BetRow, type TeamRow } from "../../lib/db-types";
 import { kickParts, tzLabel, DEFAULT_TZ } from "../../lib/kick";
 import { statusForBet, type LiveBetStatus } from "../../lib/live-status";
 import { fetchBetFormGames, fetchCurrentSeasonWeek } from "../../lib/queries";
-import { formatRecord, tally, tallyBy } from "../../lib/records";
+import { cumulativeUnits, formatRecord, tally, tallyBy } from "../../lib/records";
 import { fmtSpread, fmtTotal, lineForSide } from "../../lib/slate";
 import { createClient } from "../../lib/supabase/server";
 
@@ -169,12 +171,11 @@ export default async function LedgerPage({
     .sort((a, b) => b.units - a.units);
 
   // cumulative units, oldest → newest, for the season curve
-  const curve = [...graded]
-    .sort((a, b) => a.placed_at.localeCompare(b.placed_at))
-    .reduce<number[]>((acc, b) => {
-      acc.push((acc[acc.length - 1] ?? 0) + (b.payout_units ?? 0));
-      return acc;
-    }, []);
+  const curve = cumulativeUnits(
+    [...graded]
+      .sort((a, b) => a.placed_at.localeCompare(b.placed_at))
+      .map((b) => ({ result: b.result, units: Number(b.units), payoutUnits: b.payout_units })),
+  );
 
   // Share, sourced from bets rather than picks: same formatter, same four
   // modes, different ledger. Today's bets are the ones placed today — a bet
@@ -236,20 +237,17 @@ export default async function LedgerPage({
 
         {/* Season dashboard */}
         <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat
-            label="Record"
-            value={graded.length ? formatRecord(overall) : "–"}
-          />
-          <Stat
+          <StatTile label="Record" value={graded.length ? formatRecord(overall) : "–"} />
+          <StatTile
             label="Units"
             value={graded.length ? `${units >= 0 ? "+" : ""}${units.toFixed(1)}` : "–"}
             tone={units > 0 ? "gold" : units < 0 ? "flag" : undefined}
           />
-          <Stat
+          <StatTile
             label="ROI"
             value={overall.roi === null ? "–" : `${(overall.roi * 100).toFixed(1)}%`}
           />
-          <Stat
+          <StatTile
             label="Avg CLV"
             value={avgClv === null ? "–" : `${avgClv > 0 ? "+" : ""}${avgClv.toFixed(2)}`}
             tone={avgClv !== null && avgClv > 0 ? "gold" : undefined}
@@ -436,48 +434,3 @@ function LedgerTabs({ active }: { active: LedgerTab }) {
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: string; tone?: "gold" | "flag" }) {
-  return (
-    <div className="card p-3">
-      <p className="text-xs uppercase text-chalk/55">{label}</p>
-      <p className={`stat mt-1 text-xl ${tone === "gold" ? "text-win" : tone === "flag" ? "text-loss" : ""}`}>
-        {value}
-      </p>
-    </div>
-  );
-}
-
-/** Cumulative-units line, server-rendered SVG — no chart lib, no client JS. */
-function UnitsCurve({ points }: { points: number[] }) {
-  const w = 320;
-  const h = 64;
-  const pad = 4;
-  const all = [0, ...points];
-  const min = Math.min(...all);
-  const max = Math.max(...all);
-  const span = max - min || 1;
-  const x = (i: number) => pad + (i / (all.length - 1)) * (w - pad * 2);
-  const y = (v: number) => pad + (1 - (v - min) / span) * (h - pad * 2);
-  const d = all.map((v, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
-  const last = points[points.length - 1];
-  return (
-    <svg
-      viewBox={`0 0 ${w} ${h}`}
-      preserveAspectRatio="none"
-      className="h-16 w-full"
-      role="img"
-      aria-label={`Cumulative units over ${points.length} graded bets, currently ${last >= 0 ? "+" : ""}${last.toFixed(1)}`}
-    >
-      <line x1={pad} x2={w - pad} y1={y(0)} y2={y(0)} stroke="var(--line-strong)" strokeWidth="1" strokeDasharray="3 3" />
-      <path
-        d={d}
-        fill="none"
-        stroke={last >= 0 ? "var(--win)" : "var(--loss)"}
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
-  );
-}

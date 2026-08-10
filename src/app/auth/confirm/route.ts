@@ -8,7 +8,8 @@ import { createClient } from "../../../lib/supabase/server";
  *  - PKCE flow (default email template): ?code=...
  *  - token-hash template: ?token_hash=...&type=email
  * Either way: exchange for a session (cookies set by the server client),
- * then into the app.
+ * then into the hub — the first thing a returning signed-in user should see is
+ * what they have going on, not the whole slate.
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -20,12 +21,12 @@ export async function GET(request: NextRequest) {
 
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) redirect("/slate");
+    if (!error) redirect("/");
   }
 
   if (token_hash && type) {
     const { error } = await supabase.auth.verifyOtp({ type, token_hash });
-    if (!error) redirect("/slate");
+    if (!error) redirect("/");
   }
 
   redirect("/login?error=link");

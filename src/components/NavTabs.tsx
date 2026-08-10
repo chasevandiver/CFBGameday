@@ -2,19 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { NAV_ITEMS, isNavItemActive } from "./nav-items";
+import { DESKTOP_ITEMS, isNavItemActive } from "./nav-items";
 
 /**
  * Desktop primary nav with the current page marked (aria-current + accent).
- * Hidden below `md`, where BottomNav takes over — all nine tabs fit a wide
- * header without scrolling, but on a phone they never did.
+ * Hidden below `md`, where BottomNav takes over — the tabs fit a wide header
+ * without scrolling, but on a phone they never did.
+ *
+ * `mobileOnly` items are left out: Home holds a bottom-bar slot, and on
+ * desktop the header wordmark beside these tabs is already the link to `/`.
  */
 export function NavTabs() {
   const pathname = usePathname();
 
   return (
     <nav aria-label="Primary" className="hidden flex-1 gap-0.5 md:flex">
-      {NAV_ITEMS.map((tab) => {
+      {DESKTOP_ITEMS.map((tab) => {
         const active = isNavItemActive(tab, pathname);
         return (
           <Link

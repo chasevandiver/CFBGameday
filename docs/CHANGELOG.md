@@ -141,6 +141,76 @@ shipping it.
 
 ## Log
 
+### Aug 10 — The site stops opening on the slate
+
+No model change. `DEFAULT_PARAMS` is untouched, no tuner was run, and nothing
+here can move a number.
+
+**`/` was `redirect("/slate")`.** Opening the site dropped you into sixty game
+cards with no answer to the question you opened it with — what have I got
+riding, where do I stand, how is the season going. Every one of those answers
+already existed, spread across `/groups`, each group's hub and `/ledger`, and
+none of them was the first thing you saw. `/` is now a hub that asks the four
+questions in order and then hands off: a hero (the week, what you have on it,
+per-pool pick progress, and one full-width **Go to the slate**), the games you
+have a pick or a bet on, your groups with your place in each, and your season
+record. It is deliberately short — the hub is somewhere you pass through, and
+the primary action says so.
+
+It renders **signed out** rather than redirecting, which keeps the property the
+rest of the site has (`lib/supabase/middleware.ts`: public to browse, RLS does
+the enforcing). A signed-out visitor gets the week, the CTA and a sign-in card;
+nothing personal is fetched at all. The magic-link landing, the PWA `start_url`,
+the header wordmark and the post-sign-out redirect all point at `/` now.
+
+**Home takes a bottom-bar slot; Edges moves to More.** The bar holds four, and
+"where's my stuff" beats a page of model-vs-market disagreements that the
+changelog already demoted to information. Two things this needed:
+`isNavItemActive` prefix-matched, and every pathname starts with `/`, so a naive
+Home entry lights up on every screen in the app — `/` is now matched exactly,
+with `nav-items.test.ts` pinning it. And Home is `mobileOnly`: the desktop strip
+does not fit a tenth tab (it already truncates Receipts at 768px, unchanged by
+this), so on desktop the wordmark is the link home.
+
+**The hub is lazy on purpose.** A signed-out visitor and a brand-new account
+each cost one small `games` query. `fetchSlateView` — fifteen queries — only
+runs once the pick and bet rows say there is a position to draw. The picks come
+from a query across *all* the viewer's pools rather than through
+`fetchSlateView`'s pick layer, which can only be scoped to one group: someone in
+two pools was otherwise going to silently lose half their positions.
+
+**No new arithmetic.** Every number folds through `lib/records.ts`, so the hub's
+tiles and the ledger's are the same numbers by construction rather than by
+agreement. `cumulativeUnits` moved into that module, and the ledger's curve now
+goes through it — which fixes a quiet disagreement: the curve summed
+`payout_units ?? 0` while the Units tile above it synthesized the flat −110 for
+a graded bet with no payout written, so the curve could end somewhere the tile
+didn't. `UnitsCurve` and the stat tile are now `components/` files shared by
+both screens (five other near-identical private tiles in receipts, recap, edges,
+the team page and the game page are left alone — this is the two screens showing
+the *same* numbers agreeing, not a sweep).
+
+**Standings were not consolidated, deliberately.** `groups/[slug]/page.tsx`,
+`groups/[slug]/week/[week]/page.tsx`, `groups/page.tsx` and `ledger/PicksTab.tsx`
+each still re-derive a standings fold inline, and the hub adds a fifth in
+`lib/home.ts`. A shared `fetchGroupStandings` is the obvious next move; doing it
+in the same change as a new screen is four screens of risk on top of one, and
+`docs/DESIGN.md` says build one completely first.
+
+**Seen rendered.** The hub's components are in
+`components/home/HomeHub.tsx` rather than in the page so `/slate/preview`
+renders them against sample data — same reason `group/GroupHub.tsx` is a
+component file. Reviewed there at 375px in both themes (zero horizontal
+overflow), plus the bottom bar and the More sheet on a real route. The
+`web-design-guidelines` pass on the diff found three things, all fixed: straight
+apostrophes in two strings, an 11px pool-progress line that was a link with a
+14px tap target (now a 44px row, per DESIGN.md's hard rule), and a live score
+reading the nullable columns instead of the coalesced ones. **The page itself
+has not been seen against real data** — this environment has no Supabase
+credentials, so `/` was only exercised far enough to confirm it wires up and
+that its failure mode is the shared "no current season" error boundary every
+data page has.
+
 ### Aug 10 — "8 of 4 picks", and why the game cards stopped being glass
 
 **A board of four games with spreads and totals on is eight picks, and it said
