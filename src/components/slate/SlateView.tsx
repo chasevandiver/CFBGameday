@@ -400,8 +400,11 @@ export function SlateView({
             )}
             {/* the LINES' capture time, not the page fetch — with 2x-daily
                 refreshes plus close passes those differ by hours, and a
-                betting product must say which clock it is showing */}
-            <span className="stat hidden items-center gap-1 text-[10.5px] text-chalk/35 sm:flex">
+                betting product must say which clock it is showing. Visible on
+                phones too: it used to be hidden below sm, which meant the one
+                device this product is built for had no staleness cue at all
+                (audit 08/UX-09). */}
+            <span className="stat flex items-center gap-1 text-[10.5px] text-chalk/50">
               <RefreshCw size={10} aria-hidden className={loading ? "animate-spin" : ""} />
               {data.linesAsOf
                 ? `lines ${clockTime(data.linesAsOf, tz)} ${tzLabel(tz)}`

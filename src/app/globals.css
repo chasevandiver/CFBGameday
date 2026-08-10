@@ -258,6 +258,22 @@ html[data-theme="light"] .cover-losing {
 html[data-theme="light"] .cover-bubble {
   color: color-mix(in srgb, var(--accent) 72%, var(--text));
 }
+/* The same medicine for the three colours used as ordinary TEXT in light mode
+   (audit 08/UX-06). Raw values on the light ground: accent 3.43–3.80:1 (it is
+   the section-heading, link and active-state colour), win 4.18, loss 4.45,
+   PickedChip 3.20 over its own tint. The identical mixes used above land at:
+   accent 72% → 5.26 on --bg / 5.83 on --surface / 4.91 on the chip tint;
+   win 80% → 5.81; loss 80% → 6.40. Text only — fills (bg-accent with white
+   ink, edge bars, auras) keep full chroma, and dark mode is untouched. */
+html[data-theme="light"] .text-accent {
+  color: color-mix(in srgb, var(--accent) 72%, var(--text));
+}
+html[data-theme="light"] .text-win {
+  color: color-mix(in srgb, var(--win) 80%, var(--text));
+}
+html[data-theme="light"] .text-loss {
+  color: color-mix(in srgb, var(--loss) 80%, var(--text));
+}
 .card-bubble {
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
   box-shadow:

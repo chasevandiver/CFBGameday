@@ -30,7 +30,9 @@ export default function RulesPage() {
           </Rule>
           <Rule n={3} title="Kickoff is the lock, enforced by the database.">
             No pick writes at or after kickoff — rejected at the data layer, not by the honor
-            system. Picks are visible to the whole crew at all times.
+            system. Your own picks are always visible to you; whether everyone else&rsquo;s show
+            before kickoff is a per-group setting. With the blind on, other people&rsquo;s picks
+            reveal at each game&rsquo;s kickoff — enforced by the same data layer, not the UI.
           </Rule>
           <Rule n={4} title="Push = no action.">
             Pushes don&rsquo;t count in the record or units. Postponed or canceled games are void.

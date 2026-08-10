@@ -170,6 +170,24 @@ async function main() {
     const team = teamByName.get(t.team);
     if (team) talentBaseline.set(team.id, clamp(((t.talent - tMean) / tStd) * 5.5, -18, 18));
   }
+  // Fallback for teams the talent file misses: their conference's mean, then
+  // −8 only when a whole conference is absent. The flat −8 was a mid-table
+  // gift to FCS call-ups (Sacramento State ranked 94th of 138 on it — audit
+  // 04/DQ-3) and an over-tax on a P4 team dropped by a rename: unknown-talent
+  // teams should price like their peers, not like one hardcoded guess.
+  const confTalent = new Map<string, { sum: number; n: number }>();
+  for (const team of fbs) {
+    const v = talentBaseline.get(team.id);
+    if (v === undefined || !team.conference) continue;
+    const c = confTalent.get(team.conference) ?? { sum: 0, n: 0 };
+    confTalent.set(team.conference, { sum: c.sum + v, n: c.n + 1 });
+  }
+  const talentFor = (team: { id: number; conference: string | null }): number => {
+    const own = talentBaseline.get(team.id);
+    if (own !== undefined) return own;
+    const c = team.conference ? confTalent.get(team.conference) : undefined;
+    return c && c.n > 0 ? c.sum / c.n : -8;
+  };
 
   // ---- 4. Churn inputs ------------------------------------------------------
   const returningByTeam = new Map(returning.map((r) => [r.team, r]));
@@ -251,7 +269,7 @@ async function main() {
   const missingCoachData: string[] = [];
   for (const team of fbs) {
     const finalPrev = finals.get(team.id) ?? null;
-    const tal = talentBaseline.get(team.id) ?? -8;
+    const tal = talentFor(team);
     const ret = returningByTeam.get(team.school);
     const retPassing = ret?.percentPassingPPA ?? null;
     const retOverall = ret?.percentPPA ?? null;
@@ -372,7 +390,7 @@ async function main() {
     const talentDefaults = fbs.filter((t) => !talentBaseline.has(t.id)).length;
     if (talentDefaults > 5) {
       problems.push(
-        `talent: ${talentDefaults} FBS teams unmatched — each takes the −8 default`,
+        `talent: ${talentDefaults} FBS teams unmatched — each takes its conference-mean fallback`,
       );
     }
     const missingRet = preseason.filter((p) => p.retOff === null).length;
@@ -400,7 +418,7 @@ async function main() {
   if (noPrev > 0) console.log(`  note: ${noPrev} team(s) had no prior-season rating (talent only)`);
   if (noRet > 0) console.log(`  note: ${noRet} team(s) had no returning-production match`);
   if (noTalent > 0)
-    console.log(`  note: ${noTalent} team(s) had no talent match — each took the −8 default`);
+    console.log(`  note: ${noTalent} team(s) had no talent match — each took its conference-mean fallback`);
   // A clamp that binds often isn't protecting against outliers, it's erasing
   // real differences — the model stops being able to tell "bad" from "awful".
   const clamped = preseason.filter((p) => Math.abs(Math.abs(p.churn) - 6) < 0.001).length;
