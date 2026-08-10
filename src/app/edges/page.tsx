@@ -4,10 +4,10 @@ import { ConsensusChip, EdgeChip } from "../../components/slate/chips";
 import { kickParts, tzLabel, DEFAULT_TZ } from "../../lib/kick";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../lib/queries";
 import {
-  fmtPct,
   fmtSpread,
   isDead,
   isFinal,
+  lineForSide,
   modelSideOf,
   type GameView,
 } from "../../lib/slate";
@@ -116,20 +116,21 @@ function EdgeRow({ game }: { game: GameView }) {
           <ConsensusChip on={p.consensus} />
         </div>
       </div>
-      <div className="stat pointer-events-none mt-2.5 grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-4">
+      {/* No cover prob here: the normal-CDF number prices the model's margin at
+          full weight against the market, and the edge gate measured that weight
+          at 0.034 — printing "62%" three lines under the 49.2% disclaimer was
+          the one surface still dressing a lean up as a bet. */}
+      <div className="stat pointer-events-none mt-2.5 grid grid-cols-3 gap-2 text-center text-xs">
         <EdgeStat label="Market" value={`${game.home.abbr} ${fmtSpread(marketSpread)}`} />
         <EdgeStat label="Model" value={`${game.home.abbr} ${fmtSpread(p.spread)}`} />
         <EdgeStat
-          label="Cover prob"
+          label="Model lean"
           value={
-            modelSide && p.coverProb !== null
-              ? `${fmtPct(modelSide === "home" ? p.coverProb : 1 - p.coverProb)} ${sideTeam?.abbr ?? ""}`
+            // the ticket the lean implies — an away lean holds +marketSpread
+            modelSide && sideTeam
+              ? `${sideTeam.abbr} ${fmtSpread(lineForSide(modelSide, marketSpread))}`
               : "–"
           }
-        />
-        <EdgeStat
-          label="Model lean"
-          value={sideTeam ? `${sideTeam.abbr} ${fmtSpread(marketSpread)}` : "–"}
         />
       </div>
     </li>
