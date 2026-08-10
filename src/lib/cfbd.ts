@@ -106,6 +106,14 @@ export interface CfbdVenue {
   timezone: string | null;
 }
 
+/** One broadcast row from /games/media — a game can have several outlets. */
+export interface CfbdGameMedia {
+  id: number;
+  /** tv | radio | web | ppv … only tv is rendered */
+  mediaType: string | null;
+  outlet: string | null;
+}
+
 export interface CfbdGame {
   id: number;
   season: number;
@@ -306,6 +314,20 @@ export const cfbd = {
 
   lines: (year: number, opts: { week?: number; seasonType?: string } = {}) =>
     get<CfbdLine[]>("/lines", { year, week: opts.week, seasonType: opts.seasonType }),
+
+  /**
+   * Broadcast assignments. The /scoreboard feed carries `tv` too, but only for
+   * games it considers current — so before this existed, `games.tv` was null
+   * for all 888 rows of the 2026 season and the card never showed a network
+   * until a game was already playing, which is precisely too late.
+   */
+  gameMedia: (year: number, opts: { week?: number; seasonType?: string } = {}) =>
+    get<CfbdGameMedia[]>("/games/media", {
+      year,
+      week: opts.week,
+      seasonType: opts.seasonType ?? "regular",
+      classification: "fbs",
+    }),
 
   returningProduction: (year: number, team?: string) =>
     get<CfbdReturningProduction[]>("/player/returning", { year, team }),

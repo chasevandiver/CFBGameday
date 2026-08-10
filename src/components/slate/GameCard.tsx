@@ -1,8 +1,9 @@
 "use client";
 
-import { CloudRain, Pin, Snowflake, Star, Thermometer, Tv, Wind } from "lucide-react";
+import { CloudRain, Pin, Snowflake, Star, Thermometer, Ticket, Tv, Wind, X } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { voidBet } from "../../app/actions/bets";
 import { inSlip, useBetSlip, type SlipSelection } from "../../lib/bet-slip-store";
 import { kickParts, periodLabel } from "../../lib/kick";
 import {
@@ -685,6 +686,13 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
   /** Did the viewer take this exact cell in the group they're viewing? */
   const took = (market: MyPickView["market"], pickSide: string) =>
     game.myPicks.some((p) => p.market === market && p.side === pickSide);
+  /**
+   * Do you have MONEY on this exact cell? Separate question from `took` on
+   * purpose: the ledger and the pick'em pool are independent, and a card has
+   * to be able to say you're on both — or on opposite sides of the same game.
+   */
+  const betOn = (betType: MyBetView["betType"], betSide: string) =>
+    game.myBets.some((b) => b.betType === betType && b.side === betSide);
   const matchup = `${game.away.abbr} @ ${game.home.abbr}`;
   const { spread, total, mlHome, mlAway } = game.lines;
   const teamSpread = spread === null ? null : side === "home" ? spread : -spread;
@@ -711,6 +719,7 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
         value={fmtSpread(teamSpread)}
         active={inSlip(slip, game.id, "spread", side)}
         picked={took("spread", side)}
+        bet={betOn("spread", side)}
         disabled={dead || teamSpread === null}
         aria={`${team.abbr} ${fmtSpread(teamSpread)} spread${took("spread", side) ? " — your pick" : ""} — add to bet slip`}
         onToggle={() =>
@@ -724,6 +733,7 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
         value={totalLabel}
         active={inSlip(slip, game.id, "total", totalSide)}
         picked={took("total", totalSide)}
+        bet={betOn("total", totalSide)}
         disabled={dead || total === null}
         aria={`${totalSide === "over" ? "Over" : "Under"} ${fmtTotal(total)}${took("total", totalSide) ? " — your pick" : ""} — add to bet slip`}
         onToggle={() =>
@@ -737,6 +747,7 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
         value={fmtMoneyline(ml)}
         active={inSlip(slip, game.id, "moneyline", side)}
         picked={took("straight_up", side)}
+        bet={betOn("moneyline", side)}
         disabled={dead || ml === null}
         aria={`${team.abbr} moneyline ${fmtMoneyline(ml)}${took("straight_up", side) ? " — your pick to win" : ""} — add to bet slip`}
         wide
@@ -764,6 +775,7 @@ function OddsCell({
   value,
   active,
   picked = false,
+  bet = false,
   disabled,
   aria,
   onToggle,
@@ -772,6 +784,8 @@ function OddsCell({
   value: string;
   active: boolean;
   picked?: boolean;
+  /** A logged ledger bet sits on this cell — money, not a pool pick. */
+  bet?: boolean;
   disabled: boolean;
   aria: string;
   onToggle: () => void;
@@ -789,16 +803,27 @@ function OddsCell({
       aria-pressed={active}
       /* 44px tall: the readable size, and the tap-target floor docs/DESIGN.md
          sets — these were 32px, which the audit flagged as under-sized. */
-      className={`stat pointer-events-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-md px-0.5 text-[13px] font-semibold transition-colors ${
+      className={`stat pointer-events-auto relative flex h-11 w-11 shrink-0 items-center justify-center rounded-md px-0.5 text-[13px] font-semibold transition-colors ${
         wide ? "w-12" : ""
       } ${
         active
           ? "bg-accent text-accent-ink ring-1 ring-inset ring-accent"
-          : picked
-            ? "bg-accent/15 text-accent ring-1 ring-inset ring-accent/45"
-            : "bg-elev text-chalk ring-1 ring-inset ring-chalk/8 hover:ring-accent/60"
+          : bet
+            ? "bg-accent/15 text-accent ring-1 ring-inset ring-accent"
+            : picked
+              ? "bg-accent/15 text-accent ring-1 ring-inset ring-accent/45"
+              : "bg-elev text-chalk ring-1 ring-inset ring-chalk/8 hover:ring-accent/60"
       } disabled:cursor-default disabled:opacity-40 disabled:hover:ring-chalk/8`}
     >
+      {/* Money and a pool pick can both sit on one cell, so the difference is
+          shape, not just tint: a bet gets a corner pip. Colour is never the
+          only carrier (docs/DESIGN.md), and the chips below say it in words. */}
+      {bet && !active && (
+        <span
+          aria-hidden
+          className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-accent"
+        />
+      )}
       {value}
     </button>
   );
@@ -837,35 +862,57 @@ function WatchRating({ score }: { score: number | null }) {
   if (score === null) return null;
   const band = score >= 80 ? "Must-see" : score >= 60 ? "Good" : "Filler";
   return (
-    <div
-      className="flex shrink-0 flex-col items-end leading-none"
-      /* One label for the whole block: three separate spans would be read out
-         as "Watch, 78, slash 100, Must-see". */
+    <span
+      /* One chip in the row, not a three-line stack in its own column: the
+         old block put an 18px figure and two labels down the right edge of
+         every pregame card, which is a lot of card for a number nobody acts
+         on. The band is the read; the figure rides along for sorting. */
+      className={`chip ${score >= 80 ? "bg-accent/12 text-accent" : "bg-elev text-chalk/60"}`}
       role="img"
       aria-label={`Watchability ${score} out of 100 — ${band}`}
     >
-      <span
-        aria-hidden
-        className="text-[9px] font-semibold uppercase tracking-wider text-chalk/40"
-      >
-        Watch
-      </span>
-      <span aria-hidden className="mt-1 flex items-baseline gap-0.5">
-        <span className="scorebug text-[18px] text-chalk">{score}</span>
-        <span className="stat text-[10px] text-chalk/40">/100</span>
-      </span>
-      <span
-        aria-hidden
-        className={`stat mt-0.5 text-[9px] font-semibold uppercase tracking-wider ${
-          score >= 80 ? "text-accent" : "text-chalk/45"
-        }`}
-      >
+      <span aria-hidden>
         {band}
+        <span className="stat ml-1 opacity-60">{score}</span>
       </span>
-    </div>
+    </span>
   );
 }
 
+
+/**
+ * A logged bet, pregame: what you have on this game and a way out of it.
+ *
+ * The ledger is append-only, so "remove" is a void — the row survives, marked.
+ * It lives here because a bet placed from the slate could only be undone by
+ * navigating to the ledger and finding it, which nobody was going to do after
+ * a mis-tap. The chip hides itself immediately and the next poll confirms.
+ */
+function BetChip({ bet, label }: { bet: MyBetView; label: string }) {
+  const [gone, setGone] = useState(false);
+  const [pending, startTransition] = useTransition();
+  if (gone) return null;
+  return (
+    <span className="chip pointer-events-auto bg-accent/15 text-accent ring-1 ring-inset ring-accent">
+      <Ticket size={10} aria-hidden className="shrink-0" />
+      {label}
+      <button
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!confirm(`Void this bet (${label})? It stays on the ledger, marked void.`)) return;
+          setGone(true);
+          startTransition(() => voidBet(bet.id).then(() => undefined));
+        }}
+        disabled={pending}
+        aria-label={`Void bet ${label}`}
+        className="-mr-0.5 ml-0.5 rounded p-0.5 text-accent/60 transition-colors hover:text-loss"
+      >
+        <X size={11} aria-hidden />
+      </button>
+    </span>
+  );
+}
 
 /** "OSU -3.5" / "O 54.5" / "OSU ML" — the one formatter all three card states share. */
 function pickPrefix(g: GameView, p: MyPickView | null = headlinePick(g.myPicks)): string {
@@ -882,6 +929,7 @@ function betPrefix(g: GameView, b: MyBetView): string {
 }
 
 function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
+  const final = isFinal(game);
   const p = game.prediction;
   const picks = modelPicks(game);
   const move = spreadMoveRead(game);
@@ -890,12 +938,16 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
   const liveProb = live ? liveHomeWinProb(game) : null;
   const h = game.homePoints ?? 0;
   const a = game.awayPoints ?? 0;
-  // the cover strip owns the pick while live; this row keeps the ledger bets
-  const betStatuses = live
-    ? game.myBets
-        .map((b) => ({ bet: b, status: statusForBet(b, h, a) }))
-        .filter((x): x is { bet: MyBetView; status: NonNullable<typeof x.status> } => x.status !== null)
-    : [];
+  // Money on the game shows in every state, not just live: pregame it says
+  // what you have on it (the ledger and the pool are separate things and a
+  // card has to say both), live it sweats, final it settles. Before this it
+  // rendered only while the game was playing, so a placed bet was invisible
+  // on the slate right up until kickoff.
+  const settled = live || final;
+  const betStatuses = game.myBets.map((b) => ({
+    bet: b,
+    status: settled ? statusForBet(b, h, a) : null,
+  }));
 
   return (
     <div className="mt-3 border-t border-chalk/8 pt-2.5">
@@ -907,19 +959,48 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
             game.myPicks.map((mp) => (
               <PickedChip key={mp.market} label={pickPrefix(game, mp)} />
             ))}
+          {!settled &&
+            betStatuses
+              .filter(({ bet }) => !bet.result)
+              .map(({ bet }) => (
+                <BetChip key={bet.id} bet={bet} label={betPrefix(game, bet)} />
+              ))}
           <EdgeChip flag={p?.edgeFlag ?? null} edge={p?.edge ?? null} />
           <ConsensusChip on={p?.consensus ?? false} />
           <MoveIndicator move={move} open={game.lines.spreadOpen} />
+          {!live && <WatchRating score={watch} />}
           {!live && game.myPicks.length > 0 && <CrewSplit game={game} />}
         </div>
-        {!live && <WatchRating score={watch} />}
       </div>
 
-      {betStatuses.length > 0 && (
+      {settled && betStatuses.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {betStatuses.map(({ bet, status }) => (
-            <LiveStatusChip key={bet.id} prefix={betPrefix(game, bet)} status={status} />
-          ))}
+          {betStatuses.map(({ bet, status }) =>
+            status === null ? null : live ? (
+              <LiveStatusChip key={bet.id} prefix={betPrefix(game, bet)} status={status} />
+            ) : (
+              <ResultChip
+                key={bet.id}
+                label={betPrefix(game, bet)}
+                /* The grader's word wins once it has one; recomputing from the
+                   score agrees for spread/total/ML and says nothing for the
+                   types it settles by hand. */
+                result={
+                  bet.result === "win" || bet.result === "loss" || bet.result === "push"
+                    ? bet.result === "win"
+                      ? "pass"
+                      : bet.result === "loss"
+                        ? "fail"
+                        : "push"
+                    : status.state === "winning"
+                      ? "pass"
+                      : status.state === "losing"
+                        ? "fail"
+                        : "push"
+                }
+              />
+            ),
+          )}
         </div>
       )}
 

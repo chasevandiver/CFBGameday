@@ -60,7 +60,6 @@ const BASE = Date.parse("2026-11-14T18:00:00Z"); // Sat, noon CT
 const at = (hoursFromBase: number) => new Date(BASE + hoursFromBase * 3600_000).toISOString();
 const kick = at(26);
 const now = at(0);
-const hist = (vals: number[]) => vals.map((v, i) => ({ t: at(-(vals.length - i) * 6), v }));
 
 const base = {
   week: 11,

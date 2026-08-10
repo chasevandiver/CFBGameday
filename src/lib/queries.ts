@@ -163,10 +163,12 @@ export async function fetchSlateView(
       userId
         ? supabase
             .from("bets")
-            .select("id, game_id, bet_type, side, line_taken")
+            .select("id, game_id, bet_type, side, line_taken, result")
             .in("game_id", gameIds)
             .eq("user_id", userId)
-            .is("result", null)
+            // Graded bets stay: the card shows your money pregame, live AND
+            // postgame, and dropping settled rows made a bet vanish from the
+            // slate the moment Sunday's grader touched it. Voids do drop.
             .is("voided_at", null)
         : Promise.resolve({ data: [], error: null }),
       supabase.from("weather_forecasts").select("*").in("game_id", gameIds),
@@ -269,7 +271,7 @@ export async function fetchSlateView(
 
   const betsByGame = new Map<number, MyBetView[]>();
   for (const b of (betsRes.data ?? []) as Array<
-    Pick<BetRow, "id" | "game_id" | "bet_type" | "side" | "line_taken">
+    Pick<BetRow, "id" | "game_id" | "bet_type" | "side" | "line_taken" | "result">
   >) {
     if (b.game_id === null) continue;
     const arr = betsByGame.get(b.game_id) ?? [];
@@ -278,6 +280,7 @@ export async function fetchSlateView(
       betType: b.bet_type,
       side: b.side,
       line: b.line_taken === null ? null : Number(b.line_taken),
+      result: b.result,
     });
     betsByGame.set(b.game_id, arr);
   }

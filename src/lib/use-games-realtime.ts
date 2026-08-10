@@ -107,7 +107,10 @@ export function useGamesRealtime({
     const statusListener = (c: boolean) => setConnected(c);
     entry.listeners.add(listener);
     entry.statusListeners.add(statusListener);
-    setConnected(entry.connected);
+    // A second consumer joining an already-SUBSCRIBED channel gets no fresh
+    // status event, so it has to be told the current value once — but doing
+    // that in the effect body is a synchronous cascading render.
+    queueMicrotask(() => statusListener(entry.connected));
 
     return () => {
       entry.listeners.delete(listener);

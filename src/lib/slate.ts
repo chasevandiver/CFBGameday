@@ -58,6 +58,9 @@ export interface MyBetView {
   betType: string;
   side: string | null;
   line: number | null;
+  /** Set once the Sunday grader settles it — the card prefers this to
+   *  recomputing, so a bet type the grader handles by hand still reads right. */
+  result?: string | null;
 }
 
 /** One of the viewer's picks on this game, in the group they're viewing. */

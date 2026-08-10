@@ -157,5 +157,9 @@ export async function voidBet(betId: number): Promise<BetActionResult> {
 
   if (error) return { ok: false, message: error.message };
   revalidatePath("/ledger");
+  // The slate cards and the game page both show logged bets now, so a void has
+  // to clear there too — otherwise the chip lingers until the next poll heals it.
+  revalidatePath("/slate");
+  revalidatePath("/game", "layout");
   return { ok: true };
 }
