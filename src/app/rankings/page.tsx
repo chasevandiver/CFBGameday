@@ -2,7 +2,7 @@ import Link from "next/link";
 import { AppNav } from "../../components/AppNav";
 import type { PollRankingRow, TeamRow } from "../../lib/db-types";
 import { fetchCurrentSeasonWeek } from "../../lib/queries";
-import { pollShortName } from "../../lib/rankings";
+import { pollDisplayName, pollShortName } from "../../lib/rankings";
 import { createClient } from "../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -192,6 +192,15 @@ export default async function RankingsPage({
   );
 }
 
+/**
+ * The page frame — and the answer to "whose rankings am I looking at?".
+ *
+ * All three polls are always listed, including the ones that have not
+ * published yet: a tab row that grows from one chip to three over October is
+ * a page that looks broken in September and different every month. The ones
+ * with no data are shown inert, with the reason, which is also how a reader
+ * learns the CFP committee doesn't rank anybody until late October.
+ */
 function Shell({
   children,
   activePoll,
@@ -208,28 +217,50 @@ function Shell({
     <>
       <AppNav />
       <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
-        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-          <h1 className="text-2xl">Rankings</h1>
-          {week !== undefined && <p className="stat text-xs text-dim">week {week}</p>}
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <h1 className="text-2xl">
+            {activePoll === null ? "Rankings" : pollDisplayName(activePoll)}
+          </h1>
+          <p className="stat text-xs text-dim">
+            {activePoll === null ? "human polls" : `poll rankings${week === undefined ? "" : ` · week ${week}`}`}
+          </p>
         </div>
-        {available.length > 1 && (
-          <div className="mb-4 flex gap-1.5">
-            {available.map((p) => (
+        <div className="scroll-thin -mx-1 mb-4 flex gap-1.5 overflow-x-auto px-1 pb-1">
+          {POLL_ORDER.map((p) => {
+            const has = available.includes(p);
+            const active = p === activePoll;
+            const className = `stat inline-flex min-h-9 shrink-0 items-center rounded-full border px-3.5 text-xs font-medium transition-colors ${
+              active
+                ? "border-accent bg-accent/15 text-accent"
+                : has
+                  ? "border-chalk/20 text-dim hover:border-chalk/50 hover:text-chalk"
+                  : "border-chalk/10 text-chalk/25"
+            }`;
+            return has ? (
               <Link
                 key={p}
                 href={`/rankings?poll=${short(p).toLowerCase()}`}
-                aria-current={p === activePoll ? "page" : undefined}
-                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                  p === activePoll
-                    ? "border-accent bg-accent/15 text-accent"
-                    : "border-chalk/20 text-dim hover:border-chalk/50 hover:text-chalk"
-                }`}
+                aria-current={active ? "page" : undefined}
+                className={className}
               >
-                {short(p)}
+                {pollDisplayName(p)}
               </Link>
-            ))}
-          </div>
-        )}
+            ) : (
+              <span
+                key={p}
+                className={className}
+                title={
+                  p === "Playoff Committee Rankings"
+                    ? "The committee's first rankings land in late October"
+                    : "Not published yet this season"
+                }
+              >
+                {pollDisplayName(p)}
+                <span className="sr-only"> — not published yet</span>
+              </span>
+            );
+          })}
+        </div>
         {children}
       </main>
     </>

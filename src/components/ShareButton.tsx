@@ -3,6 +3,7 @@
 import { Share } from "lucide-react";
 import { useState } from "react";
 import { useSessionPicks } from "../lib/session-picks";
+import { shareOrCopy } from "../lib/share-sheet";
 import {
   SHARE_MODES,
   shareText,
@@ -14,11 +15,8 @@ import {
 /**
  * Opens the iOS share sheet with a member's picks as plain text.
  *
- * `navigator.share` needs a user gesture and a secure context, and it does not
- * exist on desktop Safari or older browsers, so the clipboard is the fallback
- * — the same pattern InviteForm already uses for the magic link. Only `text`
- * is passed: adding `url` makes iOS append a link that pushes the picks off
- * the message preview.
+ * The share-sheet-or-clipboard mechanics live in `shareOrCopy`, shared with
+ * the bet slip's own share.
  *
  * "Just placed" is the default and reads from the session store rather than
  * from the database, because a row's timestamp cannot distinguish the batch
@@ -38,24 +36,10 @@ export function ShareButton({
   const full: ShareContext = { ...context, justPlaced };
 
   const send = async (mode: ShareMode) => {
-    const text = shareText(mode, full);
     setOpen(false);
-    try {
-      if (typeof navigator !== "undefined" && "share" in navigator) {
-        await navigator.share({ text });
-        return;
-      }
-    } catch (err) {
-      // A dismissed share sheet rejects with AbortError. That is the user
-      // saying no, not a failure to fall back from.
-      if (err instanceof Error && err.name === "AbortError") return;
-    }
-    try {
-      await navigator.clipboard.writeText(text);
-      setNote("Copied");
-    } catch {
-      setNote("Could not share");
-    }
+    const outcome = await shareOrCopy(shareText(mode, full));
+    if (outcome === "shared" || outcome === "dismissed") return;
+    setNote(outcome === "copied" ? "Copied" : "Could not share");
     setTimeout(() => setNote(null), 1800);
   };
 

@@ -5,10 +5,16 @@ import { useMemo, useState, useTransition } from "react";
 import { setGroupWeekConfig } from "../../app/actions/groups";
 import type { PickMarket, SelectionMode } from "../../lib/db-types";
 import type { SeasonType } from "../../lib/season";
+import type { TeamView } from "../../lib/slate";
+import { TeamLine } from "../slate/TeamLine";
 
 export interface ConfigGame {
   id: number;
+  /** For the checkbox's accessible name — the visible row is built from the
+   *  team marks below, which carry no text an assistive tech would read. */
   label: string;
+  away: TeamView;
+  home: TeamView;
   kick: string;
   conferences: string[];
   /** Picks already made on this game, in this group. */
@@ -175,29 +181,44 @@ export function WeekConfigForm({
           <legend className="mb-2 text-sm text-accent">
             Games <span className="text-dim">({gameIds.length} selected)</span>
           </legend>
-          <ul className="max-h-96 overflow-y-auto rounded-lg border border-chalk/10">
-            {games.map((g) => (
-              <li key={g.id} className="border-b border-chalk/5 last:border-0">
-                <label className="flex min-h-11 cursor-pointer items-center gap-3 px-3 py-2">
-                  <input
-                    type="checkbox"
-                    checked={gameIds.includes(g.id)}
-                    onChange={() =>
-                      setGameIds((cur) =>
-                        cur.includes(g.id) ? cur.filter((x) => x !== g.id) : [...cur, g.id],
-                      )
-                    }
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm text-chalk">{g.label}</span>
-                    <span className="stat block text-[11px] text-dim">
-                      {g.kick}
-                      {g.pickCount > 0 && ` · ${g.pickCount} picked`}
+          {/* Picking a board is a scouting job — which ranked teams, which
+              records, which kickoff — so the list carries the same marks the
+              board itself will. A column of "MIA at WMU" told the admin
+              nothing they didn't already have to look up elsewhere. */}
+          <ul className="scroll-thin max-h-96 overflow-y-auto rounded-lg border border-chalk/10">
+            {games.map((g) => {
+              const on = gameIds.includes(g.id);
+              return (
+                <li key={g.id} className="border-b border-chalk/5 last:border-0">
+                  <label
+                    className={`flex min-h-11 cursor-pointer items-center gap-3 px-3 py-2 transition-colors ${
+                      on ? "bg-accent/8" : ""
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      aria-label={g.label}
+                      onChange={() =>
+                        setGameIds((cur) =>
+                          cur.includes(g.id) ? cur.filter((x) => x !== g.id) : [...cur, g.id],
+                        )
+                      }
+                    />
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <TeamLine team={g.away} size={20} />
+                      <TeamLine team={g.home} size={20} />
                     </span>
-                  </span>
-                </label>
-              </li>
-            ))}
+                    <span className="stat shrink-0 text-right text-[11px] leading-tight text-dim">
+                      {g.kick}
+                      {g.pickCount > 0 && (
+                        <span className="block text-accent">{g.pickCount} picked</span>
+                      )}
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
           </ul>
         </fieldset>
       )}

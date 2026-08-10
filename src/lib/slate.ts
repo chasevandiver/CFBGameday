@@ -27,6 +27,8 @@ export interface TeamView {
   poll: string | null;
   /** "3-1" from final games this season, null before any finals */
   record: string | null;
+  /** "2-1" from final conference games only, null before any conference finals */
+  confRecord: string | null;
 }
 
 /** Rank to display on cards: the human poll when available, else the model's. */

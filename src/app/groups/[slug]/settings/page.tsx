@@ -4,10 +4,10 @@ import { AppNav } from "../../../../components/AppNav";
 import { GroupAdmin } from "../../../../components/group/GroupAdmin";
 import { RosterAdmin } from "../../../../components/group/RosterAdmin";
 import { WeekConfigForm, type ConfigGame } from "../../../../components/group/WeekConfigForm";
-import type { GameRow, PickRow, TeamRow } from "../../../../lib/db-types";
+import type { PickRow } from "../../../../lib/db-types";
 import { fetchGroupMembers, fetchGroupWeek, resolveActiveGroup } from "../../../../lib/groups";
 import { DEFAULT_TZ, kickParts, tzLabel } from "../../../../lib/kick";
-import { fetchCurrentSeasonWeek } from "../../../../lib/queries";
+import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../../lib/queries";
 import { createClient } from "../../../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -40,56 +40,41 @@ export default async function GroupSettingsPage({
   const parsed = Number(weekParam);
   const week = Number.isInteger(parsed) && parsed >= 1 && parsed <= 20 ? parsed : currentWeek;
 
-  const [groupWeek, members, gamesRes, joinRes] = await Promise.all([
+  // The same slate the board renders, so the admin picks games from rows that
+  // look like the rows their members will see — logos, poll ranks and records
+  // included, rather than a list of abbreviation pairs.
+  const [groupWeek, members, slate, joinRes] = await Promise.all([
     fetchGroupWeek(supabase, active.id, seasonId, week, seasonType),
     fetchGroupMembers(supabase, active.id),
-    supabase
-      .from("games")
-      .select("id, start_ts, home_team_id, away_team_id")
-      .eq("season_id", seasonId)
-      .eq("week", week)
-      .eq("season_type", seasonType)
-      .order("start_ts", { ascending: true, nullsFirst: false }),
+    fetchSlateView(supabase, seasonId, week, user.id, seasonType, active.id),
     active.role === "admin"
       ? supabase.from("groups").select("join_code").eq("id", active.id).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
 
-  const weekGames = (gamesRes.data ?? []) as Array<
-    Pick<GameRow, "id" | "start_ts" | "home_team_id" | "away_team_id">
-  >;
-  const teamIds = [...new Set(weekGames.flatMap((g) => [g.home_team_id, g.away_team_id]))];
-  const [{ data: teamRows }, { data: pickRows }] = await Promise.all([
-    teamIds.length > 0
-      ? supabase.from("teams").select("id, school, abbreviation, conference").in("id", teamIds)
-      : Promise.resolve({ data: [] }),
-    supabase
-      .from("picks")
-      .select("game_id")
-      .eq("group_id", active.id)
-      .in("game_id", weekGames.length > 0 ? weekGames.map((g) => g.id) : [-1]),
-  ]);
-
-  const teams = new Map(
-    ((teamRows ?? []) as TeamRow[]).map((t) => [
-      t.id,
-      { abbr: t.abbreviation ?? t.school.slice(0, 4).toUpperCase(), conference: t.conference },
-    ]),
+  const weekGames = [...slate.games].sort((a, b) =>
+    (a.startTs ?? "9999").localeCompare(b.startTs ?? "9999"),
   );
+  const { data: pickRows } = await supabase
+    .from("picks")
+    .select("game_id")
+    .eq("group_id", active.id)
+    .in("game_id", weekGames.length > 0 ? weekGames.map((g) => g.id) : [-1]);
+
   const pickCounts = new Map<number, number>();
   for (const p of (pickRows ?? []) as Array<Pick<PickRow, "game_id">>) {
     pickCounts.set(p.game_id, (pickCounts.get(p.game_id) ?? 0) + 1);
   }
 
   const configGames: ConfigGame[] = weekGames.map((g) => {
-    const home = teams.get(g.home_team_id);
-    const away = teams.get(g.away_team_id);
-    const kick = g.start_ts ? kickParts(g.start_ts, DEFAULT_TZ) : null;
+    const kick = g.startTs ? kickParts(g.startTs, DEFAULT_TZ) : null;
     return {
       id: g.id,
-      label: `${away?.abbr ?? "?"} at ${home?.abbr ?? "?"}`,
+      label: `${g.away.school} at ${g.home.school}`,
+      away: g.away,
+      home: g.home,
       kick: kick ? `${kick.day} ${kick.time} ${tzLabel(DEFAULT_TZ)}` : "TBD",
-      conferences: [home?.conference, away?.conference].filter((c): c is string => !!c),
+      conferences: [g.home.conference, g.away.conference].filter((c): c is string => !!c),
       pickCount: pickCounts.get(g.id) ?? 0,
     };
   });

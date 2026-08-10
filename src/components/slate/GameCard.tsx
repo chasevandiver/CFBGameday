@@ -712,7 +712,17 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
     description: string,
     line: number | null,
     odds: number,
-  ): SlipSelection => ({ gameId: game.id, betType, side: selSide, label, matchup, description, line, odds });
+  ): SlipSelection => ({
+    gameId: game.id,
+    betType,
+    side: selSide,
+    label,
+    matchup,
+    description,
+    line,
+    odds,
+    kickTs: game.startTs,
+  });
 
   return (
     <div className="flex shrink-0 gap-1">
@@ -897,6 +907,7 @@ function BetChip({ bet, label }: { bet: MyBetView; label: string }) {
   return (
     <span className="chip pointer-events-auto bg-accent/15 text-accent ring-1 ring-inset ring-accent">
       <Ticket size={10} aria-hidden className="shrink-0" />
+      <span className="sr-only">Logged bet: </span>
       {label}
       <button
         onClick={(e) => {

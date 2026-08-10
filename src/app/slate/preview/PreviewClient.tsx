@@ -8,6 +8,10 @@
 
 import { useState } from "react";
 import { AppNav } from "../../../components/AppNav";
+import { MemberCard, WeekHero } from "../../../components/group/GroupHub";
+import { PickBoard } from "../../../components/group/PickBoard";
+import type { GroupWeek } from "../../../lib/groups";
+import { EMPTY_TALLY, type Tally } from "../../../lib/records";
 import { BetSlip } from "../../../components/slate/BetSlip";
 import { GameCard } from "../../../components/slate/GameCard";
 import { SkeletonCard } from "../../../components/slate/SkeletonCard";
@@ -31,6 +35,7 @@ const team = (
   color: string,
   rank: number | null,
   record: string,
+  confRecord: string | null = null,
 ): TeamView => ({
   id,
   school,
@@ -44,20 +49,49 @@ const team = (
   pollRank: rank,
   poll: rank === null ? null : "AP",
   record,
+  confRecord,
 });
 
-const ALABAMA = team(333, "Alabama", "ALA", "SEC", "#9e1b32", 4, "8-1");
-const GEORGIA = team(61, "Georgia", "UGA", "SEC", "#ba0c2f", 2, "9-0");
-const OHIO_STATE = team(194, "Ohio State", "OSU", "Big Ten", "#bb0000", 1, "9-0");
-const MICHIGAN = team(130, "Michigan", "MICH", "Big Ten", "#00274c", 11, "7-2");
-const TEXAS = team(251, "Texas", "TEX", "SEC", "#bf5700", 6, "8-1");
-const OKLAHOMA = team(201, "Oklahoma", "OU", "SEC", "#841617", 18, "6-3");
-const OREGON = team(2483, "Oregon", "ORE", "Big Ten", "#154733", 3, "9-0");
-const PENN_STATE = team(213, "Penn State", "PSU", "Big Ten", "#041e42", 9, "7-2");
+const ALABAMA = team(333, "Alabama", "ALA", "SEC", "#9e1b32", 4, "8-1", "5-1");
+const GEORGIA = team(61, "Georgia", "UGA", "SEC", "#ba0c2f", 2, "9-0", "6-0");
+const OHIO_STATE = team(194, "Ohio State", "OSU", "Big Ten", "#bb0000", 1, "9-0", "6-0");
+const MICHIGAN = team(130, "Michigan", "MICH", "Big Ten", "#00274c", 11, "7-2", "4-2");
+const TEXAS = team(251, "Texas", "TEX", "SEC", "#bf5700", 6, "8-1", "5-1");
+const OKLAHOMA = team(201, "Oklahoma", "OU", "SEC", "#841617", 18, "6-3", "3-3");
+const OREGON = team(2483, "Oregon", "ORE", "Big Ten", "#154733", 3, "9-0", "6-0");
+const PENN_STATE = team(213, "Penn State", "PSU", "Big Ten", "#041e42", 9, "7-2", "4-2");
 
 // Fixed timestamps so server and client render identically (no Date.now()).
 const BASE = Date.parse("2026-11-14T18:00:00Z"); // Sat, noon CT
 const at = (hoursFromBase: number) => new Date(BASE + hoursFromBase * 3600_000).toISOString();
+
+/** Sample group config + records for the hub preview. */
+const GROUP_WEEK: GroupWeek = {
+  markets: ["spread", "total"],
+  gameIds: [],
+  selectionMode: "handpicked",
+  conference: null,
+  locked: false,
+  minPicks: 8,
+};
+
+const sampleTally = (
+  wins: number,
+  losses: number,
+  pushes: number,
+  units: number,
+  avgClv: number | null,
+): Tally => ({
+  wins,
+  losses,
+  pushes,
+  decided: wins + losses + pushes,
+  units,
+  staked: wins + losses,
+  roi: units / (wins + losses),
+  avgClv,
+  clvCount: wins + losses,
+});
 const kick = at(26);
 const now = at(0);
 
@@ -282,6 +316,72 @@ export function SlatePreviewClient() {
           </div>
         </Section>
 
+        {/* The group screens need a database, a group and a signed-in member
+            before they draw anything, so their two card systems are previewed
+            here against the same sample slate. */}
+        <Section title="Group hub — week hero, standings">
+          <div className="mx-auto max-w-3xl">
+            <WeekHero
+              slug="saturday-boys"
+              week={12}
+              currentWeek={12}
+              groupWeek={GROUP_WEEK}
+              gameCount={8}
+              myPickCount={5}
+              minPicks={8}
+              firstKick={at(20)}
+              isAdmin
+              signedIn
+              share={null}
+            />
+            <ul className="mt-4 flex flex-col gap-2">
+              <MemberCard
+                place={1}
+                name="Chase"
+                isAdmin
+                isMe
+                priced
+                tally={sampleTally(31, 19, 1, 6.4, 0.31)}
+              />
+              <MemberCard
+                place={2}
+                name="Mo"
+                isAdmin={false}
+                isMe={false}
+                priced
+                tally={sampleTally(28, 22, 0, -1.2, -0.08)}
+              />
+              <MemberCard
+                place={3}
+                name="Sam"
+                isAdmin={false}
+                isMe={false}
+                priced
+                tally={EMPTY_TALLY}
+              />
+            </ul>
+          </div>
+        </Section>
+
+        <Section title="Group board — pick cards">
+          <div className="mx-auto max-w-3xl">
+            <PickBoard
+              groupId="preview"
+              slug="saturday-boys"
+              week={12}
+              markets={["spread", "total"]}
+              minPicks={8}
+              signedIn
+              shareContext={null}
+              entries={[
+                { game: HERO, myPicks: [{ market: "spread", side: "home", line_at_pick: -1.5 }], takers: 4 },
+                { game: PREGAME, myPicks: [], takers: 2 },
+                { game: LIVE, myPicks: [{ market: "total", side: "over", line_at_pick: 44.5 }], takers: 6 },
+              ]}
+            />
+          </div>
+        </Section>
+
         <Section title="Loading skeleton">
           <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
             <SkeletonCard />
@@ -290,7 +390,7 @@ export function SlatePreviewClient() {
           </div>
         </Section>
       </main>
-      <BetSlip seasonId={0} />
+      <BetSlip seasonId={0} week={12} />
     </>
   );
 }

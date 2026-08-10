@@ -37,6 +37,7 @@ const team = (id: number, rank: number | null = null): TeamView => ({
   pollRank: null,
   poll: null,
   record: null,
+  confRecord: null,
 });
 
 const game = (overrides: Partial<GameView> = {}): GameView => ({

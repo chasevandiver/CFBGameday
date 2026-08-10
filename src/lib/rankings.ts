@@ -51,6 +51,19 @@ export function pollShortName(poll: string | null): string | null {
   return poll;
 }
 
+/**
+ * What a fan calls it. CFBD's own strings are either too long to be a tab
+ * ("Playoff Committee Rankings") or ambiguous once they sit next to two other
+ * polls ("AP Top 25" is a poll, not a top-25 of something) — and a rankings
+ * page that does not say which body ranked them is a page of numbers with no
+ * author.
+ */
+export function pollDisplayName(poll: string): string {
+  if (poll === "AP Top 25") return "AP Poll";
+  if (poll === "Playoff Committee Rankings") return "CFP Rankings";
+  return poll;
+}
+
 /* ---- where a team sits in the field ------------------------------------- */
 
 export interface FieldPlacement {

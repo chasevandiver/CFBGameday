@@ -96,6 +96,7 @@ function toView(t: TeamRow, pollRank: number | null = null, poll: string | null 
     pollRank,
     poll,
     record: null,
+    confRecord: null,
   };
 }
 

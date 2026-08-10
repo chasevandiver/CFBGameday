@@ -144,7 +144,7 @@ describe("the in-flight tap (audit 08/UX-10)", () => {
     }
   });
 
-  it("only the tapped button goes busy; its siblings keep their full look", async () => {
+  it("paints the pick on the tap, not on the response", async () => {
     const { makePick } = await import("../app/actions/picks");
     let release!: (v: { ok: boolean }) => void;
     vi.mocked(makePick).mockImplementationOnce(
@@ -155,14 +155,33 @@ describe("the in-flight tap (audit 08/UX-10)", () => {
     const sibling = screen.getByRole("button", { name: "ALA -2.5" });
     const { fireEvent, waitFor } = await import("@testing-library/react");
     fireEvent.click(tapped);
-    await waitFor(() => expect(tapped.getAttribute("aria-busy")).toBe("true"));
-    // the round-trip is visible on the button you pressed…
-    expect(tapped.className).toContain("animate-pulse");
-    // …and nowhere else: siblings are inert but not dimmed
+    // Picked immediately, while the write is still out — this is the whole
+    // point: eight picks should not cost eight round-trips of waiting.
+    await waitFor(() => expect(tapped.getAttribute("aria-pressed")).toBe("true"));
+    expect(tapped.getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByText(/Your number: UGA \+2.5/)).toBeTruthy();
+    // Every button stays tappable mid-write, so a second pick doesn't bounce.
+    expect((tapped as HTMLButtonElement).disabled).toBe(false);
+    expect((sibling as HTMLButtonElement).disabled).toBe(false);
+    // The in-flight cue is on the button you pressed and nowhere else.
     expect(sibling.getAttribute("aria-busy")).toBeNull();
-    expect(sibling.className).not.toContain("animate-pulse");
-    expect(sibling.className).not.toContain("opacity-50");
+    expect(sibling.getAttribute("aria-pressed")).toBe("false");
     release({ ok: true });
     await waitFor(() => expect(tapped.getAttribute("aria-busy")).toBeNull());
+    expect(tapped.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("a rejected write puts the button back and says why", async () => {
+    const { makePick } = await import("../app/actions/picks");
+    vi.mocked(makePick).mockImplementationOnce(async () => ({
+      ok: false,
+      message: "That game has kicked off",
+    }));
+    render(<PickButtons {...base} markets={["spread"]} />);
+    const tapped = screen.getByRole("button", { name: "UGA +2.5" });
+    const { fireEvent, waitFor } = await import("@testing-library/react");
+    fireEvent.click(tapped);
+    await waitFor(() => expect(screen.getByText("That game has kicked off")).toBeTruthy());
+    expect(tapped.getAttribute("aria-pressed")).toBe("false");
   });
 });

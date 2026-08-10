@@ -24,6 +24,8 @@ export interface SlipSelection {
   description: string;
   line: number | null;
   odds: number;
+  /** ISO kickoff, so a shared slip can be grouped by the clock. Null = TBD. */
+  kickTs: string | null;
 }
 
 let selections: SlipSelection[] = [];

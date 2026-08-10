@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { AppNav } from "../../components/AppNav";
+import { PicksTab } from "./PicksTab";
 import { BetForm, type BetFormGame } from "../../components/BetForm";
 import { LiveStatusChip } from "../../components/slate/chips";
 import { ShareButton } from "../../components/ShareButton";
@@ -30,12 +32,41 @@ function fmtBetLine(b: BetRow): string {
 const abbrOf = (t: TeamRow | undefined): string =>
   t?.abbreviation ?? t?.school.replace(/[^A-Za-z]/g, "").slice(0, 4).toUpperCase() ?? "?";
 
-export default async function LedgerPage() {
+type LedgerTab = "bets" | "picks";
+
+export default async function LedgerPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   const { seasonId, week } = await fetchCurrentSeasonWeek(supabase);
+  const { tab: tabParam } = await searchParams;
+  const tab: LedgerTab = tabParam === "picks" ? "picks" : "bets";
+
+  // The picks tab is a different product with different arithmetic, so it
+  // loads its own data rather than sharing the bet queries below.
+  if (tab === "picks") {
+    return (
+      <>
+        <AppNav />
+        <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
+          <h1 className="mb-4 text-2xl">Ledger</h1>
+          <LedgerTabs active="picks" />
+          {user ? (
+            <PicksTab supabase={supabase} seasonId={seasonId} userId={user.id} />
+          ) : (
+            <section className="card px-6 py-10 text-center text-sm text-dim">
+              Sign in to see your pool picks.
+            </section>
+          )}
+        </main>
+      </>
+    );
+  }
 
   // No user → no ledger, without leaning on a "" uuid cast that only returns
   // empty because the cast error is swallowed (audit 06/SEC-09).
@@ -160,7 +191,7 @@ export default async function LedgerPage() {
     <>
       <AppNav />
       <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl">Ledger</h1>
           {user && (
             <ShareButton
@@ -200,6 +231,8 @@ export default async function LedgerPage() {
             </a>
           )}
         </div>
+
+        <LedgerTabs active="bets" />
 
         {/* Season dashboard */}
         <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -358,12 +391,48 @@ export default async function LedgerPage() {
           </table>
         </section>
         <p className="mt-3 text-xs text-chalk/50">
-          The ledger is append-only — bets can be voided, never deleted. It is yours alone: group
-          boards run on pick&rsquo;em picks, so you can pick a game here you would never bet, and
-          bet one nobody put on the board.
+          The ledger is append-only — bets can be voided, never deleted. It is yours alone, and it
+          is only money: pool picks live under{" "}
+          <Link href="/ledger?tab=picks" className="text-accent underline-offset-2 hover:underline">
+            Group picks
+          </Link>
+          , because you will pick games you would never bet and bet games nobody put on a board.
         </p>
       </main>
     </>
+  );
+}
+
+/**
+ * Money on the left, pool on the right, and never the two summed.
+ *
+ * They are separate products with separate arithmetic — a bet has real odds
+ * and a real stake, a pick is flat −110 pretend money — so the page splits at
+ * the top rather than mixing them into one history and one ROI.
+ */
+function LedgerTabs({ active }: { active: LedgerTab }) {
+  const tabs: Array<{ key: LedgerTab; href: string; label: string; hint: string }> = [
+    { key: "bets", href: "/ledger", label: "Bets", hint: "real money, real odds" },
+    { key: "picks", href: "/ledger?tab=picks", label: "Group picks", hint: "pool score, flat −110" },
+  ];
+  return (
+    <div className="mb-5 flex gap-2" role="group" aria-label="Ledger view">
+      {tabs.map((t) => (
+        <Link
+          key={t.key}
+          href={t.href}
+          aria-current={t.key === active ? "page" : undefined}
+          className={`flex min-h-11 flex-1 flex-col justify-center rounded-lg border px-3 py-1.5 transition-colors ${
+            t.key === active
+              ? "border-accent bg-accent/15 text-accent"
+              : "border-chalk/20 text-dim hover:border-chalk/50"
+          }`}
+        >
+          <span className="stat text-sm font-semibold leading-tight">{t.label}</span>
+          <span className="text-[10px] leading-tight opacity-70">{t.hint}</span>
+        </Link>
+      ))}
+    </div>
   );
 }
 

@@ -17,6 +17,16 @@ export function kickParts(iso: string, tz: string): { day: string; time: string 
   return { day, time };
 }
 
+/**
+ * "SAT 2:30 PM CT" — the heading a shared slip groups under. Plain text with
+ * no punctuation to survive iMessage, and the day is carried because a slip
+ * routinely spans Thursday through Saturday night.
+ */
+export function kickHeading(iso: string, tz: string): string {
+  const { day, time } = kickParts(iso, tz);
+  return `${day.toUpperCase()} ${time} ${tzLabel(tz)}`;
+}
+
 export function kickDateLong(iso: string, tz: string): string {
   return new Intl.DateTimeFormat("en-US", {
     timeZone: tz,

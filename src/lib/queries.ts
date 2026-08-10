@@ -83,10 +83,12 @@ function toTeamView(
   t: TeamRow,
   ranks: Map<number, number>,
   records: Map<number, { w: number; l: number }>,
+  confRecords: Map<number, { w: number; l: number }>,
   pollRanks: Map<number, number>,
   pollName: string | null,
 ): TeamView {
   const rec = records.get(t.id);
+  const conf = confRecords.get(t.id);
   const pollRank = pollRanks.get(t.id) ?? null;
   return {
     id: t.id,
@@ -101,6 +103,7 @@ function toTeamView(
     pollRank,
     poll: pollRank === null ? null : pollName,
     record: rec ? `${rec.w}-${rec.l}` : null,
+    confRecord: conf ? `${conf.w}-${conf.l}` : null,
   };
 }
 
@@ -177,7 +180,7 @@ export async function fetchSlateView(
         : Promise.resolve({ data: [], error: null }),
       supabase
         .from("games")
-        .select("home_team_id, away_team_id, home_points, away_points, status")
+        .select("home_team_id, away_team_id, home_points, away_points, status, conference_game")
         .eq("season_id", seasonId)
         .eq("status", "final"),
       supabase
@@ -324,24 +327,39 @@ export async function fetchSlateView(
     rivalryByPair.set(`${r.team_b_id}:${r.team_a_id}`, view);
   }
 
-  // season records from final games
+  // Season records from final games, overall and in conference. The league
+  // record is the one a fan quotes second ("8-1, 5-1 in the Big Ten") and it is
+  // the difference between a good team and a team in the race, so both halves
+  // ride on the card. `conference_game` is the schedule's own flag, not a
+  // comparison of the two conference strings — a team changing leagues
+  // mid-season would make that comparison lie about games already played.
   const records = new Map<number, { w: number; l: number }>();
+  const confRecords = new Map<number, { w: number; l: number }>();
+  const credit = (
+    into: Map<number, { w: number; l: number }>,
+    winner: number,
+    loser: number,
+  ) => {
+    const w = into.get(winner) ?? { w: 0, l: 0 };
+    w.w += 1;
+    into.set(winner, w);
+    const l = into.get(loser) ?? { w: 0, l: 0 };
+    l.l += 1;
+    into.set(loser, l);
+  };
   for (const g of (seasonGamesRes.data ?? []) as Array<{
     home_team_id: number;
     away_team_id: number;
     home_points: number | null;
     away_points: number | null;
+    conference_game: boolean | null;
   }>) {
     if (g.home_points === null || g.away_points === null || g.home_points === g.away_points)
       continue;
     const winner = g.home_points > g.away_points ? g.home_team_id : g.away_team_id;
     const loser = winner === g.home_team_id ? g.away_team_id : g.home_team_id;
-    const w = records.get(winner) ?? { w: 0, l: 0 };
-    w.w += 1;
-    records.set(winner, w);
-    const l = records.get(loser) ?? { w: 0, l: 0 };
-    l.l += 1;
-    records.set(loser, l);
+    credit(records, winner, loser);
+    if (g.conference_game) credit(confRecords, winner, loser);
   }
 
   // model ranks from each team's latest ratings row (latest_ratings view)
@@ -401,8 +419,8 @@ export async function fetchSlateView(
         neutralSite: game.neutral_site,
         homePoints: game.home_points,
         awayPoints: game.away_points,
-        home: toTeamView(home, ranks, records, pollRanks, pollName),
-        away: toTeamView(away, ranks, records, pollRanks, pollName),
+        home: toTeamView(home, ranks, records, confRecords, pollRanks, pollName),
+        away: toTeamView(away, ranks, records, confRecords, pollRanks, pollName),
         lines: {
           spread: consensus.spread,
           spreadOpen: consensus.open,

@@ -141,6 +141,83 @@ shipping it.
 
 ## Log
 
+### Aug 10 — Groups become a product: a hub, a board that keeps up with a thumb, and the two ledgers pulled apart
+
+Eight complaints from actually using the site on a Saturday. No model change —
+`DEFAULT_PARAMS` is untouched, no tuner was run, and nothing here can move a
+number.
+
+**The picks now land on the tap.** Every pick went through a server action, and
+a server action revalidates the page that called it — on the group board that
+meant a dozen queries plus a full `fetchSlateView` before the button you pressed
+changed colour. Eight picks, eight of those waits, which is what "the picks take
+a while to lock in" was describing. `PickButtons` is optimistic now: the tap
+paints the pick from the line already on screen, the write goes out behind it,
+and the server's row replaces the guess the moment the two agree on a side (so a
+line that moved between render and tap corrects itself instead of being
+believed). Verified in a browser with every POST delayed 4s — 150ms after the
+tap the button reads `aria-pressed=true`. Reconciliation is a pure merge, not an
+effect; a rejected *or* thrown write reverts the button and says why, where
+before a thrown one took the error boundary and the whole board with it. Buttons
+also stay live during a write, since disabling them mid-flight is half of what
+made rapid picking feel stuck.
+
+**There is somewhere to go when you're done.** There was no submit button —
+correct, picks save on tap — but nothing said so and nothing said where the
+group went next, so the flow ended in silence. The board now carries a footer in
+the thumb zone with a live count ("5 picks in · 3 to go", moving on the tap, not
+on the server) and an exit to the full list of what you took.
+
+**`/groups/[slug]` is a hub, not a board.** It used to be standings, then pick
+controls for every game, then nothing — so the thing you came to do was below a
+table, and the group itself was a header line. The picking moved to
+`/groups/[slug]/picks`; the hub is now a week hero (format, progress, first
+kickoff, one primary action), the members as cards in the slate's idiom, and an
+admin block only an admin sees. `WeekHero`/`MemberCard` live in
+`components/group/GroupHub.tsx` rather than in the page, so `/slate/preview`
+renders them against sample data — the hub needs a database, a group and a
+signed-in member before it draws a pixel, which is a poor loop for design work.
+
+**Teams look like teams everywhere.** One `TeamLine` (mark, poll rank, name,
+records) now identifies a team on the group board, the matchup cards and the
+admin's game picker, all of which previously said "MIA at WMU" in plain text —
+the same information a schedule PDF carries and none of the information a pick
+needs. The rank pip is accent only when a *poll* ranked them and names its
+source, since `displayRank` falls back to the model's own rank and those are
+different claims. `TeamView` gains `confRecord`, off the schedule's own
+`conference_game` flag (not a comparison of the two conference strings, which
+would lie about games already played if a team changed leagues mid-season).
+
+**Pool picks and bets stop pretending to be each other.** They were rendered in
+the same accent chip, so a card carrying both couldn't tell you what you had
+money on. Accent now means money: `PickedChip` is chalk with a group mark,
+`BetChip` keeps the ticket and the ring. The slate's single "Mine" filter (pick
+OR bet) becomes two independent toggles — both on reproduces the old behaviour
+and `mine=1` links still work. The ledger gains a **Group picks** tab with its
+own queries and its own arithmetic, so pool units (flat −110, League Rules #6)
+can never leak into the ROI the ledger exists to compute.
+
+**The cards read as material again.** `--surface` was `#191512` on a `#12100d`
+page, and after the glass mix a card rendered at about `#17130f` — a 4% lightness
+step, which in a dim room is no step at all. Ground, surface and elevation moved
+apart, the line and specular edge came up, and `.card` gained a sheen falling off
+over its top third (`--glass-sheen`, derived from `--glass-edge` — no new hue).
+Same palette, three visible steps instead of one.
+
+**Rankings say whose rankings.** The page was headed "Rankings" with a poll
+switcher that only appeared once two polls existed. All three are always listed
+now — CFP Rankings, AP Poll, Coaches Poll — with the unpublished ones inert and
+the reason on hover, and the heading names the poll you are reading.
+
+**Sharing moved to where the thing being shared is.** A slip can be shared from
+the slip, both before logging and from the "logged" confirmation, which is the
+second someone wants to send it. Shared picks and slips group under their
+kickoff time (`groupByKickoff`) instead of arriving as a flat list, because the
+person reading it in iMessage is working out what they can still watch. The
+share-sheet-or-clipboard dance is one function (`shareOrCopy`) shared by both
+buttons, and the group share context is built once (`buildGroupShareContext`)
+for all three screens that offer it.
+
 ### Aug 10 — The verdict block stops disappearing, and three docs stop lying
 
 **`UX-29`.** The team page rendered its Verdict section as `{verdict && (…)}`,
