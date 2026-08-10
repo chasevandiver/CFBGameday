@@ -15,6 +15,7 @@ import {
   scoreboardJob,
   syncRankingsJob,
   syncSystemsJob,
+  watchdogJob,
   weatherJob,
 } from "./lib/jobs-core";
 
@@ -29,6 +30,10 @@ async function main() {
     "freeze-groups": freezeGroupWeeksJob,
     "sync-rankings": syncRankingsJob,
     "sync-systems": syncSystemsJob,
+    // Absence check: throws (→ exit 1, red run, failure email) when a job it
+    // depends on has gone silent past its cadence. The external dead-man ping
+    // catches the whole scheduler dying; this catches one job dying.
+    watchdog: watchdogJob,
   } as const;
   const job = jobs[task as keyof typeof jobs];
   if (!job) throw new Error(`unknown task "${task}" (${Object.keys(jobs).join("|")})`);

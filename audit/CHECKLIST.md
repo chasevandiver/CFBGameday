@@ -30,21 +30,21 @@ explain themselves.
 
 ## Package B — Ops & perf before the first Saturday
 
-- [ ] **07:OPS-1c** In-repo `watchdog` task: exit 1 when `job_runs` shows refresh-lines silent >26h, or scoreboard silent >90min with a game live/imminent — `scripts/lib/jobs-core.ts` + `jobs.yml` · S
-- [ ] **07:OPS-9** Weekly `pg_dump` backup job (Sun after grading) → Actions artifact; inert until `SUPABASE_DB_URL` secret exists — `jobs.yml` · M
-- [ ] **07:OPS-2b** Coverage crons: scoreboard Tue/Wed nights (Nov MACtion) + Sat late window for Hawaii; one Hawaii close pass — `jobs.yml` · S
-- [ ] **07:OPS-7** Offseason keep-alive against the 60-day Actions auto-disable — `jobs.yml` / workflow · S
-- [ ] **07:OPS-13/§2** Cron comment fixes: DST-drifted local times; Sat→Sun scoreboard concurrency-seam note — `jobs.yml` · S
-- [ ] **09:P-2b** One realtime channel per client (SlateView + ScoreTicker share) — `src/lib/use-games-realtime.ts` + callers · S
-- [ ] **09:P-17** Verify/fix anon realtime (no session ⇒ `setAuth` never called; games are public-read since 0011) — `src/lib/use-games-realtime.ts` · S
-- [ ] **09:P-3** `latest_systems` view — stop shipping every week's system_ratings per tick (migration 0025) · S
-- [ ] **09:P-4** `poll_rankings` latest-week view (same migration) · S
-- [ ] **09:P-5** Game-page `profiles.select("*")` → `id, display_name` — `src/app/game/[id]/page.tsx` · S
-- [ ] **09:P-15** In-module ~60s cache for the season/week pointer (`fetchCurrentSeasonWeek` feeds every route + ticker) — `src/lib/queries.ts`/`season.ts` · S
-- [ ] **09:P-16** Load rehearsal on synthetic seed (~60 games, ~15k snapshots): `/api/slate` size + TTFB, `autocannon -c 15/-c 30`; record numbers vs bars (p95 <1.5s, tick <300 KB) in the changelog · S
-- [ ] **04:§2** Remaining `--check` gates: partial coach rows, empty portal feed, empty lines file · S
-- [ ] **04:DQ-13** Reject NaN/empty `PRESEASON_TILT_CARRY` loudly — `scripts/build-preseason.ts` · S
-- [ ] **04:DQ-14** Reconcile builder `SEASON = 2026` hardcode vs loader `CFB_SEASON` env guard — `scripts/build-preseason.ts` / `load-preseason.ts` · S
+- [x] **07:OPS-1c** In-repo `watchdog` task: exit 1 when `job_runs` shows refresh-lines silent >26h, or scoreboard silent >90min with a game live/imminent — `scripts/lib/jobs-core.ts` + `jobs.yml` · S
+- [x] **07:OPS-9** Weekly `pg_dump` backup job (Sun after grading) → Actions artifact; inert until `SUPABASE_DB_URL` secret exists — `jobs.yml` · M
+- [x] **07:OPS-2b** Coverage crons: scoreboard Tue/Wed nights (Nov MACtion) + Sat late window for Hawaii; one Hawaii close pass — `jobs.yml` · S
+- [x] **07:OPS-7** Offseason keep-alive against the 60-day Actions auto-disable — `jobs.yml` / workflow · S
+- [x] **07:OPS-13/§2** Cron comment fixes: DST-drifted local times; Sat→Sun scoreboard concurrency-seam note — `jobs.yml` · S
+- [x] **09:P-2b** One realtime channel per client (SlateView + ScoreTicker share) — `src/lib/use-games-realtime.ts` + callers · S
+- [x] **09:P-17** Verify/fix anon realtime (no session ⇒ `setAuth` never called; games are public-read since 0011) — `src/lib/use-games-realtime.ts` · S
+- [x] **09:P-3** `latest_systems` view — stop shipping every week's system_ratings per tick (migration 0025) · S
+- [x] **09:P-4** `poll_rankings` latest-week view (same migration) · S
+- [x] **09:P-5** Game-page `profiles.select("*")` → `id, display_name` — `src/app/game/[id]/page.tsx` · S
+- [x] **09:P-15** In-module ~60s cache for the season/week pointer (`fetchCurrentSeasonWeek` feeds every route + ticker) — `src/lib/queries.ts`/`season.ts` · S
+- [ ] **09:P-16** Load rehearsal — **owner-run** (needs a live server; running it from CI would burn real Supabase egress). Harness: seed via `scripts/seed-fixtures.ts`, `autocannon -c 15/-c 30` against `next start`, record vs bars (p95 <1.5s, tick <300 KB) · S
+- [x] **04:§2** Remaining `--check` gates: partial coach rows, empty portal feed, empty lines file · S
+- [x] **04:DQ-13** Reject NaN/empty `PRESEASON_TILT_CARRY` loudly — `scripts/build-preseason.ts` · S
+- [x] **04:DQ-14** Reconcile builder `SEASON = 2026` hardcode vs loader `CFB_SEASON` env guard — `scripts/build-preseason.ts` / `load-preseason.ts` · S
 
 ## Package C — Launch-week product polish
 

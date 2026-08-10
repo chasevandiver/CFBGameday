@@ -132,22 +132,22 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
           .is("result", null)
           .is("voided_at", null)
       : Promise.resolve({ data: [], error: null }),
-    supabase.from("profiles").select("*"),
+    // names only — this page renders display_name and nothing else (09/P-5)
+    supabase.from("profiles").select("id, display_name"),
     supabase.from("weather_forecasts").select("*").eq("game_id", gameId).maybeSingle(),
     supabase.from("game_questions").select("questions").eq("game_id", gameId).maybeSingle(),
-    // whole season, not just these teams: "latest poll week" must come from
-    // the full table or a team that dropped out would show a stale rank
+    // latest poll week per poll (0025) — a dropped-out team correctly shows
+    // no rank, because the view carries only the newest week of each poll
     supabase
-      .from("poll_rankings")
+      .from("latest_poll_rankings")
       .select("week, poll, team_id, rank")
       .eq("season_id", game.season_id)
       .eq("season_type", "regular"),
     supabase
-      .from("system_ratings")
+      .from("latest_systems")
       .select("team_id, system, week, value")
       .eq("season_id", game.season_id)
-      .in("team_id", [game.home_team_id, game.away_team_id])
-      .order("week", { ascending: false }),
+      .in("team_id", [game.home_team_id, game.away_team_id]),
     supabase
       .from("rivalries")
       .select("name, trophy")
@@ -183,7 +183,12 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     prediction = { ...prediction, total: null, home_score: null, away_score: null };
   }
   const picks = (picksRes.data ?? []) as PickRow[]; // crew picks are never hidden (0010)
-  const profiles = new Map(((profilesRes.data ?? []) as ProfileRow[]).map((p) => [p.id, p]));
+  const profiles = new Map(
+    ((profilesRes.data ?? []) as Array<Pick<ProfileRow, "id" | "display_name">>).map((p) => [
+      p.id,
+      p,
+    ]),
+  );
   const weather = weatherRes.data as {
     temp_f: number | null;
     wind_mph: number | null;

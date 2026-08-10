@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CfbdScoreboardGame } from "../../src/lib/cfbd";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
-import { closingConsensus, freezableGames, SNAPSHOT_COLS, SCOREBOARD_COLS, scoreboardPatch, type ScoreboardRow } from "./jobs-core";
+import { closingConsensus, freezableGames, SNAPSHOT_COLS, SCOREBOARD_COLS, scoreboardPatch, watchdogVerdict, type ScoreboardRow } from "./jobs-core";
 
 describe("SNAPSHOT_COLS", () => {
   it("selects spread_open, which the opener silently falls back without", () => {
@@ -199,5 +199,29 @@ describe("freezableGames (the merged Week 0/1 shape)", () => {
   it("a TBD kickoff in the current week freezes rather than waiting forever", () => {
     const ids = freezableGames([g(9, null)], none, thuAug27, HORIZON).map((x) => x.id);
     expect(ids).toEqual([9]);
+  });
+});
+
+describe("watchdogVerdict (audit 07/OPS-1c)", () => {
+  const fresh = { refreshLines: 2, syncGames: 2, scoreboard: 0.5 };
+  it("is quiet when everything is fresh and nothing is live", () => {
+    expect(watchdogVerdict(fresh, false)).toEqual([]);
+    expect(watchdogVerdict(fresh, true)).toEqual([]);
+  });
+  it("flags refresh-lines silent past 26h", () => {
+    expect(watchdogVerdict({ ...fresh, refreshLines: 40 }, false)).toEqual([
+      expect.stringMatching(/refresh-lines/),
+    ]);
+  });
+  it("flags sync-games silent past 30h", () => {
+    expect(watchdogVerdict({ ...fresh, syncGames: 31 }, false)[0]).toMatch(/sync-games/);
+  });
+  it("flags a stale scoreboard ONLY while a game is live", () => {
+    const stale = { ...fresh, scoreboard: 3 };
+    expect(watchdogVerdict(stale, false)).toEqual([]); // nobody playing, no debt
+    expect(watchdogVerdict(stale, true)[0]).toMatch(/scoreboard-loop/);
+  });
+  it("a never-run job (Infinity) trips its threshold", () => {
+    expect(watchdogVerdict({ ...fresh, refreshLines: Infinity }, false)[0]).toMatch(/refresh-lines/);
   });
 });

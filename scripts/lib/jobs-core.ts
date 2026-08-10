@@ -135,6 +135,70 @@ export async function recordJobRun<T extends Json>(
 }
 
 /**
+ * In-repo dead-man's switch (audit 07/OPS-1c): reads job_runs and FAILS —
+ * loudly, as a red Actions run — when an expected job hasn't succeeded inside
+ * its cadence. This is the absence check: an erroring run is red on its own;
+ * a cron that silently stops firing is only visible as a timestamp falling
+ * behind. Chained onto the daily lines run, so it fires even if every other
+ * schedule is broken — and if THAT cron dies too, the external ping
+ * (HEALTHCHECK_PING_URL) is the last line.
+ */
+/**
+ * The pure verdict: given the hours since each job last succeeded and whether
+ * a game is live, which jobs have gone silent past their cadence. Separated
+ * from the queries so the thresholds are testable without a database (the
+ * scoreboardPatch/freezableGames pattern).
+ */
+export function watchdogVerdict(
+  agesH: { refreshLines: number; syncGames: number; scoreboard: number },
+  gameLive: boolean,
+): string[] {
+  const problems: string[] = [];
+  if (agesH.refreshLines > 26)
+    problems.push(`refresh-lines: no successful run in ${Math.round(agesH.refreshLines)}h`);
+  if (agesH.syncGames > 30)
+    problems.push(`sync-games: no successful run in ${Math.round(agesH.syncGames)}h`);
+  // Scoreboard only owes freshness while something is actually on.
+  if (gameLive && agesH.scoreboard > 1.5)
+    problems.push(
+      `scoreboard-loop: a game is LIVE and no launch succeeded in ${agesH.scoreboard.toFixed(1)}h`,
+    );
+  return problems;
+}
+
+export async function watchdogJob(db: SupabaseClient): Promise<Json> {
+  const now = Date.now();
+  const lastOkAgeH = async (job: string): Promise<number> => {
+    const { data } = await db
+      .from("job_runs")
+      .select("started_at")
+      .eq("job", job)
+      .eq("status", "ok")
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return data ? (now - Date.parse((data as { started_at: string }).started_at)) / 3600_000 : Infinity;
+  };
+  const { data: live } = await db
+    .from("games")
+    .select("id")
+    .eq("season_id", SEASON)
+    .eq("status", "in_progress")
+    .limit(1);
+
+  const problems = watchdogVerdict(
+    {
+      refreshLines: await lastOkAgeH("refresh-lines"),
+      syncGames: await lastOkAgeH("sync-games"),
+      scoreboard: await lastOkAgeH("scoreboard-loop"),
+    },
+    (live ?? []).length > 0,
+  );
+  if (problems.length > 0) throw new Error(`watchdog: ${problems.join("; ")}`);
+  return { checked: ["refresh-lines", "sync-games", "scoreboard-loop"], ok: true };
+}
+
+/**
  * Meter CFBD usage into api_call_log (one row per call — the table existed
  * since 0001 but nothing ever wrote it). The scoreboard loop throttles and
  * stops off this table, and the Crew admin panel shows the month's total.
