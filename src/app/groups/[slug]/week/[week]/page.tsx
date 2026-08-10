@@ -141,7 +141,28 @@ export default async function GroupWeekPage({
       <AppNav />
       <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
         <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
-          <h1 className="text-2xl">Week {week}</h1>
+          {/* the Sunday flow is "how did last week go" — weeks must be walkable */}
+          <span className="flex items-center gap-1">
+            {week > 1 && (
+              <Link
+                href={`/groups/${slug}/week/${week - 1}${viewParam ? `?view=${viewParam}` : ""}`}
+                aria-label={`Week ${week - 1}`}
+                className="stat inline-flex min-h-11 min-w-11 items-center justify-center text-sm text-accent hover:underline"
+              >
+                ‹
+              </Link>
+            )}
+            <h1 className="text-2xl">Week {week}</h1>
+            {week < 20 && (
+              <Link
+                href={`/groups/${slug}/week/${week + 1}${viewParam ? `?view=${viewParam}` : ""}`}
+                aria-label={`Week ${week + 1}`}
+                className="stat inline-flex min-h-11 min-w-11 items-center justify-center text-sm text-accent hover:underline"
+              >
+                ›
+              </Link>
+            )}
+          </span>
           <Link
             href={`/groups/${slug}`}
             className="stat -my-2 inline-flex min-h-11 items-center text-xs text-accent hover:underline"

@@ -11,7 +11,7 @@ import {
   fetchGroupWeek,
   resolveActiveGroup,
 } from "../../../lib/groups";
-import { DEFAULT_TZ, kickParts } from "../../../lib/kick";
+import { DEFAULT_TZ, kickParts, tzLabel } from "../../../lib/kick";
 import { pickKey } from "../../../lib/session-picks";
 import type { SharePick } from "../../../lib/share-text";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../lib/queries";
@@ -247,7 +247,28 @@ export default async function GroupBoardPage({
 
         {/* ---- this week's board ---- */}
         <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-sm text-accent">Week {week}</h2>
+          {/* walkable weeks: research ahead, settle up behind */}
+          <span className="flex items-center gap-1">
+            {week > 1 && (
+              <Link
+                href={`/groups/${slug}?week=${week - 1}`}
+                aria-label={`Week ${week - 1}`}
+                className="stat inline-flex min-h-11 min-w-11 items-center justify-center text-sm text-accent hover:underline"
+              >
+                ‹
+              </Link>
+            )}
+            <h2 className="text-sm text-accent">Week {week}</h2>
+            {week < 20 && (
+              <Link
+                href={`/groups/${slug}?week=${week + 1}`}
+                aria-label={`Week ${week + 1}`}
+                className="stat inline-flex min-h-11 min-w-11 items-center justify-center text-sm text-accent hover:underline"
+              >
+                ›
+              </Link>
+            )}
+          </span>
           {groupWeek && (
             <p className="stat text-xs text-chalk/50">
               {describeFormat(groupWeek)}
@@ -315,7 +336,7 @@ export default async function GroupBoardPage({
                         : g.status === "in_progress"
                           ? `${g.awayPoints}–${g.homePoints} live`
                           : kick
-                            ? `${kick.day} ${kick.time}`
+                            ? `${kick.day} ${kick.time} ${tzLabel(DEFAULT_TZ)}`
                             : "TBD"}
                     </span>
                   </div>

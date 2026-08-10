@@ -6,7 +6,7 @@ import { RosterAdmin } from "../../../../components/group/RosterAdmin";
 import { WeekConfigForm, type ConfigGame } from "../../../../components/group/WeekConfigForm";
 import type { GameRow, PickRow, TeamRow } from "../../../../lib/db-types";
 import { fetchGroupMembers, fetchGroupWeek, resolveActiveGroup } from "../../../../lib/groups";
-import { DEFAULT_TZ, kickParts } from "../../../../lib/kick";
+import { DEFAULT_TZ, kickParts, tzLabel } from "../../../../lib/kick";
 import { fetchCurrentSeasonWeek } from "../../../../lib/queries";
 import { createClient } from "../../../../lib/supabase/server";
 
@@ -88,7 +88,7 @@ export default async function GroupSettingsPage({
     return {
       id: g.id,
       label: `${away?.abbr ?? "?"} at ${home?.abbr ?? "?"}`,
-      kick: kick ? `${kick.day} ${kick.time}` : "TBD",
+      kick: kick ? `${kick.day} ${kick.time} ${tzLabel(DEFAULT_TZ)}` : "TBD",
       conferences: [home?.conference, away?.conference].filter((c): c is string => !!c),
       pickCount: pickCounts.get(g.id) ?? 0,
     };

@@ -4,7 +4,7 @@ import { LiveStatusChip } from "../../components/slate/chips";
 import { ShareButton } from "../../components/ShareButton";
 import { VoidBetButton } from "../../components/VoidBetButton";
 import { REASON_TAGS, REASON_TAG_LABELS, type BetRow, type TeamRow } from "../../lib/db-types";
-import { kickParts, DEFAULT_TZ } from "../../lib/kick";
+import { kickParts, tzLabel, DEFAULT_TZ } from "../../lib/kick";
 import { statusForBet, type LiveBetStatus } from "../../lib/live-status";
 import { fetchBetFormGames, fetchCurrentSeasonWeek } from "../../lib/queries";
 import { formatRecord, tally, tallyBy } from "../../lib/records";
@@ -67,7 +67,7 @@ export default async function LedgerPage() {
     const kick = g.start_ts ? kickParts(g.start_ts, DEFAULT_TZ) : null;
     return {
       id: g.id,
-      label: `${awayAbbr} @ ${homeAbbr}${kick ? ` · ${kick.day} ${kick.time}` : ""}`,
+      label: `${awayAbbr} @ ${homeAbbr}${kick ? ` · ${kick.day} ${kick.time} ${tzLabel(DEFAULT_TZ)}` : ""}`,
       homeAbbr,
       awayAbbr,
     };
