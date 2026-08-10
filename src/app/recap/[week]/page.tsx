@@ -1,10 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppNav } from "../../../components/AppNav";
-import type { GameRow, PickRow, PredictionRow, TeamRow } from "../../../lib/db-types";
+import { flipHeadline, flipWhen } from "../../../lib/cover";
+import type {
+  CoverFlipRow,
+  GameRow,
+  PickRow,
+  PredictionRow,
+  TeamRow,
+} from "../../../lib/db-types";
 import { fetchCurrentSeasonWeek, fetchProfiles } from "../../../lib/queries";
 import { formatRecord, tallyBy } from "../../../lib/records";
-import { fmtPct, fmtSpread } from "../../../lib/slate";
+import { fmtPct } from "../../../lib/slate";
 import { createClient } from "../../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +48,7 @@ export default async function RecapPage({ params }: { params: Promise<{ week: st
   const gameIds = games.map((g) => g.id);
   const gameById = new Map(games.map((g) => [g.id, g]));
 
-  const [predsRes, teamsRes, picksRes, ratingsRes, profiles] = await Promise.all([
+  const [predsRes, teamsRes, picksRes, ratingsRes, profiles, flipsRes] = await Promise.all([
     gameIds.length
       ? supabase
           .from("predictions")
@@ -65,6 +72,15 @@ export default async function RecapPage({ params }: { params: Promise<{ week: st
       .eq("season_id", seasonId)
       .in("week", [week, week + 1]),
     fetchProfiles(supabase),
+    // Late swings caught live by the scoreboard poll (0026) — oldest first,
+    // so the last one in a game is the one that stuck.
+    gameIds.length
+      ? supabase
+          .from("cover_flips")
+          .select("*")
+          .in("game_id", gameIds)
+          .order("detected_at", { ascending: true })
+      : Promise.resolve({ data: [] }),
   ]);
 
   const teams = new Map(((teamsRes.data ?? []) as TeamRow[]).map((t) => [t.id, t]));
@@ -156,6 +172,16 @@ export default async function RecapPage({ params }: { params: Promise<{ week: st
     // "who went 6-1" is the story of a Saturday. CLV breaks the tie.
     .sort((a, b) => b.wins - a.wins || (b.avgClv ?? -Infinity) - (a.avgClv ?? -Infinity));
 
+  // ---- bad beats: late swings, decisive flip marked ----
+  const flips = (flipsRes.data ?? []) as CoverFlipRow[];
+  const flipsByGame = new Map<number, CoverFlipRow[]>();
+  for (const f of flips) {
+    if (!gameById.has(f.game_id)) continue;
+    const arr = flipsByGame.get(f.game_id) ?? [];
+    arr.push(f);
+    flipsByGame.set(f.game_id, arr);
+  }
+
   const noData = games.length === 0;
 
   return (
@@ -226,6 +252,57 @@ export default async function RecapPage({ params }: { params: Promise<{ week: st
                       <span className="shrink-0 text-dim">model had {fmtPct(winProb)}</span>
                     </li>
                   ))}
+                </ul>
+              </section>
+            )}
+
+            {flipsByGame.size > 0 && (
+              <section className="card mb-4 p-4">
+                <h2 className="mb-1 text-sm text-accent">Bad beats &amp; backdoors</h2>
+                <p className="mb-3 text-xs text-chalk/60">
+                  Cover swings from the 4th quarter on, caught live as they happened. The last
+                  one in a game is the one that stuck.
+                </p>
+                <ul className="flex flex-col gap-3">
+                  {[...flipsByGame.entries()].map(([gid, list]) => {
+                    const g = gameById.get(gid) as GameRow;
+                    const homeAbbr = abbrOf(teams.get(g.home_team_id));
+                    const awayAbbr = abbrOf(teams.get(g.away_team_id));
+                    return (
+                      <li key={gid} className="flex flex-col gap-1">
+                        <Link
+                          href={`/game/${gid}`}
+                          className="stat text-sm text-chalk underline-offset-2 hover:text-accent hover:underline"
+                        >
+                          {awayAbbr} {g.away_points}&ndash;{g.home_points} {homeAbbr}
+                        </Link>
+                        {list.map((f, i) => {
+                          const decisive = i === list.length - 1;
+                          return (
+                            <div
+                              key={f.id}
+                              className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 pl-3 text-xs"
+                            >
+                              <span className={decisive ? "text-chalk" : "text-chalk/55"}>
+                                {flipHeadline(f, homeAbbr, awayAbbr)}
+                              </span>
+                              <span className="stat text-dim">{flipWhen(f.period, f.clock)}</span>
+                              {decisive && (
+                                <span
+                                  className={`chip ${f.winner_changed ? "bg-accent/12 text-accent" : "bg-loss/12 text-loss"}`}
+                                >
+                                  {f.winner_changed ? "wild finish" : "backdoor"}
+                                </span>
+                              )}
+                              {f.last_play && (
+                                <span className="w-full text-chalk/45">{f.last_play}</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </li>
+                    );
+                  })}
                 </ul>
               </section>
             )}

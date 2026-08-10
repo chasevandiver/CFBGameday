@@ -7,6 +7,7 @@
  */
 
 import { liveWinProb } from "../model/live";
+import { spreadCoverSide, totalCoverSide } from "./cover";
 import type { PickMarket } from "./grade";
 
 export interface TeamView {
@@ -344,19 +345,13 @@ export type OuResult = "over" | "under" | "push" | null;
 export function atsResult(g: GameView, spread = g.lines.spread): SideResult {
   if (!isFinal(g) || spread === null || g.homePoints === null || g.awayPoints === null)
     return null;
-  const adj = g.homePoints - g.awayPoints + spread;
-  if (adj > 0) return "home";
-  if (adj < 0) return "away";
-  return "push";
+  return spreadCoverSide(spread, g.homePoints, g.awayPoints);
 }
 
 export function ouResult(g: GameView, total = g.lines.total): OuResult {
   if (!isFinal(g) || total === null || g.homePoints === null || g.awayPoints === null)
     return null;
-  const pts = g.homePoints + g.awayPoints;
-  if (pts > total) return "over";
-  if (pts < total) return "under";
-  return "push";
+  return totalCoverSide(total, g.homePoints, g.awayPoints);
 }
 
 /* ---- model picks & grades --------------------------------------------- */

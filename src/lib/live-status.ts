@@ -7,6 +7,7 @@
  * passes the line the over has won and the under is dead, whatever the clock.
  */
 
+import { coverMargin } from "./cover";
 import type { PickMarket } from "./grade";
 import { headlinePick, type GameView, type MyBetView } from "./slate";
 
@@ -25,13 +26,10 @@ export function liveSpreadStatus(
   homePts: number,
   awayPts: number,
 ): LiveBetStatus {
-  const margin = homePts - awayPts;
-  // same cover formula as the grader
-  const coverMargin = side === "home" ? margin + line : -margin - line;
-  if (coverMargin > 0)
-    return { state: "winning", clinched: false, label: `Covering by ${fmtPts(coverMargin)}` };
-  if (coverMargin < 0)
-    return { state: "losing", clinched: false, label: `Down ${fmtPts(-coverMargin)} ATS` };
+  // same cover formula as the grader — literally, via cover.ts
+  const cm = coverMargin(side, line, homePts, awayPts);
+  if (cm > 0) return { state: "winning", clinched: false, label: `Covering by ${fmtPts(cm)}` };
+  if (cm < 0) return { state: "losing", clinched: false, label: `Down ${fmtPts(-cm)} ATS` };
   return { state: "push", clinched: false, label: "On the number" };
 }
 

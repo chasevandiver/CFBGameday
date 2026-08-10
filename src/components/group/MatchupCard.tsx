@@ -1,6 +1,7 @@
 import { Check, X } from "lucide-react";
 import Link from "next/link";
-import type { PickMarket, PickRow } from "../../lib/db-types";
+import { flipHeadline, flipWhen } from "../../lib/cover";
+import type { CoverFlipRow, PickMarket, PickRow } from "../../lib/db-types";
 import { DEFAULT_TZ, kickParts, tzLabel } from "../../lib/kick";
 import { fmtTotal, pickSideLabel, type GameView, type TeamView } from "../../lib/slate";
 import { TeamMark } from "../slate/TeamMark";
@@ -54,6 +55,8 @@ export function MatchupCard({
   blindCount = null,
   /** The admin dropped this game from the board; picks stay but don't count. */
   dropped = false,
+  /** Late cover swings on this game (0026), oldest first. */
+  flips = [],
 }: {
   game: GameView;
   picks: MatchupPick[];
@@ -62,6 +65,7 @@ export function MatchupCard({
   blind?: boolean;
   blindCount?: number | null;
   dropped?: boolean;
+  flips?: CoverFlipRow[];
 }) {
   const awayColor = game.away.color ?? NEUTRAL;
   const homeColor = game.home.color ?? NEUTRAL;
@@ -139,7 +143,51 @@ export function MatchupCard({
           />
         ))
       )}
+      <BadBeat game={game} picks={picks} flips={flips} viewerId={viewerId} />
     </li>
+  );
+}
+
+/**
+ * Who the late swing actually hit. The flip itself is a neutral fact about the
+ * game (that is what the table stores); the names only exist here, where the
+ * group's picks are already in hand.
+ */
+function BadBeat({
+  game,
+  picks,
+  flips,
+  viewerId,
+}: {
+  game: GameView;
+  picks: MatchupPick[];
+  flips: CoverFlipRow[];
+  viewerId: string | null;
+}) {
+  if (flips.length === 0 || game.status !== "final") return null;
+  // The last flip is the one that stuck; earlier ones were undone.
+  const f = flips[flips.length - 1];
+  const on = (side: string) =>
+    picks.filter((p) => (f.market === "total" ? p.market === "total" : p.market === "spread") && p.side === side);
+  const burned = on(f.from_side);
+  const saved = on(f.to_side);
+  if (burned.length === 0 && saved.length === 0) return null;
+
+  const names = (list: MatchupPick[]) =>
+    list.map((p) => (p.userId === viewerId ? "you" : p.name)).join(", ");
+
+  return (
+    <div className="border-t border-chalk/8 px-3 py-2 text-[10.5px]">
+      <span className="stat text-loss">{f.winner_changed ? "Wild finish" : "Backdoor"}</span>
+      <span className="text-chalk/70">
+        {" "}
+        · {flipHeadline(f, game.home.abbr, game.away.abbr)} at {flipWhen(f.period, f.clock)}
+      </span>
+      {burned.length > 0 && (
+        <span className="text-chalk/55"> · burned: {names(burned)}</span>
+      )}
+      {saved.length > 0 && <span className="text-chalk/55"> · saved: {names(saved)}</span>}
+    </div>
   );
 }
 

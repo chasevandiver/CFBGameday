@@ -141,6 +141,66 @@ shipping it.
 
 ## Log
 
+### Aug 10 — Bad beats, caught live, because there is no other time to catch them
+
+`cover_flips` (migration `0026`) records late ATS and total swings — the
+backdoor cover, the garbage-time TD that cashes an Over — as the scoreboard
+poll sees them happen.
+
+**The reason this could not wait for the season.** The audit filed it under
+"needs real games data" alongside three other social features, and that was
+wrong in a way worth writing down: a cover flip is a *transition between two
+polls*, not a state. Nothing in the schema holds it afterwards. Worse,
+`last_play` — the line that makes an entry worth reading ("Alston 34 yd pass
+from Meyer") — is deliberately nulled the moment a game goes final. So the
+detector either existed before Aug 29 or Week 0 and Week 1 were gone. The
+other three genuinely do need a *sample* of graded picks first; the checklist
+now says so separately.
+
+**One cover formula, finally.** The signed cover margin existed four times
+character-for-character — `grade.ts` (settlement), `live-status.ts` (the live
+chips), the bet grader, and a home-perspective variant in `slate.ts` — which
+is exactly the shape `pickSideLabel` was in before it drifted five ways.
+Writing a fifth for the detector would have been absurd, so `src/lib/cover.ts`
+holds `coverMargin` / `spreadCoverSide` / `totalCoverSide` and the other four
+call it. A pure refactor of identical expressions: the 100 existing
+grading-path assertions passed unchanged, and a new test walks six scorelines
+proving `coverMargin`, `gradePick` and `liveSpreadStatus` still agree.
+
+**Detection** (`detectCoverFlips`) is pure, like `scoreboardPatch` and
+`freezableGames` beside it. It fires only from the 4th quarter on (`period >=
+4` catches overtime for free) and only when the score actually moved — which
+is also what makes a retried tick a no-op, since after the write prev equals
+next. `winner_changed` separates a true backdoor (the game's winner never in
+doubt, only the cover turned over) from a wild finish where both did. The
+unique key is `(game_id, market, home_points, away_points)`: football scores
+only go up, so a post-flip score happens once per game, and a tick that wrote
+and then died cannot double-log.
+
+**Cost.** The detector needs the number the game is measured against, so the
+poll now reads `line_consensus` — but only when a game is actually in the 4th
+quarter, so the great majority of ticks skip it entirely and a late tick pays
+one narrow round trip and zero CFBD calls.
+
+**Surfaces.** `/recap/[week]` grows a "Bad beats & backdoors" section: every
+swing per game, oldest first, with the last one marked as the one that stuck
+and tagged backdoor or wild finish. The group week board is where it gets
+personal — the table stays a neutral fact about the game, and `MatchupCard`
+turns it into "burned: Jeff · saved: you" using picks it already had in hand.
+Keeping the names out of the table means the log stays correct when group
+membership changes.
+
+**Known limit, stated rather than discovered in November:** two scores inside
+one 30-second tick collapse into a single transition, so an onside kick and an
+answering score can hide a flip if the net cover side is unchanged. Games with
+no consensus line are never flagged, and an unusable clock logs the flip with
+`seconds_left` null rather than dropping it.
+
+353 unit tests, 118 database assertions, build green. `0026` applied to the
+live project and verified (two read policies, updates revoked). The recap
+section and the card line were **not** rendered in a browser — there is no
+flip data to render until a real game plays.
+
 ### Aug 10 — One game, one freeze: the merged Week 0/1 would have double-stamped the receipts
 
 Checking whether Week 0 "messes with" week 1 turned up the real answer:

@@ -69,6 +69,28 @@ export interface LineConsensusRow {
   as_of: string | null;
 }
 
+/** A late ATS/total swing caught live by the scoreboard poll (migration 0026). */
+export interface CoverFlipRow {
+  id: number;
+  game_id: number;
+  season_id: number;
+  week: number;
+  market: "spread" | "total";
+  line: number;
+  from_side: string;
+  to_side: string;
+  home_points: number;
+  away_points: number;
+  prev_home_points: number;
+  prev_away_points: number;
+  period: number | null;
+  clock: string | null;
+  seconds_left: number | null;
+  last_play: string | null;
+  winner_changed: boolean;
+  detected_at: string;
+}
+
 export interface PredictionRow {
   id: number;
   game_id: number;

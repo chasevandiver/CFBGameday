@@ -101,7 +101,8 @@ explain themselves.
 - [ ] **09:P-6** `fetchTeamAtsSeason` snapshot re-fetch per game view — M
 - [ ] **09:P-9/P-10/P-12/P-13** Blind-count aggregate RPC; board picks-query collapse; ratings latest-in-Postgres; receipts pagination — S–M each
 - [ ] **G5** Prediction attribution ("why this number") — M, freeze the decomposition; design the column set before first retune
-- [ ] **G7/G8/G9/G11** Crew disagreement roll-up; fade-the-crew; bad-beat log; pick nudge — need real picks/games data
+- [x] **G9** Bad-beat / backdoor-cover log — late ATS + total flips caught live by the scoreboard poll, logged to `cover_flips` (0026), rendered on `/recap/[week]` and named on the group week board. **Was mis-filed as "needs real data": a flip is a transition between two polls and nothing records it after the fact, so the detector had to exist before kickoff or Week 0–1 was lost permanently.**
+- [ ] **G7/G8/G11** Crew disagreement roll-up; fade-the-crew; pick nudge — need a *sample* of graded picks before they say anything true (pre-register n before building)
 - [ ] **G13/F18** Season archive + `SEASON` rollover — offseason
 - [ ] **F3** Injury/news LLM scan producer — M–L
 - [ ] **F4/F5/F6** Rooting guide; playoff race tracker; homepage-by-day — M each
