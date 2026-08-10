@@ -665,7 +665,7 @@ function OddsColumnLabels({ game }: { game: GameView }) {
   if (spread === null && total === null && mlHome === null && mlAway === null) return null;
   return (
     /* widths track the cells below them — see OddsCell */
-    <div className="mt-2 flex justify-end gap-1 text-[10.5px] font-semibold uppercase tracking-wider text-chalk/45">
+    <div className="mt-2 flex justify-end gap-1 text-[10.5px] font-semibold uppercase tracking-wider text-chalk/55">
       <span className="w-11 text-center">Spread</span>
       <span className="w-11 text-center">Total</span>
       <span className="w-12 text-center">Money</span>
@@ -1080,7 +1080,8 @@ function FinalFooter({ game }: { game: GameView }) {
       {chips.length > 0 && <div className="flex flex-wrap gap-1.5">{chips}</div>}
       {gradeChips.length > 0 && (
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-chalk/35">
+          {/* /50 not /35: this label is load-bearing at 10px (audit UX-06) */}
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-chalk/50">
             Model
           </span>
           {gradeChips}

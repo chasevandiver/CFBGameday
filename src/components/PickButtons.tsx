@@ -59,6 +59,13 @@ export function PickButtons({
 }: Props) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // Which button was tapped, so ONLY that one shows the in-flight state. The
+  // old treatment dimmed all six at once, which on bar wifi reads as "my tap
+  // did nothing" for the whole round-trip (audit 08/UX-10).
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+  // Derived, not synced: the key only means "in flight" while the transition
+  // is actually pending, so no effect is needed to clear it.
+  const inFlight = pending ? pendingKey : null;
 
   const pickIn = (m: PickMarket) => myPicks.find((p) => p.market === m) ?? null;
 
@@ -110,7 +117,8 @@ export function PickButtons({
     );
   }
 
-  const tap = (market: PickMarket, side: "home" | "away" | "over" | "under") =>
+  const tap = (market: PickMarket, side: "home" | "away" | "over" | "under") => {
+    setPendingKey(`${market}:${side}`);
     startTransition(async () => {
       setError(null);
       const removing = pickIn(market)?.side === side;
@@ -126,6 +134,7 @@ export function PickButtons({
       if (removing) forgetPick(gameId, market);
       else rememberPick(gameId, market);
     });
+  };
 
   const awaySpread = currentSpread === null ? null : -currentSpread;
   const has = (m: PickMarket) => markets.includes(m);
@@ -138,12 +147,16 @@ export function PickButtons({
             label={`${awayLabel} ${fmtSpread(awaySpread)}`}
             active={pickIn("spread")?.side === "away"}
             disabled={pending || currentSpread === null}
+            noLine={currentSpread === null}
+            pending={inFlight === "spread:away"}
             onClick={() => tap("spread", "away")}
           />
           <PickButton
             label={`${homeLabel} ${fmtSpread(currentSpread)}`}
             active={pickIn("spread")?.side === "home"}
             disabled={pending || currentSpread === null}
+            noLine={currentSpread === null}
+            pending={inFlight === "spread:home"}
             onClick={() => tap("spread", "home")}
           />
         </div>
@@ -154,12 +167,16 @@ export function PickButtons({
             label={`Over ${fmtTotal(currentTotal)}`}
             active={pickIn("total")?.side === "over"}
             disabled={pending || currentTotal === null}
+            noLine={currentTotal === null}
+            pending={inFlight === "total:over"}
             onClick={() => tap("total", "over")}
           />
           <PickButton
             label={`Under ${fmtTotal(currentTotal)}`}
             active={pickIn("total")?.side === "under"}
             disabled={pending || currentTotal === null}
+            noLine={currentTotal === null}
+            pending={inFlight === "total:under"}
             onClick={() => tap("total", "under")}
           />
         </div>
@@ -172,12 +189,14 @@ export function PickButtons({
             label={`${awayLabel} to win`}
             active={pickIn("straight_up")?.side === "away"}
             disabled={pending}
+            pending={inFlight === "straight_up:away"}
             onClick={() => tap("straight_up", "away")}
           />
           <PickButton
             label={`${homeLabel} to win`}
             active={pickIn("straight_up")?.side === "home"}
             disabled={pending}
+            pending={inFlight === "straight_up:home"}
             onClick={() => tap("straight_up", "home")}
           />
         </div>
@@ -236,11 +255,17 @@ function PickButton({
   label,
   active,
   disabled,
+  pending,
+  noLine = false,
   onClick,
 }: {
   label: string;
   active: boolean;
   disabled: boolean;
+  /** This button's own tap is in flight — the only one that changes look. */
+  pending: boolean;
+  /** No number to pick — the one disabled state that should LOOK disabled. */
+  noLine?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -248,11 +273,17 @@ function PickButton({
       onClick={onClick}
       disabled={disabled}
       aria-pressed={active}
-      className={`stat flex-1 rounded-lg border px-3 py-2 text-sm transition-colors disabled:opacity-50 ${
-        active
-          ? "border-accent bg-accent/20 text-accent"
-          : "border-chalk/25 text-chalk hover:border-chalk/60"
-      }`}
+      aria-busy={pending || undefined}
+      /* min-h-11 = the 44px tap floor (docs/DESIGN.md); siblings stay full-
+         strength while inert so a slow round-trip doesn't read as a dead tap —
+         only the tapped button pulses. A missing line still dims. */
+      className={`stat min-h-11 flex-1 rounded-lg border px-3 py-2 text-sm transition-colors ${
+        pending
+          ? "animate-pulse border-accent/60 text-chalk/70"
+          : active
+            ? "border-accent bg-accent/20 text-accent"
+            : "border-chalk/25 text-chalk hover:border-chalk/60"
+      } ${noLine ? "opacity-50" : ""}`}
     >
       {label}
     </button>

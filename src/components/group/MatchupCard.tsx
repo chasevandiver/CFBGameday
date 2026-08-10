@@ -1,7 +1,7 @@
 import { Check, X } from "lucide-react";
 import Link from "next/link";
 import type { PickMarket, PickRow } from "../../lib/db-types";
-import { DEFAULT_TZ, kickParts } from "../../lib/kick";
+import { DEFAULT_TZ, kickParts, tzLabel } from "../../lib/kick";
 import { fmtTotal, pickSideLabel, type GameView, type TeamView } from "../../lib/slate";
 import { TeamMark } from "../slate/TeamMark";
 
@@ -102,7 +102,7 @@ export function MatchupCard({
             : live
               ? `${game.awayPoints}–${game.homePoints} live`
               : kick
-                ? `${kick.day} ${kick.time}`
+                ? `${kick.day} ${kick.time} ${tzLabel(DEFAULT_TZ)}`
                 : "TBD"}
         </span>
       </Link>

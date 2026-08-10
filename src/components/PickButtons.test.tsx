@@ -135,3 +135,34 @@ describe("PickButtons", () => {
     expect(screen.getByText(/Locked: ALA to win/)).toBeTruthy();
   });
 });
+
+describe("the in-flight tap (audit 08/UX-10)", () => {
+  it("buttons clear the 44px touch floor", () => {
+    render(<PickButtons {...base} markets={[...base.markets]} />);
+    for (const b of screen.getAllByRole("button")) {
+      expect(b.className).toContain("min-h-11");
+    }
+  });
+
+  it("only the tapped button goes busy; its siblings keep their full look", async () => {
+    const { makePick } = await import("../app/actions/picks");
+    let release!: (v: { ok: boolean }) => void;
+    vi.mocked(makePick).mockImplementationOnce(
+      () => new Promise((r) => { release = r; }),
+    );
+    render(<PickButtons {...base} markets={[...base.markets]} />);
+    const tapped = screen.getByRole("button", { name: "UGA +2.5" });
+    const sibling = screen.getByRole("button", { name: "ALA -2.5" });
+    const { fireEvent, waitFor } = await import("@testing-library/react");
+    fireEvent.click(tapped);
+    await waitFor(() => expect(tapped.getAttribute("aria-busy")).toBe("true"));
+    // the round-trip is visible on the button you pressed…
+    expect(tapped.className).toContain("animate-pulse");
+    // …and nowhere else: siblings are inert but not dimmed
+    expect(sibling.getAttribute("aria-busy")).toBeNull();
+    expect(sibling.className).not.toContain("animate-pulse");
+    expect(sibling.className).not.toContain("opacity-50");
+    release({ ok: true });
+    await waitFor(() => expect(tapped.getAttribute("aria-busy")).toBeNull());
+  });
+});
