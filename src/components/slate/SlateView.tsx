@@ -2,6 +2,7 @@
 
 import { ChevronDown, RefreshCw, Search, SearchX } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { onBetsChanged } from "../../lib/bets-changed";
 import { useFocusedGames, useStarred, useViewerTz } from "../../lib/client-store";
 import type { GameRow } from "../../lib/db-types";
 import { clockTime, dayKey, dayTabLabel, kickSlot, DEFAULT_TZ, tzLabel } from "../../lib/kick";
@@ -194,6 +195,16 @@ export function SlateView({
     return () => clearInterval(id);
   }, [anyLive, connected, refresh, seasonType]);
 
+  // Logging or voiding a bet is the one data change that comes from inside this
+  // page rather than from the scoreboard job, and the poll is much too slow to
+  // serve as the confirmation: pregame it is 90s, which reads as a dead button.
+  // The actions' revalidatePath can't reach us — the slate lives in useState —
+  // so the writers say so directly and we refetch on the spot.
+  useEffect(
+    () => onBetsChanged(() => void refresh(weekRef.current, false, seasonType)),
+    [refresh, seasonType],
+  );
+
   const changeWeek = (sel: number | "post") => {
     const post = sel === "post";
     const w = post ? 1 : sel;
@@ -260,7 +271,10 @@ export function SlateView({
         return false;
       if (network !== "all" && g.tv !== network) return false;
       if (rankedOnly && !isRankedMatchup(g)) return false;
-      if (myPicksOnly && g.myPicks.length === 0) return false;
+      // "Mine" is both products: a pool pick OR money on the game. Filtering a
+      // game you have a bet on out of your own view was wrong — the ledger and
+      // the pool are independent, and both of them are yours.
+      if (myPicksOnly && g.myPicks.length === 0 && g.myBets.length === 0) return false;
       if (
         maxSpread !== Infinity &&
         (g.lines.spread === null || Math.abs(g.lines.spread) > maxSpread)
@@ -461,8 +475,10 @@ export function SlateView({
             options={SPREAD_RANGES.map((r): [string, string] => [r.key, r.label])}
           />
           <FilterToggle label="Ranked" active={rankedOnly} onClick={() => setRankedOnly(!rankedOnly)} />
+          {/* "Mine", not "My picks": it covers bets too. The `mine=1` param
+              keeps its name so shared links still work. */}
           <FilterToggle
-            label="My picks"
+            label="Mine"
             active={myPicksOnly}
             onClick={() => setMyPicksOnly(!myPicksOnly)}
           />

@@ -4,6 +4,7 @@ import { Check, ChevronDown, ChevronUp, Ticket, X } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { logSlipBets } from "../../app/actions/bets";
 import { slipKey, useBetSlip } from "../../lib/bet-slip-store";
+import { betsChanged } from "../../lib/bets-changed";
 import { REASON_TAGS, REASON_TAG_LABELS } from "../../lib/db-types";
 import { fmtMoneyline } from "../../lib/slate";
 
@@ -82,6 +83,9 @@ export function BetSlip({ seasonId }: { seasonId: number }) {
         clear();
         setUnits({});
         setLogged(true);
+        // the cards behind the slip are holding a slate that predates these
+        // rows; tell them so rather than making the user wait for a poll
+        betsChanged();
       }
     });
 

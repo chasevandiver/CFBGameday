@@ -141,6 +141,47 @@ shipping it.
 
 ## Log
 
+### Aug 10 — A logged bet shows up when you log it, and counts as yours
+
+Two bugs from real use, both fallout from putting bets on the cards the day
+before:
+
+**The slate needed a hard refresh to admit the bet existed.** The bet actions
+call `revalidatePath("/slate")`, which is correct and inert: `SlateView` is a
+client component holding the slate in `useState`, seeded once from the server
+and thereafter refreshed only by its own `/api/slate` poll. Server revalidation
+has nothing to invalidate on that path. So the confirmation of "Log bets" was
+the next poll tick — 30s with games live, **90s pregame**, which is when a
+person is actually placing bets, and which reads as a dead button. Voiding had
+the mirror problem: `BetChip` hid itself optimistically, but an in-flight poll
+carrying the pre-void payload could put the chip back.
+
+New `src/lib/bets-changed.ts`: a module-level `betsChanged()` / `onBetsChanged()`
+pair, the same no-provider shape as `session-picks` and `bet-slip-store`. The
+two writers announce; `SlateView` refetches on the spot. It is an event rather
+than a store because nothing renders from it. A module store rather than a prop
+because the two emitters sit on opposite sides of the tree — the slip is
+SlateView's own child, the void button is four levels down inside a card — and
+prop-drilling a refresh callback through `CardGrid` → `GameCard` →
+`PregameFooter` to reach it would be worse. The refetch reuses the existing
+`refresh(week, showSkeleton: false)`, so there is no skeleton flash, no layout
+shift, and the `liveEventAt` guard still keeps a slow response from rolling a
+fresher score backwards. `revalidatePath` stays where it is; it is still what
+makes a hard navigation correct.
+
+**"My picks" hid the games you had money on.** The filter predicate tested
+`myPicks.length === 0` and nothing else, so a game you had bet but not picked
+was filtered out of your own view. That is exactly backwards for this product:
+the ledger and the pool are independent, you can bet a game the pool never put
+in play, and both are yours. It now passes on a pick **or** a bet, and the
+toggle is labelled **Mine** rather than "My picks" so the label stops lying
+about what it does. The `mine=1` URL param keeps its name — shared links.
+
+353 tests, `tsc`, `eslint src/ scripts/` over the whole tree, and `next build`
+all green. No new test: the predicate is inline in the component and had no
+unit coverage before this, and extracting it for a one-clause change would be
+the tail wagging the dog. Verified by reading, not rendered in a browser.
+
 ### Aug 10 — Bad beats, caught live, because there is no other time to catch them
 
 `cover_flips` (migration `0026`) records late ATS and total swings — the
