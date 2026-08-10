@@ -6,6 +6,7 @@ import { AppNav } from "../../../components/AppNav";
 import { GameHeader } from "../../../components/game/GameHeader";
 import { MovementChart } from "../../../components/game/MovementChart";
 import { ConsensusChip, EdgeChip } from "../../../components/slate/chips";
+import { VoidBetButton } from "../../../components/VoidBetButton";
 import { Sparkline } from "../../../components/slate/Sparkline";
 import type {
   BetRow,
@@ -21,6 +22,7 @@ import {
   fetchGroupWeek,
   resolveActiveGroup,
 } from "../../../lib/groups";
+import { statusForBet } from "../../../lib/live-status";
 import { pickPollRanks, pollShortName } from "../../../lib/rankings";
 import { ELO_PER_POINT, RATING_SCALES, systemMargin } from "../../../lib/rating-scales";
 import type { SeasonType } from "../../../lib/season";
@@ -35,6 +37,7 @@ import {
   fmtPct,
   fmtSpread,
   fmtTotal,
+  lineForSide,
   modelSideOf,
   pickSideLabel,
   type MyBetView,
@@ -126,10 +129,11 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     user
       ? supabase
           .from("bets")
-          .select("id, bet_type, side, line_taken")
+          .select("id, bet_type, side, line_taken, units, odds, reason_tag, result")
           .eq("game_id", gameId)
           .eq("user_id", user.id)
-          .is("result", null)
+          // Settled bets stay on the page — this section is the postgame
+          // record of what you had on the game, not just an open-bets list.
           .is("voided_at", null)
       : Promise.resolve({ data: [], error: null }),
     // names only — this page renders display_name and nothing else (09/P-5)
@@ -236,13 +240,17 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   // the GameHeader client island, which streams realtime updates and polls as
   // a fallback — this page used to be the only live surface that never moved.
   const openBets = (betsRes.data ?? []) as Array<
-    Pick<BetRow, "id" | "bet_type" | "side" | "line_taken">
+    Pick<
+      BetRow,
+      "id" | "bet_type" | "side" | "line_taken" | "units" | "odds" | "reason_tag" | "result"
+    >
   >;
   const myBets: MyBetView[] = openBets.map((b) => ({
     id: b.id,
     betType: b.bet_type,
     side: b.side,
     line: b.line_taken === null ? null : Number(b.line_taken),
+    result: b.result,
   }));
 
   // systems side-by-side (spec §2.4): latest value per system per team
@@ -456,6 +464,103 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
               </ul>
             )}
           </div>
+        </section>
+
+        {/* Your bets — the ledger side, deliberately its own section.
+            Bets and pick'em are independent: a bet needs no group, can sit on
+            a game the pool never put in play, and can even take the opposite
+            side of your own pick. Before this the page had a "Your pick"
+            block and nothing at all for money, so a bet placed from the slate
+            was invisible everywhere but the ledger. */}
+        <section className="card mt-4 px-4 py-4">
+          <div className="mb-3 flex items-baseline justify-between gap-2">
+            <h2 className="text-sm text-accent">Your bets</h2>
+            <Link
+              href="/ledger"
+              className="stat text-xs text-accent underline-offset-2 hover:underline"
+            >
+              Ledger →
+            </Link>
+          </div>
+          {!user ? (
+            <p className="text-sm text-dim">
+              <Link
+                href="/login"
+                className="font-medium text-accent underline-offset-2 hover:underline"
+              >
+                Sign in
+              </Link>{" "}
+              to track bets. No group needed — the ledger is yours alone.
+            </p>
+          ) : myBets.length === 0 ? (
+            <p className="text-sm text-dim">
+              Nothing on this one. Tap an odds cell on the{" "}
+              <Link
+                href="/slate"
+                className="font-medium text-accent underline-offset-2 hover:underline"
+              >
+                slate
+              </Link>{" "}
+              to add it to your slip, or log it by hand on the ledger.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {openBets.map((b) => {
+                const view = myBets.find((m) => m.id === b.id) as MyBetView;
+                const status =
+                  game.home_points !== null && game.away_points !== null
+                    ? statusForBet(view, game.home_points, game.away_points)
+                    : null;
+                return (
+                  <li key={b.id} className="stat flex flex-wrap items-center gap-2 text-sm">
+                    <span className="text-chalk">
+                      {b.bet_type === "spread" && b.side
+                        ? `${(b.side === "home" ? home : away).abbr} ${fmtSpread(lineForSide(b.side, b.line_taken === null ? null : Number(b.line_taken)))}`
+                        : b.bet_type === "total" && b.side
+                          ? `${b.side === "over" ? "Over" : "Under"} ${fmtTotal(b.line_taken === null ? null : Number(b.line_taken))}`
+                          : `${b.side === "home" ? home.abbr : away.abbr} ML`}
+                    </span>
+                    <span className="text-dim">
+                      {Number(b.units)}u · {fmtMoneyline(b.odds)}
+                    </span>
+                    {status && (
+                      <span
+                        className={`chip ${
+                          status.state === "winning"
+                            ? "bg-win/12 text-win"
+                            : status.state === "losing"
+                              ? "bg-loss/12 text-loss"
+                              : "bg-push/12 text-push"
+                        }`}
+                      >
+                        {b.result === "win"
+                          ? "won"
+                          : b.result === "loss"
+                            ? "lost"
+                            : b.result === "push"
+                              ? "push"
+                              : game.status === "final"
+                                ? status.state === "winning"
+                                  ? "won"
+                                  : status.state === "losing"
+                                    ? "lost"
+                                    : "push"
+                                : status.label}
+                      </span>
+                    )}
+                    {/* A settled bet is history — voiding is only for a bet
+                        that hasn't been graded yet (the trigger refuses it
+                        anyway; no point offering the button). */}
+                    {!b.result && (
+                      <span className="ml-auto">
+                        <VoidBetButton betId={b.id} />
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </section>
 
         {/* Odds table */}

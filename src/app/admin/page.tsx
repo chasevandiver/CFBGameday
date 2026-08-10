@@ -80,9 +80,13 @@ export default async function AdminPage() {
   for (const r of (runRows ?? []) as RunRow[]) {
     if (!latestRun.has(r.job)) latestRun.set(r.job, r);
   }
+  // Server component: this renders once per request, so reading the clock is
+  // the intended behaviour rather than an unstable render.
+  // eslint-disable-next-line react-hooks/purity
+  const renderedAt = Date.now();
   const jobHealth = [...latestRun.values()]
     .map((r) => {
-      const ageH = (Date.now() - Date.parse(r.started_at)) / 3600_000;
+      const ageH = (renderedAt - Date.parse(r.started_at)) / 3600_000;
       const horizon = OVERDUE_HOURS[r.job];
       return {
         ...r,

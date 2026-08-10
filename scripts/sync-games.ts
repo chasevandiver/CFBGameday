@@ -55,11 +55,23 @@ async function run(
   console.log(`Games ${SEASON}${week ? ` week ${week}` : ""}…`);
   // Regular season AND postseason — championship week, bowls, and the CFP were
   // never ingested before (audit #1: "the season ends in November").
-  const [regular, postseason] = await Promise.all([
+  const [regular, postseason, mediaReg, mediaPost] = await Promise.all([
     cfbd.games(SEASON, { week }),
     week === undefined ? cfbd.games(SEASON, { seasonType: "postseason" }) : Promise.resolve([]),
+    // Broadcast assignments, so a pregame card can say what channel it's on.
+    // The scoreboard feed also carries tv, but only once a game is current.
+    cfbd.gameMedia(SEASON, { week }).catch(() => []),
+    week === undefined
+      ? cfbd.gameMedia(SEASON, { seasonType: "postseason" }).catch(() => [])
+      : Promise.resolve([]),
   ]);
   const games = [...regular, ...postseason];
+  // First tv outlet per game; radio/web rows are ignored.
+  const tvByGame = new Map<number, string>();
+  for (const m of [...mediaReg, ...mediaPost]) {
+    if (m.mediaType !== "tv" || !m.outlet) continue;
+    if (!tvByGame.has(m.id)) tvByGame.set(m.id, m.outlet);
+  }
 
   const rows = games.map((g) => ({
     id: g.id,
@@ -79,16 +91,24 @@ async function run(
     // schema default 'scheduled'). The old unconditional map flipped a live
     // game back to 'scheduled' if this ever ran mid-window (audit 07/OPS-12c).
     ...(g.completed ? { status: "final" } : {}),
+    // Never null out a tv the live board already found for us.
+    ...(tvByGame.has(g.id) ? { tv: tvByGame.get(g.id) as string } : {}),
     notes: g.notes,
   }));
 
-  // Two passes because PostgREST bulk rows must share a column set: finals
-  // carry `status`, everything else omits it (new rows take the schema
-  // default; live rows keep whatever the scoreboard wrote).
-  const finalsRows = rows.filter((r) => "status" in r);
-  const otherRows = rows.filter((r) => !("status" in r));
-  for (const batch of chunk(finalsRows, 500)) await sink.upsert("games", batch);
-  for (const batch of chunk(otherRows, 500)) await sink.upsert("games", batch);
+  // PostgREST bulk rows must share a column set, and these rows deliberately
+  // vary: `status` only on finals (so a live game is never knocked back to
+  // scheduled) and `tv` only where the media feed had one (so an outlet the
+  // live board found is never nulled out). Group by shape and send each.
+  const byShape = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const shape = Object.keys(r).sort().join(",");
+    const arr = byShape.get(shape) ?? [];
+    arr.push(r);
+    byShape.set(shape, arr);
+  }
+  for (const group of byShape.values())
+    for (const batch of chunk(group, 500)) await sink.upsert("games", batch);
   if (db) await logCfbdCalls(db, "sync-games", cfbdCallCount());
   console.log(`  ${rows.length} games upserted`);
   return { games: rows.length };
