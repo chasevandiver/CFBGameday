@@ -40,6 +40,7 @@ import {
   type MyBetView,
   type TeamView,
 } from "../../../lib/slate";
+import { clockTime, tzLabel, DEFAULT_TZ } from "../../../lib/kick";
 import { createClient } from "../../../lib/supabase/server";
 import { hasCalibratedTotals } from "../../../model/ratings";
 
@@ -170,6 +171,10 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   const snapshots = (linesRes.data ?? []) as LineSnapshotRow[];
   const consensus = consensusFromSnapshots(snapshots);
   const history = consensusHistory(snapshots, consensus.open);
+  const linesAsOf = snapshots.reduce<string | null>(
+    (max, s) => (max === null || s.captured_at > max ? s.captured_at : max),
+    null,
+  );
   const predictions = (predRes.data ?? []) as PredictionRow[];
   let prediction = predictions.find((p) => p.frozen) ?? predictions[0] ?? null;
   // append-only history: rows from pre-2026.3.0 versions priced totals as a
@@ -454,6 +459,13 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             <h2 className="text-sm text-accent">Market</h2>
             <span className="flex items-center gap-2 text-dim">
               {history.length >= 2 && <Sparkline points={history} width={72} height={20} />}
+              {/* capture time of the newest snapshot — staleness is by design
+                  with the minimal cadence, so it's stated, not implied */}
+              {linesAsOf && (
+                <span className="stat text-[10.5px] text-chalk/40">
+                  as of {clockTime(linesAsOf, DEFAULT_TZ)} {tzLabel(DEFAULT_TZ)}
+                </span>
+              )}
             </span>
           </header>
           <div className="overflow-x-auto">

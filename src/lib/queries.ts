@@ -132,7 +132,7 @@ export async function fetchSlateView(
     .order("start_ts", { ascending: true });
   if (error) throw error;
   if (!games || games.length === 0)
-    return { seasonId, week, seasonType, fetchedAt, games: [] };
+    return { seasonId, week, seasonType, fetchedAt, linesAsOf: null, games: [] };
 
   const gameRows = games as GameRow[];
   const gameIds = gameRows.map((g) => g.id);
@@ -360,6 +360,7 @@ export async function fetchSlateView(
 
   const nullConsensus: LineConsensusRow = {
     game_id: 0,
+    as_of: null,
     spread: null,
     spread_open: null,
     total: null,
@@ -456,7 +457,15 @@ export async function fetchSlateView(
     ];
   });
 
-  return { seasonId, week, seasonType, fetchedAt, games: views };
+  // When the lines on screen were captured, not when the page was rendered —
+  // with the minimal refresh cadence those differ by design, and the header
+  // says which one it is showing.
+  let linesAsOf: string | null = null;
+  for (const c of consensusByGame.values()) {
+    if (c.as_of !== null && (linesAsOf === null || c.as_of > linesAsOf)) linesAsOf = c.as_of;
+  }
+
+  return { seasonId, week, seasonType, fetchedAt, linesAsOf, games: views };
 }
 
 export interface TeamAtsSummary {

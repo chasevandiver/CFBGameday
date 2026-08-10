@@ -202,6 +202,13 @@ export interface SlateData {
   week: number;
   seasonType: "regular" | "postseason";
   fetchedAt: string;
+  /**
+   * Newest line snapshot across the week's games — when the lines on screen
+   * were actually captured. Distinct from fetchedAt on purpose: the page can
+   * be fresh while the lines are hours old (that's the designed cadence), and
+   * a betting product must not dress one up as the other.
+   */
+  linesAsOf: string | null;
   games: GameView[];
 }
 

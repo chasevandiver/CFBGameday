@@ -37,7 +37,7 @@ export default async function AdminPage() {
   const { seasonId } = await fetchCurrentSeasonWeek(supabase);
   const service = createServiceClient();
 
-  const [{ data: allowlist }, { data: joinedUsers }, { data: ratingRows }, { data: adjRows }, cfbdCalls] =
+  const [{ data: allowlist }, { data: joinedUsers }, { data: ratingRows }, { data: adjRows }, cfbdCalls, { data: runRows }] =
     await Promise.all([
       service.from("invite_allowlist").select("email").order("created_at"),
       service.auth.admin.listUsers({ perPage: 100 }),
@@ -48,6 +48,13 @@ export default async function AdminPage() {
         .eq("season_id", seasonId)
         .order("proposed_at", { ascending: false }),
       fetchCfbdCallsThisMonth(service),
+      // job_runs is deny-all (0024); the freshness card reads it through the
+      // service client behind the is_admin gate, like the tables above.
+      service
+        .from("job_runs")
+        .select("job, started_at, status, error")
+        .order("started_at", { ascending: false })
+        .limit(80),
     ]);
 
   const joinedEmails = new Set(
@@ -57,6 +64,38 @@ export default async function AdminPage() {
     email: a.email,
     joined: joinedEmails.has(a.email.toLowerCase()),
   }));
+
+  // Latest run per job, with a per-job "overdue" horizon. This is the absence
+  // check: an errored run is loud in the row's status, a run that never
+  // happened is only visible as a timestamp that fell behind its cadence.
+  const OVERDUE_HOURS: Record<string, number> = {
+    "refresh-lines": 26,
+    "sync-games": 30,
+    "ratings-update": 8 * 24,
+    freeze: 8 * 24,
+    "scoreboard-loop": 8 * 24,
+  };
+  type RunRow = { job: string; started_at: string; status: string; error: string | null };
+  const latestRun = new Map<string, RunRow>();
+  for (const r of (runRows ?? []) as RunRow[]) {
+    if (!latestRun.has(r.job)) latestRun.set(r.job, r);
+  }
+  const jobHealth = [...latestRun.values()]
+    .map((r) => {
+      const ageH = (Date.now() - Date.parse(r.started_at)) / 3600_000;
+      const horizon = OVERDUE_HOURS[r.job];
+      return {
+        ...r,
+        ageH,
+        state:
+          r.status === "error"
+            ? ("error" as const)
+            : horizon !== undefined && ageH > horizon
+              ? ("overdue" as const)
+              : ("ok" as const),
+      };
+    })
+    .sort((a, b) => a.job.localeCompare(b.job));
 
   const ratedIds = new Set((ratingRows ?? []).map((r: { team_id: number }) => r.team_id));
   const { data: teamRows } = await supabase
@@ -139,6 +178,44 @@ export default async function AdminPage() {
             </p>
           </section>
         )}
+
+        <section className="card mb-4 p-4">
+          <h2 className="mb-1 text-sm text-accent">Jobs</h2>
+          <p className="mb-3 text-xs text-chalk/60">
+            Last run per scheduled job. Red is a failed run; amber means the job hasn&rsquo;t run
+            inside its expected cadence — the failure mode that never sends an error anywhere.
+          </p>
+          {jobHealth.length === 0 ? (
+            <p className="text-xs text-dim">
+              No runs recorded yet — rows appear as the scheduled jobs fire.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-1">
+              {jobHealth.map((j) => (
+                <li key={j.job} className="stat flex justify-between gap-3 text-xs">
+                  <span className="text-chalk/80">{j.job}</span>
+                  <span
+                    className={
+                      j.state === "error"
+                        ? "text-loss"
+                        : j.state === "overdue"
+                          ? "text-edge"
+                          : "text-chalk/40"
+                    }
+                    title={j.error ?? undefined}
+                  >
+                    {j.state === "error" ? "failed · " : j.state === "overdue" ? "overdue · " : ""}
+                    {j.ageH < 1
+                      ? `${Math.max(1, Math.round(j.ageH * 60))}m ago`
+                      : j.ageH < 48
+                        ? `${Math.round(j.ageH)}h ago`
+                        : `${Math.round(j.ageH / 24)}d ago`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
 
         <section className="card p-4">
           <h2 className="mb-1 text-sm text-accent">Rating adjustments</h2>

@@ -13,7 +13,7 @@
  */
 
 import { cfbd, cfbdCallCount } from "../src/lib/cfbd";
-import { logCfbdCalls } from "./lib/jobs-core";
+import { logCfbdCalls, recordJobRun } from "./lib/jobs-core";
 import { idleSkip, envDays } from "./lib/idle";
 import { SEASON, chunk, createSink } from "./lib/ingest";
 
@@ -22,6 +22,19 @@ const BURST_WINDOW_MIN = 100;
 async function main() {
   const { sink, db } = createSink();
   const burst = process.argv.includes("--burst");
+  const job = burst ? "refresh-lines-burst" : "refresh-lines";
+  const body = () => run(sink, db, burst);
+  // job_runs is the dead-man's record: a missing row is the only visible
+  // trace of a cron that never fired (audit 07 / migration 0024).
+  const result = db ? await recordJobRun(db, job, body) : await body();
+  console.log(job, JSON.stringify(result));
+}
+
+async function run(
+  sink: ReturnType<typeof createSink>["sink"],
+  db: ReturnType<typeof createSink>["db"],
+  burst: boolean,
+): Promise<Record<string, unknown>> {
   const weekArg = process.argv.indexOf("--week");
   let week = weekArg > -1 ? Number(process.argv[weekArg + 1]) : undefined;
 
@@ -33,7 +46,7 @@ async function main() {
     season: SEASON,
     horizonDays: envDays("LINES_IDLE_DAYS", 7),
   }))) {
-    return;
+    return { skipped: "idle" };
   }
 
   if (week === undefined && db) {
@@ -87,6 +100,7 @@ async function main() {
   for (const batch of chunk(rows, 500)) await sink.insert("line_snapshots", batch);
   if (db) await logCfbdCalls(db, burst ? "refresh-lines-burst" : "refresh-lines", cfbdCallCount());
   console.log(`  ${rows.length} snapshots appended`);
+  return { snapshots: rows.length, week: week ?? null };
 }
 
 main().catch((err) => {

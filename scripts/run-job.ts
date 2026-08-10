@@ -11,6 +11,7 @@ import {
   freezeJob,
   logCfbdCalls,
   ratingsUpdateJob,
+  recordJobRun,
   scoreboardJob,
   syncRankingsJob,
   syncSystemsJob,
@@ -31,7 +32,7 @@ async function main() {
   } as const;
   const job = jobs[task as keyof typeof jobs];
   if (!job) throw new Error(`unknown task "${task}" (${Object.keys(jobs).join("|")})`);
-  const result = await job(db);
+  const result = await recordJobRun(db, task, () => job(db));
   await logCfbdCalls(db, task, cfbdCallCount());
   console.log(task, JSON.stringify(result));
 }

@@ -89,6 +89,48 @@ export function closingConsensus(
 }
 
 /**
+ * Record one job run in job_runs (migration 0024): started/finished/status
+ * plus the job's own summary JSON. The admin freshness card reads it, which
+ * is the absence half of alerting — a run that errors is loud on its own; a
+ * run that never happened is only visible as a missing row here.
+ *
+ * Observability must never break the thing it observes: if the bookkeeping
+ * writes fail, the job still runs and the error still propagates.
+ */
+export async function recordJobRun<T extends Json>(
+  db: SupabaseClient,
+  job: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  let runId: number | null = null;
+  try {
+    const { data } = await db.from("job_runs").insert({ job }).select("id").single();
+    runId = (data as { id: number } | null)?.id ?? null;
+  } catch {
+    /* job_runs unavailable — run the job anyway */
+  }
+  const finish = async (patch: Record<string, unknown>) => {
+    if (runId === null) return;
+    try {
+      await db
+        .from("job_runs")
+        .update({ finished_at: new Date().toISOString(), ...patch })
+        .eq("id", runId);
+    } catch {
+      /* same rule */
+    }
+  };
+  try {
+    const result = await fn();
+    await finish({ status: "ok", detail: result });
+    return result;
+  } catch (err) {
+    await finish({ status: "error", error: err instanceof Error ? err.message : String(err) });
+    throw err;
+  }
+}
+
+/**
  * Meter CFBD usage into api_call_log (one row per call — the table existed
  * since 0001 but nothing ever wrote it). The scoreboard loop throttles and
  * stops off this table, and the Crew admin panel shows the month's total.
