@@ -23,7 +23,9 @@ export function AppNav() {
         }}
       >
         <div className="mx-auto flex h-12 max-w-7xl items-center gap-4 px-4">
-          <Link href="/slate" className="display shrink-0 text-xl leading-none text-accent">
+          {/* The wordmark is the desktop route home — the Home tab is
+              mobile-only, since a tenth tab does not fit this header. */}
+          <Link href="/" className="display shrink-0 text-xl leading-none text-accent">
             The CFB Slate
           </Link>
           <NavTabs />

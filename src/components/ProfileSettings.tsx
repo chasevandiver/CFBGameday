@@ -149,7 +149,9 @@ export function ProfileSettings({
             void createClient()
               .auth.signOut()
               .then(() => {
-                router.push("/slate");
+                // The hub renders signed out, so this lands somewhere real
+                // rather than bouncing off /me's auth redirect.
+                router.push("/");
                 router.refresh();
               });
           }}

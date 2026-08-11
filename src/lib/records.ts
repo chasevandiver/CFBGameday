@@ -154,6 +154,25 @@ export function tallyBy<T extends Wager, K>(
 }
 
 /**
+ * Cumulative units, wager by wager, in the order given.
+ *
+ * The caller sorts — oldest-first for a season curve — because "in order" means
+ * `placed_at` for a bet and kickoff for a pick, and this module has neither.
+ * Undecided and voided wagers contribute nothing but are still dropped rather
+ * than plotted flat, so the curve has one point per settled wager.
+ */
+export function cumulativeUnits(wagers: Iterable<Wager>): number[] {
+  const out: number[] = [];
+  let running = 0;
+  for (const w of wagers) {
+    if (!isDecided(w)) continue;
+    running += payoutOf(w);
+    out.push(running);
+  }
+  return out;
+}
+
+/**
  * League Rules #5: leaderboard sorts on units, tie-broken by ROI, then average
  * CLV. Nulls sort last in both tiebreaks — a player with no priced wagers does
  * not leapfrog one with a measured edge.

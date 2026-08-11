@@ -12,7 +12,16 @@ import { PairPanel, SheetGameRow, SourceCard } from "../../../components/group/B
 import { CreateGroupForm, GroupSwitcher } from "../../../components/group/GroupForms";
 import { MemberCard, WeekHero } from "../../../components/group/GroupHub";
 import { PickBoard } from "../../../components/group/PickBoard";
-import type { GroupWeek } from "../../../lib/groups";
+import {
+  GroupStandingRow,
+  HomeHero,
+  HubEmpty,
+  PositionRow,
+  RecordBlock,
+  SectionHead,
+} from "../../../components/home/HomeHub";
+import type { GroupStanding, Position } from "../../../lib/home";
+import type { GroupSummary, GroupWeek } from "../../../lib/groups";
 import { EMPTY_TALLY, type Tally } from "../../../lib/records";
 import { BetSlip } from "../../../components/slate/BetSlip";
 import { GameCard } from "../../../components/slate/GameCard";
@@ -366,6 +375,90 @@ const POSTPONED: GameView = {
 
 const HERO: GameView = { ...PREGAME, id: 7, home: OHIO_STATE, away: GEORGIA, myPicks: [], weather: null };
 
+/* ---- home hub samples --------------------------------------------------- */
+
+const group = (
+  id: string,
+  name: string,
+  slug: string,
+  kind: GroupSummary["kind"],
+  role: GroupSummary["role"] = "member",
+): GroupSummary => ({
+  id,
+  name,
+  slug,
+  kind,
+  role,
+  visibility: "private",
+  picksHiddenUntilKickoff: false,
+});
+
+const SATURDAY_BOYS = group("g1", "Saturday Boys", "saturday-boys", "pickem", "admin");
+const THE_SHEET = group("g2", "The Sheet", "the-sheet", "betting");
+const WORK_POOL = group("g3", "Work Pool", "work-pool", "pickem");
+
+/** Live sweat, pregame position, and a settled one — the three states a row has. */
+const HOME_POSITIONS: Position[] = [
+  {
+    game: LIVE,
+    picks: [
+      {
+        gameId: LIVE.id,
+        market: "spread",
+        side: "away",
+        line: -3.5,
+        result: null,
+        groupId: "g1",
+        groupName: "Saturday Boys",
+        groupSlug: "saturday-boys",
+      },
+    ],
+    bets: [{ id: 1, gameId: LIVE.id, betType: "total", side: "over", line: 44.5, result: null }],
+  },
+  {
+    game: PREGAME,
+    picks: [
+      {
+        gameId: PREGAME.id,
+        market: "spread",
+        side: "home",
+        line: -1.5,
+        result: null,
+        groupId: "g1",
+        groupName: "Saturday Boys",
+        groupSlug: "saturday-boys",
+      },
+      {
+        gameId: PREGAME.id,
+        market: "total",
+        side: "under",
+        line: 51.5,
+        result: null,
+        groupId: "g3",
+        groupName: "Work Pool",
+        groupSlug: "work-pool",
+      },
+    ],
+    bets: [],
+  },
+  {
+    game: FINAL_GAME,
+    picks: [],
+    bets: [
+      { id: 2, gameId: FINAL_GAME.id, betType: "spread", side: "home", line: -6.5, result: "win" },
+    ],
+  },
+];
+
+const HOME_GROUPS: GroupStanding[] = [
+  { group: SATURDAY_BOYS, place: 2, field: 9, tally: sampleTally(31, 19, 1, 6.4, 0.31) },
+  { group: THE_SHEET, place: 1, field: 5, tally: sampleTally(24, 18, 0, 8.2, 0.22) },
+  { group: WORK_POOL, place: null, field: 12, tally: EMPTY_TALLY },
+];
+
+/** A season that went up, came back, and is still ahead. */
+const HOME_CURVE = [0.9, 1.8, 0.8, 2.6, 1.6, 0.6, 1.5, 3.3, 2.3, 3.2, 4.9, 3.9, 5.7];
+
 export function SlatePreviewClient() {
   const [starred, setStarred] = useState<number[]>([OHIO_STATE.id]);
   const toggle = (id: number) =>
@@ -406,9 +499,88 @@ export function SlatePreviewClient() {
           </div>
         </Section>
 
-        {/* The group screens need a database, a group and a signed-in member
-            before they draw anything, so their two card systems are previewed
-            here against the same sample slate. */}
+        {/* The hub and the group screens need a database, a season, a group and
+            a signed-in member before they draw anything, so their card systems
+            are previewed here against the same sample slate. */}
+        <Section title="Home hub — hero, positions, groups, season">
+          <div className="mx-auto max-w-3xl">
+            <HomeHero
+              week={12}
+              positionCount={HOME_POSITIONS.length}
+              weekGameCount={58}
+              liveCount={0}
+              firstKick={at(20)}
+              signedIn
+              progress={[
+                { name: "Saturday Boys", slug: "saturday-boys", made: 5, target: 8 },
+                { name: "Work Pool", slug: "work-pool", made: 3, target: null },
+              ]}
+            />
+
+            <div className="mt-6">
+              <SectionHead
+                id="preview-positions"
+                title="Riding this week"
+                href="/ledger"
+                linkLabel="Your ledger"
+              />
+              <ul className="flex flex-col gap-2.5">
+                {HOME_POSITIONS.map((p) => (
+                  <PositionRow key={p.game.id} position={p} tz={tz} />
+                ))}
+              </ul>
+            </div>
+
+            <div className="mt-7">
+              <SectionHead
+                id="preview-groups"
+                title="Your groups"
+                href="/groups"
+                linkLabel="All groups"
+              />
+              <ul className="flex flex-col gap-2.5">
+                {HOME_GROUPS.map((s) => (
+                  <GroupStandingRow key={s.group.id} standing={s} />
+                ))}
+              </ul>
+            </div>
+
+            <div className="mt-7">
+              <SectionHead
+                id="preview-season"
+                title="Your season"
+                href="/ledger"
+                linkLabel="Full ledger"
+              />
+              <RecordBlock
+                bets={sampleTally(24, 18, 1, 5.7, 0.19)}
+                picks={sampleTally(31, 19, 1, 6.4, 0.31)}
+                pickGroupCount={2}
+                curve={HOME_CURVE}
+              />
+            </div>
+
+            {/* First run: what a brand-new account actually lands on. */}
+            <div className="mt-7">
+              <SectionHead id="preview-empty" title="First run" />
+              <div className="flex flex-col gap-2.5">
+                <HubEmpty
+                  line="Nothing riding this week yet."
+                  hint="Picks and bets you make off the slate show up here, live."
+                  href="/slate"
+                  cta="Find something"
+                />
+                <HubEmpty
+                  line="You’re not in a group yet."
+                  hint="Create one and you’re its admin, or join with a code."
+                  href="/groups"
+                  cta="Start or join a group"
+                />
+              </div>
+            </div>
+          </div>
+        </Section>
+
         <Section title="Group hub — switcher, week hero, standings">
           <div className="mx-auto max-w-3xl">
             <div className="mb-3">

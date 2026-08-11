@@ -141,6 +141,106 @@ shipping it.
 
 ## Log
 
+### Aug 10 — The site stops opening on the slate
+
+No model change. `DEFAULT_PARAMS` is untouched, no tuner was run, and nothing
+here can move a number.
+
+**`/` was `redirect("/slate")`.** Opening the site dropped you into sixty game
+cards with no answer to the question you opened it with — what have I got
+riding, where do I stand, how is the season going. Every one of those answers
+already existed, spread across `/groups`, each group's hub and `/ledger`, and
+none of them was the first thing you saw. `/` is now a hub that asks the four
+questions in order and then hands off: a hero (the week, what you have on it,
+per-pool pick progress, and one full-width **Go to the slate**), the games you
+have a pick or a bet on, your groups with your place in each, and your season
+record. It is deliberately short — the hub is somewhere you pass through, and
+the primary action says so.
+
+It renders **signed out** rather than redirecting, which keeps the property the
+rest of the site has (`lib/supabase/middleware.ts`: public to browse, RLS does
+the enforcing). A signed-out visitor gets the week, the CTA and a sign-in card;
+nothing personal is fetched at all. The magic-link landing, the PWA `start_url`,
+the header wordmark and the post-sign-out redirect all point at `/` now.
+
+**Home takes a bottom-bar slot; Edges moves to More.** The bar holds four, and
+"where's my stuff" beats a page of model-vs-market disagreements that the
+changelog already demoted to information. Two things this needed:
+`isNavItemActive` prefix-matched, and every pathname starts with `/`, so a naive
+Home entry lights up on every screen in the app — `/` is now matched exactly,
+with `nav-items.test.ts` pinning it. And Home is `mobileOnly`: the desktop strip
+does not fit a tenth tab (it already truncates Receipts at 768px, unchanged by
+this), so on desktop the wordmark is the link home.
+
+**The hub is lazy on purpose.** A signed-out visitor and a brand-new account
+each cost one small `games` query. `fetchSlateView` — fifteen queries — only
+runs once the pick and bet rows say there is a position to draw. The picks come
+from a query across *all* the viewer's pools rather than through
+`fetchSlateView`'s pick layer, which can only be scoped to one group: someone in
+two pools was otherwise going to silently lose half their positions.
+
+**No new arithmetic.** Every number folds through `lib/records.ts`, so the hub's
+tiles and the ledger's are the same numbers by construction rather than by
+agreement. `cumulativeUnits` moved into that module, and the ledger's curve now
+goes through it — which fixes a quiet disagreement: the curve summed
+`payout_units ?? 0` while the Units tile above it synthesized the flat −110 for
+a graded bet with no payout written, so the curve could end somewhere the tile
+didn't. `UnitsCurve` and the stat tile are now `components/` files shared by
+both screens (five other near-identical private tiles in receipts, recap, edges,
+the team page and the game page are left alone — this is the two screens showing
+the *same* numbers agreeing, not a sweep).
+
+**Standings were not consolidated, deliberately.** `groups/[slug]/page.tsx`,
+`groups/[slug]/week/[week]/page.tsx`, `groups/page.tsx` and `ledger/PicksTab.tsx`
+each still re-derive a standings fold inline, and the hub adds a fifth in
+`lib/home.ts`. A shared `fetchGroupStandings` is the obvious next move; doing it
+in the same change as a new screen is four screens of risk on top of one, and
+`docs/DESIGN.md` says build one completely first.
+
+**Seen rendered.** The hub's components are in
+`components/home/HomeHub.tsx` rather than in the page so `/slate/preview`
+renders them against sample data — same reason `group/GroupHub.tsx` is a
+component file. Reviewed there at 375px in both themes (zero horizontal
+overflow), plus the bottom bar and the More sheet on a real route. The
+`web-design-guidelines` pass on the diff found three things, all fixed: straight
+apostrophes in two strings, an 11px pool-progress line that was a link with a
+14px tap target (now a 44px row, per DESIGN.md's hard rule), and a live score
+reading the nullable columns instead of the coalesced ones.
+
+**Checked against the live database.** Worth writing down how, because the
+signed-out branch of `/` issues one `games` query and nothing else — so the
+queries that matter were, at first, covered only by unit tests over fabricated
+objects, and a wrong column would have 500'd the page for every signed-in user
+without anything failing locally.
+
+- Every request `fetchHomeData` issues was run against the live project with a
+  fetch wrapper failing the run on any non-2xx. 23 requests, none of them
+  4xx. The three group-scoped selects are gated on being in a pick'em group and
+  an unauthenticated caller is in none, so they were also issued verbatim
+  against the real group: 200, zero rows, RLS behaving.
+- `buildPositions` was driven off real `GameView`s out of `fetchSlateView`
+  rather than fixtures, and collapsed picks and bets onto the right games.
+- The numbers were then computed independently in SQL and matched: 99 games in
+  week 1, no live games, first kick 2026-08-29T16:00Z; the one real account's 7
+  week-1 picks land on **4** distinct games (so the hero reads 4, not 7 — the
+  per-game collapse); its group has `min_picks_per_week = 0`, so progress reads
+  "7 picks in" with no denominator; nothing in that group has graded, so
+  `placeOf` returns null and the row shows "—" rather than a meaningless "1st of
+  1"; and all 8 of its bets are voided, so the record block collapses to "No
+  bets logged yet" instead of four dashes.
+- `/` itself rendered signed out at 375px in both themes off the real database —
+  "Week 1 · 99 games on the board · first kick Sat 11:00 AM CT", zero console
+  errors, zero horizontal overflow, and Home marked current in the bottom bar
+  and nowhere else.
+
+**Not checked:** `/` rendered while signed in. Auth is magic-link, so a session
+would have to be minted, and faking one means writing auth rows to the
+production database. The query and arithmetic checks above are what stands in
+for it. Also noted while looking: the signed-out hub is a short page, so on a
+tall phone there is a stretch of empty ground between the sign-in card and the
+footer. Left alone — the crew is signed in, and filling it would mean inventing
+content for the one state that doesn't need any.
+
 ### Aug 10 — "8 of 4 picks", and why the game cards stopped being glass
 
 **A board of four games with spreads and totals on is eight picks, and it said
