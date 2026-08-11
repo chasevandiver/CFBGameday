@@ -12,79 +12,43 @@ import { PairPanel, SheetGameRow, SourceCard } from "../../../components/group/B
 import { CreateGroupForm, GroupSwitcher } from "../../../components/group/GroupForms";
 import { MemberCard, WeekHero } from "../../../components/group/GroupHub";
 import { PickBoard } from "../../../components/group/PickBoard";
-import {
-  GroupStandingRow,
-  HomeHero,
-  HubEmpty,
-  PositionRow,
-  RecordBlock,
-  SectionHead,
-} from "../../../components/home/HomeHub";
-import {
-  buildPositions,
-  splitPositions,
-  type GroupStanding,
-  type HomePick,
-  type Position,
-} from "../../../lib/home";
-import type { GroupSummary, GroupWeek } from "../../../lib/groups";
-import { EMPTY_TALLY, type Tally } from "../../../lib/records";
+import { HomeDashboard, HubEmpty, SectionHead } from "../../../components/home/HomeHub";
 import { BetSlip } from "../../../components/slate/BetSlip";
 import { GameCard } from "../../../components/slate/GameCard";
 import { SkeletonCard } from "../../../components/slate/SkeletonCard";
+import {
+  demoGames,
+  demoHomeData,
+  sampleTally,
+  GEORGIA,
+  OHIO_STATE,
+} from "../../../lib/demo-data";
+import type { GroupWeek } from "../../../lib/groups";
 import { DEFAULT_TZ } from "../../../lib/kick";
-import type { GroupBetView, MemberStats } from "../../../lib/tailing";
+import { EMPTY_TALLY, type Tally } from "../../../lib/records";
+import type { GameView } from "../../../lib/slate";
+import type { MemberStats } from "../../../lib/tailing";
 import type { SheetMember } from "../../../lib/betting-groups";
-import type {
-  CrewPickView,
-  GameView,
-  MyBetView,
-  RivalryView,
-  SystemRatingView,
-  TeamView,
-} from "../../../lib/slate";
 
-const logo = (id: number) => `https://a.espncdn.com/i/teamlogos/ncaa/500-dark/${id}.png`;
+/* ---- sample data -------------------------------------------------------- */
 
-const team = (
-  id: number,
-  school: string,
-  abbr: string,
-  conference: string,
-  color: string,
-  rank: number | null,
-  record: string,
-  confRecord: string | null = null,
-): TeamView => ({
-  id,
-  school,
-  abbr,
-  mascot: null,
-  conference,
-  color,
-  altColor: null,
-  logo: logo(id),
-  rank,
-  pollRank: rank,
-  poll: rank === null ? null : "AP",
-  record,
-  confRecord,
-});
+/**
+ * The demo's fixtures, frozen.
+ *
+ * `/demo` anchors its Saturday to whenever someone opens it, which is what
+ * makes a link worth sending. A design harness wants the opposite — the same
+ * pixels every time, so that a diff in a screenshot is a change to a card and
+ * never a change to the clock. Passing a constant `now` gives that, and keeps
+ * one set of teams, lines and predictions behind both surfaces instead of two
+ * that drift.
+ */
+const NOW = Date.parse("2026-11-14T18:00:00Z"); // Sat, noon CT
+const at = (hoursFromNow: number) => new Date(NOW + hoursFromNow * 3600_000).toISOString();
 
-const ALABAMA = team(333, "Alabama", "ALA", "SEC", "#9e1b32", 4, "8-1", "5-1");
-const GEORGIA = team(61, "Georgia", "UGA", "SEC", "#ba0c2f", 2, "9-0", "6-0");
-const OHIO_STATE = team(194, "Ohio State", "OSU", "Big Ten", "#bb0000", 1, "9-0", "6-0");
-const MICHIGAN = team(130, "Michigan", "MICH", "Big Ten", "#00274c", 11, "7-2", "4-2");
-const TEXAS = team(251, "Texas", "TEX", "SEC", "#bf5700", 6, "8-1", "5-1");
-const OKLAHOMA = team(201, "Oklahoma", "OU", "SEC", "#841617", 18, "6-3", "3-3");
-const OREGON = team(2483, "Oregon", "ORE", "Big Ten", "#154733", 3, "9-0", "6-0");
-const PENN_STATE = team(213, "Penn State", "PSU", "Big Ten", "#041e42", 9, "7-2", "4-2");
+const GAMES = demoGames(NOW);
+const game = (id: number): GameView => GAMES.find((g) => g.id === id)!;
 
-// Fixed timestamps so server and client render identically (no Date.now()).
-const BASE = Date.parse("2026-11-14T18:00:00Z"); // Sat, noon CT
-const at = (hoursFromBase: number) => new Date(BASE + hoursFromBase * 3600_000).toISOString();
-
-/** Sample group config + records for the hub preview. */
+/** Sample group config, for the group hub's week hero. */
 const GROUP_WEEK: GroupWeek = {
   markets: ["spread", "total"],
   gameIds: [],
@@ -94,51 +58,6 @@ const GROUP_WEEK: GroupWeek = {
   minPicks: 8,
 };
 
-/** Sample betting-group positions, so the sheet layer is reviewable too. */
-const gb = (
-  betId: number,
-  name: string,
-  side: string,
-  line: number | null,
-  relation: "origin" | "tail" | "fade",
-  over: Partial<GroupBetView> = {},
-): GroupBetView => ({
-  betId,
-  userId: name.toLowerCase(),
-  name,
-  betType: "spread",
-  side,
-  line,
-  odds: -110,
-  units: 1,
-  relation,
-  isViewer: false,
-  record: "12-8",
-  form: "level",
-  sourceName: relation === "origin" ? null : "Jeff",
-  tailedBy: 0,
-  fadedBy: 0,
-  result: null,
-  ...over,
-});
-
-const sampleTally = (
-  wins: number,
-  losses: number,
-  pushes: number,
-  units: number,
-  avgClv: number | null,
-): Tally => ({
-  wins,
-  losses,
-  pushes,
-  decided: wins + losses + pushes,
-  units,
-  staked: wins + losses,
-  roi: units / (wins + losses),
-  avgClv,
-  clvCount: wins + losses,
-});
 const memberStats = (
   userId: string,
   overall: Tally,
@@ -187,279 +106,56 @@ const SAMPLE_SOURCE_2: SheetMember = {
   form: { results: ["loss", "loss", "win", "loss", "loss"], wins: 3, losses: 7, units: -4.1, label: "cold" },
 };
 
-const kick = at(26);
-const now = at(0);
+/* ---- the card states ----------------------------------------------------- */
 
-const base = {
-  week: 11,
-  neutralSite: false,
-  dome: false,
-  myPicks: [],
-  myBets: [] as MyBetView[],
-  crewPicks: [] as CrewPickView[],
-  groupBets: [] as GroupBetView[],
-  situation: null as string | null,
-  lastPlay: null as string | null,
-  possession: null as "home" | "away" | null,
-  weather: null,
-  rivalry: null as RivalryView | null,
-  // SP+/FPI/Elo in the same shape fetchSlateView builds (spec §2.4)
-  systems: [
-    { system: "sp", home: 18.4, away: 21.1 },
-    { system: "fpi", home: 16.9, away: 19.8 },
-    { system: "elo", home: 1888, away: 1934 },
-  ] as SystemRatingView[],
-};
-
+/** Picked and bet, so the card's own pick and bet chips are on screen. */
 const PREGAME: GameView = {
-  ...base,
-  id: 1,
-  startTs: kick,
-  status: "scheduled",
-  period: null,
-  clock: null,
-  tv: "CBS",
-  homePoints: null,
-  awayPoints: null,
-  home: ALABAMA,
-  away: GEORGIA,
-  lines: { spread: -1.5, spreadOpen: -3, total: 51.5, totalOpen: 49.5, mlHome: -125, mlAway: 105 },
-  prediction: {
-    spread: -4.5,
-    total: 54,
-    homeScore: 29.5,
-    awayScore: 24.9,
-    homeWinProb: 0.62,
-    coverProb: null,
-    vegasSpread: -1.5,
-    edge: -3,
-    edgeFlag: "EDGE",
-    consensus: false,
-    frozen: false,
-  },
-  myPicks: [{ market: "spread", side: "home", line: -1.5 }],
-  groupBets: [
-    gb(1, "Jeff", "home", -1.5, "origin", { units: 2, tailedBy: 1, fadedBy: 1, form: "hot" }),
-    gb(2, "Mo", "home", -1.5, "tail"),
-    gb(3, "Sam", "away", -1.5, "fade", { record: "9-11", form: "cold" }),
-  ],
-  crewPicks: [
-    { name: "Jake", side: "home", record: "12-8" },
-    { name: "Mo", side: "home", record: "10-10" },
-    { name: "Sam", side: "away", record: "9-11" },
-  ],
-  weather: { tempF: 44, windMph: 18, precipProb: 20 },
+  ...game(9107),
+  myPicks: [{ market: "spread", side: "home", line: 2.5 }],
 };
 
 const LIVE: GameView = {
-  ...base,
-  id: 2,
-  startTs: now,
-  status: "in_progress",
-  period: 3,
-  clock: "8:42",
-  situation: "2nd & 8 at MICH 14",
-  lastPlay: "Henderson rush up the middle for 12 yds to the MICH 14",
-  possession: "away",
-  tv: "FOX",
-  homePoints: 24,
-  awayPoints: 21,
-  home: MICHIGAN,
-  away: OHIO_STATE,
-  rivalry: { name: "The Game", trophy: null },
+  ...game(9104),
   myPicks: [
-    { market: "spread", side: "away", line: -3.5 },
+    { market: "spread", side: "away", line: 4 },
     { market: "total", side: "over", line: 44.5 },
   ],
   myBets: [{ id: 1, betType: "total", side: "over", line: 44.5 }],
-  groupBets: [
-    gb(4, "Ty", "away", 3.5, "origin", { units: 3, tailedBy: 1 }),
-    gb(5, "You", "away", 3.5, "tail", { isViewer: true, sourceName: "Ty" }),
-  ],
-  crewPicks: [
-    { name: "Jake", side: "away", record: "12-8" },
-    { name: "Ty", side: "away", record: "15-5" },
-    { name: "Sam", side: "home", record: "9-11" },
-  ],
-  lines: { spread: 3.5, spreadOpen: 2.5, total: 44.5, totalOpen: 45.5, mlHome: 150, mlAway: -175 },
-  prediction: {
-    spread: 2.8,
-    total: 46,
-    homeScore: 21.5,
-    awayScore: 24.3,
-    homeWinProb: 0.41,
-    coverProb: null,
-    vegasSpread: 3.5,
-    edge: -0.7,
-    edgeFlag: null,
-    consensus: false,
-    frozen: false,
-  },
 };
 
-const FINAL_GAME: GameView = {
-  ...base,
-  id: 3,
-  startTs: at(-8),
-  status: "final",
-  period: null,
-  clock: null,
-  tv: "ABC",
-  homePoints: 34,
-  awayPoints: 24,
-  home: TEXAS,
-  away: OKLAHOMA,
-  rivalry: { name: "Red River Rivalry", trophy: "Golden Hat" },
-  lines: { spread: -6.5, spreadOpen: -7.5, total: 57.5, totalOpen: 58.5, mlHome: -260, mlAway: 210 },
-  prediction: {
-    spread: -9.2,
-    total: 55.5,
-    homeScore: 33.4,
-    awayScore: 24.2,
-    homeWinProb: 0.74,
-    coverProb: null,
-    vegasSpread: -6.5,
-    edge: -2.7,
-    edgeFlag: "EDGE",
-    consensus: true,
-    frozen: true,
-  },
-};
+const FINAL_GAME: GameView = game(9103);
+const NO_LINE: GameView = game(9112);
 
+/* The two states the demo slate has no room for, kept because a card still has
+   to survive them: overtime, and a game that never kicked. */
 const FINAL_OT: GameView = {
-  ...base,
+  ...game(9102),
   id: 4,
-  startTs: at(-5),
-  status: "final",
   period: 6,
-  clock: null,
-  tv: "NBC",
   homePoints: 30,
   awayPoints: 33,
-  home: PENN_STATE,
-  away: OREGON,
-  lines: { spread: 2.5, spreadOpen: 3.5, total: 52.5, totalOpen: 51.5, mlHome: 125, mlAway: -145 },
-  prediction: {
-    spread: 1.9,
-    total: 49.5,
-    homeScore: 23.8,
-    awayScore: 25.7,
-    homeWinProb: 0.45,
-    coverProb: null,
-    vegasSpread: 2.5,
-    edge: -0.6,
-    edgeFlag: null,
-    consensus: false,
-    frozen: true,
-  },
-};
-
-const NO_LINE: GameView = {
-  ...base,
-  id: 5,
-  startTs: kick,
-  status: "scheduled",
-  period: null,
-  clock: null,
-  tv: null,
-  homePoints: null,
-  awayPoints: null,
-  home: { ...team(2440, "Nevada", "NEV", "Mountain West", "#003366", null, "3-6"), logo: logo(2440) },
-  away: { ...team(21, "San José State", "SJSU", "Mountain West", "#0055a2", null, "5-4"), logo: logo(21) },
-  lines: { spread: null, spreadOpen: null, total: null, totalOpen: null, mlHome: null, mlAway: null },
-  prediction: null,
 };
 
 const POSTPONED: GameView = {
-  ...NO_LINE,
+  ...game(9112),
   id: 6,
   status: "postponed",
-  home: OKLAHOMA,
-  away: PENN_STATE,
   lines: { spread: -2.5, spreadOpen: -2.5, total: 48.5, totalOpen: 48.5, mlHome: -135, mlAway: 115 },
 };
 
-const HERO: GameView = { ...PREGAME, id: 7, home: OHIO_STATE, away: GEORGIA, myPicks: [], weather: null };
+/** The featured treatment, on the biggest pairing available. */
+const HERO: GameView = {
+  ...game(9107),
+  id: 7,
+  home: OHIO_STATE,
+  away: GEORGIA,
+  myPicks: [],
+  weather: null,
+};
 
-/* ---- home hub samples --------------------------------------------------- */
+/* ---- home hub ------------------------------------------------------------ */
 
-const group = (
-  id: string,
-  name: string,
-  slug: string,
-  kind: GroupSummary["kind"],
-  role: GroupSummary["role"] = "member",
-): GroupSummary => ({
-  id,
-  name,
-  slug,
-  kind,
-  role,
-  visibility: "private",
-  picksHiddenUntilKickoff: false,
-});
-
-const SATURDAY_BOYS = group("g1", "Saturday Boys", "saturday-boys", "pickem", "admin");
-const THE_SHEET = group("g2", "The Sheet", "the-sheet", "betting");
-const WORK_POOL = group("g3", "Work Pool", "work-pool", "pickem");
-
-const homePick = (
-  gameId: number,
-  market: HomePick["market"],
-  side: HomePick["side"],
-  line: number | null,
-  group: [string, string, string] = ["g1", "Saturday Boys", "saturday-boys"],
-  result: HomePick["result"] = null,
-): HomePick => ({
-  gameId,
-  market,
-  side,
-  line,
-  result,
-  groupId: group[0],
-  groupName: group[1],
-  groupSlug: group[2],
-});
-
-const WORK: [string, string, string] = ["g3", "Work Pool", "work-pool"];
-
-/**
- * Built through the real `buildPositions` / `splitPositions` rather than
- * hand-assembled, so the preview exercises the same code the page does — the
- * aura in particular reads the picks and bets off the game, which only the
- * builder attaches.
- *
- * Covers the states a row has: a live sweat carrying both layers, a pregame
- * game picked in two different pools, and a settled bet.
- */
-const HOME_ALL: Position[] = buildPositions(
-  [LIVE, PREGAME, FINAL_GAME],
-  [
-    // Picked at 4 and bet at 3 on the same side: the pick is now the worse
-    // number and the bet the better one, which is the whole point of showing
-    // held-against-now on both layers.
-    homePick(LIVE.id, "spread", "away", 4),
-    homePick(PREGAME.id, "spread", "home", -1.5),
-    homePick(PREGAME.id, "total", "under", 51.5, WORK),
-  ],
-  [
-    { id: 1, gameId: LIVE.id, betType: "total", side: "over", line: 44.5, result: null },
-    // The same game held twice at different numbers — the case the split
-    // exists for, and a half-point apart the way a real re-bet is.
-    { id: 3, gameId: LIVE.id, betType: "spread", side: "away", line: 3, result: null },
-    { id: 2, gameId: FINAL_GAME.id, betType: "spread", side: "home", line: -6.5, result: "win" },
-  ],
-);
-const HOME_POSITIONS = splitPositions(HOME_ALL);
-
-const HOME_GROUPS: GroupStanding[] = [
-  { group: SATURDAY_BOYS, place: 2, field: 9, tally: sampleTally(31, 19, 1, 6.4, 0.31) },
-  { group: THE_SHEET, place: 1, field: 5, tally: sampleTally(24, 18, 0, 8.2, 0.22) },
-  { group: WORK_POOL, place: null, field: 12, tally: EMPTY_TALLY },
-];
-
-/** A season that went up, came back, and is still ahead. */
-const HOME_CURVE = [0.9, 1.8, 0.8, 2.6, 1.6, 0.6, 1.5, 3.3, 2.3, 3.2, 4.9, 3.9, 5.7];
+const HOME_DATA = demoHomeData(NOW);
 
 export function SlatePreviewClient() {
   const [starred, setStarred] = useState<number[]>([OHIO_STATE.id]);
@@ -501,106 +197,33 @@ export function SlatePreviewClient() {
           </div>
         </Section>
 
-        {/* The hub and the group screens need a database, a season, a group and
-            a signed-in member before they draw anything, so their card systems
-            are previewed here against the same sample slate. */}
-        {/* The same container and grid the page uses, so the two-column
-            dashboard is reviewable here and not only when signed in. */}
-        <Section title="Home hub — hero, positions, groups, season">
-          <div className="mx-auto max-w-6xl">
-            <HomeHero
-              week={12}
-              positionCount={HOME_ALL.length}
-              weekGameCount={58}
-              liveCount={1}
-              firstKick={at(20)}
-              signedIn
-              progress={[
-                { name: "Saturday Boys", slug: "saturday-boys", made: 5, target: 8 },
-                { name: "Work Pool", slug: "work-pool", made: 3, target: null },
-              ]}
+        {/* The hub needs a database, a season, a group and a signed-in member
+            before it draws anything, so it is previewed here against the same
+            sample slate — through `HomeDashboard`, the component the real page
+            renders, rather than a second copy of its layout. */}
+        <Section title="Home hub">
+          <div className="mx-auto w-full max-w-6xl">
+            <HomeDashboard data={HOME_DATA} signedIn />
+          </div>
+        </Section>
+
+        {/* First run: what a brand-new account actually lands on. The hub above
+            is the full case, so these two are the only states it can't show. */}
+        <Section title="Home hub — first run">
+          <div className="mx-auto flex max-w-6xl flex-col gap-2.5">
+            <SectionHead id="preview-empty" title="Nothing yet" />
+            <HubEmpty
+              line="Nothing riding this week yet."
+              hint="Picks and bets you make off the slate show up here, live."
+              href="/slate"
+              cta="Find something"
             />
-
-            {/* Money and the pool, kept apart — the same split /ledger makes. */}
-            <div className="mt-6 grid gap-7 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] lg:items-start">
-              <div>
-                <SectionHead
-                  id="preview-bets"
-                  title="Your bets"
-                  count="2 open · 2.0u"
-                  href="/ledger"
-                  linkLabel="Ledger"
-                />
-                <ul className="flex flex-col gap-3.5">
-                  {HOME_POSITIONS.bets.map((p) => (
-                    <PositionRow key={`bet-${p.game.id}`} position={p} tz={tz} />
-                  ))}
-                </ul>
-
-                <div className="mt-7">
-                  <SectionHead
-                    id="preview-picks"
-                    title="Pool picks"
-                    count="3 in"
-                    href="/groups"
-                    linkLabel="The board"
-                  />
-                  <ul className="flex flex-col gap-3.5">
-                    {HOME_POSITIONS.picks.map((p) => (
-                      <PositionRow key={`pick-${p.game.id}`} position={p} tz={tz} showPool />
-                    ))}
-                  </ul>
-                </div>
-              </div>
-
-              <div>
-                <SectionHead
-                  id="preview-groups"
-                  title="Your groups"
-                  href="/groups"
-                  linkLabel="All groups"
-                />
-                <ul className="flex flex-col gap-2.5">
-                  {HOME_GROUPS.map((s) => (
-                    <GroupStandingRow key={s.group.id} standing={s} />
-                  ))}
-                </ul>
-
-                <div className="mt-7">
-                  <SectionHead
-                    id="preview-season"
-                    title="Your season"
-                    href="/ledger"
-                    linkLabel="Full ledger"
-                  />
-                  <RecordBlock
-                    bets={sampleTally(24, 18, 1, 5.7, 0.19)}
-                    picks={sampleTally(31, 19, 1, 6.4, 0.31)}
-                    pickGroupCount={2}
-                    curve={HOME_CURVE}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* First run: what a brand-new account actually lands on. */}
-            <div className="mt-7">
-              <SectionHead id="preview-empty" title="First run" />
-              <div className="flex flex-col gap-2.5">
-                <HubEmpty
-                  line="Nothing riding this week yet."
-                  hint="Picks and bets you make off the slate show up here, live."
-                  href="/slate"
-                  cta="Find something"
-                />
-                <HubEmpty
-                  line="You’re not in a group yet."
-                  hint="Create one and you’re its admin, or join with a code."
-                  href="/groups"
-                  cta="Start or join a group"
-                />
-              </div>
-            </div>
+            <HubEmpty
+              line="You’re not in a group yet."
+              hint="Create one and you’re its admin, or join with a code."
+              href="/groups"
+              cta="Start or join a group"
+            />
           </div>
         </Section>
 

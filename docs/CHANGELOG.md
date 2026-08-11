@@ -141,6 +141,62 @@ shipping it.
 
 ## Log
 
+### Aug 11 — A demo you can send someone
+
+No model change. `DEFAULT_PARAMS` untouched, no tuner run.
+
+The site could not show itself to anyone. `/` and `/slate` are public to browse,
+but signed out they render a week header and a sign-in card, because that is
+honestly all a signed-out visitor has. The one surface with sample data,
+`/slate/preview`, is a design harness — sections titled "Card states preview"
+and "Loading skeleton", no actual slate page, and a `notFound()` in production
+because its bet slip would write to the ledger with a bogus season id (audit bug
+#10). So there was no link to send, and nothing to screenshot.
+
+**`/demo` and `/demo/slate` are public, and render the real components.**
+`src/lib/demo-data.ts` supplies the payloads `fetchHomeData` and
+`fetchSlateView` would have returned — twelve games across Friday night and the
+four Saturday windows, posed mid-afternoon: three final, three live, six still
+to come. No session, no Supabase call, no season lookup.
+
+**The Saturday is anchored to whenever the link is opened, not frozen.** The
+design harness freezes its clock to a constant, which is right for comparing
+screenshots and wrong for a link someone opens on a Tuesday in March. The demo
+places every kickoff against the coming Saturday in Eastern time, which is what
+keeps `kickSlot` ("Noon", "Primetime") and the day tabs correct — offsets from
+`now` drift into the wrong window at the wrong hour. The DST arithmetic is real:
+the season straddles the November change, so the ET offset is read off `Intl`
+per instant rather than hardcoded, two-pass because the offset is a function of
+the instant being solved for. `demo-data.test.ts` pins all twelve wall times
+across five opening times including standard time. Game *states* stay fixed
+rather than derived from the clock — derived, the link would show an empty
+pregame board six days a week.
+
+**The hub's layout moved into `HomeDashboard`.** `app/page.tsx` assembled its
+sections inline and `PreviewClient.tsx` had hand-copied that assembly, which is
+the failure mode that makes preview pages worthless a month later. Both now
+render one component; the page is a loader and nothing else. `/slate/preview`
+lost ~250 lines of duplicated fixtures with it and keeps only what the demo has
+no room for — the overtime final, the postponed game, the betting sheet, the
+skeletons.
+
+**Everything that reaches past the page is off in demo mode.** `SlateView` and
+`BetSlip` take a `demo` flag: no `/api/slate` poll, no realtime channel, no week
+selector, and a slip that fills and confirms but never calls `logSlipBets`. The
+poll is the one that mattered — it would have replaced the sample week with the
+real signed-out one about thirty seconds after somebody opened the link.
+Verified in a headless phone viewport: zero `/api/slate` requests over 75s, zero
+POSTs after submitting a two-leg slip, the only socket being Next's own HMR.
+
+**The numbers say they're invented.** A "sample data" chip and one line of text
+sit above each screen, quiet enough to crop out of a screenshot and clear enough
+that nobody mistakes the fake leaderboard for a real season. The bar also
+carries the only link between the two demo screens: the app's own nav points at
+the real pages, so following it out of the demo is a dead end — and for the same
+reason the hub's primary action goes to `/demo/slate`.
+
+Shipped as PR #33.
+
 ### Aug 11 — The aura was below the threshold of perception, and a React Bits round that lost
 
 No model change. `DEFAULT_PARAMS` untouched, no tuner run.

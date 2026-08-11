@@ -44,11 +44,21 @@ export function SlateView({
   initial,
   currentWeek,
   favoriteTeamIds = [],
+  demo = false,
 }: {
   initial: SlateData;
   currentWeek: number;
   /** Server-side favorites (/me) — pinned like local stars, roam across devices */
   favoriteTeamIds?: number[];
+  /**
+   * Sample slate, no database behind it (`/demo`).
+   *
+   * Everything that would reach past this component is switched off: the poll,
+   * the realtime channel, the week selector and the slip's writer. The first
+   * poll is the one that matters — it would replace the sample week with the
+   * real signed-out one and the demo would empty out while somebody watched.
+   */
+  demo?: boolean;
 }) {
   const [data, setData] = useState<SlateData>(initial);
   const [loading, setLoading] = useState(false);
@@ -115,6 +125,7 @@ export function SlateView({
 
   const seasonType = data.seasonType;
   const refresh = useCallback(async (targetWeek: number, showSkeleton: boolean, st?: string) => {
+    if (demo) return;
     if (showSkeleton) setLoading(true);
     const fetchStart = Date.now();
     try {
@@ -151,7 +162,7 @@ export function SlateView({
     } finally {
       if (showSkeleton) setLoading(false);
     }
-  }, []);
+  }, [demo]);
 
   const handleGameUpdate = useCallback((row: GameRow) => {
     liveEventAt.current.set(row.id, Date.now());
@@ -189,13 +200,14 @@ export function SlateView({
     });
   }, [data.games, data.fetchedAt]);
   const { connected } = useGamesRealtime({
-    enabled: (seasonType === "postseason" || week === currentWeek) && anyImminent,
+    enabled: !demo && (seasonType === "postseason" || week === currentWeek) && anyImminent,
     week,
     seasonId: data.seasonId,
     onGameUpdate: handleGameUpdate,
   });
 
   useEffect(() => {
+    if (demo) return;
     // realtime carries scores; the slower connected poll still heals missed
     // events and refreshes lines/predictions
     const ms = connected ? 180_000 : anyLive ? 30_000 : 90_000;
@@ -204,7 +216,7 @@ export function SlateView({
         void refresh(weekRef.current, false, seasonType);
     }, ms);
     return () => clearInterval(id);
-  }, [anyLive, connected, refresh, seasonType]);
+  }, [anyLive, connected, demo, refresh, seasonType]);
 
   // Logging or voiding a bet is the one data change that comes from inside this
   // page rather than from the scoreboard job, and the poll is much too slow to
@@ -217,6 +229,9 @@ export function SlateView({
   );
 
   const changeWeek = (sel: number | "post") => {
+    // Every other week is a fetch, and the demo has nothing to fetch — changing
+    // week would empty the grid and leave it that way.
+    if (demo) return;
     const post = sel === "post";
     const w = post ? 1 : sel;
     const st = post ? "postseason" : "regular";
@@ -410,6 +425,7 @@ export function SlateView({
             seasonType={seasonType}
             currentWeek={currentWeek}
             onChange={changeWeek}
+            disabled={demo}
           />
 
           {/* toggle buttons, not ARIA tabs — no tabpanel/arrow-key contract here */}
@@ -580,7 +596,7 @@ export function SlateView({
         )}
       </div>
 
-      <BetSlip seasonId={data.seasonId} week={week} tz={tz} />
+      <BetSlip seasonId={data.seasonId} week={week} tz={tz} demo={demo} />
     </>
   );
 }
@@ -649,21 +665,25 @@ function WeekSelect({
   seasonType,
   currentWeek,
   onChange,
+  disabled = false,
 }: {
   week: number;
   seasonType: "regular" | "postseason";
   currentWeek: number;
   onChange: (w: number | "post") => void;
+  /** The demo holds one week. A control that changes nothing is worse than none. */
+  disabled?: boolean;
 }) {
   return (
     <label className="relative shrink-0">
       <span className="sr-only">Week</span>
       <select
         value={seasonType === "postseason" ? "post" : week}
+        disabled={disabled}
         onChange={(e) =>
           onChange(e.target.value === "post" ? "post" : Number(e.target.value))
         }
-        className="display h-8 appearance-none rounded-lg border border-chalk/12 bg-surface pl-3 pr-8 text-base text-chalk focus:border-accent/60 focus:outline-none"
+        className="display h-8 appearance-none rounded-lg border border-chalk/12 bg-surface pl-3 pr-8 text-base text-chalk focus:border-accent/60 focus:outline-none disabled:opacity-60"
       >
         {Array.from({ length: 16 }, (_, i) => i + 1).map((w) => (
           <option key={w} value={w}>

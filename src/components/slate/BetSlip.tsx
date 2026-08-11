@@ -37,7 +37,18 @@ function toSharePick(s: SlipSelection, units: number, tz: string): SharePick {
  * to the group chat is the second after placing them. The shared text groups
  * by kickoff, which is how the person reading it decides what to watch.
  */
-export function BetSlip({ seasonId, week, tz = DEFAULT_TZ }: { seasonId: number; week: number; tz?: string }) {
+export function BetSlip({
+  seasonId,
+  week,
+  tz = DEFAULT_TZ,
+  demo = false,
+}: {
+  seasonId: number;
+  week: number;
+  tz?: string;
+  /** `/demo`: the slip fills and confirms, but never reaches the ledger. */
+  demo?: boolean;
+}) {
   const { slip, remove, clear } = useBetSlip();
   const [units, setUnits] = useState<Record<string, string>>({});
   // A tailed selection knows why it exists, so the slip says so by default —
@@ -91,8 +102,11 @@ export function BetSlip({ seasonId, week, tz = DEFAULT_TZ }: { seasonId: number;
       >
         <div className="card flex items-center gap-2 px-3.5 py-2 text-sm">
           <Check size={15} strokeWidth={3} aria-hidden className="shrink-0 text-win" />
-          <span className="text-win">
-            {logged.length} {logged.length === 1 ? "bet" : "bets"} logged
+          <span className={demo ? "text-dim" : "text-win"}>
+            {logged.length} {logged.length === 1 ? "bet" : "bets"}{" "}
+            {/* Short on purpose: the toast is capped at the viewport width and
+                a longer sentence wraps out of its own card. */}
+            {demo ? "— demo, not saved" : "logged"}
           </span>
           {/* The share offer belongs on the confirmation, not three screens
               away on the ledger: this is the second someone wants to send it. */}
@@ -129,6 +143,17 @@ export function BetSlip({ seasonId, week, tz = DEFAULT_TZ }: { seasonId: number;
   const submit = () =>
     startTransition(async () => {
       setError(null);
+      if (demo) {
+        // The slip is worth showing — building one is how a bet gets made here
+        // — but there is no season 2026 game 9104 to write it against, and the
+        // ledger is append-only. So it confirms and keeps nothing.
+        loggedUnits.current = totalUnits;
+        setLogged(slip.map((s) => toSharePick(s, unitsFor(slipKey(s)), tz)));
+        clear();
+        setUnits({});
+        setTagChoice(null);
+        return;
+      }
       const res = await logSlipBets(
         seasonId,
         reasonTag,
