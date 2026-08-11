@@ -195,7 +195,8 @@ carries the only link between the two demo screens: the app's own nav points at
 the real pages, so following it out of the demo is a dead end — and for the same
 reason the hub's primary action goes to `/demo/slate`.
 
-Commit: (this branch)
+Shipped as PR #33.
+
 ### Aug 11 — The aura was below the threshold of perception, and a React Bits round that lost
 
 No model change. `DEFAULT_PARAMS` untouched, no tuner run.
