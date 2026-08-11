@@ -1,10 +1,11 @@
 import { ArrowRight, ClipboardList, Ticket, Tv, Users } from "lucide-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { LiveBadge, LiveStatusChip, PickedChip, ResultChip } from "../slate/chips";
 import { TeamScoreLine } from "../slate/TeamLine";
 import { StatTile } from "../StatTile";
 import { UnitsCurve } from "../UnitsCurve";
-import { heldVsNow, type GroupStanding, type HomeBet, type HomePick, type Position, type WeekProgress } from "../../lib/home";
+import { heldVsNow, splitPositions, type GroupStanding, type HomeBet, type HomeData, type HomePick, type Position, type WeekProgress } from "../../lib/home";
 import { DEFAULT_TZ, kickParts, periodLabel, tzLabel } from "../../lib/kick";
 import { statusForBet, statusForPick, tintFor } from "../../lib/live-status";
 import { formatRecord, type Tally } from "../../lib/records";
@@ -46,6 +47,7 @@ export function HomeHero({
   progress,
   signedIn,
   tz = DEFAULT_TZ,
+  slateHref = "/slate",
 }: {
   week: number;
   positionCount: number;
@@ -55,6 +57,8 @@ export function HomeHero({
   progress: WeekProgress[];
   signedIn: boolean;
   tz?: string;
+  /** Where the primary action goes. `/demo` sends it to the demo's own slate. */
+  slateHref?: string;
 }) {
   const kick = firstKick === null ? null : kickParts(firstKick, tz);
   const headline = signedIn ? positionCount : weekGameCount;
@@ -130,7 +134,7 @@ export function HomeHero({
           {/* Capped, not flex-1: on a tablet the full-width version stretched
               across the whole column and stopped reading as a button. */}
           <Link
-            href="/slate"
+            href={slateHref}
             className="stat inline-flex min-h-12 max-w-sm flex-1 items-center justify-center gap-1.5 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink"
           >
             Go to the slate
@@ -563,6 +567,197 @@ export function RecordBlock({
             counted separately
           </Link>
         </p>
+      )}
+    </>
+  );
+}
+
+/* ---- the whole hub ------------------------------------------------------ */
+
+/**
+ * The hub, assembled: the hero, then what you have riding, then where you
+ * stand.
+ *
+ * This lives here rather than in `app/page.tsx` so that the page is only a
+ * loader — `fetchHomeData` and a session — and everything below it is
+ * presentation that can be handed a `HomeData` from anywhere. `/demo` hands it
+ * one made of sample data, which is the only way to show the hub to somebody
+ * who has no account: signed out, the real page is a week header and a sign-in
+ * card, because that is honestly all it has.
+ *
+ * The alternative was for the demo to re-create this layout against the same
+ * components, which is what `/slate/preview` did — and a second copy of a
+ * dashboard is a copy that is wrong by the second time anyone edits either one.
+ *
+ * The `<main>` landmark stays with the page rather than moving in here: the
+ * design harness renders this inside its own `<main>`, and two of them (both
+ * carrying `id="main"`, which the skip link targets) is a broken page.
+ */
+export function HomeDashboard({
+  data,
+  signedIn,
+  note,
+  slateHref,
+}: {
+  data: HomeData;
+  signedIn: boolean;
+  /** Rendered above the hero. `/demo` puts its sample-data marker here. */
+  note?: ReactNode;
+  /** Where the hero's primary action goes. `/demo` keeps it inside the demo. */
+  slateHref?: string;
+}) {
+  const { bets: betPositions, picks: pickPositions } = splitPositions(data.positions);
+
+  // Naming the pool on every pick is noise when there is only one to name.
+  const showPool = data.groups.filter((g) => g.group.kind === "pickem").length > 1;
+
+  return (
+    <>
+      {note}
+      <HomeHero
+        week={data.week}
+        positionCount={data.positions.length}
+        weekGameCount={data.weekGameCount}
+        liveCount={data.liveCount}
+        firstKick={data.firstKick}
+        progress={data.progress}
+        signedIn={signedIn}
+        slateHref={slateHref}
+      />
+
+      {!signedIn ? (
+        <section className="card mt-6 px-5 py-6 text-center">
+          <p className="text-sm text-chalk">This is where your Saturday lives.</p>
+          <p className="mt-1 text-sm leading-relaxed text-dim">
+            Sign in and this page carries the games you have money or a pick on, your groups and
+            where you sit in them, and your season record.
+          </p>
+          <Link
+            href="/login"
+            className="stat mt-3 inline-flex min-h-11 items-center rounded-lg border border-chalk/20 px-3.5 text-sm text-chalk hover:border-chalk/50"
+          >
+            Sign in
+          </Link>
+        </section>
+      ) : (
+        /* Your action on the left, where you stand on the right — the hub is
+           a column on a phone and a dashboard on anything wider. */
+        <div className="mt-6 grid gap-7 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] lg:items-start">
+          <div>
+            {/* ---- money ---- */}
+            <section aria-labelledby="bets-heading">
+              <SectionHead
+                id="bets-heading"
+                title="Your bets"
+                count={
+                  betPositions.length > 0
+                    ? `${data.openBetCount} open · ${data.openBetUnits.toFixed(1)}u`
+                    : undefined
+                }
+                href="/ledger"
+                linkLabel="Ledger"
+              />
+              {betPositions.length === 0 ? (
+                <HubEmpty
+                  line="No money on this week yet."
+                  hint="Bets you log off the slate show up here, live."
+                  href="/slate"
+                  cta="Find a number"
+                />
+              ) : (
+                <ul className="flex flex-col gap-3.5">
+                  {betPositions.map((p) => (
+                    <PositionRow key={`bet-${p.game.id}`} position={p} />
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            {/* ---- the pool ---- */}
+            <section className="mt-7" aria-labelledby="picks-heading">
+              <SectionHead
+                id="picks-heading"
+                title="Pool picks"
+                count={data.weekPickCount > 0 ? `${data.weekPickCount} in` : undefined}
+                href="/groups"
+                linkLabel="The board"
+              />
+              {pickPositions.length === 0 ? (
+                <HubEmpty
+                  line={
+                    data.progress.length === 0
+                      ? "No pool board this week."
+                      : "You haven’t made your picks yet."
+                  }
+                  hint={
+                    data.progress.length === 0
+                      ? "Your admin sets the games each week."
+                      : "Picks save as you tap, and stay editable until each game kicks."
+                  }
+                  href={data.progress[0] ? `/groups/${data.progress[0].slug}/picks` : "/groups"}
+                  cta={data.progress.length === 0 ? "Your groups" : "Make picks"}
+                />
+              ) : (
+                <ul className="flex flex-col gap-3.5">
+                  {pickPositions.map((p) => (
+                    <PositionRow key={`pick-${p.game.id}`} position={p} showPool={showPool} />
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
+
+          <div>
+            {/* ---- your groups ---- */}
+            <section aria-labelledby="groups-heading">
+              <SectionHead
+                id="groups-heading"
+                title="Your groups"
+                href="/groups"
+                linkLabel="All groups"
+              />
+              {data.groups.length === 0 ? (
+                <HubEmpty
+                  line="You’re not in a group yet."
+                  hint="Create one and you’re its admin, or join with a code."
+                  href="/groups"
+                  cta="Start or join a group"
+                />
+              ) : (
+                <ul className="flex flex-col gap-2.5">
+                  {data.groups.map((s) => (
+                    <GroupStandingRow key={s.group.id} standing={s} />
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            {/* ---- your record ---- */}
+            <section className="mt-7" aria-labelledby="record-heading">
+              <SectionHead
+                id="record-heading"
+                title="Your season"
+                href="/ledger"
+                linkLabel="Full ledger"
+              />
+              {data.bets.decided === 0 && data.picks.decided === 0 ? (
+                <HubEmpty
+                  line="Nothing has graded yet."
+                  hint="Record, units, ROI and CLV land here once your first bet settles."
+                  href="/ledger"
+                  cta="Log a bet"
+                />
+              ) : (
+                <RecordBlock
+                  bets={data.bets}
+                  picks={data.picks}
+                  pickGroupCount={data.pickGroupCount}
+                  curve={data.curve}
+                />
+              )}
+            </section>
+          </div>
+        </div>
       )}
     </>
   );
