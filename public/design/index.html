@@ -3,18 +3,21 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Home hub — design directions</title>
+<title>Design directions — The CFB Slate</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style>
-:root { --bg:#100e0b; --surface:#241d16; --text:#f2eee5; --dim:#a89f90; --accent:#f2b63c; --line:rgba(244,236,220,.13); }
+:root { --bg:#100e0b; --surface:#241d16; --text:#f2eee5; --dim:#a89f90; --accent:#f2b63c; --line:rgba(244,236,220,.13); --edge:#ff8a3d; --win:#34c77b; }
 * { box-sizing: border-box; }
 html { color-scheme: dark; }
 body { margin:0; background:var(--bg); color:var(--text); font-family:"Archivo",system-ui,sans-serif; padding:28px 18px 60px; }
 main { max-width: 46rem; margin: 0 auto; }
 h1 { font-family:"Barlow Condensed",sans-serif; text-transform:uppercase; letter-spacing:.03em; font-size:30px; margin:0 0 6px; color:var(--accent); }
 .lede { color:var(--dim); font-size:14px; line-height:1.65; margin:0 0 28px; }
+.lede b { color: var(--text); font-weight: 500; }
+h3 { font-family:"Barlow Condensed",sans-serif; text-transform:uppercase; letter-spacing:.14em; font-size:13px; margin:34px 0 4px; color:var(--text); }
+.sub { color:var(--dim); font-size:12.5px; line-height:1.6; margin:0 0 14px; }
 ol { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:14px; }
 a.card {
   display:block; text-decoration:none; color:inherit;
@@ -26,17 +29,99 @@ a.card:hover { border-color: rgba(244,236,220,.3); }
 h2 { font-family:"Barlow Condensed",sans-serif; text-transform:uppercase; letter-spacing:.03em; font-size:22px; margin:4px 0 6px; }
 p.d { margin:0; font-size:13.5px; line-height:1.6; color:var(--dim); }
 p.axes { margin:10px 0 0; font-family:"IBM Plex Mono",monospace; font-size:11px; color:rgba(242,238,229,.45); line-height:1.6; }
-footer { margin-top:32px; font-size:12px; color:rgba(242,238,229,.35); line-height:1.7; }
+p.rb { margin:6px 0 0; font-family:"IBM Plex Mono",monospace; font-size:11px; line-height:1.6; color:rgba(242,238,229,.45); }
+p.rb b { color: var(--text); font-weight: 500; }
+p.rb .free { color: var(--win); }
+p.rb .dep { color: var(--edge); }
+.note { font-size:12px; color:rgba(242,238,229,.4); margin:10px 0 0; line-height:1.6; }
+footer { margin-top:36px; padding-top:18px; border-top:1px solid var(--line); font-size:12px; color:rgba(242,238,229,.42); line-height:1.7; }
+footer h4 { font-family:"Barlow Condensed",sans-serif; text-transform:uppercase; letter-spacing:.14em; font-size:12px; margin:0 0 8px; color:var(--dim); }
+footer ul { margin:0 0 16px; padding-left:18px; }
+footer li { margin-bottom:5px; }
+footer code { font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--dim); }
+footer .free { color: var(--win); }
+footer .dep { color: var(--edge); }
 </style>
 </head>
 <body>
 <main>
-  <h1>Home hub — three directions</h1>
+  <h1>Design directions</h1>
   <p class="lede">
-    Same screen, same real content: week 1, the four games you have pool picks on,
-    the six bets, the real lines and the real team colours. One game is shown live
-    with a plausible score so live state is comparable. All three split bets from
-    pool picks into two sections. Open each on your phone and on a tablet.
+    Two rounds of <b>exploration mode</b>, per <code>docs/DESIGN.md</code>. Open
+    them on a phone, in a dim room, at arm's length — that is the environment
+    they are for. Nothing here is app code and nothing here ships.
+  </p>
+
+  <h3>Slate — React Bits round</h3>
+  <p class="sub">
+    Three directions for <b>/slate</b>, each organised around a different
+    <a href="https://reactbits.dev" style="color:var(--accent)">React&nbsp;Bits</a>
+    technique <b>reimplemented in vanilla CSS/JS</b> — which is how the real
+    adoption cost becomes visible before anything is installed. Same seven games
+    in all three, from the app's own fixture set, plus Miami&nbsp;(OH) at Western
+    Michigan as the string-length test. Two games are live at once on purpose.
+  </p>
+
+  <ol>
+    <li><a class="card" href="./slate-motion.html">
+      <span class="k">Start here</span>
+      <h2>What animation adds</h2>
+      <p class="d">
+        Not a direction — the question itself. One moment (Ohio State 21&nbsp;→&nbsp;28)
+        rendered several ways, with a Replay button on every panel and a global
+        motion off switch, so you can watch the same event with and without.
+        Includes a live FPS readout on 70 drifting auras, and a panel showing
+        exactly which techniques ignore the reduced-motion setting.
+      </p>
+      <p class="rb">under test: <b>CountUp</b> vs <b>SplitFlapText</b> vs what ships today</p>
+    </a></li>
+
+    <li><a class="card" href="./slate-a.html">
+      <span class="k">Slate A</span>
+      <h2>Departure Board</h2>
+      <p class="d">
+        The whole Saturday as one mechanical board. Every game is a 44px
+        fixed-width row, rows never reorder, and the only thing that moves is a
+        character flipping inside its own cell. "What's new" lives in a CHANGED
+        strip so it never has to sort the board.
+      </p>
+      <p class="axes">density high · leads with what changed · live = the digit flaps · CTA a slip rail in the board</p>
+      <p class="rb">tests <b>SplitFlapText</b> · <span class="free">zero deps</span> · the only shortlisted component that already handles reduced motion</p>
+    </a></li>
+
+    <li><a class="card" href="./slate-b.html">
+      <span class="k">Slate B</span>
+      <h2>The Wall</h2>
+      <p class="d">
+        A sports bar's wall of TVs. Tile area is proportional to how much the
+        game matters to you, and a game that kicks off physically grows into a
+        bigger screen. The most literal reading of "the most important number is
+        the largest thing on screen" — and the direction most at odds with
+        "no layout shift."
+      </p>
+      <p class="axes">density variable · leads with the shape of the day · live = the tile promotes · CTA inline in the big tile</p>
+      <p class="rb">tests <b>MagicBento</b> <span class="dep">(needs gsap)</span> → replaced by <code>startViewTransition()</code> · <span class="free">zero deps</span></p>
+    </a></li>
+
+    <li><a class="card" href="./slate-c.html">
+      <span class="k">Slate C</span>
+      <h2>The Light</h2>
+      <p class="d">
+        A dark room where only the card nearest the middle of the screen is lit.
+        The lit card gets the 64px score and the only tappable odds cells on the
+        page — so the primary action is wherever the light is, and there is no
+        hero and no floating button at all.
+      </p>
+      <p class="axes">density medium-low · leads with what's under your thumb · live = light · CTA the lit card is the button</p>
+      <p class="rb">tests <b>SpotlightCard</b>, <b>ElectricBorder</b>, <b>GradualBlur</b> · <span class="free">all zero deps</span> · but ElectricBorder needs a hand-written reduced-motion guard</p>
+    </a></li>
+  </ol>
+
+  <h3>Home hub — earlier round</h3>
+  <p class="sub">
+    Three directions for <b>/</b>. Direction A is what shipped.
+    <span class="note" style="display:inline">These predate the naming scheme; they would be
+    <code>hub-a/b/c.html</code> if we ever touch them.</span>
   </p>
 
   <ol>
@@ -76,6 +161,41 @@ footer { margin-top:32px; font-size:12px; color:rgba(242,238,229,.35); line-heig
   </ol>
 
   <footer>
+    <h4>What was deliberately not tested, and why</h4>
+    <ul>
+      <li>
+        <code>Aurora</code>, <code>Particles</code>, <code>Lightning</code>,
+        <code>Ribbons</code> <span class="dep">(need ogl)</span> — animated WebGL
+        on a screen kept open four hours next to a TV. Battery and thermals; the
+        aura-drift measurement in <code>globals.css</code> already says how this
+        ends. See panel 05 of the motion study.
+      </li>
+      <li>
+        <code>ScrollStack</code> <span class="dep">(needs lenis)</span> —
+        smooth-scroll hijacking, a direct violation of "never steal scroll
+        position." The worst fit in the catalog for this product.
+      </li>
+      <li>
+        <code>ClickSpark</code>, <code>Magnet</code>, <code>GlareHover</code>,
+        <code>TiltedCard</code> — pointer-driven. There is no cursor on the only
+        device this product targets.
+      </li>
+      <li>
+        <code>Dock</code>, <code>Stepper</code>, <code>Carousel</code>,
+        <code>Stack</code> <span class="dep">(need motion)</span> — wrong screen.
+        Possibly relevant to the bet slip; not to the slate.
+      </li>
+      <li>
+        <code>GradualBlur</code> — cut as a direction. Its mechanism is 6–10
+        stacked <code>backdrop-filter</code> layers, and
+        <code>globals.css:342-345</code> already argues the opposite case. The
+        real problem it targets is fixed by
+        <code>mask-image: linear-gradient(...)</code> on the scroll container —
+        <span class="free">one line, zero components</span>. Used that way in
+        Slate A's filter bar.
+      </li>
+    </ul>
+
     Mockups only — standalone HTML, no app code, nothing here ships. Per
     docs/DESIGN.md exploration mode.
   </footer>

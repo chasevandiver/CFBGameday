@@ -1,0 +1,740 @@
+<!doctype html>
+<html lang="en" data-direction="slate-a">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Slate A — Departure Board · The CFB Slate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@500;700&family=Barlow+Condensed:wght@700&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================================
+   SLATE A — "Departure Board"
+
+   The whole Saturday as one mechanical board. Every game is a single 44px
+   fixed-width row; rows never reorder; the only thing that ever moves on the
+   page is a character flipping inside its own cell.
+
+   React Bits component under test: SplitFlapText.
+     · Registry deps: NONE (verified against reactbits.dev/r/SplitFlapText-TS-TW).
+     · It is also the only component in the shortlist that ships its own
+       prefers-reduced-motion handling.
+     · Reimplemented below in ~90 lines of CSS + ~50 lines of JS, so the real
+       adoption cost is visible: zero packages, zero React.
+
+   Also answers, without installing anything:
+     · CountUp   (needs `motion`) — and it is not merely avoidable, it is WRONG.
+                 Football scores jump by 3/6/7/8. Tweening 21 -> 28 renders 24
+                 and 26, scores that never existed. See the motion study.
+     · Shuffle   (needs `gsap`)   — same CSS covers it.
+
+   Four axes, vs. the shipped home-hub directions:
+     density    high, uniform — 13-14 rows per viewport, whole slate in ~2 screens
+     leads with what changed, via the CHANGED SINCE strip
+     live       the cell flaps; row wears a flag block + a decaying sodium glow
+     primary    a slip rail rendered as the bottom row of the board itself
+     chrome     collapses the app's four sticky layers into one casing
+
+   THE STRUCTURAL DECISION: the board stays in kickoff order forever. Sorting by
+   recency would reorder rows, which is a scroll-steal. The CHANGED strip
+   delivers "what's new" without moving anything.
+
+   WHAT IT GIVES UP: team colour and logos, the fastest scanning aid the sport
+   has (team hex survives only as a 3px rail). Any sense of occasion — #2 Georgia
+   at #4 Alabama looks exactly like San Jose St at Nevada. And with uniform row
+   heights, "the most important number is the largest thing on screen" has to be
+   carried by the CHANGED strip instead of by size. That is the rule this
+   direction bends, and the thing to judge it on.
+   ========================================================================== */
+
+:root {
+  --board:  #0B0B0C;  /* the casing — neutral black, zero warmth. Machinery,
+                         not a cozy room. This is the deliberate break from the
+                         app's warm #100e0b. */
+  --flap:   #1C1D20;  /* the card face each character sits on */
+  --bone:   #F3F1EA;  /* printed ink — matte off-white, dominant colour onscreen */
+  --gantry: #6E7076;  /* silkscreened labels on the casing */
+  --sodium: #FFB000;  /* sodium-vapour amber. ONLY: a value that changed, and
+                         your money. Nothing else may use it. */
+  --flag:   #E33540;  /* live / postponed — the "DELAYED" lamp */
+
+  /* Deliberately NO GREEN. A real board has one or two ink colours; cover
+     results ride on sodium + check vs flag + cross. That is also what keeps
+     this clear of home-hub direction-b, which is green/red/amber. */
+
+  --hair: rgba(243, 241, 234, 0.10);
+  --row-h: 44px;
+
+  --mono: "Azeret Mono";
+  --cond: "Barlow Condensed";
+}
+
+* { box-sizing: border-box; }
+html { color-scheme: dark; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--board);
+  color: var(--bone);
+  font-family: var(--mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  line-height: 1.3;
+  padding-bottom: calc(96px + env(safe-area-inset-bottom));
+}
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+button, a, [role="button"] { touch-action: manipulation; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---- the casing --------------------------------------------------------- *
+   The app stacks FOUR sticky layers before a game is visible: AppNav 48px,
+   ScoreTicker (dynamic, publishes --ticker-h), the control bar
+   (SlateView.tsx:402-405, top: calc(3rem + var(--ticker-h))), and BottomNav
+   (--bottom-nav-h 64px + safe area). ~200px of chrome.
+
+   This direction's answer: fuse the first three into ONE 76px casing. The
+   ticker stops being a separate strip because the board IS the ticker — every
+   live game is already a row. That reclaims roughly 90px, which is two more
+   games on screen.
+ * ------------------------------------------------------------------------- */
+.casing {
+  position: sticky; top: 0; z-index: 20;
+  background: var(--board);
+  border-bottom: 1px solid var(--hair);
+  padding: 0 10px;
+  padding-top: env(safe-area-inset-top);
+}
+.casing-top {
+  display: flex; align-items: center; gap: 10px;
+  height: 40px;
+}
+.wordmark {
+  font-family: var(--cond), sans-serif; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .14em;
+  font-size: 15px; color: var(--bone);
+}
+.casing-top .spacer { flex: 1; }
+.wk {
+  font-size: 10.5px; letter-spacing: .1em; color: var(--gantry);
+  text-transform: uppercase;
+}
+.live-count {
+  display: inline-flex; align-items: center; gap: 5px;
+  color: var(--flag); font-weight: 700; font-size: 10.5px;
+  letter-spacing: .08em; text-transform: uppercase;
+}
+.lamp {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--flag);
+  box-shadow: 0 0 6px var(--flag);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lamp { animation: lamp 1.6s ease-in-out infinite; }
+}
+@keyframes lamp { 50% { opacity: .35; } }
+
+/* Day tabs + filters, collapsed into one band.
+   The band is 44px because DESIGN.md's 44px tap-target floor is a product
+   constraint, not one of the token rules exploration mode suspends. The pill
+   is visually 26px; the remaining 18px is invisible hit area above and below,
+   which is how you get a dense-looking bar that is still thumb-legal. */
+.casing-bar {
+  display: flex; align-items: center; gap: 4px;
+  height: 44px; overflow-x: auto; scrollbar-width: none;
+  /* The audit's complaint about the shipped nav is that it scrolls with no
+     affordance. One mask, no component: the last chip fades instead of being
+     guillotined by the viewport edge, so it reads as "more this way". This is
+     also the entire useful residue of GradualBlur — see index.html. */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+          mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+.casing-bar::-webkit-scrollbar { display: none; }
+.tab {
+  min-height: 44px; display: inline-flex; align-items: center;
+  padding: 0; border: 0; background: none;
+  white-space: nowrap;
+}
+.tab > span {
+  display: inline-flex; align-items: center; min-height: 26px;
+  padding: 4px 9px; border-radius: 3px;
+  font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--gantry);
+  border: 1px solid transparent;
+}
+.tab[aria-current="true"] > span { color: var(--board); background: var(--bone); font-weight: 700; }
+.tab.filter > span { border-color: var(--hair); }
+.tab.filter[data-on="true"] > span { color: var(--sodium); border-color: rgba(255,176,0,.4); }
+.tab.note { min-height: 44px; color: var(--gantry); font-size: 10.5px;
+            letter-spacing: .09em; text-transform: uppercase; align-items: center;
+            display: inline-flex; padding: 0 4px; }
+
+/* ---- CHANGED SINCE ------------------------------------------------------ *
+   The board never reorders, so "what's new" needs its own home. This strip is
+   it. It is the only place a full school name is spelled out, which is also
+   where the string-length test lands: "Miami (OH) at Western Michigan".
+ * ------------------------------------------------------------------------- */
+.changed {
+  margin: 0; padding: 9px 10px 10px;
+  border-bottom: 1px solid var(--hair);
+  background: linear-gradient(180deg, rgba(255,176,0,.05), transparent);
+}
+.changed h2 {
+  margin: 0 0 6px; font-family: var(--cond), sans-serif; font-weight: 700;
+  font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--sodium);
+}
+.changed ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.changed li {
+  display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: baseline;
+  font-size: 11px; color: var(--bone);
+  padding: 3px 0;
+}
+.changed .what { color: var(--gantry); }
+.changed .what b { color: var(--bone); font-weight: 500; }
+.changed .delta { color: var(--sodium); font-weight: 700; white-space: nowrap; }
+.changed .empty { color: var(--gantry); font-size: 11px; }
+
+/* ---- the board ---------------------------------------------------------- */
+.board { padding: 0 10px; }
+
+/* THE TRUNCATION POLICY, stated up front rather than discovered in production.
+   Fixed columns force this decision, which is one of the direction's virtues.
+   Budget at 390px: 370 usable − 3 rail − 34 time − 46 score − 40 sprd − 32 tot
+   − 5 gaps = 185px for the matchup. "Miami (OH) @ W Michigan" is 23 characters
+   of Azeret Mono at 11.5px ≈ 160px, so the DESIGN.md test case fits with room.
+   Anything longer ellipses, and the full name is always spelled out in the
+   CHANGED strip, which is not width-constrained. */
+.colheads, .row {
+  display: grid;
+  grid-template-columns: 3px 34px minmax(0, 1fr) 46px 40px 32px;
+  gap: 5px;
+  align-items: center;
+}
+/* TV is the least load-bearing column; it is the one that goes first. */
+@media (min-width: 420px) {
+  .colheads, .row { grid-template-columns: 3px 34px minmax(0, 1fr) 46px 40px 32px 34px; }
+  .tv { display: block; }
+}
+.tv { display: none; color: var(--gantry); font-size: 10px; letter-spacing: .04em; }
+
+.colheads {
+  height: 24px;
+  font-family: var(--cond), sans-serif; font-weight: 700;
+  font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--gantry);
+  border-bottom: 1px solid var(--hair);
+  position: sticky; top: calc(84px + env(safe-area-inset-top)); z-index: 10;
+  background: var(--board);
+}
+.colheads .r-score, .colheads .r-sprd, .colheads .r-tot { text-align: right; }
+
+.row {
+  min-height: var(--row-h);
+  border-bottom: 1px solid var(--hair);
+  position: relative;
+  width: 100%;
+  text-align: left;
+  padding: 0;
+}
+.row:last-of-type { border-bottom: 0; }
+
+/* the 3px team rail — all that survives of team colour */
+.rail {
+  width: 3px; height: 26px; border-radius: 1px;
+  background: linear-gradient(180deg, var(--away-c) 0 50%, var(--home-c) 50% 100%);
+}
+
+/* Live rows carry a period AND a clock. Deliberately stacked rather than
+   squeezed onto one line — a stack keeps the time column narrow, which is what
+   buys the matchup column enough room for "Miami (OH) @ W Michigan". */
+.r-status {
+  font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--gantry); font-weight: 700;
+  display: flex; flex-direction: column; align-items: flex-start;
+  line-height: 1.15;
+}
+.r-status .flapset { margin-top: 1px; }
+.row[data-state="live"] .r-status { color: var(--flag); }
+.row[data-state="ppd"]  .r-status { color: var(--flag); }
+.row[data-state="final"] .r-status { color: var(--gantry); }
+
+.row > * { min-width: 0; }
+.r-match { min-width: 0; overflow: hidden; }
+/* display:block matters — text-overflow does not apply to inline elements, so
+   as a <span> this clipped mid-word ("W Michiga") with no ellipsis at all. */
+.r-teams {
+  display: block;
+  font-size: 11.5px; font-weight: 500; color: var(--bone);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.r-teams .at { color: var(--gantry); }
+.r-teams .rk { color: var(--gantry); font-size: 9.5px; vertical-align: .25em; }
+.r-sub {
+  display: block;
+  font-size: 10px; color: var(--gantry); margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.r-score { text-align: right; font-size: 13px; font-weight: 700; }
+/* an unplayed game has no score; the placeholder must not compete with one */
+.r-score .nil, .r-tot .nil, .r-sprd .nil { color: var(--gantry); font-weight: 500; }
+.r-sprd, .r-tot { text-align: right; font-size: 11px; color: var(--bone); }
+.r-tot { color: var(--gantry); }
+.r-sprd .noline { color: var(--gantry); }
+
+/* your money: a sodium bar in the gutter + the spread cell goes sodium */
+.row[data-mine="true"] .r-sprd { color: var(--sodium); font-weight: 700; }
+.row[data-mine="true"]::before {
+  content: ""; position: absolute; left: -10px; top: 8px; bottom: 8px;
+  width: 3px; background: var(--sodium);
+}
+
+/* EDGE gets a tick, not a colour — colour is spent on live and on money */
+.edge { color: var(--gantry); font-weight: 700; letter-spacing: .06em; }
+
+.summary {
+  margin: 0; padding: 12px 0 4px;
+  border-top: 1px solid var(--hair);
+  font-family: var(--cond), sans-serif; font-weight: 700;
+  font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--gantry); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ---- the flap ----------------------------------------------------------- *
+   Each character is a 1ch cell holding two half-cards. The flip is rotateX on
+   two leaves with opposing transform-origins:
+     leaf-a = the OLD top half, falling  (origin bottom, 0deg   -> -90deg)
+     leaf-b = the NEW bottom half, landing (origin top,  90deg  ->   0deg)
+   The static top half is swapped to the NEW glyph before the fall starts, so
+   it is revealed underneath; the static bottom half is swapped after leaf-b
+   lands. Cells stagger by 40ms via --i.
+
+   Cost: ZERO idle. It runs only when a value changes. That is the direct
+   counter-argument to aura-drift, which runs forever and was measured in
+   globals.css at 8fps lost across 70 cards.
+ * ------------------------------------------------------------------------- */
+.flapset { display: inline-flex; gap: 1px; vertical-align: baseline; }
+
+.flap {
+  position: relative; display: inline-block;
+  width: 1ch; height: 18px; perspective: 70px;
+  font-size: inherit; line-height: 18px;
+}
+/* FINDING, caught by rendering rather than by reading: a glyph whose ink sits
+   on the vertical middle of the em box is bisected by the fold hairline and
+   disappears. "−6.5" rendered as " 6.5". Minus, en-dash and plus all die there.
+
+   The fix is what a real board does — punctuation and signs are printed on the
+   casing, not on the flaps. Only digits flap. This is worth knowing before
+   anyone adopts SplitFlapText for a spread column, because the component ships
+   the same fold and will eat the same glyphs. */
+.flap.solid {
+  width: .62ch; background: none;
+}
+.flap.solid .half, .flap.solid .leaf { display: none; }
+.flap.solid .glyph {
+  position: absolute; inset: 0; line-height: 18px; text-align: center;
+  color: var(--bone);
+}
+.flap.solid.sign { width: .85ch; }
+
+.flap .half,
+.flap .leaf {
+  position: absolute; left: 0; right: 0; height: 9px;
+  overflow: hidden; background: var(--flap);
+}
+.flap .half.t, .flap .leaf.a { top: 0; border-radius: 2px 2px 0 0; }
+.flap .half.b, .flap .leaf.b { bottom: 0; border-radius: 0 0 2px 2px; }
+
+/* the hairline that makes it read as two cards rather than one glyph */
+.flap .half.t { border-bottom: 1px solid rgba(0,0,0,.55); }
+
+.flap i {
+  position: absolute; left: 0; width: 100%; height: 18px; line-height: 18px;
+  text-align: center; font-style: normal; color: var(--bone);
+}
+.flap .half.t i, .flap .leaf.a i { top: 0; }
+.flap .half.b i, .flap .leaf.b i { bottom: 0; }
+
+.flap .leaf {
+  opacity: 0; backface-visibility: hidden;
+  transform-style: preserve-3d;
+  box-shadow: 0 2px 5px rgba(0,0,0,.5);
+}
+.flap .leaf.a { transform-origin: center bottom; }
+.flap .leaf.b { transform-origin: center top; }
+
+.flap[data-flip="1"] .leaf.a { opacity: 1; animation: leaf-fall  130ms cubic-bezier(.4,0,.9,.5) both; }
+.flap[data-flip="1"] .leaf.b { opacity: 1; animation: leaf-land  130ms cubic-bezier(.1,.5,.4,1) 130ms both; }
+
+@keyframes leaf-fall { from { transform: rotateX(0deg); }   to { transform: rotateX(-90deg); } }
+@keyframes leaf-land { from { transform: rotateX(90deg); }  to { transform: rotateX(0deg); } }
+
+/* the sodium afterglow — decays over 8s so a glance shows what moved while
+   you were away, without reading anything */
+.flap.glow .half i { color: var(--sodium); }
+.flap.glow .half { box-shadow: inset 0 0 0 1px rgba(255,176,0,.5); }
+@media (prefers-reduced-motion: no-preference) {
+  .flap.glow .half i { animation: cool 8s ease-out forwards; }
+  .flap.glow .half   { animation: cool-box 8s ease-out forwards; }
+}
+@keyframes cool     { from { color: var(--sodium); } to { color: var(--bone); } }
+@keyframes cool-box { from { box-shadow: inset 0 0 0 1px rgba(255,176,0,.5); }
+                      to   { box-shadow: inset 0 0 0 1px rgba(255,176,0,0); } }
+
+/* ---- the slip rail ------------------------------------------------------ *
+   The primary action is the bottom row of the board — same flap type, same
+   grid, so it reads as part of the machine rather than a floating app widget.
+   It sits in the thumb zone and clears the safe area.
+ * ------------------------------------------------------------------------- */
+.slip {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  background: var(--board);
+  border-top: 1px solid var(--hair);
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+  display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;
+}
+.slip-read { min-width: 0; }
+.slip-k {
+  font-family: var(--cond), sans-serif; font-weight: 700;
+  font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--gantry);
+}
+.slip-v { font-size: 12px; font-weight: 700; margin-top: 2px; }
+.slip-v .up { color: var(--sodium); }
+.slip-go {
+  min-height: 44px; padding: 0 16px;
+  background: var(--bone); color: var(--board);
+  font-weight: 700; font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  border-radius: 3px;
+}
+
+/* ---- demo controls (mockup only, not part of the design) ---------------- */
+.demo {
+  position: fixed; right: 10px; z-index: 40;
+  bottom: calc(72px + env(safe-area-inset-bottom));
+  display: flex; gap: 6px;
+}
+.demo button {
+  min-height: 34px; padding: 0 11px; border-radius: 3px;
+  border: 1px solid var(--hair); background: rgba(11,11,12,.9);
+  font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--gantry);
+  backdrop-filter: blur(6px);
+}
+.demo button[data-on="true"] { color: var(--sodium); border-color: rgba(255,176,0,.45); }
+
+footer {
+  padding: 22px 10px 10px; color: var(--gantry); font-size: 10.5px; line-height: 1.7;
+  border-top: 1px solid var(--hair); margin-top: 18px;
+}
+footer a { color: var(--sodium); }
+
+/* global reduced-motion kill switch, mirroring the app's own block */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<header class="casing">
+  <div class="casing-top">
+    <span class="wordmark">The Slate</span>
+    <span class="wk">Wk 11 · Sat Nov 14</span>
+    <span class="spacer"></span>
+    <span class="live-count"><span class="lamp"></span>2 live</span>
+  </div>
+  <div class="casing-bar">
+    <button class="tab" aria-current="false"><span>Thu</span></button>
+    <button class="tab" aria-current="false"><span>Fri</span></button>
+    <button class="tab" aria-current="true"><span>Sat</span></button>
+    <button class="tab filter" data-on="true"><span>My picks</span></button>
+    <button class="tab filter" data-on="false"><span>Ranked</span></button>
+    <button class="tab filter" data-on="false"><span>Edges</span></button>
+    <button class="tab filter" data-on="false"><span>Edges only</span></button>
+  </div>
+</header>
+
+<!-- CHANGED SINCE — the answer to "what's new" that does not reorder anything.
+     Also the only place full school names are spelled out, which is where the
+     DESIGN.md string-length test case actually lands. -->
+<section class="changed" aria-labelledby="chg-h">
+  <h2 id="chg-h">Changed since 3:41</h2>
+  <ul id="chg-list">
+    <li>
+      <span class="what"><b>Miami (OH) at Western Michigan</b> — WMU touchdown</span>
+      <span class="delta">10–13</span>
+    </li>
+    <li>
+      <span class="what"><b>Georgia at Alabama</b> — line moved toward Georgia</span>
+      <span class="delta">−3 → −1.5</span>
+    </li>
+  </ul>
+</section>
+
+<main class="board">
+  <div class="colheads" role="presentation">
+    <span></span>
+    <span>Time</span>
+    <span>Matchup</span>
+    <span class="r-score">Score</span>
+    <span class="r-sprd">Sprd</span>
+    <span class="r-tot">Tot</span>
+    <span class="tv">TV</span>
+  </div>
+
+  <!-- Kickoff order. This never changes. -->
+
+  <button class="row" data-state="final" style="--away-c:#841617; --home-c:#bf5700">
+    <span class="rail"></span>
+    <span class="r-status">Final</span>
+    <span class="r-match">
+      <span class="r-teams"><span class="rk">18</span> Oklahoma <span class="at">@</span> <span class="rk">6</span> Texas</span>
+      <span class="r-sub">11:00A · <span class="edge">EDGE ✓</span> · consensus</span>
+    </span>
+    <span class="r-score"><span class="flapset" data-flap="24–34"></span></span>
+    <span class="r-sprd"><span class="flapset" data-flap="−6.5"></span></span>
+    <span class="r-tot">57.5</span>
+    <span class="tv">ABC</span>
+  </button>
+
+  <button class="row" data-state="final" style="--away-c:#154733; --home-c:#041e42">
+    <span class="rail"></span>
+    <span class="r-status">F/OT</span>
+    <span class="r-match">
+      <span class="r-teams"><span class="rk">3</span> Oregon <span class="at">@</span> <span class="rk">9</span> Penn St</span>
+      <span class="r-sub">12:00P · overtime</span>
+    </span>
+    <span class="r-score"><span class="flapset" data-flap="33–30"></span></span>
+    <span class="r-sprd"><span class="flapset" data-flap="+2.5"></span></span>
+    <span class="r-tot">52.5</span>
+    <span class="tv">NBC</span>
+  </button>
+
+  <!-- The string-length test case, and deliberately LIVE so there are two live
+       games at once — which forces the CHANGED strip to hold more than one row. -->
+  <button class="row" data-state="live" style="--away-c:#c41230; --home-c:#6c4023">
+    <span class="rail"></span>
+    <span class="r-status">Q2 <span class="flapset" data-flap="2:11"></span></span>
+    <span class="r-match">
+      <span class="r-teams">Miami (OH) <span class="at">@</span> W Michigan</span>
+      <span class="r-sub">2:00P · 3rd &amp; 4 at WMU 38</span>
+    </span>
+    <span class="r-score"><span class="flapset" data-flap="10–13"></span></span>
+    <span class="r-sprd"><span class="flapset" data-flap="−2.5"></span></span>
+    <span class="r-tot">45.5</span>
+    <span class="tv">ESPN+</span>
+  </button>
+
+  <button class="row" data-state="live" data-mine="true" style="--away-c:#bb0000; --home-c:#00274c">
+    <span class="rail"></span>
+    <span class="r-status">Q3 <span class="flapset" data-flap="8:42"></span></span>
+    <span class="r-match">
+      <span class="r-teams"><span class="rk">1</span> Ohio St <span class="at">@</span> <span class="rk">11</span> Michigan</span>
+      <span class="r-sub">2:30P · 2nd &amp; 8 at MICH 14 · your over 44.5</span>
+    </span>
+    <span class="r-score" id="osu-score"><span class="flapset" data-flap="21–24"></span></span>
+    <span class="r-sprd"><span class="flapset" data-flap="+3.5"></span></span>
+    <span class="r-tot">44.5</span>
+    <span class="tv">FOX</span>
+  </button>
+
+  <button class="row" data-state="pre" style="--away-c:#ba0c2f; --home-c:#9e1b32">
+    <span class="rail"></span>
+    <span class="r-status">7:30P</span>
+    <span class="r-match">
+      <span class="r-teams"><span class="rk">2</span> Georgia <span class="at">@</span> <span class="rk">4</span> Alabama</span>
+      <span class="r-sub">44° · 18mph wind · <span class="edge">EDGE</span> model −4.5</span>
+    </span>
+    <span class="r-score"><span class="nil">—</span></span>
+    <span class="r-sprd" id="uga-sprd"><span class="flapset" data-flap="−1.5"></span></span>
+    <span class="r-tot">51.5</span>
+    <span class="tv">CBS</span>
+  </button>
+
+  <button class="row" data-state="pre" style="--away-c:#0055a2; --home-c:#003366">
+    <span class="rail"></span>
+    <span class="r-status">9:30P</span>
+    <span class="r-match">
+      <span class="r-teams">San José St <span class="at">@</span> Nevada</span>
+      <span class="r-sub">no line posted</span>
+    </span>
+    <span class="r-score"><span class="nil">—</span></span>
+    <span class="r-sprd"><span class="nil">—</span></span>
+    <span class="r-tot"><span class="nil">—</span></span>
+    <span class="tv nil">—</span>
+  </button>
+
+  <!-- NOTE ON THE FIXTURE: PreviewClient.tsx builds its postponed game as
+       {...NO_LINE, home: OKLAHOMA, away: PENN_STATE}, reusing two teams that
+       already appear above. On a real board a team cannot play twice in a day.
+       Kept verbatim rather than inventing data — what is being reviewed here is
+       the PPD row treatment, not the matchup. -->
+  <button class="row" data-state="ppd" style="--away-c:#041e42; --home-c:#841617">
+    <span class="rail"></span>
+    <span class="r-status">PPD</span>
+    <span class="r-match">
+      <span class="r-teams"><span class="rk">9</span> Penn St <span class="at">@</span> <span class="rk">18</span> Oklahoma</span>
+      <span class="r-sub">postponed — lightning</span>
+    </span>
+    <span class="r-score"><span class="nil">—</span></span>
+    <span class="r-sprd"><span class="flapset" data-flap="−2.5"></span></span>
+    <span class="r-tot">48.5</span>
+    <span class="tv nil">—</span>
+  </button>
+
+  <!-- the summary strip is its own block, not a grid row — in the grid it was
+       squeezed into the matchup column and wrapped to three lines -->
+  <p class="summary">Games 7 · Ranked 5 · Finals 2/7 · Model ATS 4-3 · lines 11:12 AM CT</p>
+</main>
+
+<!-- screen readers get the value, not the two half-cards. Updates are coalesced
+     in JS so eight simultaneous score changes do not fire eight announcements. -->
+<p class="sr" role="status" aria-live="polite" id="announce"></p>
+
+<div class="demo">
+  <button id="btn-motion" data-on="true">Motion: on</button>
+  <button id="btn-replay">Replay</button>
+</div>
+
+<div class="slip">
+  <div class="slip-read">
+    <div class="slip-k">Live · your money</div>
+    <div class="slip-v">2 open · <span class="up" id="slip-units">+1.8u</span> · over 44.5 <span id="slip-need">live</span></div>
+  </div>
+  <button class="slip-go">Slip</button>
+</div>
+
+<footer>
+  Slate A — Departure Board. Testing <b>SplitFlapText</b> (zero registry deps),
+  hand-rolled here in CSS + ~50 lines of JS. Mockups only — standalone HTML, no
+  app code, nothing here ships. Per <code>docs/DESIGN.md</code> exploration mode.
+  · <a href="./index.html">All directions</a>
+</footer>
+
+<script>
+/* ---------------------------------------------------------------------------
+   The flap. ~50 lines, no library, no rAF loop.
+   setFlap(el, next) diffs character by character and animates only the cells
+   whose glyph actually changed — so a 21->28 score flips one cell, not two.
+ --------------------------------------------------------------------------- */
+const REDUCE = window.matchMedia("(prefers-reduced-motion: reduce)");
+let motionOn = true;
+
+function buildFlapset(el) {
+  const text = el.dataset.flap || "";
+  el.textContent = "";
+  [...text].forEach((ch, i) => {
+    const cell = document.createElement("span");
+    const isDigit = /[0-9]/.test(ch);
+    const isSign = /[+−-]/.test(ch);
+    cell.className = "flap" + (isDigit ? "" : " solid") + (isSign ? " sign" : "");
+    cell.style.setProperty("--i", i);
+    if (isDigit) {
+      cell.innerHTML =
+        '<span class="half t"><i></i></span><span class="half b"><i></i></span>' +
+        '<span class="leaf a"><i></i></span><span class="leaf b"><i></i></span>';
+      cell.querySelectorAll("i").forEach((n) => (n.textContent = ch));
+    } else {
+      // printed on the casing, not on a flap — see the FINDING note in the CSS
+      cell.innerHTML = '<span class="glyph"></span>';
+      cell.querySelector(".glyph").textContent = ch;
+    }
+    el.appendChild(cell);
+  });
+  el.setAttribute("aria-hidden", "true");
+}
+
+function setFlap(el, next) {
+  const cells = [...el.querySelectorAll(".flap")];
+  const chars = [...next];
+  chars.forEach((ch, i) => {
+    const cell = cells[i];
+    if (!cell) return;
+
+    if (cell.classList.contains("solid")) {           // printed, never flaps
+      const g = cell.querySelector(".glyph");
+      if (g.textContent !== ch) g.textContent = ch;
+      return;
+    }
+
+    const topI = cell.querySelector(".half.t i");
+    const botI = cell.querySelector(".half.b i");
+    if (topI.textContent === ch) return;              // unchanged: do nothing
+
+    const old = topI.textContent;
+    cell.querySelector(".leaf.a i").textContent = old;
+    cell.querySelector(".leaf.b i").textContent = ch;
+    topI.textContent = ch;                             // revealed as the leaf falls
+
+    const land = () => { botI.textContent = ch; cell.removeAttribute("data-flip"); };
+
+    if (!motionOn || REDUCE.matches) { land(); }
+    else {
+      cell.setAttribute("data-flip", "1");
+      cell.querySelector(".leaf.b").addEventListener("animationend", land, { once: true });
+    }
+    cell.classList.remove("glow");
+    void cell.offsetWidth;                             // restart the 8s decay
+    cell.classList.add("glow");
+  });
+}
+
+document.querySelectorAll(".flapset").forEach(buildFlapset);
+
+/* ---- the scripted moment ------------------------------------------------ *
+   Ohio State 21 -> 28: a touchdown, which is exactly the jump a tween cannot
+   render honestly. Plus a line move on Georgia/Alabama.
+ * ------------------------------------------------------------------------- */
+const scoreEl = document.querySelector("#osu-score .flapset");
+const sprdEl  = document.querySelector("#uga-sprd .flapset");
+const announce = document.getElementById("announce");
+const chgList = document.getElementById("chg-list");
+
+let played = false;
+function replay() {
+  if (played) {                     // reset so it can be watched repeatedly
+    setFlap(scoreEl, "21–24");
+    setFlap(sprdEl, "−1.5");
+    document.getElementById("slip-need").textContent = "live";
+    document.getElementById("slip-units").textContent = "+1.8u";
+    [...chgList.querySelectorAll("[data-added]")].forEach((n) => n.remove());
+    played = false;
+    setTimeout(replay, 700);
+    return;
+  }
+  played = true;
+
+  setFlap(scoreEl, "28–24");
+  setFlap(sprdEl, "−2.5");
+  document.getElementById("slip-need").textContent = "hit ✓";
+  document.getElementById("slip-units").textContent = "+2.6u";
+
+  const li = document.createElement("li");
+  li.setAttribute("data-added", "1");
+  li.innerHTML = '<span class="what"><b>Ohio State at Michigan</b> — Henderson 14 yd TD</span>' +
+                 '<span class="delta">21–24 → 28–24</span>';
+  chgList.prepend(li);
+
+  // one announcement for the whole update, not one per cell
+  announce.textContent = "Ohio State 28, Michigan 24. Third quarter 8:42. Your over 44.5 is now live at 52.";
+}
+
+document.getElementById("btn-replay").addEventListener("click", replay);
+
+const btnMotion = document.getElementById("btn-motion");
+btnMotion.addEventListener("click", () => {
+  motionOn = !motionOn;
+  btnMotion.dataset.on = String(motionOn);
+  btnMotion.textContent = "Motion: " + (motionOn ? "on" : "off");
+});
+
+// play once unprompted so the mechanism is seen without hunting for a button
+setTimeout(replay, 1400);
+</script>
+
+</body>
+</html>
