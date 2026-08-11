@@ -205,11 +205,41 @@ overflow), plus the bottom bar and the More sheet on a real route. The
 `web-design-guidelines` pass on the diff found three things, all fixed: straight
 apostrophes in two strings, an 11px pool-progress line that was a link with a
 14px tap target (now a 44px row, per DESIGN.md's hard rule), and a live score
-reading the nullable columns instead of the coalesced ones. **The page itself
-has not been seen against real data** — this environment has no Supabase
-credentials, so `/` was only exercised far enough to confirm it wires up and
-that its failure mode is the shared "no current season" error boundary every
-data page has.
+reading the nullable columns instead of the coalesced ones.
+
+**Checked against the live database.** Worth writing down how, because the
+signed-out branch of `/` issues one `games` query and nothing else — so the
+queries that matter were, at first, covered only by unit tests over fabricated
+objects, and a wrong column would have 500'd the page for every signed-in user
+without anything failing locally.
+
+- Every request `fetchHomeData` issues was run against the live project with a
+  fetch wrapper failing the run on any non-2xx. 23 requests, none of them
+  4xx. The three group-scoped selects are gated on being in a pick'em group and
+  an unauthenticated caller is in none, so they were also issued verbatim
+  against the real group: 200, zero rows, RLS behaving.
+- `buildPositions` was driven off real `GameView`s out of `fetchSlateView`
+  rather than fixtures, and collapsed picks and bets onto the right games.
+- The numbers were then computed independently in SQL and matched: 99 games in
+  week 1, no live games, first kick 2026-08-29T16:00Z; the one real account's 7
+  week-1 picks land on **4** distinct games (so the hero reads 4, not 7 — the
+  per-game collapse); its group has `min_picks_per_week = 0`, so progress reads
+  "7 picks in" with no denominator; nothing in that group has graded, so
+  `placeOf` returns null and the row shows "—" rather than a meaningless "1st of
+  1"; and all 8 of its bets are voided, so the record block collapses to "No
+  bets logged yet" instead of four dashes.
+- `/` itself rendered signed out at 375px in both themes off the real database —
+  "Week 1 · 99 games on the board · first kick Sat 11:00 AM CT", zero console
+  errors, zero horizontal overflow, and Home marked current in the bottom bar
+  and nowhere else.
+
+**Not checked:** `/` rendered while signed in. Auth is magic-link, so a session
+would have to be minted, and faking one means writing auth rows to the
+production database. The query and arithmetic checks above are what stands in
+for it. Also noted while looking: the signed-out hub is a short page, so on a
+tall phone there is a stretch of empty ground between the sign-in card and the
+footer. Left alone — the crew is signed in, and filling it would mean inventing
+content for the one state that doesn't need any.
 
 ### Aug 10 — "8 of 4 picks", and why the game cards stopped being glass
 
