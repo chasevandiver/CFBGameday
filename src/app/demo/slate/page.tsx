@@ -1,7 +1,7 @@
 import { AppNav } from "../../../components/AppNav";
 import { DemoBar } from "../../../components/DemoBar";
 import { SlateView } from "../../../components/slate/SlateView";
-import { demoSlateData, DEMO_WEEK } from "../../../lib/demo-data";
+import { demoSlateData, demoTickerData, DEMO_WEEK } from "../../../lib/demo-data";
 import { demoNow } from "../../../lib/demo-now";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,9 @@ export default async function DemoSlatePage() {
   const now = await demoNow();
   return (
     <>
-      <AppNav />
+      {/* The demo ticker rides the sample slate — the live one polls /api/ticker,
+          which would put real games (or an empty strip) above invented ones. */}
+      <AppNav demoTicker={demoTickerData(now)} />
       <main id="main" className="w-full flex-1 px-4 pt-4">
         <DemoBar here="slate" />
         <SlateView initial={demoSlateData(now)} currentWeek={DEMO_WEEK} demo />

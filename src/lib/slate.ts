@@ -183,8 +183,7 @@ export function betSideLabel(
  *
  * A game can carry three of them now, but a card has one cover strip and one
  * aura. The spread is the headline where there is one — it is the market with
- * a number to be near, so it is the only one with a bubble tier — and
- * otherwise the first pick made stands in.
+ * a number to be near — and otherwise the first pick made stands in.
  */
 export function headlinePick(picks: MyPickView[]): MyPickView | null {
   return picks.find((p) => p.market === "spread") ?? picks[0] ?? null;

@@ -423,7 +423,7 @@ describe("upsetAlert", () => {
 describe("headlinePick", () => {
   it("leads with the spread when there is one", () => {
     // A card has one cover strip and one aura. The spread is the market with a
-    // number to be near, so it is the only one with a bubble tier.
+    // number to be near, so it is the headline when present.
     const picks = [
       { market: "total" as const, side: "over", line: 51.5 },
       { market: "spread" as const, side: "home", line: -3 },

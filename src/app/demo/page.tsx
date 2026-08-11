@@ -1,7 +1,7 @@
 import { AppNav } from "../../components/AppNav";
 import { DemoBar } from "../../components/DemoBar";
 import { HomeDashboard } from "../../components/home/HomeHub";
-import { demoHomeData } from "../../lib/demo-data";
+import { demoHomeData, demoTickerData } from "../../lib/demo-data";
 import { demoNow } from "../../lib/demo-now";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +28,9 @@ export default async function DemoHubPage() {
   const now = await demoNow();
   return (
     <>
-      <AppNav />
+      {/* The demo ticker rides the sample slate — the live one polls /api/ticker,
+          which would put real games (or an empty strip) above invented ones. */}
+      <AppNav demoTicker={demoTickerData(now)} />
       <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
         <HomeDashboard
           data={demoHomeData(now)}
@@ -37,6 +39,9 @@ export default async function DemoHubPage() {
           // Otherwise the hub's primary action walks out of the demo and into
           // the real signed-out slate, the one screen this exists to avoid.
           slateHref="/demo/slate"
+          // Every other href on the hub is a dead end here — invented game ids,
+          // and /ledger and /groups signed out are that same sign-in card.
+          demo
         />
       </main>
     </>

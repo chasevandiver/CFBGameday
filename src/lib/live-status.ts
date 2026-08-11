@@ -93,7 +93,7 @@ export function statusForPick(
 
 /* ---- cover strip (pick'em) --------------------------------------------- */
 
-export type CoverTier = "covering" | "bubble" | "losing";
+export type CoverTier = "covering" | "push" | "losing";
 
 export interface PickCoverView {
   tier: CoverTier;
@@ -114,12 +114,12 @@ const fmtHalves = (n: number): string => {
 };
 
 /**
- * The cover strip's view of a live pick. Bubble = within a field goal of the
- * number, on either side of it — the state where one score flips the result.
- *
- * The tier is the colour and the sort key (see liveUrgency); it is deliberately
- * not the wording. `word` reports which side of the number you are on, and the
- * amber reserved for `bubble` reports how close that number is.
+ * The cover strip's view of a live pick. The tier is the colour, and it tracks
+ * the sign alone: green covering, red not, amber only when the game sits
+ * exactly on the number. There used to be a third "bubble" tier (within a
+ * field goal, either side) but it made amber ambiguous — a glance couldn't
+ * tell "close" from "push", which is the one distinction the colour exists to
+ * make. How close the number is now lives in `margin`, not in the hue.
  */
 export function pickCoverView(
   market: PickMarket,
@@ -131,9 +131,7 @@ export function pickCoverView(
   if (market === "straight_up") {
     if (side !== "home" && side !== "away") return null;
     const margin = side === "home" ? homePts - awayPts : awayPts - homePts;
-    // One score is the sweat for a winner pick — there is no number to be
-    // near, so the bubble is "a touchdown and two flips it".
-    const tier: CoverTier = Math.abs(margin) <= 8 ? "bubble" : margin > 0 ? "covering" : "losing";
+    const tier: CoverTier = margin === 0 ? "push" : margin > 0 ? "covering" : "losing";
     return {
       tier,
       word: margin === 0 ? "Tied" : margin > 0 ? "Winning" : "Losing",
@@ -143,13 +141,15 @@ export function pickCoverView(
   }
   if (line === null) return null;
   if (market === "spread" && (side === "home" || side === "away")) {
-    const margin = side === "home" ? homePts - awayPts : awayPts - homePts;
-    const cm = margin + line;
-    const tier: CoverTier = Math.abs(cm) <= 3 ? "bubble" : cm > 0 ? "covering" : "losing";
-    // The word tracks the sign, not the tier — amber already says "bubble", so
-    // saying it again spends the strip's one loud slot on what the colour has
-    // covered. Which side of the number you're on is the part colour can't tell
-    // you: green COVERING is comfortable, amber COVERING +½ is a knife edge.
+    // Same cover formula as the grader and the chips. This branch used to
+    // hand-roll `sideMargin + line`, which reads the home-perspective
+    // `line_at_pick` with the sign flipped for away picks — the strip could
+    // say "Covering" while the chip on the same card said "Down 7 ATS".
+    const cm = coverMargin(side, line, homePts, awayPts);
+    const tier: CoverTier = cm === 0 ? "push" : cm > 0 ? "covering" : "losing";
+    // The margin rides along with the word — the colour says which side of the
+    // number you are on, the margin says how close: green COVERING +10½ is
+    // comfortable, green COVERING +½ is a knife edge.
     const word = cm === 0 ? "On the number" : cm > 0 ? "Covering" : "Not covering";
     return {
       tier,
@@ -160,13 +160,8 @@ export function pickCoverView(
   }
   if (market === "total" && (side === "over" || side === "under")) {
     const st = liveTotalStatus(side, line, homePts, awayPts);
-    const room = line - (homePts + awayPts);
     const tier: CoverTier =
-      st.state === "push" || (!st.clinched && Math.abs(room) <= 3)
-        ? "bubble"
-        : st.state === "winning"
-          ? "covering"
-          : "losing";
+      st.state === "push" ? "push" : st.state === "winning" ? "covering" : "losing";
     return {
       tier,
       word: st.state === "winning" ? "Winning" : st.state === "losing" ? "Losing" : "On the number",
@@ -177,13 +172,52 @@ export function pickCoverView(
   return null;
 }
 
-/** Feed sort key for live games: bubble sweats first, then losing, covering, no pick. */
+/**
+ * Feed sort key for live games: closest sweats first. The old key led with the
+ * bubble tier; with amber now meaning push alone, closeness is measured
+ * directly — distance from the number, ascending, so an on-the-number game
+ * sorts hardest. At equal distance a losing position edges out a covering one,
+ * and games you have nothing on go last.
+ *
+ * Reads the same stake the aura does — a ledger bet first, a pick otherwise —
+ * so the card the sort leads with is the card whose glow is loudest.
+ */
 export function liveUrgency(g: GameView): number {
+  const NOTHING_RIDING = 1_000_000;
+  const h = g.homePoints ?? 0;
+  const a = g.awayPoints ?? 0;
+
+  const spreadDistance = (side: "home" | "away", line: number) =>
+    Math.abs(coverMargin(side, line, h, a));
+  const totalDistance = (side: "over" | "under", line: number) => {
+    // a clinched total can't flip, so it stops being a sweat entirely
+    const st = liveTotalStatus(side, line, h, a);
+    return st.clinched ? NOTHING_RIDING / 2 : Math.abs(line - (h + a));
+  };
+
+  for (const bet of g.myBets) {
+    const status = statusForBet(bet, h, a);
+    if (!status) continue;
+    const distance =
+      bet.betType === "spread" && (bet.side === "home" || bet.side === "away") && bet.line !== null
+        ? spreadDistance(bet.side, bet.line)
+        : bet.betType === "total" && (bet.side === "over" || bet.side === "under") && bet.line !== null
+          ? totalDistance(bet.side, bet.line)
+          : Math.abs(h - a);
+    return distance * 2 + (status.state === "winning" ? 1 : 0);
+  }
+
   const my = headlinePick(g.myPicks);
-  if (!my) return 3;
-  const v = pickCoverView(my.market, my.side, my.line, g.homePoints ?? 0, g.awayPoints ?? 0);
-  if (!v) return 3;
-  return v.tier === "bubble" ? 0 : v.tier === "losing" ? 1 : 2;
+  if (!my) return NOTHING_RIDING;
+  const v = pickCoverView(my.market, my.side, my.line, h, a);
+  if (!v) return NOTHING_RIDING;
+  const distance =
+    my.market === "spread" && (my.side === "home" || my.side === "away") && my.line !== null
+      ? spreadDistance(my.side, my.line)
+      : my.market === "total" && (my.side === "over" || my.side === "under") && my.line !== null
+        ? totalDistance(my.side, my.line)
+        : Math.abs(h - a);
+  return distance * 2 + (v.tier === "covering" ? 1 : 0);
 }
 
 /**
@@ -212,21 +246,21 @@ export function statusForBet(
 
 /**
  * What the card's ambient glow is saying:
- *   covering / losing / bubble — you have money or a pick on this game
- *   teams                      — you don't, so the aura is the team colours
+ *   covering / losing / push — you have money or a pick on this game
+ *   teams                    — you don't, so the aura is the team colours
  *
  * Ledger bets outrank pick'em picks: if you have both, the one with real
- * units on it decides the colour. Pushes and ungraded states fall back to
- * "teams" rather than inventing a verdict.
+ * units on it decides the colour. The verdict is sign-based: green covering,
+ * red losing, and amber reserved for a game sitting exactly on the number —
+ * live or graded, a push is the one state that is neither. Ungraded states
+ * fall back to "teams" rather than inventing a verdict.
  */
-export type CardTint = "covering" | "losing" | "bubble" | "teams";
+export type CardTint = "covering" | "losing" | "push" | "teams";
 
-const tierFromMargin = (coverMargin: number, live: boolean): CardTint => {
-  // the bubble only exists while the game can still flip it
-  if (live && Math.abs(coverMargin) <= 3) return "bubble";
+const tierFromMargin = (coverMargin: number): CardTint => {
   if (coverMargin > 0) return "covering";
   if (coverMargin < 0) return "losing";
-  return "teams";
+  return "push";
 };
 
 export function tintFor(g: GameView): CardTint {
@@ -239,31 +273,21 @@ export function tintFor(g: GameView): CardTint {
   for (const bet of g.myBets) {
     const status = statusForBet(bet, g.homePoints, g.awayPoints);
     if (!status) continue;
-    if (status.state === "push") return "teams";
-    if (status.state === "winning") return live && !status.clinched ? nearNumber(g, bet) : "covering";
-    return live && !status.clinched ? nearNumber(g, bet) : "losing";
+    if (status.state === "push") return "push";
+    return status.state === "winning" ? "covering" : "losing";
   }
 
   const my = headlinePick(g.myPicks);
   if (my && (my.side === "home" || my.side === "away")) {
-    const margin = my.side === "home" ? g.homePoints - g.awayPoints : g.awayPoints - g.homePoints;
     // Straight-up has no number to be near, so the raw margin is the verdict.
-    if (my.market === "straight_up") return tierFromMargin(margin, live);
-    if (my.line !== null) return tierFromMargin(margin + my.line, live);
+    // Spreads go through coverMargin — lines are home-perspective, and the
+    // old `sideMargin + line` here glowed away picks the wrong colour.
+    if (my.market === "straight_up") {
+      const margin = my.side === "home" ? g.homePoints - g.awayPoints : g.awayPoints - g.homePoints;
+      return tierFromMargin(margin);
+    }
+    if (my.line !== null)
+      return tierFromMargin(coverMargin(my.side, my.line, g.homePoints, g.awayPoints));
   }
   return "teams";
-}
-
-/** Spread bets get the bubble tier; other bet types just win or lose. */
-function nearNumber(g: GameView, bet: MyBetView): CardTint {
-  if (bet.betType !== "spread" || bet.line === null) {
-    return statusForBet(bet, g.homePoints ?? 0, g.awayPoints ?? 0)?.state === "winning"
-      ? "covering"
-      : "losing";
-  }
-  const margin =
-    bet.side === "home"
-      ? (g.homePoints ?? 0) - (g.awayPoints ?? 0)
-      : (g.awayPoints ?? 0) - (g.homePoints ?? 0);
-  return tierFromMargin(margin + bet.line, true);
 }

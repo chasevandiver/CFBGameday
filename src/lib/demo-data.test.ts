@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { demoGames, demoHomeData, demoSaturday, demoSlateData } from "./demo-data";
 import { splitPositions } from "./home";
+import { tintFor } from "./live-status";
 import { dayTabLabels, kickSlot } from "./kick";
 
 /** ET wall clock for an instant, e.g. "Sat 15:30". */
@@ -134,5 +135,21 @@ describe("demoSlateData", () => {
     const slate = demoSlateData(now);
     expect(Date.parse(slate.linesAsOf!)).toBeLessThan(Date.parse(slate.fetchedAt));
     expect(slate.games).toHaveLength(12);
+  });
+
+  it("carries the signed-in viewer's layers, like the hub does", () => {
+    // The demo poses a signed-in viewer; a bare slate would never show a cover
+    // strip, a verdict aura, or anything for the My bets / My picks filters.
+    const byId = new Map(demoSlateData(WHEN["midweek, DST"]).games.map((g) => [g.id, g]));
+    expect(byId.get(9104)!.myPicks.length).toBeGreaterThan(0);
+    expect(byId.get(9104)!.myBets.length).toBeGreaterThan(0);
+    expect(byId.get(9103)!.myPicks).toHaveLength(0);
+  });
+
+  it("lands the three live games one on each verdict colour", () => {
+    const byId = new Map(demoSlateData(WHEN["midweek, DST"]).games.map((g) => [g.id, g]));
+    expect(tintFor(byId.get(9104)!)).toBe("losing");
+    expect(tintFor(byId.get(9105)!)).toBe("push");
+    expect(tintFor(byId.get(9106)!)).toBe("covering");
   });
 });

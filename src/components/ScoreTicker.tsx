@@ -5,16 +5,32 @@
  * nothing outside game windows — /api/ticker only returns live games, recent
  * finals, and imminent kickoffs. Polls every 60s and rides the realtime
  * channel for instant score updates while anything is live.
+ *
+ * A signed-in viewer's games carry `mine`: a verdict-coloured underline in the
+ * aura's vocabulary (green covering, red not, amber on the number, plain chalk
+ * for action that has no verdict yet), so the strip reads like a broadcast
+ * ticker that knows where your money is.
+ *
+ * In demo mode (`demo` prop) the ticker is the sample slate's: no fetch, no
+ * realtime channel — nothing that reaches past the page — and the chips don't
+ * link, because /game/:id doesn't exist for invented games.
  */
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { periodLabel } from "../lib/kick";
-import type { TickerData } from "../lib/ticker";
+import type { TickerData, TickerGame, TickerMine } from "../lib/ticker";
 import { useGamesRealtime } from "../lib/use-games-realtime";
 
-export function ScoreTicker() {
-  const [data, setData] = useState<TickerData | null>(null);
+const MINE_WORDS: Record<TickerMine, string> = {
+  covering: "Your side is covering.",
+  losing: "Your side is not covering.",
+  push: "Your side is on the number.",
+  on: "You have action on this game.",
+};
+
+export function ScoreTicker({ demo }: { demo?: TickerData }) {
+  const [data, setData] = useState<TickerData | null>(demo ?? null);
   const stripRef = useRef<HTMLDivElement>(null);
 
   // The ticker is sticky under the nav; anything else sticky (the slate's
@@ -33,7 +49,9 @@ export function ScoreTicker() {
     };
   }, [visible]);
 
+  const isDemo = demo !== undefined;
   useEffect(() => {
+    if (isDemo) return; // demo data arrived as a prop; nothing to fetch
     let cancelled = false;
     // async subscription to an external system: state updates land in the
     // fetch callback, never synchronously in the effect body
@@ -53,11 +71,11 @@ export function ScoreTicker() {
       cancelled = true;
       clearInterval(id);
     };
-  }, []);
+  }, [isDemo]);
 
   const anyLive = data?.games.some((g) => g.status === "in_progress") ?? false;
   useGamesRealtime({
-    enabled: anyLive && data !== null,
+    enabled: !isDemo && anyLive && data !== null,
     week: data?.week ?? 0,
     seasonId: data?.seasonId ?? 0,
     onGameUpdate: (row) => {
@@ -91,41 +109,62 @@ export function ScoreTicker() {
       className="sticky top-12 z-[15] border-b border-chalk/10 bg-background/85 backdrop-blur-md"
     >
       <div className="scroll-thin mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 py-1">
-        {data.games.map((g) => {
-          const live = g.status === "in_progress";
-          const final = g.status === "final";
-          return (
+        {data.games.map((g) =>
+          isDemo ? (
+            <span key={g.id} className={chipClass(g.mine)}>
+              <ChipBody g={g} />
+            </span>
+          ) : (
             <Link
               key={g.id}
               href={`/game/${g.id}`}
-              className="stat flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[11px] leading-none text-dim transition-colors hover:bg-surface hover:text-chalk"
+              className={`${chipClass(g.mine)} transition-colors hover:bg-surface hover:text-chalk`}
             >
-              {live && (
-                <span aria-label="Live" className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-live" />
-              )}
-              <span className="font-medium text-chalk">
-                {g.awayAbbr} {live || final ? (g.awayPoints ?? 0) : ""}
-              </span>
-              <span className="text-chalk/30">–</span>
-              <span className="font-medium text-chalk">
-                {g.homeAbbr} {live || final ? (g.homePoints ?? 0) : ""}
-              </span>
-              <span className="text-[10px] uppercase">
-                {live
-                  ? `${periodLabel(g.period)}${g.clock ? ` ${g.clock}` : ""}`
-                  : final
-                    ? "Final"
-                    : g.startTs
-                      ? new Intl.DateTimeFormat("en-US", {
-                          hour: "numeric",
-                          minute: "2-digit",
-                        }).format(new Date(g.startTs))
-                      : ""}
-              </span>
+              <ChipBody g={g} />
             </Link>
-          );
-        })}
+          ),
+        )}
       </div>
     </div>
+  );
+}
+
+/* The mine underline is a box-shadow, not a border, so a verdict appearing
+   mid-drive cannot shift the strip's layout by a pixel. */
+const chipClass = (mine: TickerGame["mine"]): string =>
+  `stat flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[11px] leading-none text-dim ${
+    mine ? `ticker-mine-${mine}` : ""
+  }`;
+
+function ChipBody({ g }: { g: TickerGame }) {
+  const live = g.status === "in_progress";
+  const final = g.status === "final";
+  return (
+    <>
+      {live && (
+        <span aria-label="Live" className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-live" />
+      )}
+      {/* colour is never alone: the underline's read, in words */}
+      {g.mine && <span className="sr-only">{MINE_WORDS[g.mine]}</span>}
+      <span className="font-medium text-chalk">
+        {g.awayAbbr} {live || final ? (g.awayPoints ?? 0) : ""}
+      </span>
+      <span className="text-chalk/30">–</span>
+      <span className="font-medium text-chalk">
+        {g.homeAbbr} {live || final ? (g.homePoints ?? 0) : ""}
+      </span>
+      <span className="text-[10px] uppercase">
+        {live
+          ? `${periodLabel(g.period)}${g.clock ? ` ${g.clock}` : ""}`
+          : final
+            ? "Final"
+            : g.startTs
+              ? new Intl.DateTimeFormat("en-US", {
+                  hour: "numeric",
+                  minute: "2-digit",
+                }).format(new Date(g.startTs))
+              : ""}
+      </span>
+    </>
   );
 }

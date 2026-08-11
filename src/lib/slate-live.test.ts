@@ -60,33 +60,35 @@ describe("fieldPosition", () => {
 });
 
 describe("pickCoverView", () => {
-  it("grades a comfortable spread cover", () => {
-    // home -6.5, up 28-14 → covering by 7½; margin stays quiet on covering
+  it("grades a comfortable spread cover, margin included", () => {
+    // home -6.5, up 28-14 → covering by 7½
     const v = pickCoverView("spread", "home", -6.5, 28, 14)!;
     expect(v.tier).toBe("covering");
     expect(v.word).toBe("Covering");
+    expect(v.margin).toBe("+7½");
   });
 
-  it("flags the bubble within a field goal of the number, either side", () => {
-    expect(pickCoverView("spread", "home", -2.5, 24, 23)!.tier).toBe("bubble"); // −1½
-    expect(pickCoverView("spread", "home", -2.5, 27, 23)!.tier).toBe("bubble"); // +1½
+  it("tiers by sign alone — a knife edge is still green or red", () => {
+    expect(pickCoverView("spread", "home", -2.5, 24, 23)!.tier).toBe("losing"); // −1½
+    expect(pickCoverView("spread", "home", -2.5, 27, 23)!.tier).toBe("covering"); // +1½
     expect(pickCoverView("spread", "home", -2.5, 30, 23)!.tier).toBe("covering"); // +4½
   });
 
-  it("words a bubble by its sign, leaving the tier's amber to say 'bubble'", () => {
+  it("keeps the margin as the closeness read now that amber no longer is", () => {
     const ahead = pickCoverView("spread", "home", -2.5, 27, 23)!; // +1½
-    expect(ahead.tier).toBe("bubble");
+    expect(ahead.tier).toBe("covering");
     expect(ahead.word).toBe("Covering");
     expect(ahead.margin).toBe("+1½");
 
     const behind = pickCoverView("spread", "home", -2.5, 24, 23)!; // −1½
-    expect(behind.tier).toBe("bubble");
+    expect(behind.tier).toBe("losing");
     expect(behind.word).toBe("Not covering");
     expect(behind.margin).toBe("−1½");
   });
 
-  it("calls an exact push 'On the number' and shows no margin", () => {
+  it("calls an exact push 'On the number', amber tier, no margin", () => {
     const v = pickCoverView("spread", "home", -3, 24, 21)!;
+    expect(v.tier).toBe("push");
     expect(v.word).toBe("On the number");
     expect(v.margin).toBeNull();
   });
@@ -102,13 +104,21 @@ describe("pickCoverView", () => {
     }
   });
 
-  it("shows the deficit on a losing cover", () => {
-    const v = pickCoverView("spread", "away", 3.5, 27, 17)!;
-    expect(v.tier).toBe("losing");
-    expect(v.margin).toBe("−6½");
+  it("reads an away pick's line as home-perspective, like everything else", () => {
+    // Stored line +3.5 = home getting 3.5, so the away backer laid 3.5 and
+    // leads by ten: covering by 6½. (This branch used to flip the sign for
+    // away picks and would have called this a 13½-point deficit.)
+    const laid = pickCoverView("spread", "away", 3.5, 17, 27)!;
+    expect(laid.tier).toBe("covering");
+    expect(laid.margin).toBe("+6½");
+
+    // Stored −6.5 = away getting 6.5; down ten only loses the cover by 3½.
+    const got = pickCoverView("spread", "away", -6.5, 27, 17)!;
+    expect(got.tier).toBe("losing");
+    expect(got.margin).toBe("−3½");
   });
 
-  it("treats a clinched over as covering, not bubble", () => {
+  it("treats a clinched over as covering", () => {
     const v = pickCoverView("total", "over", 44.5, 28, 21)!;
     expect(v.tier).toBe("covering");
     expect(v.sub).toBe("Over hit");
@@ -117,14 +127,44 @@ describe("pickCoverView", () => {
 
 describe("liveUrgency", () => {
   const live = (myPicks: GameView["myPicks"], homePoints: number, awayPoints: number) =>
-    ({ status: "in_progress", myPicks, homePoints, awayPoints }) as GameView;
+    ({ status: "in_progress", myPicks, myBets: [], homePoints, awayPoints }) as unknown as GameView;
 
-  it("sorts bubble ahead of losing ahead of covering ahead of no pick", () => {
-    const bubble = live([{ market: "spread", side: "home", line: -2.5 }], 24, 23);
-    const losing = live([{ market: "spread", side: "home", line: -2.5 }], 14, 24);
-    const covering = live([{ market: "spread", side: "home", line: -2.5 }], 35, 14);
+  it("sorts by distance from the number — closest sweat first, no pick last", () => {
+    const knifeEdge = live([{ market: "spread", side: "home", line: -2.5 }], 24, 23); // −1½
+    const losing = live([{ market: "spread", side: "home", line: -2.5 }], 14, 24); // −12½
+    const covering = live([{ market: "spread", side: "home", line: -2.5 }], 35, 14); // +18½
     const noPick = live([], 21, 21);
-    const order = [noPick, covering, losing, bubble].sort((a, b) => liveUrgency(a) - liveUrgency(b));
-    expect(order).toEqual([bubble, losing, covering, noPick]);
+    const order = [noPick, covering, losing, knifeEdge].sort((a, b) => liveUrgency(a) - liveUrgency(b));
+    expect(order).toEqual([knifeEdge, losing, covering, noPick]);
+  });
+
+  it("breaks a distance tie in favour of the losing pick", () => {
+    const losingBy3 = live([{ market: "spread", side: "home", line: -7 }], 25, 21); // up 4, −3 ATS
+    const coveringBy3 = live([{ market: "spread", side: "home", line: -7 }], 31, 21); // up 10, +3 ATS
+    expect(liveUrgency(losingBy3)).toBeLessThan(liveUrgency(coveringBy3));
+  });
+
+  it("puts an on-the-number game ahead of everything", () => {
+    const onNumber = live([{ market: "spread", side: "home", line: -3 }], 24, 21);
+    const close = live([{ market: "spread", side: "home", line: -2.5 }], 24, 22); // −½
+    expect(liveUrgency(onNumber)).toBeLessThan(liveUrgency(close));
+  });
+
+  it("reads a ledger bet's sweat when there is no pick — same priority as the aura", () => {
+    const betOnly = {
+      status: "in_progress",
+      myPicks: [],
+      myBets: [{ id: 3, betType: "spread", side: "away", line: -7 }],
+      homePoints: 17,
+      awayPoints: 10, // on the number exactly: the hardest sweat there is
+    } as unknown as GameView;
+    const pickCovering = live([{ market: "spread", side: "home", line: -2.5 }], 35, 14);
+    expect(liveUrgency(betOnly)).toBeLessThan(liveUrgency(pickCovering));
+  });
+
+  it("retires a clinched total from the sweat order", () => {
+    const clinched = live([{ market: "total", side: "over", line: 44.5 }], 28, 21);
+    const covering = live([{ market: "spread", side: "home", line: -2.5 }], 35, 14);
+    expect(liveUrgency(covering)).toBeLessThan(liveUrgency(clinched));
   });
 });

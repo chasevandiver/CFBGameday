@@ -32,6 +32,7 @@
 
 import { buildPositions, type GroupStanding, type HomeBet, type HomeData, type HomePick, type Position, type WeekProgress } from "./home";
 import type { GroupSummary } from "./groups";
+import { kickSlot } from "./kick";
 import { EMPTY_TALLY, type Tally } from "./records";
 import type {
   CrewPickView,
@@ -43,6 +44,7 @@ import type {
   TeamView,
 } from "./slate";
 import type { GroupBetView } from "./tailing";
+import { tickerMine, type TickerData } from "./ticker";
 
 export const DEMO_SEASON = 2026;
 export const DEMO_WEEK = 12;
@@ -359,7 +361,9 @@ export function demoGames(now: number): GameView[] {
       lastPlay: "Pass incomplete to the left",
       possession: "away",
       tv: "CBS",
-      homePoints: 14,
+      // Exactly seven apart on purpose: the viewer's bet below is held at +7,
+      // so this card demonstrates the push state — amber, "On the number".
+      homePoints: 17,
       awayPoints: 10,
       home: GEORGIA,
       away: OLE_MISS,
@@ -487,6 +491,12 @@ export function demoGames(now: number): GameView[] {
 /* ---- the slate ---------------------------------------------------------- */
 
 export function demoSlateData(now: number): SlateData {
+  // The demo poses a signed-in viewer (the hub says so explicitly), and a
+  // signed-in fetchSlateView returns the viewer's layers on each game — which
+  // is what the cover strips, verdict auras and the "My bets"/"My picks"
+  // filters all read. The first demo shipped the slate bare, so the screen
+  // meant to show off the verdict system never showed a verdict.
+  const positioned = new Map(demoPositions(now).map((p) => [p.game.id, p.game]));
   return {
     seasonId: DEMO_SEASON,
     week: DEMO_WEEK,
@@ -495,8 +505,46 @@ export function demoSlateData(now: number): SlateData {
     // Lines are captured by a job on its own cadence, not at page load, and the
     // slate says so rather than dressing one up as the other.
     linesAsOf: new Date(now - 41 * 60_000).toISOString(),
-    games: demoGames(now),
+    games: demoGames(now).map((g) => positioned.get(g.id) ?? g),
   };
+}
+
+/**
+ * The demo's score ticker, posed like everything else in this file: the real
+ * /api/ticker serves live games, recent finals and imminent kickoffs, and
+ * as of the demo's fixed mid-Saturday afternoon that means everything except
+ * the late window. The selection deliberately reads the pose (status + kick
+ * slot), not the viewer's clock — game states here don't follow the clock
+ * either, and windowing against real time would empty the "up next" chips six
+ * days a week. Passed to AppNav as a prop so the demo ticker never fetches.
+ */
+export function demoTickerData(now: number): TickerData {
+  const positionByGame = new Map(demoPositions(now).map((p) => [p.game.id, p]));
+
+  const games = demoGames(now)
+    .filter(
+      (g) =>
+        g.status === "in_progress" ||
+        g.status === "final" ||
+        (g.status === "scheduled" && g.startTs !== null && kickSlot(g.startTs) !== "Late"),
+    )
+    .map((g) => {
+      const pos = positionByGame.get(g.id);
+      return {
+        id: g.id,
+        status: g.status,
+        startTs: g.startTs,
+        period: g.period,
+        clock: g.clock,
+        homeAbbr: g.home.abbr,
+        awayAbbr: g.away.abbr,
+        homePoints: g.homePoints,
+        awayPoints: g.awayPoints,
+        mine: tickerMine(g.status, g.homePoints, g.awayPoints, pos?.bets ?? [], pos?.picks ?? []),
+      };
+    });
+
+  return { seasonId: DEMO_SEASON, week: DEMO_WEEK, games };
 }
 
 /* ---- the hub ------------------------------------------------------------- */
@@ -571,7 +619,7 @@ export const DEMO_CURVE = [0.9, 1.8, 0.8, 2.6, 1.6, 0.6, 1.5, 3.3, 2.3, 3.2, 4.9
 
 const DEMO_PROGRESS: WeekProgress[] = [
   { name: "Saturday Boys", slug: "saturday-boys", made: 3, target: 8 },
-  { name: "Work Pool", slug: "work-pool", made: 1, target: null },
+  { name: "Work Pool", slug: "work-pool", made: 2, target: null },
 ];
 
 /**
@@ -584,7 +632,9 @@ const DEMO_PROGRESS: WeekProgress[] = [
  *
  * Covers the states a row has: a live game carrying both layers and the same
  * side held twice at different numbers, a pregame game picked in two different
- * pools, and settled positions on both ledgers.
+ * pools, and settled positions on both ledgers. The three live games land one
+ * on each verdict colour — 9104 losing, 9105 on the number, 9106 covering —
+ * so the slate demonstrates the whole aura vocabulary at once.
  */
 export function demoPositions(now: number): Position[] {
   const games = demoGames(now);
@@ -597,13 +647,21 @@ export function demoPositions(now: number): Position[] {
     homePick(9107, "spread", "home", 2.5),
     homePick(9107, "total", "under", 49.5, WORK),
     homePick(9101, "spread", "away", 2.5, SATURDAY, "win"),
+    // Utah +3.5 with Utah down 3: covering by half a point — the green knife
+    // edge, where the colour says "good" and the margin says "barely".
+    homePick(9106, "spread", "away", -3.5, WORK),
   ];
   const bets: HomeBet[] = [
-    { id: 1, gameId: 9104, betType: "total", side: "over", line: 44.5, result: null },
     // The same game held twice at different numbers — the case the money/pool
-    // split exists for, and a half-point apart the way a real re-bet is.
+    // split exists for, and a half-point apart the way a real re-bet is. The
+    // spread bet is listed first because the first trackable bet decides the
+    // aura, and OSU −3 down 3 is the red card of the three live verdicts.
     { id: 2, gameId: 9104, betType: "spread", side: "away", line: 3, result: null },
-    { id: 3, gameId: 9105, betType: "spread", side: "away", line: 6.5, result: null },
+    { id: 1, gameId: 9104, betType: "total", side: "over", line: 44.5, result: null },
+    // Ole Miss +7, grabbed as the line crossed the whole number on its way from
+    // −8.5 to −6.5 (stored home-perspective), and UGA leads by exactly seven —
+    // the amber push card.
+    { id: 3, gameId: 9105, betType: "spread", side: "away", line: -7, result: null },
     { id: 4, gameId: 9102, betType: "spread", side: "away", line: 3.5, result: "win" },
   ];
   return buildPositions(games, picks, bets);
@@ -624,7 +682,7 @@ export function demoHomeData(now: number): HomeData {
     positions,
     openBetCount: 3,
     openBetUnits: 3.0,
-    weekPickCount: 4,
+    weekPickCount: 5,
     groups: DEMO_GROUPS,
     progress: DEMO_PROGRESS,
     bets: sampleTally(24, 18, 1, 5.7, 0.19),

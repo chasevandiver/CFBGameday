@@ -38,6 +38,35 @@ import { betSideLabel, pickSideLabel, type GameView } from "../../lib/slate";
  * Signed out there is no such number, so the week's size stands in — the page
  * still has to say what day it is.
  */
+/**
+ * A link that goes inert on the demo screens.
+ *
+ * Every href on this hub points at a real route — `/game/:id`, `/groups/:slug`,
+ * `/ledger` — and on `/demo` every one of them is a dead end: the game ids are
+ * invented, and a signed-out visitor who follows one lands on exactly the
+ * sign-in card the demo exists to avoid. Rendering the same box without the
+ * anchor keeps the layout identical to the real hub and stops the demo
+ * promising a screen it cannot show.
+ */
+function MaybeLink({
+  href,
+  inert,
+  className,
+  children,
+}: {
+  href: string;
+  inert: boolean;
+  className: string;
+  children: ReactNode;
+}) {
+  if (inert) return <div className={className}>{children}</div>;
+  return (
+    <Link href={href} className={className}>
+      {children}
+    </Link>
+  );
+}
+
 export function HomeHero({
   week,
   positionCount,
@@ -48,6 +77,7 @@ export function HomeHero({
   signedIn,
   tz = DEFAULT_TZ,
   slateHref = "/slate",
+  demo = false,
 }: {
   week: number;
   positionCount: number;
@@ -59,6 +89,8 @@ export function HomeHero({
   tz?: string;
   /** Where the primary action goes. `/demo` sends it to the demo's own slate. */
   slateHref?: string;
+  /** On `/demo`, links that leave the demo render as plain text. */
+  demo?: boolean;
 }) {
   const kick = firstKick === null ? null : kickParts(firstKick, tz);
   const headline = signedIn ? positionCount : weekGameCount;
@@ -109,9 +141,12 @@ export function HomeHero({
           <ul className="mt-1.5 flex flex-col">
             {progress.map((p) => (
               <li key={p.slug}>
-                <Link
+                <MaybeLink
                   href={`/groups/${p.slug}`}
-                  className="stat flex min-h-11 items-center gap-1 text-[11px] leading-tight text-chalk/50 hover:text-chalk"
+                  inert={demo}
+                  className={`stat flex min-h-11 items-center gap-1 text-[11px] leading-tight text-chalk/50 ${
+                    demo ? "" : "hover:text-chalk"
+                  }`}
                 >
                   {/* A leading space inside a flex item is trimmed, so the
                       separator is spaced by `gap-1`, not by the string. */}
@@ -124,7 +159,7 @@ export function HomeHero({
                         ? `${p.made} in — you’re set`
                         : `${p.made} of ${p.target} in`}
                   </span>
-                </Link>
+                </MaybeLink>
               </li>
             ))}
           </ul>
@@ -169,10 +204,13 @@ export function PositionRow({
   tz = DEFAULT_TZ,
   /** Only worth naming the pool when the viewer is in more than one. */
   showPool = false,
+  demo = false,
 }: {
   position: Position;
   tz?: string;
   showPool?: boolean;
+  /** On `/demo` the game id is invented, so the row does not link. */
+  demo?: boolean;
 }) {
   const { game, picks, bets } = position;
   const live = game.status === "in_progress";
@@ -193,7 +231,7 @@ export function PositionRow({
       ? ["var(--win)", "var(--win)"]
       : tint === "losing"
         ? ["var(--loss)", "var(--loss)"]
-        : tint === "bubble"
+        : tint === "push"
           ? ["var(--accent)", "var(--accent)"]
           : [muted(game.away.color), muted(game.home.color)];
 
@@ -202,7 +240,7 @@ export function PositionRow({
       className="glass-wrap"
       data-tint={hasVerdict ? "position" : "teams"}
       style={
-        { "--aura-strength": hasVerdict ? (live ? 0.42 : 0.14) : final ? 0.1 : 0.28 } as React.CSSProperties
+        { "--aura-strength": hasVerdict ? (live ? 0.55 : 0.2) : final ? 0.1 : 0.28 } as React.CSSProperties
       }
     >
       <div className="glass-aura" aria-hidden>
@@ -210,7 +248,7 @@ export function PositionRow({
         <span className="aura-b" style={{ background: aura[1] }} />
       </div>
       <div className="card overflow-hidden">
-        <Link href={`/game/${game.id}`} className="block px-3 pb-2.5 pt-2">
+        <MaybeLink href={`/game/${game.id}`} inert={demo} className="block px-3 pb-2.5 pt-2">
           <RowHeader game={game} live={live} final={final} tz={tz} />
           {/* The slate's scoreboard, not a summary of it: each team on its own
               team-coloured rail with a 24px score at the right. */}
@@ -228,7 +266,7 @@ export function PositionRow({
               dimmed={final && h < a}
             />
           </div>
-        </Link>
+        </MaybeLink>
 
         <ul className="border-t border-chalk/8">
           {picks.map((p) => (
@@ -432,14 +470,24 @@ function LineMove({ move }: { move: NonNullable<ReturnType<typeof heldVsNow>> })
  * `/groups` already makes: a betting group's number *is* units, and a pick'em
  * pool's units are pretend money at a flat −110 that nobody keeps score with.
  */
-export function GroupStandingRow({ standing }: { standing: GroupStanding }) {
+export function GroupStandingRow({
+  standing,
+  demo = false,
+}: {
+  standing: GroupStanding;
+  /** On `/demo` the group page is a dead end, so the row does not link. */
+  demo?: boolean;
+}) {
   const { group, place, field, tally } = standing;
   const betting = group.kind === "betting";
   return (
     <li>
-      <Link
+      <MaybeLink
         href={`/groups/${group.slug}`}
-        className="card card-hover flex min-h-16 items-center justify-between gap-3 px-4 py-3"
+        inert={demo}
+        className={`card flex min-h-16 items-center justify-between gap-3 px-4 py-3 ${
+          demo ? "" : "card-hover"
+        }`}
       >
         <span className="min-w-0">
           <span className="block truncate font-medium text-chalk">{group.name}</span>
@@ -476,7 +524,7 @@ export function GroupStandingRow({ standing }: { standing: GroupStanding }) {
             {betting ? "your bets" : "this season"}
           </span>
         </span>
-      </Link>
+      </MaybeLink>
     </li>
   );
 }
@@ -503,11 +551,14 @@ export function RecordBlock({
   picks,
   pickGroupCount,
   curve,
+  demo = false,
 }: {
   bets: Tally;
   picks: Tally;
   pickGroupCount: number;
   curve: number[];
+  /** On `/demo` the ledger is a dead end, so the footnote is plain text. */
+  demo?: boolean;
 }) {
   return (
     <>
@@ -560,12 +611,16 @@ export function RecordBlock({
           Pool picks
           <span className="text-chalk">{formatRecord(picks)}</span>
           across {pickGroupCount} {pickGroupCount === 1 ? "group" : "groups"} —
-          <Link
-            href="/ledger?tab=picks"
-            className="text-accent underline-offset-2 hover:underline"
-          >
-            counted separately
-          </Link>
+          {demo ? (
+            <span className="text-accent">counted separately</span>
+          ) : (
+            <Link
+              href="/ledger?tab=picks"
+              className="text-accent underline-offset-2 hover:underline"
+            >
+              counted separately
+            </Link>
+          )}
         </p>
       )}
     </>
@@ -598,6 +653,7 @@ export function HomeDashboard({
   signedIn,
   note,
   slateHref,
+  demo = false,
 }: {
   data: HomeData;
   signedIn: boolean;
@@ -605,6 +661,12 @@ export function HomeDashboard({
   note?: ReactNode;
   /** Where the hero's primary action goes. `/demo` keeps it inside the demo. */
   slateHref?: string;
+  /**
+   * Sample data: every link out of this hub is a dead end, so they render as
+   * plain text instead. The one exception is the hero's own CTA, which
+   * `slateHref` already points at the demo's slate.
+   */
+  demo?: boolean;
 }) {
   const { bets: betPositions, picks: pickPositions } = splitPositions(data.positions);
 
@@ -623,6 +685,7 @@ export function HomeDashboard({
         progress={data.progress}
         signedIn={signedIn}
         slateHref={slateHref}
+        demo={demo}
       />
 
       {!signedIn ? (
@@ -654,7 +717,7 @@ export function HomeDashboard({
                     ? `${data.openBetCount} open · ${data.openBetUnits.toFixed(1)}u`
                     : undefined
                 }
-                href="/ledger"
+                href={demo ? undefined : "/ledger"}
                 linkLabel="Ledger"
               />
               {betPositions.length === 0 ? (
@@ -667,7 +730,7 @@ export function HomeDashboard({
               ) : (
                 <ul className="flex flex-col gap-3.5">
                   {betPositions.map((p) => (
-                    <PositionRow key={`bet-${p.game.id}`} position={p} />
+                    <PositionRow key={`bet-${p.game.id}`} position={p} demo={demo} />
                   ))}
                 </ul>
               )}
@@ -679,7 +742,7 @@ export function HomeDashboard({
                 id="picks-heading"
                 title="Pool picks"
                 count={data.weekPickCount > 0 ? `${data.weekPickCount} in` : undefined}
-                href="/groups"
+                href={demo ? undefined : "/groups"}
                 linkLabel="The board"
               />
               {pickPositions.length === 0 ? (
@@ -700,7 +763,7 @@ export function HomeDashboard({
               ) : (
                 <ul className="flex flex-col gap-3.5">
                   {pickPositions.map((p) => (
-                    <PositionRow key={`pick-${p.game.id}`} position={p} showPool={showPool} />
+                    <PositionRow key={`pick-${p.game.id}`} position={p} showPool={showPool} demo={demo} />
                   ))}
                 </ul>
               )}
@@ -713,7 +776,7 @@ export function HomeDashboard({
               <SectionHead
                 id="groups-heading"
                 title="Your groups"
-                href="/groups"
+                href={demo ? undefined : "/groups"}
                 linkLabel="All groups"
               />
               {data.groups.length === 0 ? (
@@ -726,7 +789,7 @@ export function HomeDashboard({
               ) : (
                 <ul className="flex flex-col gap-2.5">
                   {data.groups.map((s) => (
-                    <GroupStandingRow key={s.group.id} standing={s} />
+                    <GroupStandingRow key={s.group.id} standing={s} demo={demo} />
                   ))}
                 </ul>
               )}
@@ -737,7 +800,7 @@ export function HomeDashboard({
               <SectionHead
                 id="record-heading"
                 title="Your season"
-                href="/ledger"
+                href={demo ? undefined : "/ledger"}
                 linkLabel="Full ledger"
               />
               {data.bets.decided === 0 && data.picks.decided === 0 ? (
@@ -753,6 +816,7 @@ export function HomeDashboard({
                   picks={data.picks}
                   pickGroupCount={data.pickGroupCount}
                   curve={data.curve}
+                  demo={demo}
                 />
               )}
             </section>
