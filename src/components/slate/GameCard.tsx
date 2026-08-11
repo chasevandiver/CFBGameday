@@ -97,14 +97,25 @@ export function GameCard({
     a: game.awayPoints,
   });
   const [flash, setFlash] = useState<{ side: "home" | "away"; key: number } | null>(null);
+  /* The same tick also swells the aura — see the flare rule in globals.css. Held
+     as a timestamp rather than a boolean so a second score inside the window
+     restarts the timer instead of dropping the card back to rest mid-drive. */
+  const [flare, setFlare] = useState(0);
   useEffect(() => {
     const p = prev.current;
-    if (game.homePoints !== p.h && game.homePoints !== null && p.h !== null)
-      setFlash({ side: "home", key: Date.now() });
-    else if (game.awayPoints !== p.a && game.awayPoints !== null && p.a !== null)
-      setFlash({ side: "away", key: Date.now() });
+    const homeScored = game.homePoints !== p.h && game.homePoints !== null && p.h !== null;
+    const awayScored = game.awayPoints !== p.a && game.awayPoints !== null && p.a !== null;
+    if (homeScored) setFlash({ side: "home", key: Date.now() });
+    else if (awayScored) setFlash({ side: "away", key: Date.now() });
+    if (homeScored || awayScored) setFlare(Date.now());
     prev.current = { h: game.homePoints, a: game.awayPoints };
   }, [game.homePoints, game.awayPoints]);
+
+  useEffect(() => {
+    if (!flare) return;
+    const t = setTimeout(() => setFlare(0), 1600);
+    return () => clearTimeout(t);
+  }, [flare]);
 
   const headline = headlinePick(game.myPicks);
   const cover =
@@ -157,6 +168,9 @@ export function GameCard({
     <div
       className="glass-wrap"
       data-tint={position ? "position" : "teams"}
+      /* Deliberately narrower than .score-pop, which fires on every card: only a
+         game you have money on gets the aura reaction, or the money cue leaks. */
+      data-flare={position && flare ? "1" : undefined}
       style={{ "--aura-strength": auraStrength } as React.CSSProperties}
     >
       <div className="glass-aura" aria-hidden>

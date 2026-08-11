@@ -66,6 +66,24 @@
      highlight painted on the top. Deliberately weaker than the top: it is
      reflected light, not the source. */
   --glass-floor: color-mix(in srgb, var(--glass-edge) 45%, transparent);
+
+  /* The aura's motion, as named values rather than numbers buried in a keyframe.
+     Travel was 1.5%, which on a ~360px card is about 11px over 8 seconds — call
+     it 1.3px/sec, which is below the threshold of perception on a phone. The
+     drift was doing nothing it was designed to do. 5% puts it where it can be
+     read peripherally without pulling the eye off a number.
+
+     Scale is the expensive term and barely moves: the blur lives on .glass-aura
+     itself, so translating that element lets the compositor shift a texture it
+     has already rasterised, while scaling it makes the blur re-rasterise. All
+     the amplitude therefore comes from translate. If fps ever regresses, cut
+     --aura-scale first. */
+  --aura-travel: 5%;
+  --aura-lift: 2%;
+  --aura-scale: 1.06;
+  --aura-cycle: 18s;
+  /* How much strength a score adds — see the flare rule below. */
+  --aura-flare: 0.18;
 }
 
 html[data-theme="light"] {
@@ -394,19 +412,56 @@ html[data-theme="light"] .text-loss {
    movement a third cue separating a verdict glow from a team glow. Live games
    you have nothing on stay static and say "playing" through card-live, the live
    dot and the ticker. Cheaper too — measured at 70 cards, animating every aura
-   cost 8fps (52 vs 60), and this animates far fewer than "every live card". */
+   cost 8fps (52 vs 60), and this animates far fewer than "every live card".
+
+   will-change is scoped to this selector rather than to .glass-aura, so it
+   promotes the ~10 auras that actually move instead of all ~70 on the slate. */
 @media (prefers-reduced-motion: no-preference) {
   .glass-wrap[data-tint="position"] .glass-aura {
-    animation: aura-drift 16s ease-in-out infinite alternate;
+    animation: aura-drift var(--aura-cycle) ease-in-out infinite;
+    will-change: transform;
   }
 }
+
+/* Four stops rather than two, and the cycle returns to where it started instead
+   of alternating: on one axis this reads as a slab sliding side to side, and the
+   vertical term is what turns it into a wander. Returning to 0% also fixes a
+   quiet bug — the global reduced-motion switch clamps this to a single 0.01ms
+   iteration, and with the old from/to that parked the aura permanently at
+   translate(1.5%) scale(1.05) instead of at rest. */
 @keyframes aura-drift {
-  from {
-    transform: translate3d(-1.5%, 0, 0) scale(1);
+  0% {
+    transform: translate3d(calc(-1 * var(--aura-travel)), 0, 0) scale(1);
   }
-  to {
-    transform: translate3d(1.5%, 0, 0) scale(1.05);
+  33% {
+    transform: translate3d(0, calc(-1 * var(--aura-lift)), 0) scale(var(--aura-scale));
   }
+  66% {
+    transform: translate3d(var(--aura-travel), 0, 0) scale(var(--aura-scale));
+  }
+  100% {
+    transform: translate3d(calc(-1 * var(--aura-travel)), 0, 0) scale(1);
+  }
+}
+
+/* A score on a card you have money on lifts the aura, then lets it settle.
+   .glass-aura already transitions opacity over 500ms, so the swell and the decay
+   come from that — there is no keyframe here.
+
+   THIS IS A NARROW EXCEPTION to the no-opacity-change rule above, and it is not
+   a precedent for ambient pulsing: it is a discrete response to news, it fires
+   only on [data-tint="position"], and it therefore reinforces the money cue
+   rather than spending it. Note this is deliberately stricter than .score-pop,
+   which fires on every card — correct for a scoreboard number, wrong for the
+   aura, because the aura is the thing carrying the money signal.
+
+   The [data-tint="position"] in the selector is doing real work and is not
+   redundant with the component: GameCard already gates the attribute, but
+   putting the condition here too means the rule cannot leak onto a team-tinted
+   card from some future call site that forgets. The invariant is enforced by
+   the CSS rather than by everyone remembering it. */
+.glass-wrap[data-tint="position"][data-flare="1"] .glass-aura {
+  opacity: calc(var(--aura-strength, 0.26) + var(--aura-flare));
 }
 
 /* Team rows: the team's primary color binds its half of the card */

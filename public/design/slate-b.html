@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en" data-direction="slate-b">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Slate B — The Wall · The CFB Slate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@500&family=Inter+Tight:wght@500;600&family=Oswald:wght@600;700&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================================
+   SLATE B — "The Wall"
+
+   A sports bar's wall of TVs. One double-width tile for the game with the most
+   of your money on it, half-width tiles under it, everything else as one-line
+   strips at the bottom — and when a game goes live it physically grows up the
+   wall into a bigger screen.
+
+   React Bits components under test:
+     · MagicBento  — needs GSAP (core + ScrollTrigger). The heaviest dep in the
+                     shortlist, and DESIGN.md's rule is categorical anyway.
+     · Masonry     — needs GSAP.
+     · GlareHover  — zero-dep, but pointer-driven and therefore INERT on the
+                     only device this product targets. Not used.
+
+   WHAT REPLACES GSAP, at zero cost:
+     · document.startViewTransition() + per-tile view-transition-name is a
+       native drop-in for exactly what MagicBento animates with gsap. Where
+       unsupported, tiles simply re-lay out — the layout stays correct.
+     · MagicBento's border glow becomes a @property --angle conic gradient. No
+       JS, and because it is a real CSS animation the app's global
+       prefers-reduced-motion switch actually cancels it — unlike ElectricBorder
+       (see slate-c) or ClickSpark.
+
+   Four axes:
+     density    VARIABLE — one tile ~40% of the viewport, several at ~12%, the
+                tail at 44px strips. The only direction expressing importance as
+                physical size, which is the most literal reading of "the most
+                important number is the largest thing on screen."
+     leads with the shape of the whole Saturday — how much of the wall is green
+                tells you how you are doing before you read a number
+     live       the tile PROMOTES and lights a tally lamp
+     primary    no floating button; the big tile carries its odds cells inline,
+                and the wall is anchored so that row lands in the thumb zone
+     chrome     the app's four sticky layers become the bezel
+
+   WHAT IT GIVES UP — and this is the direction most at odds with a hard rule:
+   promotion IS a layout change. Mitigations built in below, to be judged rather
+   than trusted: it fires only on a STATUS transition, never on a score update;
+   it eases over 420ms; and it never fires while you have scrolled past the top
+   of the wall. It also degrades — past ~15 games the small-tile tail becomes an
+   ordinary list and the concept stops doing work. The tail below is long enough
+   to show that honestly instead of only showing the pretty first screen.
+   ========================================================================== */
+
+:root {
+  --bezel:    #06080B;  /* the black gap between screens */
+  --tube:     #171C23;  /* tile ground — team colour mixes in at 8-14% */
+  --phosphor: #EAF1F8;  /* scores and primary text — cool white, CRT */
+  --signal:   #7E8A99;  /* labels, records, kick times */
+  --tally:    #FF3B30;  /* the on-air light. Live, and nothing else. */
+  --money:    #2FD98A;  /* you have a position on this tile */
+
+  /* NO AMBER ANYWHERE. All three shipped home-hub directions lean amber/gold;
+     a wall of TVs is white light, a red tally lamp, and green money. That is
+     what keeps this legible as its own thing. */
+
+  --hair: rgba(234, 241, 248, 0.10);
+
+  --disp: "Oswald";
+  --mono: "DM Mono";
+  --body: "Inter Tight";
+}
+
+* { box-sizing: border-box; }
+html { color-scheme: dark; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bezel); color: var(--phosphor);
+  font-family: var(--body), system-ui, sans-serif;
+  font-size: 13px; line-height: 1.4;
+  padding-bottom: calc(28px + env(safe-area-inset-bottom));
+}
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+button, a { touch-action: manipulation; }
+.stat { font-family: var(--mono), monospace; font-variant-numeric: tabular-nums; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---- the bezel ---------------------------------------------------------- *
+   The app's four sticky layers (AppNav, ScoreTicker, the control bar at
+   SlateView.tsx:402-405, BottomNav) become one 78px bezel. No bottom nav: the
+   big tile carries the action, so nothing needs to live down there.
+ * ------------------------------------------------------------------------- */
+.bezel {
+  position: sticky; top: 0; z-index: 20;
+  background: var(--bezel);
+  padding: env(safe-area-inset-top) 10px 0;
+  border-bottom: 1px solid var(--hair);
+}
+.bezel-top { display: flex; align-items: center; gap: 10px; height: 42px; }
+.mark {
+  font-family: var(--disp), sans-serif; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .06em; font-size: 17px;
+}
+.bezel-top .sp { flex: 1; }
+.meta { color: var(--signal); font-size: 11px; }
+.onair {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 600; color: var(--tally);
+  text-transform: uppercase; letter-spacing: .07em;
+}
+.lamp { width: 7px; height: 7px; border-radius: 50%; background: var(--tally); }
+@media (prefers-reduced-motion: no-preference) { .lamp { animation: lamp 1.7s ease-in-out infinite; } }
+@keyframes lamp { 50% { opacity: .3; } }
+
+.bezel-bar { display: flex; align-items: center; gap: 4px; height: 36px; overflow-x: auto; scrollbar-width: none; }
+.bezel-bar::-webkit-scrollbar { display: none; }
+.chip { min-height: 44px; display: inline-flex; align-items: center; }
+.chip > span {
+  min-height: 26px; display: inline-flex; align-items: center;
+  padding: 4px 10px; border-radius: 4px; white-space: nowrap;
+  font-size: 11px; color: var(--signal); border: 1px solid var(--hair);
+}
+.chip[aria-current="true"] > span { background: var(--phosphor); color: var(--bezel); font-weight: 600; border-color: transparent; }
+.chip[data-on="true"] > span { color: var(--money); border-color: rgba(47,217,138,.4); }
+
+/* ---- the wall ----------------------------------------------------------- *
+   grid-template-areas swapped by data-layout on the container. That attribute
+   IS the promotion: changing it re-lays the whole wall, and startViewTransition
+   animates the difference.
+ * ------------------------------------------------------------------------- */
+.wall {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 8px 10px 0;
+}
+.wall[data-layout="osu"]  { grid-template-areas: "big big" "uga mioh" "sjsu ppd"; }
+.wall[data-layout="mioh"] { grid-template-areas: "big big" "uga osu"  "sjsu ppd"; }
+.wall[data-layout="uga"]  { grid-template-areas: "big big" "osu mioh" "sjsu ppd"; }
+
+.tile {
+  position: relative; overflow: hidden;
+  background: var(--tube);
+  border: 1px solid var(--hair);
+  border-radius: 10px;
+  padding: 10px 11px;
+  min-height: 96px;
+  display: flex; flex-direction: column; gap: 4px;
+  text-align: left; width: 100%;
+  /* team colour mixes into the tube at 8-14%, never as a fill */
+  background-image: linear-gradient(150deg,
+    color-mix(in srgb, var(--tc, transparent) 14%, transparent),
+    transparent 62%);
+}
+.tile[data-slot="big"]  { grid-area: big; min-height: 224px; }
+.tile[data-slot="uga"]  { grid-area: uga; }
+.tile[data-slot="osu"]  { grid-area: osu; }
+.tile[data-slot="mioh"] { grid-area: mioh; }
+.tile[data-slot="sjsu"] { grid-area: sjsu; }
+.tile[data-slot="ppd"]  { grid-area: ppd; }
+
+.t-when {
+  font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--signal); display: flex; align-items: center; gap: 6px;
+}
+.t-who {
+  font-family: var(--disp), sans-serif; font-weight: 600;
+  font-size: 14px; line-height: 1.15; letter-spacing: .01em;
+  color: var(--phosphor);
+}
+.t-score {
+  font-family: var(--disp), sans-serif; font-weight: 700;
+  font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums;
+  margin-top: auto;
+}
+.t-line { font-family: var(--mono), monospace; font-size: 11px; color: var(--signal); }
+.t-line .mine { color: var(--money); }
+
+/* the big tile earns bigger everything */
+.tile[data-slot="big"] .t-who { font-size: 22px; }
+.tile[data-slot="big"] .t-score { font-size: 60px; letter-spacing: .005em; }
+.tile[data-slot="big"] .t-line { font-size: 12.5px; }
+
+/* live: the tally lamp + the conic border. ONE tile at a time carries the
+   border, which is what makes it affordable. */
+.tile[data-live="true"] .t-when { color: var(--tally); }
+.t-lamp { width: 6px; height: 6px; border-radius: 50%; background: var(--tally); }
+@media (prefers-reduced-motion: no-preference) { .t-lamp { animation: lamp 1.7s ease-in-out infinite; } }
+
+@property --angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.tile[data-slot="big"][data-live="true"] {
+  border: 2px solid transparent;   /* 1px is not judgeable at arm's length */
+  background:
+    linear-gradient(150deg, color-mix(in srgb, var(--tc, transparent) 14%, transparent), transparent 62%) padding-box,
+    linear-gradient(var(--tube), var(--tube)) padding-box,
+    conic-gradient(from var(--angle),
+      transparent 0deg, rgba(255,59,48,.9) 60deg, transparent 140deg, transparent 360deg) border-box;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tile[data-slot="big"][data-live="true"] { animation: sweep 4s linear infinite; }
+}
+@keyframes sweep { to { --angle: 360deg; } }
+
+/* THE PRIMARY ACTION: odds cells live inside the big tile, inline. No floating
+   pill, no bottom sheet. The wall is sized so this row lands in the lower third
+   of the viewport on a 390x844 phone. */
+/* The odds row belongs to whichever tile is currently big. A half-width tile
+   cannot hold three 44px cells without mangling them — caught by promoting and
+   looking. This is also what makes the promotion meaningful rather than
+   decorative: the game on the big screen is the one you can act on. */
+.odds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 10px; }
+.tile:not([data-slot="big"]) .odds { display: none; }
+.odds button {
+  min-height: 44px; border-radius: 7px;
+  border: 1px solid var(--hair); background: rgba(234,241,248,.04);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+}
+.odds .k { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--signal); }
+.odds .v { font-family: var(--mono), monospace; font-size: 12.5px; }
+.odds button[data-mine="true"] { border-color: rgba(47,217,138,.5); background: rgba(47,217,138,.09); }
+.odds button[data-mine="true"] .v { color: var(--money); }
+
+/* money marker */
+.pos {
+  position: absolute; top: 0; right: 0;
+  width: 0; height: 0;
+  border-top: 18px solid var(--money);
+  border-left: 18px solid transparent;
+}
+
+/* ---- the tail ----------------------------------------------------------- *
+   Everything the wall could not fit. THIS IS THE DIRECTION'S HONEST FAILURE
+   MODE: past ~15 games the tail is just a list, and the concept stops doing any
+   work at all. Shown at length rather than hidden.
+ * ------------------------------------------------------------------------- */
+.tail { padding: 6px 10px 0; }
+.tail h2 {
+  font-family: var(--disp), sans-serif; font-weight: 600; font-size: 11px;
+  text-transform: uppercase; letter-spacing: .14em; color: var(--signal);
+  margin: 12px 0 6px;
+}
+.strip {
+  display: grid; grid-template-columns: 3px minmax(0,1fr) auto auto;
+  gap: 8px; align-items: center;
+  min-height: 44px; padding: 0 8px;
+  border-bottom: 1px solid var(--hair);
+  width: 100%; text-align: left;
+}
+.strip:last-child { border-bottom: 0; }
+.strip .rail { width: 3px; height: 20px; border-radius: 2px; background: var(--tc, var(--signal)); }
+.strip .s-who { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.strip .s-when { font-size: 10.5px; color: var(--signal); white-space: nowrap; }
+.strip .s-num { font-family: var(--mono), monospace; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.strip .s-num.dim { color: var(--signal); }
+
+.summary {
+  margin: 14px 0 0; padding: 12px 0 0; border-top: 1px solid var(--hair);
+  font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--signal); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+footer {
+  padding: 22px 10px 10px; color: var(--signal); font-size: 11.5px; line-height: 1.7;
+  border-top: 1px solid var(--hair); margin: 16px 10px 0;
+}
+footer a { color: var(--money); }
+
+.demo {
+  position: fixed; right: 10px; z-index: 40;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  display: flex; gap: 6px;
+}
+.demo button {
+  min-height: 36px; padding: 0 11px; border-radius: 7px;
+  border: 1px solid var(--hair); background: rgba(6,8,11,.9);
+  font-size: 11px; color: var(--signal); backdrop-filter: blur(8px);
+}
+.demo button[data-on="true"] { color: var(--money); border-color: rgba(47,217,138,.45); }
+
+/* the promotion's easing, applied to the view transition itself */
+::view-transition-group(*) { animation-duration: 420ms; animation-timing-function: cubic-bezier(.2,.8,.2,1); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+  ::view-transition-group(*) { animation-duration: .01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<header class="bezel">
+  <div class="bezel-top">
+    <span class="mark">The Slate</span>
+    <span class="sp"></span>
+    <span class="onair"><span class="lamp"></span>2 on air</span>
+    <span class="meta">Wk 11</span>
+  </div>
+  <div class="bezel-bar">
+    <button class="chip" aria-current="false"><span>Thu</span></button>
+    <button class="chip" aria-current="false"><span>Fri</span></button>
+    <button class="chip" aria-current="true"><span>Sat</span></button>
+    <button class="chip" data-on="true"><span>My money</span></button>
+    <button class="chip" data-on="false"><span>Ranked</span></button>
+    <button class="chip" data-on="false"><span>Edges</span></button>
+  </div>
+</header>
+
+<main>
+  <!-- THE TIEBREAK, published rather than hidden: two games are live at once
+       (Ohio St/Michigan and Miami (OH)/W Michigan). The big screen goes to the
+       one with the most of YOUR money on it, not the one with the better teams.
+       With no position on either, it falls back to liveUrgency()
+       (src/lib/live-status.ts:181). The rule is printed on the wall itself. -->
+  <div class="wall" id="wall" data-layout="osu">
+
+    <article class="tile" data-slot="big" data-live="true" data-k="osu" style="--tc:#00274c">
+      <span class="pos" aria-hidden="true"></span>
+      <span class="t-when"><span class="t-lamp"></span>Q3 8:42 · FOX · biggest position</span>
+      <span class="t-who"><sup>1</sup> Ohio St at <sup>11</sup> Michigan</span>
+      <span class="t-score stat" id="big-score">21–24</span>
+      <span class="t-line">MICH +3.5 · total 44.5 · <span class="mine" id="big-mine">your over needs 0</span></span>
+      <span class="odds">
+        <button><span class="k">Spread</span><span class="v">+3.5</span></button>
+        <button data-mine="true"><span class="k">Your over</span><span class="v" id="big-odd">44.5 ✓</span></button>
+        <button><span class="k">Live ML</span><span class="v">+118</span></button>
+      </span>
+    </article>
+
+    <article class="tile" data-slot="uga" data-k="uga" style="--tc:#9e1b32">
+      <span class="t-when">7:30P · CBS</span>
+      <span class="t-who">UGA at Bama</span>
+      <span class="t-score stat" style="font-size:20px">−1.5</span>
+      <span class="t-line">EDGE 3.0 · O/U 51.5</span>
+    <span class="odds"><button><span class="k">Spread</span><span class="v">−1.5</span></button><button><span class="k">Total</span><span class="v">51.5</span></button><button><span class="k">ML</span><span class="v">−125</span></button></span>
+    </article>
+
+    <article class="tile" data-slot="mioh" data-live="true" data-k="mioh" style="--tc:#6c4023">
+      <span class="t-when"><span class="t-lamp"></span>Q2 2:11 · ESPN+</span>
+      <span class="t-who">Miami (OH) at W Michigan</span>
+      <span class="t-score stat">10–13</span>
+      <span class="t-line">WMU −2.5 · O/U 45.5</span>
+    <span class="odds"><button><span class="k">Spread</span><span class="v">−2.5</span></button><button><span class="k">Total</span><span class="v">45.5</span></button><button><span class="k">Live ML</span><span class="v">−165</span></button></span>
+    </article>
+
+    <article class="tile" data-slot="sjsu" data-k="sjsu" style="--tc:#0055a2">
+      <span class="t-when">9:30P</span>
+      <span class="t-who">San José St at Nevada</span>
+      <span class="t-score stat" style="font-size:20px; color:var(--signal)">—</span>
+      <span class="t-line">no line posted</span>
+    </article>
+
+    <!-- NOTE ON THE FIXTURE: PreviewClient.tsx builds its postponed game as
+         {...NO_LINE, home: OKLAHOMA, away: PENN_STATE}, reusing two teams that
+         appear in the finals below. Kept verbatim rather than inventing data. -->
+    <article class="tile" data-slot="ppd" data-k="ppd" style="--tc:#841617">
+      <span class="t-when">Postponed</span>
+      <span class="t-who">Penn St at Oklahoma</span>
+      <span class="t-score stat" style="font-size:20px; color:var(--signal)">PPD</span>
+      <span class="t-line">lightning · positions void</span>
+    </article>
+  </div>
+
+  <section class="tail">
+    <h2>Final</h2>
+    <button class="strip" style="--tc:#bf5700">
+      <span class="rail"></span>
+      <span>
+        <span class="s-who"><sup>18</sup> Oklahoma at <sup>6</sup> Texas</span>
+        <span class="s-when">ABC · your −6.5 cashed</span>
+      </span>
+      <span class="s-num" style="color:var(--money)">+1.0u</span>
+      <span class="s-num">24–34</span>
+    </button>
+    <button class="strip" style="--tc:#041e42">
+      <span class="rail"></span>
+      <span>
+        <span class="s-who"><sup>3</sup> Oregon at <sup>9</sup> Penn St</span>
+        <span class="s-when">NBC · overtime · no position</span>
+      </span>
+      <span class="s-num dim">+2.5</span>
+      <span class="s-num">33–30</span>
+    </button>
+
+    <!-- THE DEGRADATION, shown rather than hidden. Past roughly fifteen games
+         the wall's tail is an ordinary list and the concept has stopped doing
+         any work. On a real 60-game Saturday this section is the whole page. -->
+    <h2>Everything else — where the concept stops working</h2>
+    <button class="strip" style="--tc:#0021a5"><span class="rail"></span><span><span class="s-who">Florida at LSU</span><span class="s-when">6:00P · SECN</span></span><span class="s-num dim">+6.5</span><span class="s-num dim">—</span></button>
+    <button class="strip" style="--tc:#d00000"><span class="rail"></span><span><span class="s-who">Wisconsin at Nebraska</span><span class="s-when">3:30P · BTN</span></span><span class="s-num dim">−2.5</span><span class="s-num dim">—</span></button>
+    <button class="strip" style="--tc:#4b2e83"><span class="rail"></span><span><span class="s-who">Washington at UCLA</span><span class="s-when">10:30P · FS1</span></span><span class="s-num dim">−7.5</span><span class="s-num dim">—</span></button>
+    <button class="strip" style="--tc:#00274c"><span class="rail"></span><span><span class="s-who">Toledo at Bowling Green</span><span class="s-when">2:00P · ESPNU</span></span><span class="s-num dim">−9.5</span><span class="s-num dim">—</span></button>
+    <button class="strip" style="--tc:#862633"><span class="rail"></span><span><span class="s-who">Texas State at Louisiana</span><span class="s-when">4:00P · ESPN+</span></span><span class="s-num dim">+3.5</span><span class="s-num dim">—</span></button>
+    <button class="strip" style="--tc:#154734"><span class="rail"></span><span><span class="s-who">Colorado State at Boise State</span><span class="s-when">8:00P · CBSSN</span></span><span class="s-num dim">−13.5</span><span class="s-num dim">—</span></button>
+    <button class="strip" style="--tc:#782f40"><span class="rail"></span><span><span class="s-who">Florida State at Syracuse</span><span class="s-when">12:00P · ACCN</span></span><span class="s-num dim">+1.5</span><span class="s-num dim">—</span></button>
+    <button class="strip" style="--tc:#7c2529"><span class="rail"></span><span><span class="s-who">Mississippi State at Missouri</span><span class="s-when">11:00A · SECN</span></span><span class="s-num dim">+14.5</span><span class="s-num dim">—</span></button>
+
+    <p class="summary">Games 15 · Ranked 5 · Finals 2/15 · Model ATS 4-3 · lines 11:12 AM CT</p>
+  </section>
+</main>
+
+<p class="sr" role="status" aria-live="polite" id="announce"></p>
+
+<div class="demo">
+  <button id="btn-motion" data-on="true">Motion: on</button>
+  <button id="btn-promote">Promote</button>
+  <button id="btn-replay">Score</button>
+</div>
+
+<footer>
+  Slate B — The Wall. Testing <b>MagicBento</b>'s idea without its
+  <b>gsap</b> dependency: <code>grid-template-areas</code> +
+  <code>document.startViewTransition()</code> + a <code>@property</code> conic
+  border. The promotion is deliberately the one animation here that is itself a
+  layout change — that is what you are being asked to judge. Mockups only —
+  standalone HTML, no app code, nothing here ships. Per
+  <code>docs/DESIGN.md</code> exploration mode. ·
+  <a href="./index.html">All directions</a>
+</footer>
+
+<script>
+const REDUCE = window.matchMedia("(prefers-reduced-motion: reduce)");
+let motionOn = true;
+const noMotion = () => !motionOn || REDUCE.matches;
+
+const wall = document.getElementById("wall");
+const announce = document.getElementById("announce");
+
+/* ---- the promotion ------------------------------------------------------ *
+   Swapping data-layout re-lays the whole wall. startViewTransition animates the
+   difference — the native replacement for what MagicBento needs gsap for.
+
+   THE THREE MITIGATIONS, all enforced here so they can be judged rather than
+   taken on faith:
+     1. fires only on a STATUS change, never on a score update
+     2. eases over 420ms (see ::view-transition-group in the CSS)
+     3. never fires while you have scrolled past the top of the wall
+ * ------------------------------------------------------------------------- */
+const ORDER = ["osu", "mioh", "uga"];
+let cur = 0;
+
+function applyLayout(key) {
+  wall.dataset.layout = key;
+  [...wall.children].forEach((t) => {
+    t.dataset.slot = t.dataset.k === key ? "big" : t.dataset.k;
+  });
+}
+
+function promote() {
+  const next = ORDER[(cur = (cur + 1) % ORDER.length)];
+
+  // mitigation 3 — never reflow underneath someone who has scrolled away
+  const wallBottom = wall.getBoundingClientRect().bottom;
+  if (wallBottom < 0) { applyLayout(next); return; }
+
+  if (noMotion() || !document.startViewTransition) { applyLayout(next); return; }
+
+  [...wall.children].forEach((t) => (t.style.viewTransitionName = "tile-" + t.dataset.k));
+  document.startViewTransition(() => applyLayout(next));
+  announce.textContent = "Now on the big screen: " + next.toUpperCase();
+}
+
+/* ---- a score change ----------------------------------------------------- *
+   Deliberately does NOT promote. This is mitigation 1, demonstrated: the wall
+   holds still while the number changes.
+ * ------------------------------------------------------------------------- */
+let played = false;
+function replay() {
+  played = !played;
+  document.getElementById("big-score").textContent = played ? "28–24" : "21–24";
+  document.getElementById("big-mine").textContent = played ? "your over hit at 52" : "your over needs 0";
+  document.getElementById("big-odd").textContent = played ? "44.5 · hit" : "44.5 ✓";
+  announce.textContent = played
+    ? "Ohio State 28, Michigan 24. Your over 44.5 has hit."
+    : "Ohio State 21, Michigan 24.";
+}
+
+document.getElementById("btn-promote").addEventListener("click", promote);
+document.getElementById("btn-replay").addEventListener("click", replay);
+
+const btnMotion = document.getElementById("btn-motion");
+btnMotion.addEventListener("click", () => {
+  motionOn = !motionOn;
+  btnMotion.dataset.on = String(motionOn);
+  btnMotion.textContent = "Motion: " + (motionOn ? "on" : "off");
+  document.querySelectorAll('[data-live="true"]').forEach((el) => {
+    el.style.animationPlayState = noMotion() ? "paused" : "running";
+  });
+});
+
+setTimeout(replay, 1400);
+</script>
+
+</body>
+</html>

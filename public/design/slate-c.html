@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="en" data-direction="slate-c">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Slate C — The Light · The CFB Slate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500&family=Big+Shoulders+Display:wght@700;800&family=Roboto+Mono:wght@500&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================================
+   SLATE C — "The Light"
+
+   One column of full-width cards where only the card nearest the vertical
+   centre of the viewport is lit. That card alone gets the 64px score, the
+   situation line, and tappable odds cells. Every other card is a dim two-line
+   strip.
+
+   React Bits components under test — all three verified ZERO-DEP:
+     · SpotlightCard   — its --mouse-x/--mouse-y become scroll position, because
+                         there is no cursor on the only device this app targets.
+     · ElectricBorder  — the live card's edge.
+     · GradualBlur     — the beam's soft top edge.
+
+   This is the ONLY direction whose React Bits components could be adopted close
+   to verbatim without violating "no new dependencies for visual work". Two
+   caveats still block a straight copy-paste, and both are demonstrated here:
+
+     (a) They ship hardcoded colours and inline styles, which violates "never
+         hardcode a colour or size inside a component". They need tokenising on
+         the way in — which is what every value below is.
+
+     (b) ElectricBorder animates via an SVG <animate> element. The app's global
+         prefers-reduced-motion block in globals.css clamps CSS
+         animation-duration ONLY, so it does NOT reach that. It needs a manual
+         matchMedia guard — see the bottom of the script.
+
+   THE STRUCTURAL FINDING: ElectricBorder is affordable if and only if there is
+   exactly one instance on screen. This direction guarantees that by
+   construction. The shipped card grid does not.
+
+   Four axes:
+     density    medium-low — every game present, only one carries full detail
+     leads with whatever is under your thumb. There is no hero. (This is what
+                separates it from shipped home-hub direction-c, which pins one
+                hero to the top and floods it.)
+     live       light, scaling with urgency (liveUrgency() already exists at
+                src/lib/live-status.ts:181)
+     primary    THE LIT CARD IS THE BUTTON. Odds cells exist only inside the
+                beam, so you never reach for a floating pill — the action is
+                wherever the light is. That axis change is what rescues this
+                from collapsing into home-hub direction-c.
+     chrome     the app's four sticky layers fade out at the beam's edges
+
+   WHAT IT GIVES UP: the board. You cannot compare two games. The actual user
+   has eight bets across six games, so for them this may be the least useful of
+   the three. It spends its whole contrast budget on one idea.
+   ========================================================================== */
+
+:root {
+  --room:   #0A0A0B;  /* the dark room. Near-neutral — a room at night has no hue */
+  --unlit:  #131417;  /* a card outside the beam */
+  --ash:    #8A9099;  /* unlit text — SEE THE CONTRAST NOTE BELOW */
+  --beam:   #FFF3DC;  /* the light: lit-card text + the soft top-edge gradient */
+  --charge: #FF8A2E;  /* live — the electric border and the running clock */
+  --cover:  #3BE08D;  /* covering / winning */
+
+  /* CONTRAST NOTE — this direction's real risk, stated up front.
+     The instinctive value for --ash is around #565A61, which measures 2.6:1 on
+     --unlit and fails WCAG AA for body text. #8A9099 measures ~5.6:1 and passes.
+
+     Using the passing value forces the whole design: "unlit" must be expressed
+     by ABSENCE OF THE BEAM, smaller type, and fewer fields — never by dimmer
+     text. That constraint is what decides whether this direction is buildable,
+     and demonstrating it is half of why the mockup exists.
+
+     Also opinionated: A LOSING BET IS NOT RED, IT IS SIMPLY UNLIT. Loss = the
+     light withdrawn. Six values, no seventh. */
+
+  --hair: rgba(255, 243, 220, 0.09);
+
+  --disp: "Big Shoulders Display";
+  --mono: "Roboto Mono";
+  --body: "Archivo";
+}
+
+* { box-sizing: border-box; }
+html { color-scheme: dark; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--room);
+  color: var(--beam);
+  font-family: var(--body), system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  padding-bottom: calc(40px + env(safe-area-inset-bottom));
+}
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+button, a, [role="button"] { touch-action: manipulation; }
+.stat { font-family: var(--mono), monospace; font-variant-numeric: tabular-nums; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---- chrome ------------------------------------------------------------- *
+   The app stacks four sticky layers (~200px) before a game is visible: AppNav,
+   ScoreTicker, the control bar at SlateView.tsx:402-405, and BottomNav.
+
+   This direction's answer: there is no bottom nav and no bet slip, because the
+   lit card carries the action. The header is a single 44px line that fades
+   into the room rather than sitting on a hard seam — the one genuinely useful
+   residue of GradualBlur, done as a mask instead of six backdrop-filter layers.
+ * ------------------------------------------------------------------------- */
+.top {
+  position: sticky; top: 0; z-index: 20;
+  padding: env(safe-area-inset-top) 16px 0;
+  background: linear-gradient(180deg, var(--room) 62%, transparent);
+}
+.top-row { display: flex; align-items: center; gap: 10px; height: 48px; }
+.mark {
+  font-family: var(--disp), sans-serif; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .02em; font-size: 22px;
+  color: var(--beam); line-height: 1;
+}
+.top-row .sp { flex: 1; }
+.meta { font-size: 11px; color: var(--ash); }
+.livepill {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--charge); font-size: 11px; font-weight: 500;
+}
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--charge); }
+@media (prefers-reduced-motion: no-preference) {
+  .dot { animation: breathe 1.8s ease-in-out infinite; }
+}
+@keyframes breathe { 50% { opacity: .3; } }
+
+/* ---- the column --------------------------------------------------------- */
+main { padding: 4px 12px 0; }
+
+.card {
+  position: relative;
+  margin: 0 0 10px;
+  border-radius: 14px;
+  background: var(--unlit);
+  border: 1px solid var(--hair);
+  width: 100%; text-align: left;
+  padding: 12px 14px;
+  overflow: hidden;
+  /* --lit is driven 0 -> 1 -> 0 by scroll position. Everything else reads it. */
+  --lit: 0;
+  transition: background-color 220ms ease, border-color 220ms ease;
+}
+
+/* THE BEAM — SpotlightCard's radial highlight, with scroll standing in for the
+   pointer. Sits above the card ground, below the content. */
+.card::before {
+  content: "";
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(120% 90% at 50% -10%,
+      rgba(255, 243, 220, calc(.14 * var(--lit))) 0%,
+      rgba(255, 243, 220, calc(.05 * var(--lit))) 42%,
+      transparent 72%);
+  pointer-events: none;
+}
+/* the soft top edge of the beam — one gradient, not six backdrop-filters */
+.card::after {
+  content: "";
+  position: absolute; left: 0; right: 0; top: 0; height: 2px;
+  background: linear-gradient(90deg, transparent,
+              rgba(255, 243, 220, calc(.55 * var(--lit))) 50%, transparent);
+  pointer-events: none;
+}
+
+.card > * { position: relative; z-index: 1; }
+
+/* ---- scroll-driven lighting --------------------------------------------- *
+   The zero-JS path. Where animation-timeline is unsupported (older Safari),
+   the IntersectionObserver at the bottom sets data-lit instead — ~15 lines,
+   no rAF loop either way.
+ * ------------------------------------------------------------------------- */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .card {
+      animation: light linear both;
+      animation-timeline: view();
+      animation-range: cover 30% cover 70%;
+    }
+  }
+}
+@keyframes light {
+  0%   { --lit: 0; }
+  50%  { --lit: 1; }
+  100% { --lit: 0; }
+}
+@property --lit { syntax: "<number>"; inherits: true; initial-value: 0; }
+
+/* the JS fallback, and what reduced-motion users get: a discrete state */
+.card[data-lit="1"] { --lit: 1; }
+
+/* ---- unlit: a two-line strip -------------------------------------------- */
+.strip { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+.strip .who {
+  font-size: 14px; font-weight: 500; color: var(--beam);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: block;
+}
+.strip .when { display: block; font-size: 11.5px; color: var(--ash); margin-top: 2px; }
+.strip .num {
+  font-family: var(--disp), sans-serif; font-weight: 700; font-size: 26px;
+  line-height: 1; letter-spacing: .01em; font-variant-numeric: tabular-nums;
+  color: var(--beam); white-space: nowrap;
+}
+.strip .num.none { font-family: var(--mono), monospace; font-size: 13px; color: var(--ash); font-weight: 500; }
+
+/* ---- lit: the full card ------------------------------------------------- *
+   Everything below is revealed by opacity/height keyed to --lit, so entering
+   the beam does not change the card's box. THE CARD'S HEIGHT IS FIXED. That is
+   the whole reason this direction can claim "no layout shift" while still
+   doing progressive disclosure.
+ * ------------------------------------------------------------------------- */
+/* THE BOX IS FIXED. Unlit detail and lit detail are stacked in the same grid
+   cell and cross-fade, so entering the beam changes what the card says without
+   changing how tall it is. That is the whole reason this direction can claim
+   both progressive disclosure AND no layout shift.
+
+   It is also the direction's honest cost: every card pays for the tallest
+   state, so fewer games fit per screen. Judge it on that. */
+.body {
+  display: grid;
+  margin-top: 10px;
+  min-height: 148px;              /* reserved, lit or not — sized to the LIT
+                                     state, which is the taller of the two */
+}
+.body > * { grid-area: 1 / 1; }
+
+/* The unlit state is shorter than the lit one, so it is centred in the reserved
+   box. Centring matters: the leftover space becomes symmetric breathing room
+   instead of reading as a gap at the bottom of the card. */
+.quiet {
+  align-self: center;
+  opacity: calc(1 - var(--lit));
+  transition: opacity 200ms ease;
+}
+.full {
+  opacity: var(--lit);
+  transition: opacity 200ms ease;
+  pointer-events: none;
+}
+.card[data-lit="1"] .full, .card:focus-within .full { pointer-events: auto; }
+.card[data-lit="1"] .quiet { pointer-events: none; }
+
+/* the strip's small number is redundant once the 64px score lights up */
+.strip .num { opacity: calc(1 - var(--lit)); transition: opacity 200ms ease; }
+
+/* unlit detail: a quiet four-up of the numbers you scan for */
+.grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.grid4 .cell { min-width: 0; }
+.grid4 .k {
+  display: block; font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ash); margin-bottom: 3px;
+}
+.grid4 .v {
+  display: block; font-family: var(--mono), monospace; font-size: 13px;
+  color: var(--beam); font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.grid4 .v.dim { color: var(--ash); }
+.grid4 .v.good { color: var(--cover); }
+.quiet .note { font-size: 11.5px; color: var(--ash); margin-top: 10px; }
+
+.score {
+  display: flex; align-items: baseline; gap: 12px;
+  font-family: var(--disp), sans-serif; font-weight: 800;
+  font-size: 64px; line-height: .86; letter-spacing: .005em;
+  font-variant-numeric: tabular-nums;
+}
+.score .v { min-width: 2ch; text-align: right; }
+.score .sep { font-size: 26px; color: var(--ash); font-weight: 700; }
+.situation { font-size: 12.5px; color: var(--ash); margin-top: 8px; }
+.card { min-height: 84px; }
+.situation b { color: var(--beam); font-weight: 500; }
+
+/* THE PRIMARY ACTION. Odds cells exist only inside the beam. 44px, and they sit
+   in the lower half of the card, which sits in the thumb zone because the beam
+   tracks the vertical centre of the viewport. */
+.odds { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 14px; }
+.odds button {
+  min-height: 44px; border-radius: 9px;
+  border: 1px solid rgba(255,243,220,.16);
+  background: rgba(255,243,220,.05);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px;
+}
+.odds .k { font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ash); }
+.odds .v { font-family: var(--mono), monospace; font-size: 13px; font-weight: 500; color: var(--beam); }
+.odds button[data-mine="true"] { border-color: rgba(59,224,141,.5); background: rgba(59,224,141,.09); }
+.odds button[data-mine="true"] .v { color: var(--cover); }
+
+/* ---- live: the electric border ------------------------------------------ *
+   ElectricBorder's feTurbulence displacement, reduced to a @property --angle
+   conic sweep plus one turbulence layer. Applied ONLY to the lit live card,
+   which is what makes it affordable at all.
+ * ------------------------------------------------------------------------- */
+@property --angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+
+.card[data-live="true"] {
+  border-color: transparent;
+  background:
+    linear-gradient(var(--unlit), var(--unlit)) padding-box,
+    conic-gradient(from var(--angle),
+      transparent 0deg,
+      rgba(255,138,46, calc(.85 * var(--lit))) 70deg,
+      transparent 150deg,
+      transparent 360deg) border-box;
+  border: 1px solid transparent;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .card[data-live="true"] { animation: sweep 3.6s linear infinite; }
+}
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    /* the lighting animation and the sweep have to coexist */
+    .card[data-live="true"] {
+      animation: light linear both, sweep 3.6s linear infinite;
+      animation-timeline: view(), auto;
+      animation-range: cover 30% cover 70%, normal;
+    }
+  }
+}
+@keyframes sweep { to { --angle: 360deg; } }
+
+.clock { color: var(--charge); font-family: var(--mono), monospace; font-size: 12px; }
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--charge); font-weight: 500;
+}
+
+/* your money: the only place --cover appears. A LOSING position is unlit, not
+   red — see the palette note. */
+.pos {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; color: var(--cover);
+}
+.pos.cold { color: var(--ash); }
+
+.rk { font-size: 10px; color: var(--ash); vertical-align: .35em; margin-right: 1px; }
+
+footer {
+  padding: 26px 16px 12px; color: var(--ash); font-size: 11.5px; line-height: 1.7;
+  border-top: 1px solid var(--hair); margin: 18px 12px 0;
+}
+footer a { color: var(--charge); }
+
+/* demo controls (mockup only) */
+.demo {
+  position: fixed; right: 12px; z-index: 40;
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  display: flex; gap: 6px;
+}
+.demo button {
+  min-height: 36px; padding: 0 12px; border-radius: 8px;
+  border: 1px solid var(--hair); background: rgba(10,10,11,.9);
+  font-size: 11px; color: var(--ash); backdrop-filter: blur(8px);
+}
+.demo button[data-on="true"] { color: var(--charge); border-color: rgba(255,138,46,.45); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-row">
+    <span class="mark">The Slate</span>
+    <span class="sp"></span>
+    <span class="livepill"><span class="dot"></span>2 live</span>
+    <span class="meta">Wk 11</span>
+  </div>
+</header>
+
+<main id="col">
+
+  <!-- FINAL — unlit strips carry a result and nothing else -->
+  <article class="card is-focusable" data-game="okla-tex">
+    <span class="strip">
+      <span>
+        <span class="who"><span class="rk">18</span> Oklahoma <span style="color:var(--ash)">at</span> <span class="rk">6</span> Texas</span>
+        <span class="when">Final · ABC · <span class="pos">your −6.5 cashed +1.0u</span></span>
+      </span>
+      <span class="num stat">24–34</span>
+    </span>
+    
+    <span class="body">
+      <span class="quiet">
+        <span class="grid4"><span class="cell"><span class="k">Spread</span><span class="v">TEX −6.5</span></span><span class="cell"><span class="k">Total</span><span class="v">57.5 · U</span></span><span class="cell"><span class="k">Model</span><span class="v dim">−9.2</span></span><span class="cell"><span class="k">You</span><span class="v good">+1.0u</span></span></span>
+        <span class="note">EDGE hit · consensus · Texas covered by 3.5</span>
+      </span>
+      <span class="full">
+      <span class="score"><span class="v">24</span><span class="sep">–</span><span class="v">34</span></span>
+      <span class="situation">Final. Texas −6.5 <b>covered by 3.5</b>. Model had −9.2 — <b>EDGE hit</b>, consensus.</span>
+      <span class="odds">
+        <button><span class="k">Spread</span><span class="v">−6.5</span></button>
+        <button data-mine="true"><span class="k">Your bet</span><span class="v">+1.0u</span></button>
+        <button><span class="k">Total</span><span class="v">57.5 · U</span></button>
+      </span>
+      </span>
+    </span>
+  </article>
+
+  <article class="card is-focusable" data-game="ore-psu">
+    <span class="strip">
+      <span>
+        <span class="who"><span class="rk">3</span> Oregon <span style="color:var(--ash)">at</span> <span class="rk">9</span> Penn St</span>
+        <span class="when">Final/OT · NBC · no position</span>
+      </span>
+      <span class="num stat">33–30</span>
+    </span>
+    
+    <span class="body">
+      <span class="quiet">
+        <span class="grid4"><span class="cell"><span class="k">Spread</span><span class="v">PSU +2.5</span></span><span class="cell"><span class="k">Total</span><span class="v">52.5 · O</span></span><span class="cell"><span class="k">Model</span><span class="v dim">+1.9</span></span><span class="cell"><span class="k">You</span><span class="v dim">—</span></span></span>
+        <span class="note">Overtime · no position</span>
+      </span>
+      <span class="full">
+      <span class="score"><span class="v">33</span><span class="sep">–</span><span class="v">30</span></span>
+      <span class="situation">Final in overtime. Penn St <b>+2.5 covered</b>, total went over 52.5.</span>
+      <span class="odds">
+        <button><span class="k">Spread</span><span class="v">+2.5</span></button>
+        <button><span class="k">Result</span><span class="v">Push−ish</span></button>
+        <button><span class="k">Total</span><span class="v">52.5 · O</span></button>
+      </span>
+      </span>
+    </span>
+  </article>
+
+  <!-- LIVE, and the DESIGN.md string-length test case. Deliberately live so the
+       page has TWO live games, which forces this direction to answer what
+       happens when the game you care about is not the one under your thumb. -->
+  <article class="card is-focusable" data-live="true" data-game="mioh-wmu">
+    <span class="strip">
+      <span>
+        <span class="who">Miami (OH) <span style="color:var(--ash)">at</span> W Michigan</span>
+        <span class="when"><span class="badge"><span class="dot"></span>Q2</span> <span class="clock">2:11</span> · ESPN+ · no position</span>
+      </span>
+      <span class="num stat">10–13</span>
+    </span>
+    
+    <span class="body">
+      <span class="quiet">
+        <span class="grid4"><span class="cell"><span class="k">Spread</span><span class="v">WMU −2.5</span></span><span class="cell"><span class="k">Total</span><span class="v">45.5</span></span><span class="cell"><span class="k">Pace</span><span class="v dim">41</span></span><span class="cell"><span class="k">You</span><span class="v dim">—</span></span></span>
+        <span class="note">3rd &amp; 4 at WMU 38 · covering by 0.5</span>
+      </span>
+      <span class="full">
+      <span class="score"><span class="v">10</span><span class="sep">–</span><span class="v">13</span></span>
+      <span class="situation">3rd &amp; 4 at WMU 38. WMU −2.5, <b>covering by 0.5</b>. Total on pace for 41.</span>
+      <span class="odds">
+        <button><span class="k">Spread</span><span class="v">−2.5</span></button>
+        <button><span class="k">Live ML</span><span class="v">−165</span></button>
+        <button><span class="k">Total</span><span class="v">45.5</span></button>
+      </span>
+      </span>
+    </span>
+  </article>
+
+  <!-- LIVE + your money. The one card where every mechanism is on at once. -->
+  <article class="card is-focusable" data-live="true" data-game="osu-mich">
+    <span class="strip">
+      <span>
+        <span class="who"><span class="rk">1</span> Ohio St <span style="color:var(--ash)">at</span> <span class="rk">11</span> Michigan</span>
+        <span class="when"><span class="badge"><span class="dot"></span>Q3</span> <span class="clock">8:42</span> · FOX · <span class="pos">over 44.5</span></span>
+      </span>
+      <span class="num stat" id="strip-score">21–24</span>
+    </span>
+    
+    <span class="body">
+      <span class="quiet">
+        <span class="grid4"><span class="cell"><span class="k">Spread</span><span class="v">MICH +3.5</span></span><span class="cell"><span class="k">Total</span><span class="v">44.5</span></span><span class="cell"><span class="k">Pace</span><span class="v dim" id="q-pace">45</span></span><span class="cell"><span class="k">You</span><span class="v good">over ✓</span></span></span>
+        <span class="note">2nd &amp; 8 at MICH 14 · Ohio St driving</span>
+      </span>
+      <span class="full">
+      <span class="score">
+        <span class="v" id="away-pts">21</span><span class="sep">–</span><span class="v" id="home-pts">24</span>
+      </span>
+      <span class="situation" id="sit">2nd &amp; 8 at MICH 14. Ohio St driving. Your <b>over 44.5</b> needs 0 — <b id="sit-tot">live at 45</b>.</span>
+      <span class="odds">
+        <button><span class="k">Spread</span><span class="v">+3.5</span></button>
+        <button data-mine="true"><span class="k">Your over</span><span class="v" id="odd-tot">44.5 ✓</span></button>
+        <button><span class="k">Live ML</span><span class="v">+118</span></button>
+      </span>
+      </span>
+    </span>
+  </article>
+
+  <article class="card is-focusable" data-game="uga-ala">
+    <span class="strip">
+      <span>
+        <span class="who"><span class="rk">2</span> Georgia <span style="color:var(--ash)">at</span> <span class="rk">4</span> Alabama</span>
+        <span class="when">7:30P · CBS · 44° · 18mph wind</span>
+      </span>
+      <span class="num none stat">−1.5</span>
+    </span>
+    
+    <span class="body">
+      <span class="quiet">
+        <span class="grid4"><span class="cell"><span class="k">Spread</span><span class="v">ALA −1.5</span></span><span class="cell"><span class="k">Total</span><span class="v">51.5</span></span><span class="cell"><span class="k">Model</span><span class="v dim">−4.5</span></span><span class="cell"><span class="k">Edge</span><span class="v good">3.0</span></span></span>
+        <span class="note">EDGE on Alabama · wind may cap the total</span>
+      </span>
+      <span class="full">
+      <span class="score" style="font-size:40px"><span class="v" style="min-width:auto">7:30</span><span class="sep">PM</span></span>
+      <span class="situation">Model <b>−4.5</b> vs market −1.5. <b>EDGE</b> on Alabama, 3 points. Wind may cap the total.</span>
+      <span class="odds">
+        <button><span class="k">Spread</span><span class="v">−1.5</span></button>
+        <button><span class="k">Total</span><span class="v">51.5</span></button>
+        <button><span class="k">ML</span><span class="v">−125</span></button>
+      </span>
+      </span>
+    </span>
+  </article>
+
+  <article class="card is-focusable" data-game="sjsu-nev">
+    <span class="strip">
+      <span>
+        <span class="who">San José St <span style="color:var(--ash)">at</span> Nevada</span>
+        <span class="when">9:30P · no line posted</span>
+      </span>
+      <span class="num none stat">—</span>
+    </span>
+    
+    <span class="body">
+      <span class="quiet">
+        <span class="grid4"><span class="cell"><span class="k">Spread</span><span class="v dim">—</span></span><span class="cell"><span class="k">Total</span><span class="v dim">—</span></span><span class="cell"><span class="k">Model</span><span class="v dim">−3.1</span></span><span class="cell"><span class="k">You</span><span class="v dim">—</span></span></span>
+        <span class="note">No line posted yet</span>
+      </span>
+      <span class="full">
+      <span class="score" style="font-size:40px"><span class="v" style="min-width:auto">9:30</span><span class="sep">PM</span></span>
+      <span class="situation">No line posted. Model has Nevada <b>−3.1</b>; nothing to disagree with yet.</span>
+      <span class="odds">
+        <button><span class="k">Spread</span><span class="v">—</span></button>
+        <button><span class="k">Total</span><span class="v">—</span></button>
+        <button><span class="k">Model</span><span class="v">−3.1</span></button>
+      </span>
+      </span>
+    </span>
+  </article>
+
+  <!-- NOTE ON THE FIXTURE: PreviewClient.tsx builds its postponed game as
+       {...NO_LINE, home: OKLAHOMA, away: PENN_STATE}, reusing two teams that
+       already appear above. Kept verbatim rather than inventing data — what is
+       under review is the PPD treatment, not the matchup. -->
+  <article class="card is-focusable" data-game="ppd">
+    <span class="strip">
+      <span>
+        <span class="who"><span class="rk">9</span> Penn St <span style="color:var(--ash)">at</span> <span class="rk">18</span> Oklahoma</span>
+        <span class="when">Postponed — lightning</span>
+      </span>
+      <span class="num none stat">PPD</span>
+    </span>
+    
+    <span class="body">
+      <span class="quiet">
+        <span class="grid4"><span class="cell"><span class="k">Spread</span><span class="v dim">−2.5</span></span><span class="cell"><span class="k">Total</span><span class="v dim">48.5</span></span><span class="cell"><span class="k">Model</span><span class="v dim">—</span></span><span class="cell"><span class="k">Status</span><span class="v dim">Void</span></span></span>
+        <span class="note">Lines pulled · positions void, they do not push</span>
+      </span>
+      <span class="full">
+      <span class="score" style="font-size:40px"><span class="v" style="min-width:auto">PPD</span></span>
+      <span class="situation">Postponed for lightning. Lines pulled; any position <b>voids</b>, not pushes.</span>
+      <span class="odds">
+        <button><span class="k">Spread</span><span class="v">−2.5</span></button>
+        <button><span class="k">Total</span><span class="v">48.5</span></button>
+        <button><span class="k">Status</span><span class="v">Void</span></button>
+      </span>
+      </span>
+    </span>
+  </article>
+
+  <p class="meta" style="text-align:center; padding:8px 0 4px">
+    Games 7 · Ranked 5 · Finals 2/7 · Model ATS 4-3 · lines 11:12 AM CT
+  </p>
+</main>
+
+<p class="sr" role="status" aria-live="polite" id="announce"></p>
+
+<div class="demo">
+  <button id="btn-motion" data-on="true">Motion: on</button>
+  <button id="btn-replay">Replay</button>
+</div>
+
+<footer>
+  Slate C — The Light. Testing <b>SpotlightCard</b>, <b>ElectricBorder</b> and
+  <b>GradualBlur</b> — all three zero-dep, all three re-tokenised here, and the
+  electric border manually guarded against reduced motion because its SVG
+  animation escapes the app's global CSS kill switch. Mockups only — standalone
+  HTML, no app code, nothing here ships. Per <code>docs/DESIGN.md</code>
+  exploration mode. · <a href="./index.html">All directions</a>
+</footer>
+
+<script>
+const REDUCE = window.matchMedia("(prefers-reduced-motion: reduce)");
+let motionOn = true;
+
+/* ---- the beam, fallback path -------------------------------------------- *
+   Used where animation-timeline: view() is unsupported (older Safari), and as
+   the discrete state for reduced-motion users. One IntersectionObserver, no
+   rAF loop. rootMargin pins the "lit" band to the middle 20% of the viewport.
+ * ------------------------------------------------------------------------- */
+const cards = [...document.querySelectorAll(".card")];
+const supportsTimeline = CSS.supports("animation-timeline: view()");
+
+function litByObserver() {
+  const io = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((e) => {
+        e.target.dataset.lit = e.isIntersecting ? "1" : "0";
+      });
+    },
+    { rootMargin: "-40% 0px -40% 0px", threshold: 0 }
+  );
+  cards.forEach((c) => io.observe(c));
+  return io;
+}
+
+let observer = null;
+function syncLightingMode() {
+  const useObserver = !supportsTimeline || REDUCE.matches || !motionOn;
+  if (useObserver && !observer) observer = litByObserver();
+  if (!useObserver && observer) {
+    observer.disconnect();
+    observer = null;
+    cards.forEach((c) => c.removeAttribute("data-lit"));
+  }
+}
+syncLightingMode();
+REDUCE.addEventListener("change", syncLightingMode);
+
+/* ---- ElectricBorder's manual reduced-motion guard ------------------------ *
+   THIS IS THE POINT. The app's globals.css reduced-motion block clamps CSS
+   animation-duration. ElectricBorder as shipped animates through an SVG
+   <animate> element, which that rule does not reach — so it keeps moving for a
+   user who asked it not to. Any adoption needs this guard written by hand.
+ * ------------------------------------------------------------------------- */
+function guardElectric() {
+  const off = REDUCE.matches || !motionOn;
+  document.querySelectorAll('[data-live="true"]').forEach((el) => {
+    el.style.animationPlayState = off ? "paused" : "running";
+    if (off) el.style.setProperty("--angle", "60deg"); // park it somewhere legible
+    else el.style.removeProperty("--angle");
+  });
+}
+guardElectric();
+REDUCE.addEventListener("change", guardElectric);
+
+/* ---- the scripted moment ------------------------------------------------ */
+const announce = document.getElementById("announce");
+let played = false;
+
+function setScore(away, home, total) {
+  document.getElementById("away-pts").textContent = away;
+  document.getElementById("home-pts").textContent = home;
+  document.getElementById("strip-score").textContent = away + "–" + home;
+  document.getElementById("sit-tot").textContent = "live at " + total;
+}
+
+function replay() {
+  if (played) {
+    setScore(21, 24, 45);
+    document.getElementById("odd-tot").textContent = "44.5 ✓";
+    played = false;
+    setTimeout(replay, 700);
+    return;
+  }
+  played = true;
+  setScore(28, 24, 52);
+  document.getElementById("odd-tot").textContent = "44.5 · hit";
+  announce.textContent =
+    "Ohio State 28, Michigan 24. Third quarter 8:42. Your over 44.5 has hit at 52.";
+}
+
+document.getElementById("btn-replay").addEventListener("click", replay);
+
+const btnMotion = document.getElementById("btn-motion");
+btnMotion.addEventListener("click", () => {
+  motionOn = !motionOn;
+  btnMotion.dataset.on = String(motionOn);
+  btnMotion.textContent = "Motion: " + (motionOn ? "on" : "off");
+  syncLightingMode();
+  guardElectric();
+});
+
+setTimeout(replay, 1500);
+</script>
+
+</body>
+</html>
