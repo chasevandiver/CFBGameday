@@ -141,6 +141,91 @@ shipping it.
 
 ## Log
 
+### Aug 11 — The aura was below the threshold of perception, and a React Bits round that lost
+
+No model change. `DEFAULT_PARAMS` untouched, no tuner run.
+
+**The React Bits round lost, all three directions.** The question was whether
+anything at [reactbits.dev](https://reactbits.dev) would make the site cleaner.
+Three `/slate` directions went up as standalone HTML under `public/design/` per
+exploration mode — **slate-a** a split-flap departure board, **slate-b** a
+wall-of-TVs bento, **slate-c** a scroll-driven spotlight — plus **slate-motion**,
+a panel-by-panel study of what animation buys. All three read as worse than the
+card that already ships, which is now the *second* time a card mockup round has
+lost to the incumbent (Aug 8 was the first). The mockups stay as the record.
+
+What the round was worth keeping, none of which required installing anything:
+
+- **`CountUp` is disqualified, not merely avoidable.** It needs `motion`, and
+  tweening a score 21 → 28 renders 22, 23, 24, 25, 26, 27 — six numbers that were
+  never the score. Football scores jump by 3/6/7/8. Demonstrated live in
+  `slate-motion.html` panel 01 rather than argued.
+- **`ElectricBorder`, `ClickSpark` and `GooeyNav` escape the reduced-motion kill
+  switch.** They animate via SVG `<animate>` or rAF; the global block in
+  `globals.css` clamps CSS `animation-duration` only. Zero-dep does not mean
+  free.
+- **`GradualBlur` is 6–10 stacked `backdrop-filter` layers** for a problem one
+  `mask-image` gradient solves. Same argument as Aug 8's: the ground is flat.
+- Registry deps, verified: `gsap` for SplitText/ScrollReveal/MagicBento/Masonry,
+  `motion` for CountUp/ShinyText/TiltedCard/Dock, `ogl` for the backgrounds,
+  `lenis` for ScrollStack. `SplitFlapText` is the only shortlisted component that
+  ships its own reduced-motion handling.
+
+**The real ask underneath it was the aura, and the aura was invisible.** Drift
+was `translate3d(±1.5%)` + `scale(1.05)` over 16s — about 11px over 8 seconds on
+a ~360px card, call it 1.3px/sec, which is under the threshold of perception on a
+phone. It had been doing nothing it was designed to do since Aug 8. Travel is now
+5% with a 2% vertical term and a four-stop cycle, so the path wanders instead of
+sliding along one axis.
+
+The Aug 8 rule is **unchanged and deliberately so**: motion still means money,
+`[data-tint="position"]` only. Broadening it was offered and declined — it is one
+of three cues separating a verdict glow from a team glow, and pregame always
+resolves to `teams`, so a morning slate still does not move. That is the accepted
+cost, not an oversight.
+
+Two things went with it:
+
+1. **Scale barely moved, 1.05 → 1.06.** The blur lives on `.glass-aura` itself,
+   so translating that element lets the compositor shift an already-rasterised
+   texture while scaling it forces a re-raster. All the amplitude comes from
+   translate. This is also why the two aura halves are *not* counter-phased —
+   animating children inside a blurred parent re-rasterises the blur every frame,
+   so the change that would most obviously read as "alive" is the one that costs
+   most. `will-change: transform` is scoped to the animating selector, so it
+   promotes ~10 auras rather than all ~70.
+2. **A score now lifts the aura and lets it settle** — `data-flare` on the wrap,
+   reusing the `useRef` previous-score effect that already drives `score-pop` and
+   the 500ms opacity transition `.glass-aura` already carried. No new keyframe.
+   It is a narrow, argued exception to "no opacity change": discrete news rather
+   than ambient flicker, and gated on `[data-tint="position"]` **in the selector
+   as well as** in the component, so it cannot leak onto a team card from a future
+   call site that forgets. Deliberately stricter than `score-pop`, which fires on
+   every card — correct for a scoreboard number, wrong for the thing carrying the
+   money signal.
+
+Incidental fix: the old keyframe was a two-stop `alternate`, so the global
+reduced-motion clamp (one 0.01ms iteration) parked the aura permanently at
+`translate(1.5%) scale(1.05)`. A cycle whose 0% and 100% match rests at `none`.
+Verified: `transform: none` and unchanging under `reducedMotion: reduce`.
+
+Measured, not assumed — Chromium at 390×844, `/slate/preview`, A/B in one session
+by overriding the new tokens back to the old values:
+
+| | 13 cards / 6 animating | 67 cards / 30 animating |
+|---|---|---|
+| old values | 60fps | 60fps |
+| new values | **60fps** | **60fps** |
+
+No regression, at three times the animating-aura count of the Aug 8 baseline
+(61fps at 67 cards, 10 animating). Caveat worth recording: this was a headless
+Linux container, not a phone, and 60 is the vsync ceiling — it says "no
+measurable cost", not "fast".
+
+`GameCard.aura.test.tsx` is new and pins the component half of the rule in five
+cases, including the negative one: a score tick on a game you have nothing on
+must not flare. 437 tests pass. `tintFor` and `live-status.ts` were not touched.
+
 ### Aug 11 — The hub gets the slate's scoreboard, and stops mixing money with the pool
 
 No model change. `DEFAULT_PARAMS` untouched, no tuner run.
