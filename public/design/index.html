@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Home hub — design directions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root { --bg:#100e0b; --surface:#241d16; --text:#f2eee5; --dim:#a89f90; --accent:#f2b63c; --line:rgba(244,236,220,.13); }
+* { box-sizing: border-box; }
+html { color-scheme: dark; }
+body { margin:0; background:var(--bg); color:var(--text); font-family:"Archivo",system-ui,sans-serif; padding:28px 18px 60px; }
+main { max-width: 46rem; margin: 0 auto; }
+h1 { font-family:"Barlow Condensed",sans-serif; text-transform:uppercase; letter-spacing:.03em; font-size:30px; margin:0 0 6px; color:var(--accent); }
+.lede { color:var(--dim); font-size:14px; line-height:1.65; margin:0 0 28px; }
+ol { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:14px; }
+a.card {
+  display:block; text-decoration:none; color:inherit;
+  border:1px solid var(--line); border-radius:12px; background:var(--surface);
+  padding:16px 18px; min-height:44px;
+}
+a.card:hover { border-color: rgba(244,236,220,.3); }
+.k { font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--accent); }
+h2 { font-family:"Barlow Condensed",sans-serif; text-transform:uppercase; letter-spacing:.03em; font-size:22px; margin:4px 0 6px; }
+p.d { margin:0; font-size:13.5px; line-height:1.6; color:var(--dim); }
+p.axes { margin:10px 0 0; font-family:"IBM Plex Mono",monospace; font-size:11px; color:rgba(242,238,229,.45); line-height:1.6; }
+footer { margin-top:32px; font-size:12px; color:rgba(242,238,229,.35); line-height:1.7; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Home hub — three directions</h1>
+  <p class="lede">
+    Same screen, same real content: week 1, the four games you have pool picks on,
+    the six bets, the real lines and the real team colours. One game is shown live
+    with a plausible score so live state is comparable. All three split bets from
+    pool picks into two sections. Open each on your phone and on a tablet.
+  </p>
+
+  <ol>
+    <li><a class="card" href="./direction-a.html">
+      <span class="k">Direction A</span>
+      <h2>In the language</h2>
+      <p class="d">
+        Nothing invented — every value already exists in the app's stylesheet.
+        Fixes the structure instead: two sections, a wider column that splits in
+        two on a tablet, the slate's team-colour aura lit on your rows, a
+        width-capped CTA, and a held-vs-now column.
+      </p>
+      <p class="axes">density medium · leads with how many games you're on · live = chips · CTA in the hero</p>
+    </a></li>
+
+    <li><a class="card" href="./direction-b.html">
+      <span class="k">Direction B</span>
+      <h2>The board</h2>
+      <p class="d">
+        A sportsbook's wall. Every position is one row on a shared grid, so you
+        compare down a column instead of reading cards. Remembered by the move
+        column: your number against the current number, coloured.
+      </p>
+      <p class="axes">density high · leads with the numbers · live = pulsing row edge · CTA sticky at the bottom</p>
+    </a></li>
+
+    <li><a class="card" href="./direction-c.html">
+      <span class="k">Direction C</span>
+      <h2>Broadcast</h2>
+      <p class="d">
+        A score bug. The next game you have action on takes the whole top of the
+        screen in its teams' colours; when it kicks, the card floods with the
+        verdict. Everything else compresses to tiles.
+      </p>
+      <p class="axes">density low · leads with one game · live = the card floods · CTA a floating pill</p>
+    </a></li>
+  </ol>
+
+  <footer>
+    Mockups only — standalone HTML, no app code, nothing here ships. Per
+    docs/DESIGN.md exploration mode.
+  </footer>
+</main>
+</body>
+</html>
