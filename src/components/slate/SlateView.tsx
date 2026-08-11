@@ -350,21 +350,14 @@ export function SlateView({
     });
   }, [filtered, sort, starred, favoriteTeamIds]);
 
-  const noFilters =
-    day === "all" &&
-    conference === "all" &&
-    network === "all" &&
-    !rankedOnly &&
-    !betsOnly &&
-    !picksOnly &&
-    spreadRange === "any" &&
-    query.trim() === "";
-
-  // Game of the Week: highlighted in place in the grid, not a separate hero
-  const featuredId = useMemo(
-    () => (sort === "kickoff" && noFilters ? (pickHero(sorted)?.id ?? null) : null),
-    [sorted, sort, noFilters],
-  );
+  /* Game of the Week: highlighted in place in the grid, not a separate hero.
+     Picked from the whole week rather than from what is currently on screen —
+     it is a fact about the slate, not about your filter. It used to be
+     computed from the filtered list and suppressed entirely unless the board
+     was untouched, so choosing a conference either moved the crown to a
+     different game or made it disappear, both surprising. Now the same game
+     wears it whenever it is on screen, and nothing wears it when it isn't. */
+  const featuredId = useMemo(() => pickHero(games)?.id ?? null, [games]);
 
   // High-powered day structure: live games lead, then pregame by kickoff
   // slot (Noon / Afternoon / Primetime / Late — spec §7), then finals.
@@ -551,6 +544,7 @@ export function SlateView({
                   index={i}
                   focused
                   onFocus={toggleFocus}
+                  demo={demo}
                 />
               ))}
             </div>
@@ -580,6 +574,7 @@ export function SlateView({
                 featuredId={featuredId}
                 focusedIds={focusedIds}
                 onFocus={toggleFocus}
+                demo={demo}
               />
             </section>
           ))
@@ -592,6 +587,7 @@ export function SlateView({
             featuredId={featuredId}
             focusedIds={focusedIds}
             onFocus={toggleFocus}
+            demo={demo}
           />
         )}
       </div>
@@ -611,6 +607,7 @@ function CardGrid({
   featuredId,
   focusedIds,
   onFocus,
+  demo,
 }: {
   games: GameView[];
   tz: string;
@@ -619,6 +616,7 @@ function CardGrid({
   featuredId: number | null;
   focusedIds: number[];
   onFocus: (gameId: number) => void;
+  demo?: boolean;
 }) {
   return (
     <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
@@ -633,6 +631,7 @@ function CardGrid({
           featured={g.id === featuredId}
           focused={focusedIds.includes(g.id)}
           onFocus={onFocus}
+          demo={demo}
         />
       ))}
     </div>

@@ -141,6 +141,51 @@ shipping it.
 
 ## Log
 
+### Aug 11 — The demo stops offering exits that don't exist, and gets a link card
+
+No model change. `DEFAULT_PARAMS` untouched, no tuner run.
+
+Three follow-ups off the demo review. One of the three turned out to be
+already built, which is recorded here rather than quietly re-done.
+
+**Every link out of the demo was a dead end, and now none of them are.** The
+card overlay pointed at `/game/9104` — a game page for a game that never
+happened — and the hub's `Ledger →`, `The board →`, group rows, pool-progress
+rows and the ledger footnote all led to routes that, signed out, are the
+sign-in card the demo exists to avoid. `GameCard` and `HomeDashboard` take a
+`demo` flag; a `MaybeLink` helper renders the identical box without the
+anchor, so nothing about the layout moves. The demo hub is now down to exactly
+one link — the hero's own "Go to the slate", which stays inside the demo —
+and that count is pinned by a test, as is the fact that the real hub still
+links out everywhere. Everything else on a demo card (odds taps, star, pin,
+the slip) still works; only the way out is gone.
+
+**`/demo` has its own link card.** `opengraph-image.tsx` one segment up sells
+the product; this is the link people actually send, so it previews the thing
+the screens are built around — a live score with a verdict on it — and wears
+"sample data" on its face, so a card sitting in a group chat carries the same
+disclaimer the page does. Inherited by `/demo/slate`. Code-generated, no
+asset, no font fetch, like the root tile.
+
+**The watchability chip was already shipped** — `WatchRating` has rendered on
+every pregame card since #37 (band + figure: "Good 72", "Filler 34"), and
+`SystemsRow` likewise satisfies the §2.4 promise the audit still lists as
+unmet. `audit/CHECKLIST.md` is stale on both counts. What was actually broken
+nearby is **Game of the Week**, which was computed from the *filtered* list
+and suppressed entirely unless the board was untouched — so picking a
+conference either moved the crown to a different game or made it vanish. It
+now comes from the whole week's games, a fact about the slate rather than
+about your filter: the same game wears it whenever it's on screen, and
+nothing wears it when it isn't.
+
+**Noted, not changed:** a game you have only a *bet* on gets the verdict aura
+(`tintFor` reads bets first) but no cover strip, because the strip reads
+`headlinePick` — picks only. On the demo that's the Ole Miss / Georgia push:
+amber glow, "On the number" chip, no broadcast strip. Giving money the loudest
+verdict slot is a design call, not a bug fix, so it waits for a decision.
+
+472 tests pass.
+
 ### Aug 11 — Amber means push, the glow gets loud, and the ticker learns whose money is where
 
 No model change. `DEFAULT_PARAMS` untouched, no tuner run.

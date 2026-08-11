@@ -39,6 +39,9 @@ export default async function DemoHubPage() {
           // Otherwise the hub's primary action walks out of the demo and into
           // the real signed-out slate, the one screen this exists to avoid.
           slateHref="/demo/slate"
+          // Every other href on the hub is a dead end here — invented game ids,
+          // and /ledger and /groups signed out are that same sign-in card.
+          demo
         />
       </main>
     </>

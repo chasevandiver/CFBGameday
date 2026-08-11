@@ -60,6 +60,8 @@ interface Props {
   /** Multi-game focus mode: pinned to the Focus row at the top of the slate */
   focused?: boolean;
   onFocus?: (gameId: number) => void;
+  /** Sample data: the game id is invented, so the card does not link out. */
+  demo?: boolean;
 }
 
 const DOWN = ["", "1st", "2nd", "3rd", "4th"];
@@ -86,6 +88,7 @@ export function GameCard({
   featured = false,
   focused = false,
   onFocus,
+  demo = false,
 }: Props) {
   const live = isLive(game);
   const final = isFinal(game);
@@ -196,11 +199,17 @@ export function GameCard({
         </div>
       )}
 
-      <Link
-        href={`/game/${game.id}`}
-        aria-label={`${game.away.school} at ${game.home.school}`}
-        className="absolute inset-0 z-0 rounded-[12px] focus-visible:outline-2 focus-visible:outline-accent"
-      />
+      {/* The whole card is the target — except on the demo, where the id is
+          invented and following it lands on a game page for a game that does
+          not exist. Everything else on the card (odds, star, pin, the slip)
+          still works there; only the way out is gone. */}
+      {!demo && (
+        <Link
+          href={`/game/${game.id}`}
+          aria-label={`${game.away.school} at ${game.home.school}`}
+          className="absolute inset-0 z-0 rounded-[12px] focus-visible:outline-2 focus-visible:outline-accent"
+        />
+      )}
 
       <div
         className={`pointer-events-none relative z-10 flex h-full flex-col p-3.5 ${cover ? "pt-2.5" : "pt-4"}`}
