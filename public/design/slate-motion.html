@@ -1,0 +1,774 @@
+<!doctype html>
+<html lang="en" data-direction="slate-motion">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Slate — motion study · The CFB Slate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================================
+   SLATE — MOTION STUDY
+
+   Not a design direction. This page answers one question directly instead of
+   leaving it implied across three mockups: WHAT DOES ANIMATION ACTUALLY ADD?
+
+   Same live moment — Ohio State 21 -> 28 against Michigan, Q3 8:42, your over
+   44.5 riding on it — rendered several ways side by side. Every panel has a
+   Replay button, and the global Motion toggle turns animation off so the same
+   event can be watched with and without, back to back.
+
+   This page deliberately uses THE APP'S OWN tokens and fonts (not a direction's
+   palette), because the subject here is the motion, not the look.
+   ========================================================================== */
+
+:root {
+  /* verbatim from src/app/globals.css */
+  --bg: #100e0b;
+  --surface: #241d16;
+  --elev: #2c251c;
+  --line: rgba(244, 236, 220, 0.13);
+  --text: #f2eee5;
+  --text-dim: #a89f90;
+  --accent: #f2b63c;
+  --live: #ff4b57;
+  --win: #34c77b;
+  --loss: #f0616d;
+  --edge-c: #ff8a3d;
+
+  --font-body: "Archivo";
+  --font-display: "Barlow Condensed";
+  --font-numeric: "IBM Plex Mono";
+}
+
+* { box-sizing: border-box; }
+html { color-scheme: dark; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-size: 13.5px; line-height: 1.5;
+  padding: 0 0 calc(80px + env(safe-area-inset-bottom));
+}
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+button, a { touch-action: manipulation; }
+.stat { font-family: var(--font-numeric), monospace; font-variant-numeric: tabular-nums; }
+h1, h2 {
+  font-family: var(--font-display), sans-serif; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .03em; margin: 0;
+}
+a { color: var(--accent); }
+
+header {
+  padding: calc(22px + env(safe-area-inset-top)) 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+h1 { font-size: 26px; color: var(--accent); }
+.lede { color: var(--text-dim); font-size: 13px; margin: 8px 0 0; max-width: 34rem; }
+
+main { padding: 0 16px; max-width: 46rem; margin: 0 auto; }
+
+.panel { border-bottom: 1px solid var(--line); padding: 20px 0; }
+.panel-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.panel h2 { font-size: 17px; }
+.n {
+  font-family: var(--font-numeric), monospace; font-size: 11px;
+  color: var(--accent); letter-spacing: .1em;
+}
+.panel .q { color: var(--text-dim); font-size: 12.5px; margin: 6px 0 14px; }
+
+.rowset { display: grid; gap: 8px; }
+.demo-row {
+  display: grid; grid-template-columns: 96px 1fr; gap: 12px; align-items: center;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 10px; padding: 12px 14px; min-height: 62px;
+}
+.demo-row .label {
+  font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-dim); line-height: 1.35;
+}
+.demo-row .stage {
+  display: flex; align-items: center; gap: 10px; min-height: 38px;
+  flex-wrap: wrap;
+}
+/* the tween's trace gets its own line rather than squeezing the score */
+#m1-count-trace { flex-basis: 100%; line-height: 1.5; }
+
+.big {
+  font-family: var(--font-display), sans-serif; font-weight: 700;
+  font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums;
+  letter-spacing: .01em;
+}
+.big .sep { color: var(--text-dim); font-size: 17px; margin: 0 5px; }
+
+.verdict {
+  margin-top: 12px; font-size: 12px; color: var(--text-dim);
+  border-left: 2px solid var(--line); padding-left: 10px; line-height: 1.65;
+}
+.verdict b { color: var(--text); font-weight: 600; }
+.verdict .dep { color: var(--edge-c); font-weight: 600; }
+.verdict .free { color: var(--win); font-weight: 600; }
+
+.controls { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.btn {
+  min-height: 44px; padding: 0 14px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--elev);
+  font-size: 12px; font-weight: 500; color: var(--text);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn[data-on="true"] { border-color: var(--accent); color: var(--accent); }
+
+/* ---- (a) the app's CURRENT mechanism ------------------------------------ *
+   score-pop + score-flash, verbatim from globals.css:535-561.
+ * ------------------------------------------------------------------------- */
+@keyframes score-flash {
+  0%   { background-color: color-mix(in srgb, var(--flash-color, var(--accent)) 45%, transparent); }
+  100% { background-color: transparent; }
+}
+@keyframes score-pop {
+  0%   { transform: translateY(-6px) scale(1.14); }
+  60%  { transform: none; }
+}
+.score-pop {
+  animation: score-pop 600ms cubic-bezier(0.22, 1, 0.36, 1) both,
+             score-flash 1.4s ease-out both;
+  border-radius: 6px;
+}
+
+/* ---- (b) the split-flap ------------------------------------------------- *
+   Same mechanism as slate-a. Only digits flap: a glyph whose ink sits on the
+   fold line is bisected by the hairline and disappears (this is why "−6.5"
+   rendered as " 6.5" the first time). Punctuation is printed, not flapped.
+ * ------------------------------------------------------------------------- */
+.flapset { display: inline-flex; gap: 1px; }
+.flap {
+  position: relative; display: inline-block;
+  width: 1ch; height: 30px; perspective: 110px;
+  font-family: var(--font-display), sans-serif; font-weight: 700;
+  font-size: 30px; line-height: 30px; font-variant-numeric: tabular-nums;
+}
+.flap.solid { width: .6ch; }
+.flap.solid .half, .flap.solid .leaf { display: none; }
+.flap.solid .glyph {
+  position: absolute; inset: 0; text-align: center; line-height: 30px;
+  color: var(--text-dim); font-size: 17px;
+}
+.flap .half, .flap .leaf {
+  position: absolute; left: 0; right: 0; height: 15px;
+  overflow: hidden; background: var(--elev);
+}
+.flap .half.t, .flap .leaf.a { top: 0; border-radius: 3px 3px 0 0; }
+.flap .half.b, .flap .leaf.b { bottom: 0; border-radius: 0 0 3px 3px; }
+.flap .half.t { border-bottom: 1px solid rgba(0,0,0,.5); }
+.flap i {
+  position: absolute; left: 0; width: 100%; height: 30px; line-height: 30px;
+  text-align: center; font-style: normal; color: var(--text);
+}
+.flap .half.t i, .flap .leaf.a i { top: 0; }
+.flap .half.b i, .flap .leaf.b i { bottom: 0; }
+.flap .leaf {
+  opacity: 0; backface-visibility: hidden;
+  box-shadow: 0 2px 6px rgba(0,0,0,.55);
+}
+.flap .leaf.a { transform-origin: center bottom; }
+.flap .leaf.b { transform-origin: center top; }
+.flap[data-flip="1"] .leaf.a { opacity: 1; animation: leaf-fall 140ms cubic-bezier(.4,0,.9,.5) both; }
+.flap[data-flip="1"] .leaf.b { opacity: 1; animation: leaf-land 140ms cubic-bezier(.1,.5,.4,1) 140ms both; }
+@keyframes leaf-fall { from { transform: rotateX(0deg); }  to { transform: rotateX(-90deg); } }
+@keyframes leaf-land { from { transform: rotateX(90deg); } to { transform: rotateX(0deg); } }
+
+/* ---- (d) the CountUp tween ---------------------------------------------- */
+.phantom { color: var(--loss); }
+
+/* ---- panel 3: the promotion --------------------------------------------- */
+.wall { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.tile {
+  background: var(--elev); border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 10px; min-height: 44px;
+  font-size: 11px; color: var(--text-dim);
+  display: flex; flex-direction: column; justify-content: center;
+}
+.tile b { color: var(--text); font-size: 12.5px; font-weight: 600; display: block; }
+.tile[data-big="true"] { grid-column: 1 / -1; min-height: 92px; }
+.tile[data-big="true"] b { font-size: 17px; }
+.tile[data-live="true"] { border-color: var(--live); }
+.tile[data-live="true"] b::after {
+  content: ""; display: inline-block; width: 6px; height: 6px;
+  border-radius: 50%; background: var(--live); margin-left: 6px; vertical-align: middle;
+}
+
+/* ---- panel 4: the beam -------------------------------------------------- */
+.beamstage { display: grid; gap: 6px; }
+.bcard {
+  --lit: 0;
+  position: relative; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px 12px; min-height: 52px;
+  transition: --lit 260ms ease;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  font-size: 12px;
+}
+@property --lit { syntax: "<number>"; inherits: true; initial-value: 0; }
+.bcard::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(120% 100% at 50% -20%,
+    rgba(255,243,220, calc(.16 * var(--lit))) 0%, transparent 70%);
+}
+.bcard > * { position: relative; }
+.bcard .t { color: color-mix(in srgb, var(--text) calc(55% + 45% * var(--lit)), transparent); }
+.bcard .s {
+  font-family: var(--font-display), sans-serif; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: calc(15px + 13px * var(--lit));
+  transition: font-size 260ms ease;
+}
+.bcard[data-lit="1"] { --lit: 1; }
+
+/* ---- panel 5: idle cost ------------------------------------------------- */
+.grid70 {
+  display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px;
+  margin-top: 4px;
+}
+.aura {
+  height: 22px; border-radius: 4px; position: relative; overflow: hidden;
+  background: var(--elev);
+}
+.aura::after {
+  content: ""; position: absolute; inset: -40%;
+  background: radial-gradient(50% 50% at 30% 30%, rgba(242,182,60,.55), transparent 70%),
+              radial-gradient(50% 50% at 70% 70%, rgba(255,75,87,.45), transparent 70%);
+  filter: blur(7px);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .grid70[data-drift="true"] .aura::after {
+    animation: aura-drift 16s ease-in-out infinite alternate;
+  }
+}
+@keyframes aura-drift {
+  from { transform: translate3d(-14%, -8%, 0) scale(1.05); }
+  to   { transform: translate3d(14%, 8%, 0) scale(1.18); }
+}
+.fps {
+  font-family: var(--font-numeric), monospace; font-size: 12px;
+  color: var(--text); margin-top: 8px;
+}
+.fps b { color: var(--accent); }
+.fps .warn { color: var(--loss); }
+
+/* ---- panel 6: reduced motion -------------------------------------------- */
+.rm { display: grid; gap: 8px; }
+.rm-row {
+  display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px 12px; min-height: 52px; font-size: 12.5px;
+}
+.tick { font-weight: 600; font-size: 12px; white-space: nowrap; }
+.tick.ok { color: var(--win); }
+.tick.bad { color: var(--loss); }
+
+/* the emulation: everything inside .rm-sim behaves as reduced-motion would */
+.rm-sim[data-reduce="true"] * {
+  animation-duration: .01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .01ms !important;
+}
+/* ...except the things that ESCAPE that rule, which is the whole point */
+.svgborder { width: 74px; height: 30px; }
+
+.sticky-controls {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  border-top: 1px solid var(--line);
+  backdrop-filter: blur(10px);
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  display: flex; gap: 8px; align-items: center;
+}
+.sticky-controls .grow { flex: 1; font-size: 11.5px; color: var(--text-dim); }
+
+footer { padding: 24px 16px 12px; color: var(--text-dim); font-size: 12px; line-height: 1.7; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>What animation adds</h1>
+  <p class="lede">
+    One moment — <b>Ohio State 21 → 28</b> against Michigan, Q3 8:42, your over
+    44.5 riding on it — rendered several ways. Hit <b>Replay</b> on any panel, then
+    turn <b>Motion off</b> at the bottom and replay the same thing. The difference
+    between those two viewings is the entire value of the animation, and the
+    panels say what each one costs.
+  </p>
+</header>
+
+<main>
+
+<!-- ======================= 1 · SCORE CHANGE ============================== -->
+<section class="panel">
+  <div class="panel-head"><span class="n">01</span><h2>A score changes</h2></div>
+  <p class="q">Seven points. The most common meaningful event on the screen.</p>
+
+  <div class="rowset">
+    <div class="demo-row">
+      <span class="label">Static<br>no animation</span>
+      <span class="stage"><span class="big" id="m1-static">21<span class="sep">–</span>24</span></span>
+    </div>
+
+    <div class="demo-row">
+      <span class="label">Shipped today<br>score-pop</span>
+      <span class="stage"><span class="big" id="m1-pop">21<span class="sep">–</span>24</span></span>
+    </div>
+
+    <div class="demo-row">
+      <span class="label">Split-flap<br>SplitFlapText</span>
+      <span class="stage"><span class="flapset" id="m1-flap" data-flap="21–24"></span></span>
+    </div>
+
+    <div class="demo-row">
+      <span class="label">Tween<br>CountUp</span>
+      <span class="stage">
+        <span class="big" id="m1-count">21<span class="sep">–</span>24</span>
+        <span class="stat" style="font-size:11px; color:var(--text-dim)" id="m1-count-trace"></span>
+      </span>
+    </div>
+  </div>
+
+  <p class="verdict">
+    <b>What it buys:</b> the flash and the flap both make a change you were not
+    looking at findable a second later. Static does not — if you glance away, the
+    event is gone.<br>
+    <b>What it costs:</b> the flap is slower to read than the flash. That is the
+    real trade: unmistakable from across a room versus instant but easy to miss.<br>
+    <b>The tween is disqualified, not merely expensive.</b> Watch the trace beside
+    it — <span class="phantom">it renders 22, 23, 24, 25, 26, 27</span>, none of
+    which were ever the score. Football scores jump by 3, 6, 7 and 8. A tween
+    lies about the thing this product exists to report.<br>
+    <b>Dependency:</b> split-flap <span class="free">zero</span> ·
+    score-pop <span class="free">zero, already shipped</span> ·
+    CountUp <span class="dep">needs motion</span>.
+  </p>
+  <div class="controls"><button class="btn" data-replay="1">Replay</button></div>
+</section>
+
+<!-- ======================= 2 · LINE MOVE ================================= -->
+<section class="panel">
+  <div class="panel-head"><span class="n">02</span><h2>A line moves</h2></div>
+  <p class="q">
+    Georgia at Alabama, −3 → −1.5. The thing you most want to notice without
+    staring at it, and the thing most likely to happen while the phone is face
+    down on the sofa.
+  </p>
+
+  <div class="rowset">
+    <div class="demo-row">
+      <span class="label">Static</span>
+      <span class="stage"><span class="big stat" id="m2-static" style="font-size:24px">−3</span></span>
+    </div>
+    <div class="demo-row">
+      <span class="label">Flash +<br>arrow</span>
+      <span class="stage">
+        <span class="big stat" id="m2-flash" style="font-size:24px">−3</span>
+        <span class="stat" id="m2-arrow" style="font-size:12px; color:var(--text-dim)"></span>
+      </span>
+    </div>
+    <div class="demo-row">
+      <span class="label">Split-flap</span>
+      <span class="stage"><span class="flapset" id="m2-flap" data-flap="−3.0"></span></span>
+    </div>
+  </div>
+
+  <p class="verdict">
+    <b>What it buys:</b> here the flap wins clearly. A line move is a small
+    number changing by a small amount; a flash draws the eye but does not tell
+    you the direction, and the flap shows the digit physically travelling.<br>
+    <b>What it costs:</b> nothing extra — the mechanism is already built for the
+    score.<br>
+    <b>Dependency:</b> <span class="free">zero</span>. Note the sign is
+    <em>printed, not flapped</em> — a minus sits exactly on the fold line and is
+    bisected into invisibility otherwise. That bug is live in
+    <code>SplitFlapText</code> as shipped.
+  </p>
+  <div class="controls"><button class="btn" data-replay="2">Replay</button></div>
+</section>
+
+<!-- ======================= 3 · STATUS TRANSITION ========================= -->
+<section class="panel">
+  <div class="panel-head"><span class="n">03</span><h2>A game kicks off</h2></div>
+  <p class="q">
+    Slate B's promotion: a strip at the bottom of the wall grows into the big
+    screen. This is the one animation on this page that is <em>itself</em> a
+    layout change.
+  </p>
+
+  <div class="wall" id="m3-wall">
+    <div class="tile" data-big="true" data-k="osu"><b>Ohio St at Michigan</b>Q3 8:42 · your over 44.5</div>
+    <div class="tile" data-k="uga"><b>UGA at Bama</b>7:30P · EDGE</div>
+    <div class="tile" data-k="mioh"><b>Miami (OH) at WMU</b>Q2 2:11</div>
+    <div class="tile" data-k="sjsu"><b>SJSU at Nevada</b>9:30P</div>
+    <div class="tile" data-k="ppd"><b>PSU at OU</b>PPD</div>
+  </div>
+
+  <p class="verdict">
+    <b>What it buys:</b> you notice a game starting without reading anything.
+    With motion off, the tiles simply jump — the layout is still correct, but the
+    event is invisible unless you happened to be looking.<br>
+    <b>What it costs:</b> it moves everything below it. Mitigation, and the thing
+    to judge: it fires only on a <em>status</em> change, never on a score update,
+    and never while you have scrolled past the wall.<br>
+    <b>Dependency:</b> <span class="free">zero</span> —
+    <code>document.startViewTransition()</code> plus
+    <code>view-transition-name</code> is a native drop-in for exactly what
+    <code>MagicBento</code> uses <span class="dep">gsap</span> for. Where
+    unsupported it degrades to an instant re-lay-out.
+  </p>
+  <div class="controls"><button class="btn" data-replay="3">Replay</button></div>
+</section>
+
+<!-- ======================= 4 · THE BEAM ================================== -->
+<section class="panel">
+  <div class="panel-head"><span class="n">04</span><h2>Entering the beam</h2></div>
+  <p class="q">
+    Slate C's mechanism, isolated. Left: one card lit at a time. Right of the
+    toggle: every card lit at once, which is what the slate does today.
+  </p>
+
+  <div class="beamstage" id="m4">
+    <div class="bcard"><span class="t">Oklahoma at Texas</span><span class="s">24–34</span></div>
+    <div class="bcard" data-lit="1"><span class="t">Ohio St at Michigan</span><span class="s">21–24</span></div>
+    <div class="bcard"><span class="t">Miami (OH) at W Michigan</span><span class="s">10–13</span></div>
+    <div class="bcard"><span class="t">Georgia at Alabama</span><span class="s">−1.5</span></div>
+  </div>
+
+  <p class="verdict">
+    <b>What it buys:</b> hierarchy without sorting. One card is obviously the
+    subject, and the rest stay readable — which is how you get
+    "the most important number is the largest thing on screen" without reordering
+    anything.<br>
+    <b>What it costs:</b> if the lit card is not the one you care about, the
+    design is actively working against you. With two live games at once — as
+    today — that is a real scenario, not a corner case.<br>
+    <b>Dependency:</b> <span class="free">zero</span>.
+    <code>animation-timeline: view()</code> where supported, one
+    <code>IntersectionObserver</code> where not.
+  </p>
+  <div class="controls">
+    <button class="btn" data-replay="4">Replay</button>
+    <button class="btn" id="m4-all">Light everything</button>
+  </div>
+</section>
+
+<!-- ======================= 5 · IDLE COST ================================= -->
+<section class="panel">
+  <div class="panel-head"><span class="n">05</span><h2>What it costs while nothing happens</h2></div>
+  <p class="q">
+    70 card auras, the figure <code>globals.css</code> records as costing 8fps
+    (52 vs 60). Reproduce it on <em>your</em> phone rather than taking it on
+    trust — this is the number that decides whether any always-on effect is
+    affordable.
+  </p>
+
+  <div class="grid70" id="m5-grid" data-drift="true"></div>
+  <p class="fps" id="m5-fps">measuring…</p>
+
+  <p class="verdict">
+    <b>What it buys:</b> nothing. No information is conveyed by an idle
+    animation.<br>
+    <b>What it costs:</b> whatever the readout above says, continuously, for the
+    four hours this app is open. This is the argument for
+    <em>event-driven</em> motion over ambient motion: the flap costs zero until a
+    score changes, and the app already limits drift to cards you have money on
+    for exactly this reason.<br>
+    <b>Dependency:</b> the expensive React Bits Backgrounds
+    (<code>Aurora</code>, <code>Particles</code>, <code>Ribbons</code>) are this
+    panel, permanently, <span class="dep">plus ogl</span>.
+  </p>
+  <div class="controls">
+    <button class="btn" id="m5-toggle" data-on="true">Drift: on</button>
+  </div>
+</section>
+
+<!-- ======================= 6 · REDUCED MOTION ============================ -->
+<section class="panel">
+  <div class="panel-head"><span class="n">06</span><h2>When the user asked for no motion</h2></div>
+  <p class="q">
+    <code>globals.css</code> has a global <code>prefers-reduced-motion</code>
+    block that clamps every CSS animation to 0.01ms. Here is what that rule does
+    and does not reach. Emulated below, so you can see it without changing your
+    phone settings — then change them and reload to confirm.
+  </p>
+
+  <div class="rm rm-sim" id="m6" data-reduce="true">
+    <div class="rm-row">
+      <span>CSS keyframes — <code>score-pop</code>, <code>aura-drift</code>, the flap</span>
+      <span class="tick ok">stopped ✓</span>
+    </div>
+    <div class="rm-row">
+      <span>CSS transitions — the beam's cross-fade</span>
+      <span class="tick ok">stopped ✓</span>
+    </div>
+    <div class="rm-row">
+      <span>
+        SVG <code>&lt;animate&gt;</code> — how <code>ElectricBorder</code> ships
+        <svg class="svgborder" viewBox="0 0 74 30" aria-hidden="true">
+          <rect x="1" y="1" width="72" height="28" rx="6" fill="none"
+                stroke="#ff8a3d" stroke-width="1.5" stroke-dasharray="20 180">
+            <animate attributeName="stroke-dashoffset" from="0" to="-200"
+                     dur="1.6s" repeatCount="indefinite" />
+          </rect>
+        </svg>
+      </span>
+      <span class="tick bad">still moving ✗</span>
+    </div>
+    <div class="rm-row">
+      <span>Canvas / rAF — how <code>ClickSpark</code> and <code>GooeyNav</code> ship</span>
+      <span class="tick bad">still moving ✗</span>
+    </div>
+  </div>
+
+  <p class="verdict">
+    <b>This is the panel that matters most for the original question.</b> Three
+    of the zero-dependency React Bits components — <code>ElectricBorder</code>,
+    <code>ClickSpark</code>, <code>GooeyNav</code> — animate outside CSS, so the
+    app's global kill switch does not touch them. Adopting any of them means
+    hand-writing a <code>matchMedia("(prefers-reduced-motion: reduce)")</code>
+    guard that the component does not ship with.<br>
+    <code>SplitFlapText</code> is the exception: it handles reduced motion
+    itself. <span class="free">That is a real reason to prefer it.</span>
+  </p>
+  <div class="controls">
+    <button class="btn" id="m6-toggle" data-on="true">Emulating reduced motion</button>
+  </div>
+</section>
+
+<footer>
+  Motion study for the slate directions. Uses the app's own tokens and fonts on
+  purpose — the subject here is the motion, not the look. Mockups only —
+  standalone HTML, no app code, nothing here ships. Per
+  <code>docs/DESIGN.md</code> exploration mode. ·
+  <a href="./index.html">All directions</a>
+</footer>
+</main>
+
+<p class="sr" role="status" aria-live="polite" id="announce" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"></p>
+
+<div class="sticky-controls">
+  <span class="grow">Watch a panel, flip this, watch it again.</span>
+  <button class="btn" id="motion-toggle" data-on="true">Motion: on</button>
+  <button class="btn" id="replay-all">Replay all</button>
+</div>
+
+<script>
+const REDUCE = window.matchMedia("(prefers-reduced-motion: reduce)");
+let motionOn = true;
+const noMotion = () => !motionOn || REDUCE.matches;
+
+/* ---------- flap (same mechanism as slate-a) ---------- */
+function buildFlapset(el) {
+  const text = el.dataset.flap || "";
+  el.textContent = "";
+  [...text].forEach((ch) => {
+    const cell = document.createElement("span");
+    const isDigit = /[0-9]/.test(ch);
+    cell.className = "flap" + (isDigit ? "" : " solid");
+    if (isDigit) {
+      cell.innerHTML = '<span class="half t"><i></i></span><span class="half b"><i></i></span>' +
+                       '<span class="leaf a"><i></i></span><span class="leaf b"><i></i></span>';
+      cell.querySelectorAll("i").forEach((n) => (n.textContent = ch));
+    } else {
+      cell.innerHTML = '<span class="glyph"></span>';
+      cell.querySelector(".glyph").textContent = ch;
+    }
+    el.appendChild(cell);
+  });
+  el.setAttribute("aria-hidden", "true");
+}
+function setFlap(el, next) {
+  const cells = [...el.querySelectorAll(".flap")];
+  [...next].forEach((ch, i) => {
+    const cell = cells[i];
+    if (!cell) return;
+    if (cell.classList.contains("solid")) {
+      const g = cell.querySelector(".glyph");
+      if (g.textContent !== ch) g.textContent = ch;
+      return;
+    }
+    const topI = cell.querySelector(".half.t i");
+    const botI = cell.querySelector(".half.b i");
+    if (topI.textContent === ch) return;
+    cell.querySelector(".leaf.a i").textContent = topI.textContent;
+    cell.querySelector(".leaf.b i").textContent = ch;
+    topI.textContent = ch;
+    const land = () => { botI.textContent = ch; cell.removeAttribute("data-flip"); };
+    if (noMotion()) land();
+    else {
+      cell.setAttribute("data-flip", "1");
+      cell.querySelector(".leaf.b").addEventListener("animationend", land, { once: true });
+    }
+  });
+}
+document.querySelectorAll(".flapset").forEach(buildFlapset);
+
+/* ---------- panel 1 ---------- */
+const P1 = {
+  static: document.getElementById("m1-static"),
+  pop: document.getElementById("m1-pop"),
+  flap: document.getElementById("m1-flap"),
+  count: document.getElementById("m1-count"),
+  trace: document.getElementById("m1-count-trace"),
+};
+let p1On = false;
+function score(el, a, h) { el.innerHTML = a + '<span class="sep">–</span>' + h; }
+
+function panel1() {
+  const a = p1On ? 21 : 28;
+  p1On = !p1On;
+  score(P1.static, a, 24);
+  score(P1.pop, a, 24);
+  P1.pop.classList.remove("score-pop");
+  if (!noMotion()) { void P1.pop.offsetWidth; P1.pop.classList.add("score-pop"); }
+  setFlap(P1.flap, a + "–24");
+
+  // the tween, shown honestly: it walks through scores that never existed
+  const from = a === 28 ? 21 : 28, to = a;
+  P1.trace.textContent = "";
+  if (noMotion()) { score(P1.count, to, 24); P1.trace.textContent = ""; return; }
+  const seen = [];
+  const t0 = performance.now(), dur = 900;
+  (function step(now) {
+    const k = Math.min(1, (now - t0) / dur);
+    const v = Math.round(from + (to - from) * k);
+    score(P1.count, v, 24);
+    if (!seen.includes(v)) seen.push(v);
+    if (k < 1) requestAnimationFrame(step);
+    else {
+      const phantom = seen.filter((n) => n !== from && n !== to);
+      P1.trace.innerHTML = phantom.length
+        ? 'rendered <span class="phantom">' + phantom.join(", ") + "</span> — never the score"
+        : "";
+    }
+  })(performance.now());
+}
+
+/* ---------- panel 2 ---------- */
+let p2On = false;
+function panel2() {
+  const v = p2On ? "−3.0" : "−1.5";
+  const txt = p2On ? "−3" : "−1.5";
+  p2On = !p2On;
+  document.getElementById("m2-static").textContent = txt;
+  const f = document.getElementById("m2-flash");
+  f.textContent = txt;
+  f.classList.remove("score-pop");
+  if (!noMotion()) { void f.offsetWidth; f.classList.add("score-pop"); }
+  document.getElementById("m2-arrow").textContent = p2On ? "" : "↑ toward Georgia";
+  setFlap(document.getElementById("m2-flap"), v);
+}
+
+/* ---------- panel 3 ---------- */
+const wall = document.getElementById("m3-wall");
+let bigKey = "osu";
+function applyWall(next) {
+  [...wall.children].forEach((t) => {
+    t.dataset.big = String(t.dataset.k === next);
+    t.dataset.live = String(t.dataset.k === next && next === "uga");
+  });
+  bigKey = next;
+}
+function panel3() {
+  const next = bigKey === "osu" ? "uga" : "osu";
+  if (noMotion() || !document.startViewTransition) { applyWall(next); return; }
+  [...wall.children].forEach((t) => (t.style.viewTransitionName = "tile-" + t.dataset.k));
+  document.startViewTransition(() => applyWall(next));
+}
+
+/* ---------- panel 4 ---------- */
+const beam = document.getElementById("m4");
+let litIdx = 1;
+function panel4() {
+  const cards = [...beam.children];
+  litIdx = (litIdx + 1) % cards.length;
+  cards.forEach((c, i) => (c.dataset.lit = i === litIdx ? "1" : "0"));
+}
+document.getElementById("m4-all").addEventListener("click", (e) => {
+  const on = e.currentTarget.dataset.on !== "true";
+  e.currentTarget.dataset.on = String(on);
+  e.currentTarget.textContent = on ? "One at a time" : "Light everything";
+  [...beam.children].forEach((c, i) => (c.dataset.lit = on ? "1" : i === litIdx ? "1" : "0"));
+});
+
+/* ---------- panel 5: 70 auras + a real fps readout ---------- */
+const grid = document.getElementById("m5-grid");
+for (let i = 0; i < 70; i++) {
+  const d = document.createElement("div");
+  d.className = "aura";
+  grid.appendChild(d);
+}
+const fpsEl = document.getElementById("m5-fps");
+let frames = 0, last = performance.now(), samples = [];
+(function tick(now) {
+  frames++;
+  if (now - last >= 1000) {
+    const fps = Math.round((frames * 1000) / (now - last));
+    samples.push(fps);
+    if (samples.length > 5) samples.shift();
+    const avg = Math.round(samples.reduce((a, b) => a + b, 0) / samples.length);
+    const drifting = grid.dataset.drift === "true";
+    fpsEl.innerHTML =
+      "drift " + (drifting ? "<b>on</b>" : "off") +
+      " · <b>" + avg + " fps</b>" +
+      (drifting && avg < 55 ? ' · <span class="warn">below 60 — this is the cost</span>' : "");
+    frames = 0; last = now;
+  }
+  requestAnimationFrame(tick);
+})(performance.now());
+
+document.getElementById("m5-toggle").addEventListener("click", (e) => {
+  const on = grid.dataset.drift !== "true";
+  grid.dataset.drift = String(on);
+  e.currentTarget.dataset.on = String(on);
+  e.currentTarget.textContent = "Drift: " + (on ? "on" : "off");
+  samples = [];
+});
+
+/* ---------- panel 6 ---------- */
+const m6 = document.getElementById("m6");
+document.getElementById("m6-toggle").addEventListener("click", (e) => {
+  const on = m6.dataset.reduce !== "true";
+  m6.dataset.reduce = String(on);
+  e.currentTarget.dataset.on = String(on);
+  e.currentTarget.textContent = on ? "Emulating reduced motion" : "Reduced motion off";
+});
+
+/* ---------- wiring ---------- */
+const PANELS = { 1: panel1, 2: panel2, 3: panel3, 4: panel4 };
+document.querySelectorAll("[data-replay]").forEach((b) => {
+  b.addEventListener("click", () => PANELS[b.dataset.replay]());
+});
+document.getElementById("replay-all").addEventListener("click", () => {
+  Object.values(PANELS).forEach((fn) => fn());
+  document.getElementById("announce").textContent =
+    "Ohio State 28, Michigan 24. Your over 44.5 has hit.";
+});
+
+const mt = document.getElementById("motion-toggle");
+mt.addEventListener("click", () => {
+  motionOn = !motionOn;
+  mt.dataset.on = String(motionOn);
+  mt.textContent = "Motion: " + (motionOn ? "on" : "off");
+  document.documentElement.style.setProperty("--motion", motionOn ? "1" : "0");
+  grid.dataset.drift = String(motionOn && grid.dataset.drift === "true");
+});
+
+setTimeout(() => { panel1(); panel2(); }, 1200);
+</script>
+
+</body>
+</html>
