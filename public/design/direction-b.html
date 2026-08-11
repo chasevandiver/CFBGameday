@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en" data-direction="b">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Direction B — The board · The CFB Slate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================================
+   DIRECTION B — "The board"
+
+   A sportsbook's wall. One grid, numbers first, everything visible at once.
+   Assumes you want the whole Saturday in one look rather than one answer.
+
+   Different from A on all four axes:
+     density   high — every position is one ~40px row, not a card
+     leads with the numbers, not the teams
+     live      a pulsing left edge bar on the row itself
+     CTA       a sticky bar pinned to the bottom, always there
+   ========================================================================== */
+
+:root {
+  --board-black: #0A0C0F;   /* ground — cooler and darker than the app's brown */
+  --row-slate:   #141922;   /* the row */
+  --row-hi:      #1B2230;   /* hover / your-money row */
+  --amber:       #FFC031;   /* the book's number colour */
+  --chalk:       #E8EDF5;
+  --dim:         #7C899C;
+  --green:       #35D07F;
+  --red:         #FF4F5E;
+  --grid:        rgba(232, 237, 245, 0.07);
+
+  --mono: "IBM Plex Mono";
+  --cond: "Barlow Condensed";
+}
+
+* { box-sizing: border-box; }
+html { color-scheme: dark; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--board-black);
+  color: var(--chalk);
+  /* monospace end to end — a board has one typeface */
+  font-family: var(--mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  padding-bottom: 92px;
+}
+a { color: inherit; text-decoration: none; }
+button, a { touch-action: manipulation; }
+
+/* the only non-mono type: the rules between sections */
+.rule-label {
+  font-family: var(--cond), sans-serif;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: .1em;
+  font-size: 15px;
+}
+
+/* ---- top bar ------------------------------------------------------------ */
+header {
+  position: sticky; top: 0; z-index: 30;
+  background: rgba(10, 12, 15, .9);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--grid);
+}
+.bar { max-width: 78rem; margin: 0 auto; height: 46px; display: flex; align-items: center; gap: 18px; padding: 0 14px; }
+.wordmark { font-family: var(--cond), sans-serif; text-transform: uppercase; font-weight: 700; letter-spacing: .06em; font-size: 19px; color: var(--amber); }
+.tabs { display: none; gap: 14px; flex: 1; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+@media (min-width: 900px) { .tabs { display: flex; } }
+.tabs a { color: var(--dim); padding: 4px 0; }
+.tabs a[aria-current] { color: var(--amber); box-shadow: inset 0 -2px 0 var(--amber); }
+
+/* ---- the strip: week, clock, what you're on ----------------------------- */
+.strip {
+  border-bottom: 1px solid var(--grid);
+  background: linear-gradient(180deg, #10151D, var(--board-black));
+}
+.strip-in {
+  max-width: 78rem; margin: 0 auto; padding: 14px;
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+}
+@media (min-width: 700px) { .strip-in { grid-template-columns: repeat(4, minmax(0,1fr)) auto; align-items: end; } }
+.kpi .k { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+.kpi .v { font-size: 26px; font-weight: 600; line-height: 1.1; margin-top: 2px; }
+.kpi .v.amber { color: var(--amber); }
+.kpi .v.green { color: var(--green); }
+.kpi .s { font-size: 11px; color: var(--dim); }
+.strip .go { grid-column: 1 / -1; }
+@media (min-width: 700px) { .strip .go { grid-column: auto; } }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 46px; padding: 0 22px; border-radius: 4px;
+  background: var(--amber); color: #0A0C0F;
+  font-family: var(--mono), monospace; font-weight: 700; font-size: 13px;
+  letter-spacing: .08em; text-transform: uppercase; width: 100%;
+}
+@media (min-width: 700px) { .btn { width: auto; } }
+
+/* ---- section rules ------------------------------------------------------ */
+main { max-width: 78rem; margin: 0 auto; padding: 0 14px; }
+.sec { margin-top: 26px; }
+.sec-head {
+  display: flex; align-items: baseline; gap: 10px;
+  padding-bottom: 6px; border-bottom: 2px solid var(--amber);
+}
+.sec-head .rule-label { color: var(--amber); }
+.sec-head .tot { margin-left: auto; font-size: 11px; color: var(--dim); letter-spacing: .06em; text-transform: uppercase; }
+
+/* ---- the board table ---------------------------------------------------- */
+.board { width: 100%; border-collapse: collapse; }
+.board th {
+  font-weight: 500; font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--dim); text-align: right; padding: 8px 8px 6px; white-space: nowrap;
+}
+.board th.l, .board td.l { text-align: left; }
+.board td { padding: 0 8px; height: 40px; border-bottom: 1px solid var(--grid); text-align: right; white-space: nowrap; }
+.board tbody tr { background: var(--row-slate); }
+.board tbody tr:hover { background: var(--row-hi); }
+
+/* the left edge bar is the row's state: amber = money, chalk = pool, red pulse = live */
+.board tbody tr td:first-child { position: relative; padding-left: 14px; }
+.board tbody tr td:first-child::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--edge, transparent);
+}
+tr.is-live td:first-child::before { background: var(--red); animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .3 } }
+
+.matchup { display: inline-flex; align-items: center; gap: 7px; }
+.sw { width: 3px; height: 20px; border-radius: 1px; flex: none; }
+.tm { font-weight: 600; letter-spacing: .02em; }
+.at { color: var(--dim); }
+.tv { color: var(--dim); font-size: 10.5px; }
+
+.num { font-weight: 600; font-size: 14px; }
+.num.amber { color: var(--amber); }
+/* THE column this direction is remembered by */
+.mv { font-weight: 700; }
+.mv.good { color: var(--green); }
+.mv.bad  { color: var(--red); }
+.mv.flat { color: var(--dim); font-weight: 400; }
+
+.state { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; }
+.state.win { color: var(--green); }
+.state.lose { color: var(--red); }
+.state.open { color: var(--dim); }
+.live-pill { color: var(--red); font-weight: 700; }
+
+.stake { color: var(--dim); font-size: 11px; }
+
+/* stacked labels on phones — the grid is too wide for 375px */
+@media (max-width: 720px) {
+  .board thead { display: none; }
+  .board, .board tbody, .board tr, .board td { display: block; width: 100%; }
+  .board tbody tr { margin-bottom: 8px; border-radius: 3px; overflow: hidden; padding: 8px 0 6px; }
+  .board td { height: auto; border: 0; padding: 2px 12px; text-align: left; }
+  .board td:first-child { padding-left: 14px; }
+  .board td[data-k]::before {
+    content: attr(data-k) "  ";
+    color: var(--dim); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase;
+  }
+  .board tr td.grouped { display: inline-block; width: auto; padding-right: 18px; }
+}
+
+/* ---- right rail on wide screens ---------------------------------------- */
+.split { display: grid; gap: 26px; }
+@media (min-width: 1100px) { .split { grid-template-columns: minmax(0,1fr) 20rem; align-items: start; } }
+
+.panel { border: 1px solid var(--grid); background: var(--row-slate); border-radius: 3px; }
+.panel h3 { margin: 0; padding: 10px 12px; border-bottom: 1px solid var(--grid); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); font-weight: 500; }
+.prow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 12px; border-bottom: 1px solid var(--grid); min-height: 52px; }
+.prow:last-child { border-bottom: 0; }
+.prow .nm { font-weight: 600; }
+.prow .sub { font-size: 10.5px; color: var(--dim); }
+.prow .r { text-align: right; }
+.prow .r b { font-weight: 600; }
+.mini { display: grid; grid-template-columns: 1fr 1fr; }
+.mini > div { padding: 11px 12px; border-bottom: 1px solid var(--grid); border-right: 1px solid var(--grid); }
+.mini > div:nth-child(2n) { border-right: 0; }
+.mini .k { font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+.mini .v { font-size: 18px; font-weight: 600; margin-top: 2px; }
+.mini .v.green { color: var(--green); }
+
+/* ---- sticky CTA — always present, this direction's answer to "where next" */
+.dock {
+  position: fixed; inset: auto 0 0 0; z-index: 40;
+  background: rgba(10, 12, 15, .94);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid var(--grid);
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+}
+.dock-in { max-width: 78rem; margin: 0 auto; display: flex; align-items: center; gap: 12px; }
+.dock .ctx { font-size: 11px; color: var(--dim); letter-spacing: .04em; display: none; }
+@media (min-width: 560px) { .dock .ctx { display: block; } }
+.dock .btn { flex: 1; }
+@media (min-width: 560px) { .dock .btn { flex: 0 0 auto; margin-left: auto; } }
+
+.note { max-width: 78rem; margin: 0 auto; padding: 28px 14px 8px; color: var(--dim); font-size: 11.5px; line-height: 1.7; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <span class="wordmark">The CFB Slate</span>
+    <nav class="tabs">
+      <a href="#" aria-current="page">Home</a><a href="#">Slate</a><a href="#">Edges</a>
+      <a href="#">Ratings</a><a href="#">Ledger</a><a href="#">Groups</a><a href="#">Receipts</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ===== the strip: the numbers, before anything else ===== -->
+<section class="strip">
+  <div class="strip-in">
+    <div class="kpi"><p class="k" style="margin:0">Week</p><p class="v" style="margin:0">1</p><p class="s" style="margin:0">first kick 11:00 AM CT</p></div>
+    <div class="kpi"><p class="k" style="margin:0">Open positions</p><p class="v amber" style="margin:0">13</p><p class="s" style="margin:0">6 bets · 7 picks</p></div>
+    <div class="kpi"><p class="k" style="margin:0">At risk</p><p class="v" style="margin:0">6.0u</p><p class="s" style="margin:0">all −110</p></div>
+    <div class="kpi"><p class="k" style="margin:0">Season</p><p class="v green" style="margin:0">+5.7u</p><p class="s" style="margin:0">24-18-1 · 13.6% ROI</p></div>
+    <div class="go"><a class="btn" href="#">Go to the slate →</a></div>
+  </div>
+</section>
+
+<main>
+<div class="split">
+<div>
+
+  <!-- ===== BETS ===== -->
+  <section class="sec" aria-labelledby="b-h">
+    <div class="sec-head">
+      <span class="rule-label" id="b-h">Your bets</span>
+      <span class="tot">6 open · 6.0u · real money</span>
+    </div>
+    <table class="board">
+      <thead>
+        <tr>
+          <th class="l">Game</th>
+          <th class="l">Your side</th>
+          <th>Held</th>
+          <th>Now</th>
+          <th>Move</th>
+          <th>Stake</th>
+          <th>Kick</th>
+          <th>State</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="is-live">
+          <td class="l" data-k="Game"><span class="matchup"><span class="sw" style="background:#00498f"></span><span class="tm">MEM</span><span class="at">@</span><span class="sw" style="background:#cf0a2c"></span><span class="tm">UNLV</span></span></td>
+          <td class="l grouped" data-k="Side"><span class="num amber">MEM +4.5</span></td>
+          <td class="grouped" data-k="Held">+4.5</td>
+          <td class="grouped" data-k="Now">+3.5</td>
+          <td class="mv good grouped" data-k="Move">▲ 1.0</td>
+          <td class="stake grouped" data-k="Stake">1u</td>
+          <td class="grouped" data-k="Kick"><span class="live-pill">3rd 8:42</span></td>
+          <td class="state win grouped" data-k="State">Covering 1.5</td>
+        </tr>
+        <!-- the case the split exists for: same game, two different tickets -->
+        <tr style="--edge:var(--amber)">
+          <td class="l" data-k="Game"><span class="matchup"><span class="sw" style="background:#7bafd4"></span><span class="tm">UNC</span><span class="at">@</span><span class="sw" style="background:#4d1979"></span><span class="tm">TCU</span></span></td>
+          <td class="l grouped" data-k="Side"><span class="num amber">UNC +6.5</span></td>
+          <td class="grouped" data-k="Held">+6.5</td>
+          <td class="grouped" data-k="Now">+7.0</td>
+          <td class="mv bad grouped" data-k="Move">▼ 0.5</td>
+          <td class="stake grouped" data-k="Stake">1u</td>
+          <td class="grouped" data-k="Kick">Sat 11:00</td>
+          <td class="state open grouped" data-k="State">Open</td>
+        </tr>
+        <tr style="--edge:var(--amber)">
+          <td class="l" data-k="Game"><span class="matchup"><span class="sw" style="background:#7bafd4"></span><span class="tm">UNC</span><span class="at">@</span><span class="sw" style="background:#4d1979"></span><span class="tm">TCU</span></span></td>
+          <td class="l grouped" data-k="Side"><span class="num amber">UNC +7</span></td>
+          <td class="grouped" data-k="Held">+7.0</td>
+          <td class="grouped" data-k="Now">+7.0</td>
+          <td class="mv flat grouped" data-k="Move">—</td>
+          <td class="stake grouped" data-k="Stake">1u</td>
+          <td class="grouped" data-k="Kick">Sat 11:00</td>
+          <td class="state open grouped" data-k="State">Open</td>
+        </tr>
+        <tr style="--edge:var(--amber)">
+          <td class="l" data-k="Game"><span class="matchup"><span class="sw" style="background:#0055a2"></span><span class="tm">SJSU</span><span class="at">@</span><span class="sw" style="background:#990000"></span><span class="tm">USC</span></span></td>
+          <td class="l grouped" data-k="Side"><span class="num amber">SJSU +37</span></td>
+          <td class="grouped" data-k="Held">+37.0</td>
+          <td class="grouped" data-k="Now">+38.5</td>
+          <td class="mv bad grouped" data-k="Move">▼ 1.5</td>
+          <td class="stake grouped" data-k="Stake">1u</td>
+          <td class="grouped" data-k="Kick">Sat 14:00</td>
+          <td class="state open grouped" data-k="State">Open</td>
+        </tr>
+        <tr style="--edge:var(--amber)">
+          <td class="l" data-k="Game"><span class="matchup"><span class="sw" style="background:#043927"></span><span class="tm">SAC</span><span class="at">@</span><span class="sw" style="background:#00543c"></span><span class="tm">EMU</span></span></td>
+          <td class="l grouped" data-k="Side"><span class="num amber">SAC +8.5</span></td>
+          <td class="grouped" data-k="Held">+8.5</td>
+          <td class="grouped" data-k="Now">+9.0</td>
+          <td class="mv bad grouped" data-k="Move">▼ 0.5</td>
+          <td class="stake grouped" data-k="Stake">1u</td>
+          <td class="grouped" data-k="Kick">Sat 17:30</td>
+          <td class="state open grouped" data-k="State">Open</td>
+        </tr>
+        <tr style="--edge:var(--amber)">
+          <td class="l" data-k="Game"><span class="matchup"><span class="sw" style="background:#8c8c8c"></span><span class="tm">NMSU</span><span class="at">@</span><span class="sw" style="background:#782f40"></span><span class="tm">FSU</span></span></td>
+          <td class="l grouped" data-k="Side"><span class="num amber">FSU −30.5</span></td>
+          <td class="grouped" data-k="Held">−30.5</td>
+          <td class="grouped" data-k="Now">−31.5</td>
+          <td class="mv good grouped" data-k="Move">▲ 1.0</td>
+          <td class="stake grouped" data-k="Stake">1u</td>
+          <td class="grouped" data-k="Kick">Sat 18:00</td>
+          <td class="state open grouped" data-k="State">Open</td>
+        </tr>
+        <tr style="--edge:var(--amber)">
+          <td class="l" data-k="Game"><span class="matchup"><span class="sw" style="background:#024731"></span><span class="tm">HAW</span><span class="at">@</span><span class="sw" style="background:#8c1515"></span><span class="tm">STAN</span></span></td>
+          <td class="l grouped" data-k="Side"><span class="num amber">HAW +4</span></td>
+          <td class="grouped" data-k="Held">+4.0</td>
+          <td class="grouped" data-k="Now">+4.0</td>
+          <td class="mv flat grouped" data-k="Move">—</td>
+          <td class="stake grouped" data-k="Stake">1u</td>
+          <td class="grouped" data-k="Kick">Sat 18:00</td>
+          <td class="state open grouped" data-k="State">Open</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ===== POOL PICKS ===== -->
+  <section class="sec" aria-labelledby="p-h">
+    <div class="sec-head">
+      <span class="rule-label" id="p-h">Pool picks</span>
+      <span class="tot">7 in · Test Group · flat −110</span>
+    </div>
+    <table class="board">
+      <thead>
+        <tr>
+          <th class="l">Game</th>
+          <th class="l">Your side</th>
+          <th>Held</th>
+          <th>Now</th>
+          <th>Move</th>
+          <th>Stake</th>
+          <th>Kick</th>
+          <th>State</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="is-live">
+          <td class="l" data-k="Game"><span class="matchup"><span class="sw" style="background:#00498f"></span><span class="tm">MEM</span><span class="at">@</span><span class="sw" style="background:#cf0a2c"></span><span class="tm">UNLV</span></span></td>
+          <td class="l grouped" data-k="Side">MEM +4.5</td>
+          <td class="grouped" data-k="Held">+4.5</td>
+          <td class="grouped" data-k="Now">+3.5</td>
+          <td class="mv good grouped" data-k="Move">▲ 1.0</td>
+          <td class="stake grouped" data-k="Stake">pool</td>
+          <td class="grouped" data-k="Kick"><span class="live-pill">3rd 8:42</span></td>
+          <td class="state win grouped" data-k="State">Covering 1.5</td>
+        </tr>
+        <!-- the real 3-point move against the over: the row that sells the column -->
+        <tr class="is-live">
+          <td class="l" data-k="Game"><span class="matchup"><span class="sw" style="background:#00498f"></span><span class="tm">MEM</span><span class="at">@</span><span class="sw" style="background:#cf0a2c"></span><span class="tm">UNLV</span></span></td>
+          <td class="l grouped" data-k="Side">Over 57.5</td>
+          <td class="grouped" data-k="Held">57.5</td>
+          <td class="grouped" data-k="Now">60.5 open</td>
+          <td class="mv good grouped" data-k="Move">▲ 3.0</td>
+          <td class="stake grouped" data-k="Stake">pool</td>
+          <td class="grouped" data-k="Kick"><span class="live-pill">3rd 8:42</span></td>
+          <td class="state lose grouped" data-k="State">Needs 13</td>
+        </tr>
+        <tr style="--edge:rgba(232,237,245,.35)">
+          <td class="l" data-k="Game"><span class="matchup"><span class="sw" style="background:#7bafd4"></span><span class="tm">UNC</span><span class="at">@</span><span class="sw" style="background:#4d1979"></span><span class="tm">TCU</span></span></td>
+          <td class="l grouped" data-k="Side">UNC +7</td>
+          <td class="grouped" data-k="Held">+7.0</td>
+          <td class="grouped" data-k="Now">+7.0</td>
+          <td class="mv flat grouped" data-k="Move">—</td>
+          <td class="stake grouped" data-k="Stake">pool</td>
+          <td class="grouped" data-k="Kick">Sat 11:00</td>
+          <td class="state open grouped" data-k="State">Open</td>
+        </tr>
+        <tr style="--edge:rgba(232,237,245,.35)">
+          <td class="l" data-k="Game"><span class="matchup"><span class="sw" style="background:#cc0000"></span><span class="tm">NCSU</span><span class="at">@</span><span class="sw" style="background:#232d4b"></span><span class="tm">UVA</span></span></td>
+          <td class="l grouped" data-k="Side">NCSU +4.5</td>
+          <td class="grouped" data-k="Held">+4.5</td>
+          <td class="grouped" data-k="Now">+4.5</td>
+          <td class="mv good grouped" data-k="Move">▲ 1.0</td>
+          <td class="stake grouped" data-k="Stake">pool</td>
+          <td class="grouped" data-k="Kick">Sat 14:30</td>
+          <td class="state open grouped" data-k="State">Open</td>
+        </tr>
+        <tr style="--edge:rgba(232,237,245,.35)">
+          <td class="l" data-k="Game"><span class="matchup"><span class="sw" style="background:#cc0000"></span><span class="tm">NCSU</span><span class="at">@</span><span class="sw" style="background:#232d4b"></span><span class="tm">UVA</span></span></td>
+          <td class="l grouped" data-k="Side">Over 54</td>
+          <td class="grouped" data-k="Held">54.0</td>
+          <td class="grouped" data-k="Now">54.0</td>
+          <td class="mv flat grouped" data-k="Move">—</td>
+          <td class="stake grouped" data-k="Stake">pool</td>
+          <td class="grouped" data-k="Kick">Sat 14:30</td>
+          <td class="state open grouped" data-k="State">Open</td>
+        </tr>
+        <tr style="--edge:rgba(232,237,245,.35)">
+          <td class="l" data-k="Game"><span class="matchup"><span class="sw" style="background:#024731"></span><span class="tm">HAW</span><span class="at">@</span><span class="sw" style="background:#8c1515"></span><span class="tm">STAN</span></span></td>
+          <td class="l grouped" data-k="Side">HAW +4</td>
+          <td class="grouped" data-k="Held">+4.0</td>
+          <td class="grouped" data-k="Now">+4.0</td>
+          <td class="mv good grouped" data-k="Move">▲ 1.0</td>
+          <td class="stake grouped" data-k="Stake">pool</td>
+          <td class="grouped" data-k="Kick">Sat 18:00</td>
+          <td class="state open grouped" data-k="State">Open</td>
+        </tr>
+        <tr style="--edge:rgba(232,237,245,.35)">
+          <td class="l" data-k="Game"><span class="matchup"><span class="sw" style="background:#024731"></span><span class="tm">HAW</span><span class="at">@</span><span class="sw" style="background:#8c1515"></span><span class="tm">STAN</span></span></td>
+          <td class="l grouped" data-k="Side">Over 50.5</td>
+          <td class="grouped" data-k="Held">50.5</td>
+          <td class="grouped" data-k="Now">50.5</td>
+          <td class="mv flat grouped" data-k="Move">—</td>
+          <td class="stake grouped" data-k="Stake">pool</td>
+          <td class="grouped" data-k="Kick">Sat 18:00</td>
+          <td class="state open grouped" data-k="State">Open</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+</div>
+
+  <!-- ===== rail ===== -->
+  <aside style="margin-top:26px">
+    <div class="panel">
+      <h3>Your groups</h3>
+      <a class="prow" href="#">
+        <span><span class="nm">Test Group</span><span class="sub" style="display:block">Pick&rsquo;em · 2nd of 9</span></span>
+        <span class="r"><b>31-19-1</b></span>
+      </a>
+      <a class="prow" href="#">
+        <span><span class="nm">The Sheet</span><span class="sub" style="display:block">Betting · 1st of 5</span></span>
+        <span class="r"><b>24-18</b><span class="sub" style="display:block;color:var(--green)">+8.2u</span></span>
+      </a>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <h3>Season · money only</h3>
+      <div class="mini">
+        <div><p class="k" style="margin:0">Record</p><p class="v" style="margin:0">24-18-1</p></div>
+        <div><p class="k" style="margin:0">Units</p><p class="v green" style="margin:0">+5.7</p></div>
+        <div style="border-bottom:0"><p class="k" style="margin:0">ROI</p><p class="v" style="margin:0">13.6%</p></div>
+        <div style="border-bottom:0"><p class="k" style="margin:0">Avg CLV</p><p class="v green" style="margin:0">+0.19</p></div>
+      </div>
+      <div style="padding:12px">
+        <svg viewBox="0 0 300 56" preserveAspectRatio="none" style="width:100%;height:56px" role="img" aria-label="Cumulative units, currently +5.7">
+          <line x1="2" x2="298" y1="40" y2="40" stroke="var(--grid)" stroke-width="1" stroke-dasharray="3 3" />
+          <path d="M2,40 L27,35 L52,30 L77,39 L102,23 L127,32 L152,40 L177,32 L202,17 L227,26 L252,18 L277,7 L298,12"
+                fill="none" stroke="var(--green)" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linejoin="round" />
+        </svg>
+        <p style="margin:4px 0 0;font-size:10px;color:var(--dim)">Cumulative units, oldest to newest.</p>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <h3>Pool, kept apart</h3>
+      <div class="prow" style="border-bottom:0">
+        <span class="sub">Flat −110, no real stake</span>
+        <span class="r"><b>31-19-1</b></span>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<p class="note">
+  Direction B — the whole Saturday as one board. Every position is a row on a
+  shared grid, so bets and pool picks are two tables with identical columns and
+  you compare down a column instead of reading cards. The
+  <span style="color:var(--green)">move</span> column is the point: the number
+  you hold against the number now, coloured by whether it went your way. Reading
+  MEM/UNLV Over 57.5 — held at 57.5, opened 60.5, three points in your favour —
+  is a thing no other layout here tells you.
+</p>
+</main>
+
+<!-- the CTA never scrolls away in this direction -->
+<div class="dock">
+  <div class="dock-in">
+    <span class="ctx">99 games on the board · 6 you have money on</span>
+    <a class="btn" href="#">Go to the slate →</a>
+  </div>
+</div>
+
+</body>
+</html>

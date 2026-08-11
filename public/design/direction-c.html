@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en" data-direction="c">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Direction C — Broadcast · The CFB Slate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================================
+   DIRECTION C — "Broadcast"
+
+   A score bug. One thing at a time, team colour doing the work.
+   Assumes you want one answer — what is happening to me right now — not the
+   whole board.
+
+   Different from A and B on all four axes:
+     density   low — one hero game, then compact tiles
+     leads with a single game, the next thing that touches you
+     live      the hero floods with the verdict colour, full bleed
+     CTA       a floating pill in the thumb zone
+   ========================================================================== */
+
+:root {
+  --night: #0D1014;   /* ground */
+  --panel: #1A1F26;   /* tiles */
+  --panel-2: #222932;
+  --gold:  #F5B93A;
+  --chalk: #F4EFE2;
+  --dim:   #8A94A3;
+  --green: #3ED08A;
+  --red:   #FF5566;
+  --hair:  rgba(244, 239, 226, 0.09);
+
+  --body: "Archivo";
+  --cond: "Barlow Condensed";
+  --mono: "IBM Plex Mono";
+}
+
+* { box-sizing: border-box; }
+html { color-scheme: dark; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--night);
+  color: var(--chalk);
+  font-family: var(--body), system-ui, sans-serif;
+  padding-bottom: 110px;
+}
+a { color: inherit; text-decoration: none; }
+button, a { touch-action: manipulation; }
+.mono { font-family: var(--mono), monospace; font-variant-numeric: tabular-nums; }
+.cond { font-family: var(--cond), sans-serif; text-transform: uppercase; letter-spacing: .03em; }
+
+header {
+  position: sticky; top: 0; z-index: 30;
+  background: rgba(13, 16, 20, .88); backdrop-filter: blur(18px);
+  border-bottom: 1px solid var(--hair);
+}
+.bar { max-width: 68rem; margin: 0 auto; height: 50px; display: flex; align-items: center; gap: 20px; padding: 0 18px; }
+.wordmark { font-family: var(--cond), sans-serif; text-transform: uppercase; font-weight: 700; font-size: 21px; letter-spacing: .05em; color: var(--gold); }
+.tabs { display: none; gap: 16px; flex: 1; }
+@media (min-width: 900px) { .tabs { display: flex; } }
+.tabs a { font-family: var(--cond), sans-serif; text-transform: uppercase; font-size: 14px; letter-spacing: .06em; color: var(--dim); }
+.tabs a[aria-current] { color: var(--chalk); }
+
+main { max-width: 68rem; margin: 0 auto; padding: 18px; }
+
+/* ---- THE HERO: one game, full team-colour wash ------------------------- */
+.hero {
+  position: relative; overflow: hidden; border-radius: 18px;
+  background:
+    linear-gradient(115deg, color-mix(in srgb, var(--away-c) 62%, transparent) 0%, transparent 52%),
+    linear-gradient(295deg, color-mix(in srgb, var(--home-c) 62%, transparent) 0%, transparent 52%),
+    var(--panel);
+  border: 1px solid var(--hair);
+  padding: 20px;
+  min-height: 250px;
+  display: flex; flex-direction: column;
+}
+/* live: the verdict colour takes the whole card, which is this direction's
+   entire answer to "how is live state expressed" */
+.hero.is-live {
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--verdict) 40%, transparent), transparent 62%),
+    linear-gradient(115deg, color-mix(in srgb, var(--away-c) 46%, transparent) 0%, transparent 52%),
+    linear-gradient(295deg, color-mix(in srgb, var(--home-c) 46%, transparent) 0%, transparent 52%),
+    var(--panel);
+  border-color: color-mix(in srgb, var(--verdict) 45%, transparent);
+  box-shadow: 0 0 40px -12px color-mix(in srgb, var(--verdict) 55%, transparent);
+}
+.hero-eyebrow { display: flex; align-items: center; gap: 8px; font-family: var(--cond), sans-serif; text-transform: uppercase; letter-spacing: .12em; font-size: 12px; color: rgba(244,239,226,.72); }
+.dot { width: 7px; height: 7px; border-radius: 999px; background: var(--red); animation: blink 1.4s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+/* A score bug stacks its two teams and puts the score in a right-hand column.
+   Doing the same here means one construction that holds at 375px and at 1024
+   — the earlier side-by-side row ran out of width on a phone and collided the
+   teams into the score. */
+.hero-teams { margin-top: 16px; display: flex; flex-direction: column; gap: 4px; }
+.hero-row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center; gap: 12px;
+}
+.badge { width: 40px; height: 40px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-family: var(--cond), sans-serif; font-weight: 700; font-size: 12px; color: #fff; flex: none; text-shadow: 0 1px 3px rgba(0,0,0,.55); }
+.hero-abbr { font-family: var(--cond), sans-serif; font-weight: 700; font-size: 38px; line-height: 1.02; letter-spacing: .01em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hero-score { font-family: var(--cond), sans-serif; font-weight: 700; font-size: 46px; line-height: 1; font-variant-numeric: tabular-nums; }
+/* the side that's ahead reads at full strength; the trailing side dims */
+.hero-row.behind .hero-abbr, .hero-row.behind .hero-score { opacity: .62; }
+.hero-kick { font-family: var(--mono), monospace; font-size: 12px; color: rgba(244,239,226,.62); }
+@media (min-width: 560px) {
+  .badge { width: 46px; height: 46px; font-size: 13px; }
+  .hero-abbr { font-size: 46px; }
+  .hero-score { font-size: 56px; }
+}
+
+/* your position, stamped across the hero */
+.stamp {
+  margin-top: auto; padding-top: 16px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+}
+.tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  border-radius: 999px; padding: 7px 14px;
+  font-family: var(--mono), monospace; font-size: 12.5px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.tag-bet { background: var(--gold); color: #16110a; }
+.tag-pick { background: rgba(244,239,226,.16); color: var(--chalk); box-shadow: inset 0 0 0 1px rgba(244,239,226,.25); }
+.tag-win { background: var(--green); color: #06120c; }
+.tag-lose { background: var(--red); color: #1a0507; }
+.hero-meta { margin-top: 10px; font-family: var(--mono), monospace; font-size: 11.5px; color: rgba(244,239,226,.6); }
+
+/* ---- section rules ----------------------------------------------------- */
+.sec { margin-top: 30px; }
+.sec-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+.sec-head h2 { margin: 0; font-family: var(--cond), sans-serif; text-transform: uppercase; letter-spacing: .1em; font-size: 16px; font-weight: 700; }
+.sec-head .n { font-family: var(--mono), monospace; font-size: 12px; color: var(--dim); }
+.sec-head .rule { flex: 1; height: 1px; background: var(--hair); }
+.sec-head a { font-family: var(--mono), monospace; font-size: 11.5px; color: var(--dim); }
+.h-bets h2 { color: var(--gold); }
+.h-picks h2 { color: var(--chalk); }
+
+/* ---- compact tiles ----------------------------------------------------- */
+.tiles { display: grid; gap: 12px; grid-template-columns: 1fr; }
+@media (min-width: 620px) { .tiles { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1000px) { .tiles { grid-template-columns: repeat(3, 1fr); } }
+
+.tile {
+  position: relative; overflow: hidden;
+  border-radius: 12px; border: 1px solid var(--hair);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--away-c) 26%, transparent), transparent 58%), var(--panel);
+  padding: 12px 14px;
+  min-height: 96px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.tile.money { border-color: color-mix(in srgb, var(--gold) 38%, transparent); }
+.tile-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.tile-teams { font-family: var(--cond), sans-serif; font-weight: 700; font-size: 20px; letter-spacing: .01em; }
+.tile-teams .at { color: var(--dim); font-weight: 500; font-size: 15px; margin: 0 3px; }
+.tile-when { font-family: var(--mono), monospace; font-size: 10.5px; color: var(--dim); text-align: right; white-space: nowrap; }
+.tile-when b { display: block; color: var(--chalk); font-weight: 400; }
+.tile-pos { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: auto; }
+.tag-sm { padding: 4px 10px; font-size: 11.5px; }
+.tile-move { font-family: var(--mono), monospace; font-size: 10.5px; color: var(--dim); margin-left: auto; }
+.tile-move .good { color: var(--green); }
+.tile-move .bad { color: var(--red); }
+
+/* ---- summary strip ----------------------------------------------------- */
+.summary { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; margin-top: 30px; }
+@media (min-width: 760px) { .summary { grid-template-columns: repeat(4, 1fr); } }
+.stat-card { border-radius: 12px; background: var(--panel); border: 1px solid var(--hair); padding: 14px; }
+.stat-card .k { font-family: var(--cond), sans-serif; text-transform: uppercase; letter-spacing: .1em; font-size: 11px; color: var(--dim); margin: 0; }
+.stat-card .v { font-family: var(--cond), sans-serif; font-weight: 700; font-size: 30px; line-height: 1.05; margin: 4px 0 0; font-variant-numeric: tabular-nums; }
+.stat-card .v.green { color: var(--green); }
+
+.grouplist { display: grid; gap: 12px; grid-template-columns: 1fr; margin-top: 12px; }
+@media (min-width: 620px) { .grouplist { grid-template-columns: 1fr 1fr; } }
+.grp { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-radius: 12px; background: var(--panel); border: 1px solid var(--hair); padding: 14px 16px; min-height: 68px; }
+.grp .nm { font-family: var(--cond), sans-serif; text-transform: uppercase; letter-spacing: .04em; font-size: 18px; font-weight: 600; }
+.grp .sub { font-family: var(--mono), monospace; font-size: 11px; color: var(--dim); }
+.grp .r { font-family: var(--cond), sans-serif; font-weight: 700; font-size: 22px; text-align: right; font-variant-numeric: tabular-nums; }
+.grp .r small { display: block; font-family: var(--mono), monospace; font-size: 11px; font-weight: 400; color: var(--green); }
+
+.pool-note { font-family: var(--mono), monospace; font-size: 11.5px; color: var(--dim); margin-top: 16px; }
+.pool-note a { color: var(--gold); }
+
+/* ---- floating CTA pill, thumb zone ------------------------------------- */
+.pill-wrap {
+  position: fixed; inset: auto 0 0 0; z-index: 40;
+  display: flex; justify-content: center;
+  padding: 0 18px calc(18px + env(safe-area-inset-bottom));
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, rgba(13,16,20,.9) 55%);
+  padding-top: 40px;
+}
+.pill {
+  pointer-events: auto;
+  display: inline-flex; align-items: center; gap: 10px;
+  min-height: 54px; padding: 0 28px; border-radius: 999px;
+  background: var(--gold); color: #16110a;
+  font-family: var(--cond), sans-serif; text-transform: uppercase; letter-spacing: .08em;
+  font-weight: 700; font-size: 16px;
+  box-shadow: 0 10px 30px -8px rgba(245,185,58,.55);
+}
+
+.note { max-width: 68rem; margin: 0 auto; padding: 26px 18px 0; color: var(--dim); font-size: 12px; line-height: 1.7; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <span class="wordmark">The CFB Slate</span>
+    <nav class="tabs">
+      <a href="#" aria-current="page">Home</a><a href="#">Slate</a><a href="#">Edges</a>
+      <a href="#">Ratings</a><a href="#">Ledger</a><a href="#">Groups</a><a href="#">Receipts</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- ===== THE HERO — the one game that matters right now ===== -->
+  <section class="hero is-live" style="--away-c:#00498f; --home-c:#cf0a2c; --verdict:var(--green)">
+    <p class="hero-eyebrow" style="margin:0"><span class="dot"></span> Live · 3rd Qtr 8:42 · FOX</p>
+
+    <div class="hero-teams">
+      <div class="hero-row">
+        <span class="badge" style="background:#00498f">MEM</span>
+        <span class="hero-abbr">MEM</span>
+        <span class="hero-score">24</span>
+      </div>
+      <div class="hero-row behind">
+        <span class="badge" style="background:#cf0a2c">UNLV</span>
+        <span class="hero-abbr">UNLV</span>
+        <span class="hero-score">21</span>
+      </div>
+    </div>
+
+    <div class="stamp">
+      <span class="tag tag-bet">🎟 MEM +4.5 · 1u</span>
+      <span class="tag tag-win">✓ Covering by 1.5</span>
+      <span class="tag tag-pick">👥 Over 57.5</span>
+      <span class="tag tag-lose">✕ Needs 13 more</span>
+    </div>
+    <p class="hero-meta" style="margin:10px 0 0">
+      Your spread held at +4.5, now +3.5. Your total held at 57.5 — it opened 60.5.
+    </p>
+  </section>
+
+  <!-- ===== BETS ===== -->
+  <section class="sec" aria-labelledby="c-bets">
+    <div class="sec-head h-bets">
+      <h2 id="c-bets">Your bets</h2>
+      <span class="n">6 open · 6.0u</span>
+      <span class="rule"></span>
+      <a href="#">Ledger →</a>
+    </div>
+    <div class="tiles">
+      <!-- same game, two tickets at different numbers -->
+      <div class="tile money" style="--away-c:#7bafd4">
+        <div class="tile-top">
+          <span class="tile-teams">UNC<span class="at">@</span>TCU</span>
+          <span class="tile-when">Sat · ESPN<b>11:00 AM</b></span>
+        </div>
+        <div class="tile-pos">
+          <span class="tag tag-bet tag-sm">UNC +6.5</span>
+          <span class="tile-move">now +7 <span class="bad">▼0.5</span></span>
+        </div>
+        <div class="tile-pos">
+          <span class="tag tag-bet tag-sm">UNC +7</span>
+          <span class="tile-move">now +7 —</span>
+        </div>
+      </div>
+
+      <div class="tile money" style="--away-c:#0055a2">
+        <div class="tile-top">
+          <span class="tile-teams">SJSU<span class="at">@</span>USC</span>
+          <span class="tile-when">Sat · BTN<b>2:00 PM</b></span>
+        </div>
+        <div class="tile-pos">
+          <span class="tag tag-bet tag-sm">SJSU +37</span>
+          <span class="tile-move">now +38.5 <span class="bad">▼1.5</span></span>
+        </div>
+      </div>
+
+      <div class="tile money" style="--away-c:#043927">
+        <div class="tile-top">
+          <span class="tile-teams">SAC<span class="at">@</span>EMU</span>
+          <span class="tile-when">Sat · ESPN+<b>5:30 PM</b></span>
+        </div>
+        <div class="tile-pos">
+          <span class="tag tag-bet tag-sm">SAC +8.5</span>
+          <span class="tile-move">now +9 <span class="bad">▼0.5</span></span>
+        </div>
+      </div>
+
+      <div class="tile money" style="--away-c:#8c8c8c">
+        <div class="tile-top">
+          <span class="tile-teams">NMSU<span class="at">@</span>FSU</span>
+          <span class="tile-when">Sat · ESPN2<b>6:00 PM</b></span>
+        </div>
+        <div class="tile-pos">
+          <!-- the one home-side ticket -->
+          <span class="tag tag-bet tag-sm">FSU −30.5</span>
+          <span class="tile-move">now −31.5 <span class="good">▲1.0</span></span>
+        </div>
+      </div>
+
+      <div class="tile money" style="--away-c:#024731">
+        <div class="tile-top">
+          <span class="tile-teams">HAW<span class="at">@</span>STAN</span>
+          <span class="tile-when">Sat · ACC Network<b>6:00 PM</b></span>
+        </div>
+        <div class="tile-pos">
+          <span class="tag tag-bet tag-sm">HAW +4</span>
+          <span class="tile-move">now +4 —</span>
+        </div>
+      </div>
+
+      <div class="tile money" style="--away-c:#00498f">
+        <div class="tile-top">
+          <span class="tile-teams">MEM<span class="at">@</span>UNLV</span>
+          <span class="tile-when" style="color:var(--red)">Live<b>24–21</b></span>
+        </div>
+        <div class="tile-pos">
+          <span class="tag tag-bet tag-sm">MEM +4.5</span>
+          <span class="tile-move"><span class="good">covering 1.5</span></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== POOL PICKS ===== -->
+  <section class="sec" aria-labelledby="c-picks">
+    <div class="sec-head h-picks">
+      <h2 id="c-picks">Pool picks</h2>
+      <span class="n">7 in · Test Group</span>
+      <span class="rule"></span>
+      <a href="#">The board →</a>
+    </div>
+    <div class="tiles">
+      <div class="tile" style="--away-c:#7bafd4">
+        <div class="tile-top">
+          <span class="tile-teams">UNC<span class="at">@</span>TCU</span>
+          <span class="tile-when">Sat · ESPN<b>11:00 AM</b></span>
+        </div>
+        <div class="tile-pos">
+          <span class="tag tag-pick tag-sm">UNC +7</span>
+          <span class="tile-move">now +7 —</span>
+        </div>
+      </div>
+
+      <div class="tile" style="--away-c:#cc0000">
+        <div class="tile-top">
+          <span class="tile-teams">NCSU<span class="at">@</span>UVA</span>
+          <span class="tile-when">Sat · ESPN<b>2:30 PM</b></span>
+        </div>
+        <div class="tile-pos">
+          <span class="tag tag-pick tag-sm">NCSU +4.5</span>
+          <span class="tile-move">opened +3.5 <span class="good">▲1.0</span></span>
+        </div>
+        <div class="tile-pos">
+          <span class="tag tag-pick tag-sm">Over 54</span>
+          <span class="tile-move">now 54 —</span>
+        </div>
+      </div>
+
+      <div class="tile" style="--away-c:#024731">
+        <div class="tile-top">
+          <span class="tile-teams">HAW<span class="at">@</span>STAN</span>
+          <span class="tile-when">Sat · ACC Network<b>6:00 PM</b></span>
+        </div>
+        <div class="tile-pos">
+          <span class="tag tag-pick tag-sm">HAW +4</span>
+          <span class="tile-move">opened +3 <span class="good">▲1.0</span></span>
+        </div>
+        <div class="tile-pos">
+          <span class="tag tag-pick tag-sm">Over 50.5</span>
+          <span class="tile-move">now 50.5 —</span>
+        </div>
+      </div>
+
+      <div class="tile" style="--away-c:#00498f">
+        <div class="tile-top">
+          <span class="tile-teams">MEM<span class="at">@</span>UNLV</span>
+          <span class="tile-when" style="color:var(--red)">Live<b>24–21</b></span>
+        </div>
+        <div class="tile-pos">
+          <span class="tag tag-pick tag-sm">MEM +4.5</span>
+          <span class="tile-move"><span class="good">covering 1.5</span></span>
+        </div>
+        <div class="tile-pos">
+          <span class="tag tag-pick tag-sm">Over 57.5</span>
+          <span class="tile-move">opened 60.5 <span class="good">▲3.0</span></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== season + groups ===== -->
+  <section class="sec" aria-labelledby="c-season">
+    <div class="sec-head">
+      <h2 id="c-season">Your season</h2>
+      <span class="rule"></span>
+      <a href="#">Full ledger →</a>
+    </div>
+    <div class="summary" style="margin-top:0">
+      <div class="stat-card"><p class="k">Record</p><p class="v">24-18-1</p></div>
+      <div class="stat-card"><p class="k">Units</p><p class="v green">+5.7</p></div>
+      <div class="stat-card"><p class="k">ROI</p><p class="v">13.6%</p></div>
+      <div class="stat-card"><p class="k">Avg CLV</p><p class="v green">+0.19</p></div>
+    </div>
+    <div class="grouplist">
+      <a class="grp" href="#">
+        <span><span class="nm">Test Group</span><span class="sub" style="display:block">Pick&rsquo;em · 2nd of 9</span></span>
+        <span class="r">31-19-1</span>
+      </a>
+      <a class="grp" href="#">
+        <span><span class="nm">The Sheet</span><span class="sub" style="display:block">Betting · 1st of 5</span></span>
+        <span class="r">24-18<small>+8.2u</small></span>
+      </a>
+    </div>
+    <p class="pool-note">Pool picks 31-19-1 across 2 groups — <a href="#">counted separately</a>, flat −110.</p>
+  </section>
+</main>
+
+<p class="note">
+  Direction C — the hub answers one question: what is happening to me right now.
+  The next game you have action on takes the whole top of the screen in its
+  teams' colours, and when it kicks the card floods with the verdict — green
+  while you're covering, red when you're not — so the state is readable from
+  across a room. Everything else compresses to tiles. Bets carry the gold
+  border and a gold tag; pool picks are outlined chalk.
+</p>
+
+<div class="pill-wrap"><a class="pill" href="#">Go to the slate →</a></div>
+
+</body>
+</html>

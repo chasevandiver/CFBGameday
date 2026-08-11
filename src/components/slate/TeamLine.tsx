@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { displayRank, type TeamView } from "../../lib/slate";
 import { TeamMark } from "./TeamMark";
 
@@ -63,6 +64,89 @@ export function TeamRecord({ team }: { team: TeamView }) {
       {team.record}
       {team.confRecord && <span className="text-chalk/40"> · {team.confRecord} conf</span>}
     </span>
+  );
+}
+
+/**
+ * A team on its own row with its score, on the team-colour rail.
+ *
+ * The slate's game card has read this way since the cards were built: the mark
+ * grows when there is a score to show, the school name sits on a coloured rail
+ * with its rank as a superscript, and the score is a 24px tabular number pinned
+ * to the right of the row. The home hub used to stack a 10px "24–21" in the
+ * corner instead, which made the most important number on a live row the
+ * smallest thing on it.
+ *
+ * So the construction lives here rather than inside `GameCard`, and both use
+ * it. What stays in the card is what only the card has: the star button, the
+ * possession football and the score-flash animation — all passed through
+ * `trailing` and `scoreSlot` rather than pulled in here, since none of them
+ * belong on a server-rendered hub.
+ */
+export function TeamScoreLine({
+  team,
+  score,
+  showScore,
+  dimmed = false,
+  showRecord = true,
+  trailing,
+  right,
+}: {
+  team: TeamView;
+  /** Null renders 0 — a live game with no score yet is 0, not blank. */
+  score: number | null;
+  /** Live and final games show a score; everything else shows the record. */
+  showScore: boolean;
+  /** The losing side of a final, faded the way the slate fades it. */
+  dimmed?: boolean;
+  showRecord?: boolean;
+  /** Card-only controls that sit inside the name row (the star button). */
+  trailing?: ReactNode;
+  /**
+   * Replaces everything at the right edge of the row. The card passes its
+   * animated score when there is one and its odds cells when there isn't;
+   * omitting it gives the plain score, which is what the hub wants.
+   */
+  right?: ReactNode;
+}) {
+  const rank = displayRank(team);
+  return (
+    <div
+      className={`trow flex items-center gap-2.5 transition-opacity ${dimmed ? "opacity-45" : ""}`}
+      style={{ "--tc": team.color ?? "var(--push)" } as React.CSSProperties}
+    >
+      <span className="trail" aria-hidden />
+      <TeamMark team={team} size={showScore ? 44 : 32} glow />
+      <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
+        <span
+          className={`scorebug truncate leading-tight text-chalk ${showScore ? "text-[16.5px]" : "text-[15px]"}`}
+        >
+          {team.school}
+          {rank !== null && rank <= 25 && (
+            <sup
+              className="stat ml-0.5 text-[10px] font-medium text-dim"
+              title={team.poll ? `${team.poll} rank` : "Model rank"}
+            >
+              {rank}
+            </sup>
+          )}
+        </span>
+        {team.record && !showScore && showRecord && (
+          <span className="stat shrink-0 text-[10px] leading-none text-dim">{team.record}</span>
+        )}
+        {trailing}
+      </div>
+      {right ??
+        (showScore && (
+          <span
+            className={`stat w-11 shrink-0 text-right text-[24px] font-semibold leading-none ${
+              dimmed ? "text-dim" : "text-chalk"
+            }`}
+          >
+            {score ?? 0}
+          </span>
+        ))}
+    </div>
   );
 }
 

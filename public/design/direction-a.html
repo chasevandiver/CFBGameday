@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en" data-direction="a">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Direction A — In the language · The CFB Slate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================================
+   DIRECTION A — "In the language"
+
+   The conservative one. Every value below is already in the app's stylesheet;
+   nothing here is invented. What changes is structure, not vocabulary:
+     · bets and pool picks become two stacked sections
+     · the column widens and splits in two on a tablet
+     · the slate's team-colour aura finally lights the hub's rows
+     · the CTA stops being full-width
+   ========================================================================== */
+
+:root {
+  /* existing tokens, verbatim from src/app/globals.css */
+  --bg: #100e0b;
+  --surface: #241d16;
+  --elev: #2c251c;
+  --line: rgba(244, 236, 220, 0.13);
+  --line-strong: rgba(244, 236, 220, 0.24);
+  --text: #f2eee5;
+  --text-dim: #a89f90;
+  --accent: #f2b63c;
+  --accent-ink: #0b0d12;
+  --live: #ff4b57;
+  --win: #34c77b;
+  --loss: #f0616d;
+  --push: #9aa1ad;
+  --edge-c: #ff8a3d;
+
+  --glass-surface: color-mix(in srgb, var(--surface) 80%, transparent);
+  --glass-edge: rgba(244, 236, 220, 0.16);
+  --glass-sheen: var(--glass-edge);
+  --glass-floor: color-mix(in srgb, var(--glass-edge) 45%, transparent);
+  --glass-bar: color-mix(in srgb, var(--bg) 72%, transparent);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 28px -12px rgba(0, 0, 0, 0.7);
+
+  --font-body: "Archivo";
+  --font-display: "Barlow Condensed";
+  --font-numeric: "IBM Plex Mono";
+}
+
+* { box-sizing: border-box; }
+html { color-scheme: dark; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body), system-ui, sans-serif;
+  padding-bottom: 84px;
+}
+button, a { touch-action: manipulation; }
+a { color: inherit; text-decoration: none; }
+
+h1, h2, .display {
+  font-family: var(--font-display), sans-serif;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-weight: 600;
+  margin: 0;
+}
+.stat { font-family: var(--font-numeric), monospace; font-variant-numeric: tabular-nums; }
+.scorebug {
+  font-family: var(--font-display), sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+/* ---- surfaces (verbatim) ------------------------------------------------ */
+.card {
+  background: linear-gradient(180deg, var(--glass-sheen), transparent 88px), var(--glass-surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 var(--glass-edge), inset 0 -1px 0 var(--glass-floor), var(--shadow-card);
+}
+.chip {
+  display: inline-flex; align-items: center; gap: 0.3em;
+  border-radius: 5px; padding: 0.15rem 0.4rem;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; line-height: 1.2; white-space: nowrap;
+}
+
+/* ---- the aura: the slate's own glow, now on the hub --------------------- */
+.glass-wrap { position: relative; isolation: isolate; }
+.glass-aura {
+  position: absolute; inset: -12px -2px -16px; z-index: -1;
+  border-radius: 28px; filter: blur(30px);
+  opacity: var(--aura-strength, 0.26); pointer-events: none;
+}
+.glass-aura span { position: absolute; top: 0; bottom: 0; width: 58%; border-radius: 50%; }
+.aura-a { left: 0; }
+.aura-b { right: 0; }
+/* team glows get desaturated — half the sport wears red */
+.glass-wrap[data-tint="teams"] .glass-aura { filter: blur(30px) saturate(0.6); }
+@media (prefers-reduced-motion: no-preference) {
+  .glass-wrap[data-tint="position"] .glass-aura { animation: drift 16s ease-in-out infinite alternate; }
+}
+@keyframes drift {
+  from { transform: translate3d(-1.5%, 0, 0) scale(1); }
+  to { transform: translate3d(1.5%, 0, 0) scale(1.05); }
+}
+
+/* ---- team rail (verbatim from .trow/.trail) ----------------------------- */
+.trow {
+  position: relative; border-radius: 8px; padding: 3px 6px 3px 10px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tc, transparent) 13%, transparent), transparent 60%);
+}
+.trail { position: absolute; left: 2px; top: 15%; bottom: 15%; width: 3px; border-radius: 2px; background: var(--tc); }
+
+/* ---- nav (as shipped) --------------------------------------------------- */
+header.bar {
+  position: sticky; top: 0; z-index: 20;
+  border-bottom: 1px solid rgba(244, 238, 229, 0.1);
+  background: var(--glass-bar);
+  backdrop-filter: blur(20px) saturate(1.5);
+  box-shadow: inset 0 -1px 0 var(--glass-edge);
+}
+.bar-inner { max-width: 80rem; margin: 0 auto; height: 48px; display: flex; align-items: center; gap: 16px; padding: 0 16px; }
+.wordmark { font-family: var(--font-display), sans-serif; text-transform: uppercase; font-weight: 600; font-size: 20px; color: var(--accent); letter-spacing: .02em; }
+.tabs { display: none; gap: 2px; flex: 1; }
+@media (min-width: 768px) { .tabs { display: flex; } }
+.tabs a { padding: 6px 12px; border-radius: 8px; font-size: 14px; font-weight: 500; color: var(--text-dim); }
+.tabs a[aria-current] { background: var(--surface); color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+
+/* ---- page --------------------------------------------------------------- */
+/* the whole point: 6xl, not 3xl — the nav above is 7xl */
+main { max-width: 72rem; margin: 0 auto; padding: 24px 16px; }
+.cols { display: grid; gap: 28px; }
+@media (min-width: 1024px) { .cols { grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); align-items: start; } }
+
+.sechead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+.sechead h2 { font-size: 14px; color: var(--accent); }
+.sechead .rule { height: 1px; flex: 1; background: rgba(244, 238, 229, 0.1); }
+.sechead .more { font-family: var(--font-numeric), monospace; font-size: 11px; color: var(--text-dim); }
+.sechead .count { font-family: var(--font-numeric), monospace; font-size: 11px; color: rgba(242,238,229,.45); }
+
+/* ---- hero --------------------------------------------------------------- */
+.hero { padding: 16px; position: relative; overflow: hidden; }
+.hero-top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.hero-top h2 { font-size: 18px; line-height: 1; }
+.hero-kick { font-family: var(--font-numeric), monospace; font-size: 11px; color: rgba(242,238,229,.55); }
+.hero-num { margin: 12px 0 0; line-height: 1; }
+.hero-num .n { font-family: var(--font-display), sans-serif; font-weight: 700; font-size: 34px; line-height: 1; font-variant-numeric: tabular-nums; }
+.hero-num .cap { font-family: var(--font-numeric), monospace; font-size: 14px; color: var(--text-dim); margin-left: 6px; }
+.hero-progress { list-style: none; margin: 6px 0 0; padding: 0; }
+.hero-progress a { display: flex; min-height: 44px; align-items: center; gap: 4px; font-family: var(--font-numeric), monospace; font-size: 11px; color: rgba(242,238,229,.5); }
+.hero-progress .name { color: rgba(242,238,229,.8); }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+/* capped, not flex-1 — on a tablet the old one spanned the whole column */
+.btn-primary {
+  font-family: var(--font-numeric), monospace;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 48px; padding: 0 20px; border-radius: 8px;
+  background: var(--accent); color: var(--accent-ink);
+  font-size: 14px; font-weight: 600;
+  flex: 1 1 auto; max-width: 22rem;
+}
+.btn-ghost {
+  font-family: var(--font-numeric), monospace;
+  display: inline-flex; align-items: center; min-height: 48px; padding: 0 14px;
+  border-radius: 8px; border: 1px solid rgba(244,238,229,.2); color: var(--text);
+  font-size: 14px;
+}
+
+/* ---- position rows ------------------------------------------------------ */
+.rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.row { overflow: hidden; }
+.row-main { display: flex; align-items: stretch; gap: 10px; padding: 10px 12px; }
+.teams { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+.team { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.mark { width: 22px; height: 22px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-family: var(--font-display), sans-serif; font-weight: 700; font-size: 8px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.5); flex: none; }
+.abbr { font-family: var(--font-display), sans-serif; font-weight: 700; font-size: 15px; letter-spacing: .01em; }
+.rank { font-family: var(--font-numeric), monospace; font-size: 10.5px; font-weight: 600; color: var(--text-dim); }
+.when { font-family: var(--font-numeric), monospace; font-size: 10.5px; line-height: 1.25; text-align: right; color: var(--text-dim); flex: none; align-self: flex-start; }
+.when b { display: block; color: var(--text); font-weight: 400; }
+.when .liveword { color: var(--live); }
+
+/* your position, on its own strip under the matchup */
+.pos { border-top: 1px solid rgba(244,238,229,.08); padding: 8px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pos .side { display: inline-flex; align-items: center; gap: 6px; }
+/* accent = money (chip mirrors the app's BetChip) */
+.chip-bet { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+/* chalk = pool (mirrors PickedChip) */
+.chip-pick { background: rgba(242,238,229,.1); color: rgba(242,238,229,.85); }
+.chip-win { background: color-mix(in srgb, var(--win) 12%, transparent); color: var(--win); }
+.chip-loss { background: color-mix(in srgb, var(--loss) 12%, transparent); color: var(--loss); }
+.chip-live { background: color-mix(in srgb, var(--live) 15%, transparent); color: var(--live); }
+.stake { font-family: var(--font-numeric), monospace; font-size: 10px; color: rgba(242,238,229,.4); }
+/* the number you hold vs the number on the board — the row's new information */
+.vs { margin-left: auto; font-family: var(--font-numeric), monospace; font-size: 10.5px; color: rgba(242,238,229,.45); white-space: nowrap; }
+.vs b { color: var(--text); font-weight: 400; }
+.vs .good { color: var(--win); }
+.vs .bad { color: var(--loss); }
+
+.livedot { width: 6px; height: 6px; border-radius: 999px; background: var(--live); display: inline-block; animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+
+/* ---- group + season rows ------------------------------------------------ */
+.grouprow { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 64px; padding: 12px 16px; }
+.grouprow .nm { font-weight: 500; }
+.grouprow .meta { font-family: var(--font-numeric), monospace; font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
+.grouprow .rec { text-align: right; font-family: var(--font-numeric), monospace; }
+.grouprow .rec b { display: block; font-size: 16px; font-weight: 600; }
+.grouprow .rec .lbl { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: rgba(242,238,229,.4); }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.tile { padding: 12px; }
+.tile .lbl { font-size: 12px; text-transform: uppercase; color: rgba(242,238,229,.55); margin: 0; }
+.tile .val { font-family: var(--font-numeric), monospace; font-size: 20px; margin: 4px 0 0; }
+.tile .val.up { color: var(--win); }
+.pool-line { font-family: var(--font-numeric), monospace; font-size: 11px; color: var(--text-dim); margin: 12px 0 0; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.pool-line b { color: var(--text); font-weight: 400; }
+.pool-line a { color: var(--accent); }
+
+.empty { padding: 20px; text-align: center; }
+.empty p { margin: 0; font-size: 14px; }
+.empty .hint { color: var(--text-dim); margin-top: 4px; }
+.empty .cta { display: inline-flex; min-height: 44px; align-items: center; padding: 0 14px; margin-top: 12px; border-radius: 8px; border: 1px solid rgba(244,238,229,.2); font-family: var(--font-numeric), monospace; font-size: 14px; }
+
+/* ---- bottom bar --------------------------------------------------------- */
+nav.bottom {
+  position: fixed; inset: auto 0 0 0; z-index: 40; display: flex;
+  border-top: 1px solid rgba(244,238,229,.1);
+  background: var(--glass-bar); backdrop-filter: blur(20px) saturate(1.5);
+  box-shadow: inset 0 1px 0 var(--glass-edge);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@media (min-width: 768px) { nav.bottom { display: none; } body { padding-bottom: 24px; } }
+nav.bottom a { flex: 1; min-height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; font-weight: 600; color: var(--text-dim); }
+nav.bottom a[aria-current] { color: var(--text); box-shadow: inset 0 2px 0 var(--accent); }
+nav.bottom svg { width: 21px; height: 21px; }
+
+.note { max-width: 72rem; margin: 0 auto; padding: 0 16px 32px; color: rgba(242,238,229,.35); font-size: 12px; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="bar-inner">
+    <span class="wordmark">The CFB Slate</span>
+    <nav class="tabs">
+      <a href="#" aria-current="page">Home</a><a href="#">Slate</a><a href="#">Edges</a>
+      <a href="#">Rankings</a><a href="#">Ratings</a><a href="#">Standings</a>
+      <a href="#">Teams</a><a href="#">Ledger</a><a href="#">Groups</a><a href="#">Receipts</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- ===== hero ===== -->
+  <div class="glass-wrap" data-tint="position" style="--aura-strength:.3">
+    <div class="glass-aura" aria-hidden="true">
+      <span class="aura-a" style="background:var(--accent)"></span>
+      <span class="aura-b" style="background:var(--accent)"></span>
+    </div>
+    <section class="card hero">
+      <div class="hero-top">
+        <h2>Week 1</h2>
+        <p class="hero-kick" style="margin:0"><span class="livedot"></span> 1 game playing now</p>
+      </div>
+      <p class="hero-num"><span class="n">6</span><span class="cap">games you&rsquo;re on</span></p>
+      <ul class="hero-progress">
+        <li><a href="#"><span class="name">Test Group</span> · 7 picks in</a></li>
+      </ul>
+      <div class="hero-actions">
+        <a class="btn-primary" href="#">Go to the slate →</a>
+        <a class="btn-ghost" href="#">Log a bet</a>
+      </div>
+    </section>
+  </div>
+
+  <div class="cols" style="margin-top:28px">
+    <!-- ===== left: your action, split in two ===== -->
+    <div>
+      <!-- --- BETS (money first) --- -->
+      <section aria-labelledby="bets-h">
+        <div class="sechead">
+          <h2 id="bets-h">Your bets</h2>
+          <span class="count">6 · 6.0u at risk</span>
+          <span class="rule"></span>
+          <a class="more" href="#">Ledger →</a>
+        </div>
+        <ul class="rows">
+
+          <!-- LIVE bet — aura carries the verdict colour, not the team colours -->
+          <li class="glass-wrap" data-tint="position" style="--aura-strength:.3">
+            <div class="glass-aura" aria-hidden="true">
+              <span class="aura-a" style="background:var(--win)"></span>
+              <span class="aura-b" style="background:var(--win)"></span>
+            </div>
+            <div class="card row">
+              <div class="row-main">
+                <span class="teams">
+                  <span class="team trow" style="--tc:#00498f"><i class="trail"></i><span class="mark" style="background:#00498f">MEM</span><span class="abbr">MEM</span></span>
+                  <span class="team trow" style="--tc:#cf0a2c"><i class="trail"></i><span class="mark" style="background:#cf0a2c">UNLV</span><span class="abbr">UNLV</span></span>
+                </span>
+                <span class="when"><span class="liveword">3rd 8:42</span><b>24–21</b></span>
+              </div>
+              <div class="pos">
+                <span class="side">
+                  <span class="chip chip-bet">🎟 MEM +4.5</span>
+                  <span class="stake">1u · −110</span>
+                  <span class="chip chip-win">✓ Covering by 1.5</span>
+                </span>
+                <span class="vs">held <b>+4.5</b> · now <b>+3.5</b> <span class="good">▲1.0</span></span>
+              </div>
+            </div>
+          </li>
+
+          <!-- the case that proves the split: UNC held at two different numbers -->
+          <li class="glass-wrap" data-tint="teams" style="--aura-strength:.24">
+            <div class="glass-aura" aria-hidden="true">
+              <span class="aura-a" style="background:#7bafd4"></span>
+              <span class="aura-b" style="background:#4d1979"></span>
+            </div>
+            <div class="card row">
+              <div class="row-main">
+                <span class="teams">
+                  <span class="team trow" style="--tc:#7bafd4"><i class="trail"></i><span class="mark" style="background:#7bafd4;color:#0b0d12">UNC</span><span class="abbr">UNC</span></span>
+                  <span class="team trow" style="--tc:#4d1979"><i class="trail"></i><span class="mark" style="background:#4d1979">TCU</span><span class="abbr">TCU</span></span>
+                </span>
+                <span class="when">Sat · ESPN<b>11:00 AM CT</b></span>
+              </div>
+              <div class="pos">
+                <span class="side"><span class="chip chip-bet">🎟 UNC +6.5</span><span class="stake">1u · −110</span></span>
+                <span class="vs">held <b>+6.5</b> · now <b>+7</b> <span class="bad">▼0.5</span></span>
+              </div>
+              <div class="pos">
+                <span class="side"><span class="chip chip-bet">🎟 UNC +7</span><span class="stake">1u · −110</span></span>
+                <span class="vs">held <b>+7</b> · now <b>+7</b></span>
+              </div>
+            </div>
+          </li>
+
+          <li class="glass-wrap" data-tint="teams" style="--aura-strength:.24">
+            <div class="glass-aura" aria-hidden="true">
+              <span class="aura-a" style="background:#024731"></span>
+              <span class="aura-b" style="background:#8c1515"></span>
+            </div>
+            <div class="card row">
+              <div class="row-main">
+                <span class="teams">
+                  <span class="team trow" style="--tc:#024731"><i class="trail"></i><span class="mark" style="background:#024731">HAW</span><span class="abbr">HAW</span></span>
+                  <span class="team trow" style="--tc:#8c1515"><i class="trail"></i><span class="mark" style="background:#8c1515">STAN</span><span class="abbr">STAN</span></span>
+                </span>
+                <span class="when">Sat · ACC Network<b>6:00 PM CT</b></span>
+              </div>
+              <div class="pos">
+                <span class="side"><span class="chip chip-bet">🎟 HAW +4</span><span class="stake">1u · −110</span></span>
+                <span class="vs">held <b>+4</b> · now <b>+4</b></span>
+              </div>
+            </div>
+          </li>
+
+          <li class="glass-wrap" data-tint="teams" style="--aura-strength:.24">
+            <div class="glass-aura" aria-hidden="true">
+              <span class="aura-a" style="background:#0055a2"></span>
+              <span class="aura-b" style="background:#990000"></span>
+            </div>
+            <div class="card row">
+              <div class="row-main">
+                <span class="teams">
+                  <span class="team trow" style="--tc:#0055a2"><i class="trail"></i><span class="mark" style="background:#0055a2">SJSU</span><span class="abbr">SJSU</span></span>
+                  <span class="team trow" style="--tc:#990000"><i class="trail"></i><span class="mark" style="background:#990000">USC</span><span class="abbr">USC</span></span>
+                </span>
+                <span class="when">Sat · BTN<b>2:00 PM CT</b></span>
+              </div>
+              <div class="pos">
+                <span class="side"><span class="chip chip-bet">🎟 SJSU +37</span><span class="stake">1u · −110</span></span>
+                <span class="vs">held <b>+37</b> · now <b>+38.5</b> <span class="bad">▼1.5</span></span>
+              </div>
+            </div>
+          </li>
+
+          <li class="glass-wrap" data-tint="teams" style="--aura-strength:.24">
+            <div class="glass-aura" aria-hidden="true">
+              <span class="aura-a" style="background:#8c8c8c"></span>
+              <span class="aura-b" style="background:#782f40"></span>
+            </div>
+            <div class="card row">
+              <div class="row-main">
+                <span class="teams">
+                  <span class="team trow" style="--tc:#8c8c8c"><i class="trail"></i><span class="mark" style="background:#8c8c8c">NMSU</span><span class="abbr">NMSU</span></span>
+                  <span class="team trow" style="--tc:#782f40"><i class="trail"></i><span class="mark" style="background:#782f40">FSU</span><span class="abbr">FSU</span></span>
+                </span>
+                <span class="when">Sat · ESPN2<b>6:00 PM CT</b></span>
+              </div>
+              <div class="pos">
+                <!-- the one home-side ticket: sign conversion visible -->
+                <span class="side"><span class="chip chip-bet">🎟 FSU −30.5</span><span class="stake">1u · −110</span></span>
+                <span class="vs">held <b>−30.5</b> · now <b>−31.5</b> <span class="good">▲1.0</span></span>
+              </div>
+            </div>
+          </li>
+
+          <li class="glass-wrap" data-tint="teams" style="--aura-strength:.24">
+            <div class="glass-aura" aria-hidden="true">
+              <span class="aura-a" style="background:#043927"></span>
+              <span class="aura-b" style="background:#00543c"></span>
+            </div>
+            <div class="card row">
+              <div class="row-main">
+                <span class="teams">
+                  <span class="team trow" style="--tc:#043927"><i class="trail"></i><span class="mark" style="background:#043927">SAC</span><span class="abbr">SAC</span></span>
+                  <span class="team trow" style="--tc:#00543c"><i class="trail"></i><span class="mark" style="background:#00543c">EMU</span><span class="abbr">EMU</span></span>
+                </span>
+                <span class="when">Sat · ESPN+<b>5:30 PM CT</b></span>
+              </div>
+              <div class="pos">
+                <span class="side"><span class="chip chip-bet">🎟 SAC +8.5</span><span class="stake">1u · −110</span></span>
+                <span class="vs">held <b>+8.5</b> · now <b>+9</b> <span class="bad">▼0.5</span></span>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </section>
+
+      <!-- --- POOL PICKS --- -->
+      <section aria-labelledby="picks-h" style="margin-top:28px">
+        <div class="sechead">
+          <h2 id="picks-h">Pool picks</h2>
+          <span class="count">7 · Test Group</span>
+          <span class="rule"></span>
+          <a class="more" href="#">The board →</a>
+        </div>
+        <ul class="rows">
+
+          <li class="glass-wrap" data-tint="teams" style="--aura-strength:.24">
+            <div class="glass-aura" aria-hidden="true">
+              <span class="aura-a" style="background:#7bafd4"></span>
+              <span class="aura-b" style="background:#4d1979"></span>
+            </div>
+            <div class="card row">
+              <div class="row-main">
+                <span class="teams">
+                  <span class="team trow" style="--tc:#7bafd4"><i class="trail"></i><span class="mark" style="background:#7bafd4;color:#0b0d12">UNC</span><span class="abbr">UNC</span></span>
+                  <span class="team trow" style="--tc:#4d1979"><i class="trail"></i><span class="mark" style="background:#4d1979">TCU</span><span class="abbr">TCU</span></span>
+                </span>
+                <span class="when">Sat · ESPN<b>11:00 AM CT</b></span>
+              </div>
+              <div class="pos">
+                <span class="side"><span class="chip chip-pick">👥 UNC +7</span></span>
+                <span class="vs">held <b>+7</b> · now <b>+7</b></span>
+              </div>
+            </div>
+          </li>
+
+          <li class="glass-wrap" data-tint="teams" style="--aura-strength:.24">
+            <div class="glass-aura" aria-hidden="true">
+              <span class="aura-a" style="background:#cc0000"></span>
+              <span class="aura-b" style="background:#232d4b"></span>
+            </div>
+            <div class="card row">
+              <div class="row-main">
+                <span class="teams">
+                  <span class="team trow" style="--tc:#cc0000"><i class="trail"></i><span class="mark" style="background:#cc0000">NCSU</span><span class="abbr">NCSU</span></span>
+                  <span class="team trow" style="--tc:#232d4b"><i class="trail"></i><span class="mark" style="background:#232d4b">UVA</span><span class="abbr">UVA</span></span>
+                </span>
+                <span class="when">Sat · ESPN<b>2:30 PM CT</b></span>
+              </div>
+              <div class="pos">
+                <span class="side"><span class="chip chip-pick">👥 NCSU +4.5</span></span>
+                <span class="vs">held <b>+4.5</b> · now <b>+4.5</b> <span class="good">▲1.0 vs open</span></span>
+              </div>
+              <div class="pos">
+                <span class="side"><span class="chip chip-pick">👥 Over 54</span></span>
+                <span class="vs">held <b>54</b> · now <b>54</b></span>
+              </div>
+            </div>
+          </li>
+
+          <li class="glass-wrap" data-tint="teams" style="--aura-strength:.24">
+            <div class="glass-aura" aria-hidden="true">
+              <span class="aura-a" style="background:#024731"></span>
+              <span class="aura-b" style="background:#8c1515"></span>
+            </div>
+            <div class="card row">
+              <div class="row-main">
+                <span class="teams">
+                  <span class="team trow" style="--tc:#024731"><i class="trail"></i><span class="mark" style="background:#024731">HAW</span><span class="abbr">HAW</span></span>
+                  <span class="team trow" style="--tc:#8c1515"><i class="trail"></i><span class="mark" style="background:#8c1515">STAN</span><span class="abbr">STAN</span></span>
+                </span>
+                <span class="when">Sat · ACC Network<b>6:00 PM CT</b></span>
+              </div>
+              <div class="pos">
+                <span class="side"><span class="chip chip-pick">👥 HAW +4</span></span>
+                <span class="vs">held <b>+4</b> · now <b>+4</b> <span class="good">▲1.0 vs open</span></span>
+              </div>
+              <div class="pos">
+                <span class="side"><span class="chip chip-pick">👥 Over 50.5</span></span>
+                <span class="vs">held <b>50.5</b> · now <b>50.5</b></span>
+              </div>
+            </div>
+          </li>
+
+          <li class="glass-wrap" data-tint="position" style="--aura-strength:.3">
+            <div class="glass-aura" aria-hidden="true">
+              <span class="aura-a" style="background:var(--win)"></span>
+              <span class="aura-b" style="background:var(--win)"></span>
+            </div>
+            <div class="card row">
+              <div class="row-main">
+                <span class="teams">
+                  <span class="team trow" style="--tc:#00498f"><i class="trail"></i><span class="mark" style="background:#00498f">MEM</span><span class="abbr">MEM</span></span>
+                  <span class="team trow" style="--tc:#cf0a2c"><i class="trail"></i><span class="mark" style="background:#cf0a2c">UNLV</span><span class="abbr">UNLV</span></span>
+                </span>
+                <span class="when"><span class="liveword">3rd 8:42</span><b>24–21</b></span>
+              </div>
+              <div class="pos">
+                <span class="side"><span class="chip chip-pick">👥 MEM +4.5</span><span class="chip chip-win">✓ Covering by 1.5</span></span>
+                <span class="vs">held <b>+4.5</b> · now <b>+3.5</b></span>
+              </div>
+              <div class="pos">
+                <!-- the real 3-point move against the over -->
+                <span class="side"><span class="chip chip-pick">👥 Over 57.5</span><span class="chip chip-loss">✕ Needs 13 more</span></span>
+                <span class="vs">held <b>57.5</b> · opened <b>60.5</b> <span class="good">▲3.0</span></span>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </section>
+    </div>
+
+    <!-- ===== right rail: groups + season ===== -->
+    <div>
+      <section aria-labelledby="groups-h">
+        <div class="sechead">
+          <h2 id="groups-h">Your groups</h2>
+          <span class="rule"></span>
+          <a class="more" href="#">All groups →</a>
+        </div>
+        <ul class="rows" style="gap:10px">
+          <li><a class="card grouprow" href="#">
+            <span style="min-width:0">
+              <span class="nm" style="display:block">Test Group</span>
+              <span class="meta">📋 Pick&rsquo;em · <span style="color:var(--text)">2nd</span> of 9</span>
+            </span>
+            <span class="rec"><b>31-19-1</b><span class="lbl">this season</span></span>
+          </a></li>
+          <li><a class="card grouprow" href="#">
+            <span style="min-width:0">
+              <span class="nm" style="display:block">The Sheet</span>
+              <span class="meta">🎟 Betting sheet · <span style="color:var(--text)">1st</span> of 5</span>
+            </span>
+            <span class="rec"><b>24-18</b><span style="display:block;font-size:11px;color:var(--win)">+8.2u</span><span class="lbl">your bets</span></span>
+          </a></li>
+        </ul>
+      </section>
+
+      <section aria-labelledby="season-h" style="margin-top:28px">
+        <div class="sechead">
+          <h2 id="season-h">Your season</h2>
+          <span class="rule"></span>
+          <a class="more" href="#">Full ledger →</a>
+        </div>
+        <div class="tiles">
+          <div class="card tile"><p class="lbl">Record</p><p class="val">24-18-1</p></div>
+          <div class="card tile"><p class="lbl">Units</p><p class="val up">+5.7</p></div>
+          <div class="card tile"><p class="lbl">ROI</p><p class="val">13.6%</p></div>
+          <div class="card tile"><p class="lbl">Avg CLV</p><p class="val up">+0.19</p></div>
+        </div>
+        <div class="card" style="margin-top:12px;padding:16px">
+          <svg viewBox="0 0 320 64" preserveAspectRatio="none" style="width:100%;height:64px" role="img" aria-label="Cumulative units over 43 graded bets, currently +5.7">
+            <line x1="4" x2="316" y1="46" y2="46" stroke="var(--line-strong)" stroke-width="1" stroke-dasharray="3 3" />
+            <path d="M4,46 L30,40 L56,34 L82,44 L108,26 L134,36 L160,46 L186,37 L212,19 L238,29 L264,20 L290,8 L316,14"
+                  fill="none" stroke="var(--win)" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+          </svg>
+          <p style="margin:6px 0 0;font-size:10.5px;color:var(--text-dim)">Cumulative units, bet by bet, oldest to newest.</p>
+        </div>
+        <p class="pool-line">👥 Pool picks <b>31-19-1</b> across 2 groups — <a href="#">counted separately</a></p>
+      </section>
+    </div>
+  </div>
+</main>
+
+<p class="note">
+  Direction A — everything here uses values already defined in
+  <code>src/app/globals.css</code>. The changes are structural: two sections
+  instead of mixed chips, a 6xl column that splits in two on a tablet, the
+  slate's team-colour aura lit on rows you have action on, a width-capped CTA,
+  and a held-vs-now column so a row says whether your number is still good.
+</p>
+
+<nav class="bottom">
+  <a href="#" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9.5 12 3l9 6.5V21H3z"/></svg>Home</a>
+  <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M8 17V9m4 8V5m4 12v-6"/></svg>Slate</a>
+  <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 3h16v18l-2-1.5L16 21l-2-1.5L12 21l-2-1.5L8 21l-2-1.5L4 21z"/></svg>Ledger</a>
+  <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3"/><path d="M2 20a7 7 0 0 1 14 0M17 11a3 3 0 1 0 0-6"/></svg>Groups</a>
+  <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>More</a>
+</nav>
+
+</body>
+</html>

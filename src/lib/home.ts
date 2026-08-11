@@ -16,6 +16,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchBettingSheet, byUnits } from "./betting-groups";
+import { spreadClv, totalClv } from "./clv";
 import type { GroupWeekConfigRow, PickMarket } from "./db-types";
 import { fetchMyGroups, type GroupSummary } from "./groups";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "./queries";
@@ -29,7 +30,7 @@ import {
   type Wager,
 } from "./records";
 import type { SeasonType } from "./season";
-import type { GameView, MyBetView, MyPickView } from "./slate";
+import { lineForSide, type GameView, type MyBetView, type MyPickView } from "./slate";
 
 /* ---- shapes ------------------------------------------------------------ */
 
@@ -82,6 +83,11 @@ export interface HomeData {
   liveCount: number;
   weekGameCount: number;
   positions: Position[];
+  /** Open bets on this week's games, and the units riding on them. */
+  openBetCount: number;
+  openBetUnits: number;
+  /** Picks made on this week's board, across every pool. */
+  weekPickCount: number;
   groups: GroupStanding[];
   progress: WeekProgress[];
   /** The money ledger, this season. */
@@ -117,8 +123,15 @@ export function placeOf(
  * happening now, then what is about to, then what already did.
  *
  * A game with a pick in two different pools appears once, carrying both — the
- * question the row answers is "what have I got on this game", and that is one
+ * question a row answers is "what have I got on this game", and that is one
  * question however many boards it spans.
+ *
+ * The viewer's picks and bets are also written back onto each `GameView`. They
+ * are the fields `fetchSlateView` fills for the slate, and every helper in
+ * `live-status.ts` — `tintFor`, `pickCoverView` — reads them, so attaching them
+ * here means the hub gets the slate's aura and verdict logic without a second
+ * implementation. The hub loads the slate with a null user precisely so it can
+ * supply these itself across every pool rather than one.
  */
 export function buildPositions(
   games: GameView[],
@@ -136,12 +149,89 @@ export function buildPositions(
 
   return games
     .filter((g) => picksByGame.has(g.id) || betsByGame.has(g.id))
-    .map((g) => ({
-      game: g,
-      picks: picksByGame.get(g.id) ?? [],
-      bets: betsByGame.get(g.id) ?? [],
-    }))
+    .map((g) => {
+      const myPicks = picksByGame.get(g.id) ?? [];
+      const myBets = betsByGame.get(g.id) ?? [];
+      return { game: { ...g, myPicks, myBets }, picks: myPicks, bets: myBets };
+    })
     .sort((a, b) => phaseOf(a.game) - phaseOf(b.game) || kickKey(a.game).localeCompare(kickKey(b.game)));
+}
+
+/**
+ * The same positions, split by which ledger they belong to.
+ *
+ * `/ledger` keeps bets and pool picks in separate tabs because they are
+ * separate products with separate arithmetic — real odds and a real stake on
+ * one side, flat −110 pretend money on the other. The hub's first version put
+ * them back on one row as differently-tinted chips, which made a card carrying
+ * both unreadable: you could not tell what you had money on.
+ *
+ * A game with both appears in both lists, carrying only that list's layer.
+ * That is not duplication — the same game held at +7 in a pool and +6.5 on a
+ * ticket is two positions, and showing one row hides the difference.
+ */
+export function splitPositions(positions: Position[]): {
+  bets: Position[];
+  picks: Position[];
+} {
+  return {
+    bets: positions
+      .filter((p) => p.bets.length > 0)
+      // The game's own layers are narrowed too, not just the row's: `tintFor`
+      // reads `myPicks`/`myBets` off the game, so leaving the pool pick on a
+      // money row would let a pick decide the colour of a bet — and on a pool
+      // row, the bet would.
+      .map((p) => ({ ...p, picks: [], game: { ...p.game, myPicks: [] } })),
+    picks: positions
+      .filter((p) => p.picks.length > 0)
+      .map((p) => ({ ...p, bets: [], game: { ...p.game, myBets: [] } })),
+  };
+}
+
+/**
+ * Your number against the number on the board right now.
+ *
+ * The one thing a position row can say that the slate cannot: whether the
+ * number you are holding is still the number, and which way it moved.
+ *
+ * The arithmetic is `spreadClv` / `totalClv` — this is the same question CLV
+ * asks, against the running line instead of the close, and those two carry the
+ * asymmetry that makes it easy to get wrong (a spread holder wants a bigger
+ * number, an over wants a smaller one, an under a bigger one). They are already
+ * tested with worked examples, so deriving the signs a second time here would
+ * only be a second chance to invert one.
+ *
+ * They take home-perspective numbers, which is how `line_at_pick`, `line_taken`
+ * and `lines.spread` are all stored. The two numbers rendered to the reader go
+ * through `lineForSide` instead, since a ticket reads its own side.
+ */
+export function heldVsNow(
+  market: string,
+  side: string,
+  held: number | null,
+  lines: GameView["lines"],
+): { held: number; now: number | null; delta: number | null; isTotal: boolean } | null {
+  if (held === null) return null;
+  const isTotal = market === "total";
+  const isSpread = market === "spread";
+  if (!isTotal && !isSpread) return null;
+
+  const current = isTotal ? lines.total : lines.spread;
+  // A spread reads with its sign from the holder's side; a total is just a
+  // number — "Over +51.5" is not a thing anyone writes.
+  const shown = (v: number) => (isTotal ? v : (lineForSide(side, v) ?? v));
+  if (current === null) return { held: shown(held), now: null, delta: null, isTotal };
+
+  const delta = isTotal
+    ? totalClv(side === "under" ? "under" : "over", held, current)
+    : spreadClv(side === "away" ? "away" : "home", held, current);
+
+  return {
+    held: shown(held),
+    now: shown(current),
+    delta: Math.round(delta * 10) / 10,
+    isTotal,
+  };
 }
 
 /** Live first, then not-yet-played, then settled. */
@@ -220,6 +310,9 @@ export async function fetchHomeData(
     liveCount: weekGames.filter((g) => g.status === "in_progress").length,
     weekGameCount: weekGames.length,
     positions: [],
+    openBetCount: 0,
+    openBetUnits: 0,
+    weekPickCount: 0,
     groups: [],
     progress: [],
     bets: EMPTY_TALLY,
@@ -377,16 +470,22 @@ export async function fetchHomeData(
     groupName: groupById.get(p.group_id)?.name ?? "A pool",
     groupSlug: groupById.get(p.group_id)?.slug ?? "",
   }));
-  const homeBets: HomeBet[] = betRows
-    .filter((b) => b.game_id !== null && weekGameIds.has(b.game_id))
-    .map((b) => ({
-      id: b.id,
-      gameId: b.game_id as number,
-      betType: b.bet_type,
-      side: b.side,
-      line: b.line_taken === null ? null : Number(b.line_taken),
-      result: b.result,
-    }));
+  const weekBetRows = betRows.filter((b) => b.game_id !== null && weekGameIds.has(b.game_id));
+  const homeBets: HomeBet[] = weekBetRows.map((b) => ({
+    id: b.id,
+    gameId: b.game_id as number,
+    betType: b.bet_type,
+    side: b.side,
+    line: b.line_taken === null ? null : Number(b.line_taken),
+    result: b.result,
+  }));
+
+  // "Open" means still to settle. A graded bet stays on the row — the card
+  // shows your money pregame, live and postgame — but it is no longer at risk,
+  // so counting it in the units figure would overstate what is riding.
+  const openBets = weekBetRows.filter((b) => !b.result);
+  const openBetCount = openBets.length;
+  const openBetUnits = openBets.reduce((n, b) => n + Number(b.units), 0);
 
   const actionGameIds = new Set<number>([
     ...homePicks.map((p) => p.gameId),
@@ -410,6 +509,9 @@ export async function fetchHomeData(
   return {
     ...empty,
     positions,
+    openBetCount,
+    openBetUnits,
+    weekPickCount: myWeekPicks.length,
     groups,
     progress,
     bets: betsTally,

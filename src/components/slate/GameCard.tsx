@@ -17,7 +17,6 @@ import {
 import { RATING_SCALES, systemMargin } from "../../lib/rating-scales";
 import {
   atsResult,
-  displayRank,
   fieldPosition,
   fmtMoneyline,
   fmtPct,
@@ -46,7 +45,7 @@ import {
 } from "../../lib/slate";
 import { ConsensusChip, EdgeChip, LiveBadge, LiveStatusChip, MoveIndicator, PickedChip, ResultChip } from "./chips";
 import { SheetLine } from "./SheetLine";
-import { TeamMark } from "./TeamMark";
+import { TeamScoreLine } from "./TeamLine";
 import { WinProbBar } from "./WinProbBar";
 
 interface Props {
@@ -445,67 +444,57 @@ function TeamRow({
   const oppPoints = side === "home" ? game.awayPoints : game.homePoints;
   const lost = final && points !== null && oppPoints !== null && points < oppPoints;
   const isStarred = starred.includes(team.id);
-  const rank = displayRank(team);
 
+  // The mark / name / rank / score construction is shared with the home hub —
+  // see TeamScoreLine. What stays here is what only a card has: the star
+  // button, the possession football, the score-flash and the odds cells.
   return (
-    <div
-      className={`trow flex items-center gap-2.5 transition-opacity ${lost ? "opacity-45" : ""}`}
-      style={{ "--tc": team.color ?? "var(--push)" } as React.CSSProperties}
-    >
-      <span className="trail" aria-hidden />
-      <TeamMark team={team} size={showScore ? 44 : 32} glow />
-      <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
-        <span className={`scorebug truncate leading-tight text-chalk ${showScore ? "text-[16.5px]" : "text-[15px]"}`}>
-          {team.school}
-          {rank !== null && rank <= 25 && (
-            <sup
-              className="stat ml-0.5 text-[10px] font-medium text-dim"
-              title={team.poll ? `${team.poll} rank` : "Model rank"}
-            >
-              {rank}
-            </sup>
-          )}
-        </span>
-        {team.record && !showScore && (
-          <span className="stat shrink-0 text-[10px] leading-none text-dim">{team.record}</span>
-        )}
-        <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onStar(team.id);
-          }}
-          aria-label={isStarred ? `Unstar ${team.school}` : `Star ${team.school}`}
-          aria-pressed={isStarred}
-          className={`pointer-events-auto -m-1.5 shrink-0 rounded p-1.5 transition-colors ${
-            isStarred ? "text-accent" : "text-chalk/25 hover:text-chalk/60"
-          }`}
-        >
-          <Star size={13} fill={isStarred ? "currentColor" : "none"} aria-hidden />
-        </button>
-      </div>
-
-      {showScore ? (
-        <span className="flex shrink-0 items-center gap-2">
-          {live && game.possession === side && <Football label={`${team.school} has possession`} />}
-          <span
-            key={flash && flash.side === side ? flash.key : side}
-            className={`stat w-11 text-right text-[24px] font-semibold leading-none ${
-              lost ? "text-dim" : "text-chalk"
-            } ${flash && flash.side === side ? "score-pop" : ""}`}
-            style={
-              flash && flash.side === side
-                ? ({ "--flash-color": team.color ?? "var(--accent)" } as React.CSSProperties)
-                : undefined
-            }
+    <TeamScoreLine
+      team={team}
+      score={points}
+      showScore={showScore}
+      dimmed={lost}
+      trailing={
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onStar(team.id);
+            }}
+            aria-label={isStarred ? `Unstar ${team.school}` : `Star ${team.school}`}
+            aria-pressed={isStarred}
+            className={`pointer-events-auto -m-1.5 shrink-0 rounded p-1.5 transition-colors ${
+              isStarred ? "text-accent" : "text-chalk/25 hover:text-chalk/60"
+            }`}
           >
-            {points ?? 0}
+            <Star size={13} fill={isStarred ? "currentColor" : "none"} aria-hidden />
+          </button>
+        }
+      right={
+        showScore ? (
+          <span className="flex shrink-0 items-center gap-2">
+            {live && game.possession === side && (
+              <Football label={`${team.school} has possession`} />
+            )}
+            <span
+              key={flash && flash.side === side ? flash.key : side}
+              className={`stat w-11 text-right text-[24px] font-semibold leading-none ${
+                lost ? "text-dim" : "text-chalk"
+              } ${flash && flash.side === side ? "score-pop" : ""}`}
+              style={
+                flash && flash.side === side
+                  ? ({ "--flash-color": team.color ?? "var(--accent)" } as React.CSSProperties)
+                  : undefined
+              }
+            >
+              {points ?? 0}
+            </span>
           </span>
-        </span>
-      ) : (
-        <OddsCells game={game} side={side} />
-      )}
-    </div>
+        ) : (
+          <OddsCells game={game} side={side} />
+        )
+      }
+    />
   );
 }
 
