@@ -20,7 +20,13 @@ import {
   RecordBlock,
   SectionHead,
 } from "../../../components/home/HomeHub";
-import type { GroupStanding, Position } from "../../../lib/home";
+import {
+  buildPositions,
+  splitPositions,
+  type GroupStanding,
+  type HomePick,
+  type Position,
+} from "../../../lib/home";
 import type { GroupSummary, GroupWeek } from "../../../lib/groups";
 import { EMPTY_TALLY, type Tally } from "../../../lib/records";
 import { BetSlip } from "../../../components/slate/BetSlip";
@@ -397,58 +403,54 @@ const SATURDAY_BOYS = group("g1", "Saturday Boys", "saturday-boys", "pickem", "a
 const THE_SHEET = group("g2", "The Sheet", "the-sheet", "betting");
 const WORK_POOL = group("g3", "Work Pool", "work-pool", "pickem");
 
-/** Live sweat, pregame position, and a settled one — the three states a row has. */
-const HOME_POSITIONS: Position[] = [
-  {
-    game: LIVE,
-    picks: [
-      {
-        gameId: LIVE.id,
-        market: "spread",
-        side: "away",
-        line: -3.5,
-        result: null,
-        groupId: "g1",
-        groupName: "Saturday Boys",
-        groupSlug: "saturday-boys",
-      },
-    ],
-    bets: [{ id: 1, gameId: LIVE.id, betType: "total", side: "over", line: 44.5, result: null }],
-  },
-  {
-    game: PREGAME,
-    picks: [
-      {
-        gameId: PREGAME.id,
-        market: "spread",
-        side: "home",
-        line: -1.5,
-        result: null,
-        groupId: "g1",
-        groupName: "Saturday Boys",
-        groupSlug: "saturday-boys",
-      },
-      {
-        gameId: PREGAME.id,
-        market: "total",
-        side: "under",
-        line: 51.5,
-        result: null,
-        groupId: "g3",
-        groupName: "Work Pool",
-        groupSlug: "work-pool",
-      },
-    ],
-    bets: [],
-  },
-  {
-    game: FINAL_GAME,
-    picks: [],
-    bets: [
-      { id: 2, gameId: FINAL_GAME.id, betType: "spread", side: "home", line: -6.5, result: "win" },
-    ],
-  },
-];
+const homePick = (
+  gameId: number,
+  market: HomePick["market"],
+  side: HomePick["side"],
+  line: number | null,
+  group: [string, string, string] = ["g1", "Saturday Boys", "saturday-boys"],
+  result: HomePick["result"] = null,
+): HomePick => ({
+  gameId,
+  market,
+  side,
+  line,
+  result,
+  groupId: group[0],
+  groupName: group[1],
+  groupSlug: group[2],
+});
+
+const WORK: [string, string, string] = ["g3", "Work Pool", "work-pool"];
+
+/**
+ * Built through the real `buildPositions` / `splitPositions` rather than
+ * hand-assembled, so the preview exercises the same code the page does — the
+ * aura in particular reads the picks and bets off the game, which only the
+ * builder attaches.
+ *
+ * Covers the states a row has: a live sweat carrying both layers, a pregame
+ * game picked in two different pools, and a settled bet.
+ */
+const HOME_ALL: Position[] = buildPositions(
+  [LIVE, PREGAME, FINAL_GAME],
+  [
+    // Picked at 4 and bet at 3 on the same side: the pick is now the worse
+    // number and the bet the better one, which is the whole point of showing
+    // held-against-now on both layers.
+    homePick(LIVE.id, "spread", "away", 4),
+    homePick(PREGAME.id, "spread", "home", -1.5),
+    homePick(PREGAME.id, "total", "under", 51.5, WORK),
+  ],
+  [
+    { id: 1, gameId: LIVE.id, betType: "total", side: "over", line: 44.5, result: null },
+    // The same game held twice at different numbers — the case the split
+    // exists for, and a half-point apart the way a real re-bet is.
+    { id: 3, gameId: LIVE.id, betType: "spread", side: "away", line: 3, result: null },
+    { id: 2, gameId: FINAL_GAME.id, betType: "spread", side: "home", line: -6.5, result: "win" },
+  ],
+);
+const HOME_POSITIONS = splitPositions(HOME_ALL);
 
 const HOME_GROUPS: GroupStanding[] = [
   { group: SATURDAY_BOYS, place: 2, field: 9, tally: sampleTally(31, 19, 1, 6.4, 0.31) },
@@ -502,13 +504,15 @@ export function SlatePreviewClient() {
         {/* The hub and the group screens need a database, a season, a group and
             a signed-in member before they draw anything, so their card systems
             are previewed here against the same sample slate. */}
+        {/* The same container and grid the page uses, so the two-column
+            dashboard is reviewable here and not only when signed in. */}
         <Section title="Home hub — hero, positions, groups, season">
-          <div className="mx-auto max-w-3xl">
+          <div className="mx-auto max-w-6xl">
             <HomeHero
               week={12}
-              positionCount={HOME_POSITIONS.length}
+              positionCount={HOME_ALL.length}
               weekGameCount={58}
-              liveCount={0}
+              liveCount={1}
               firstKick={at(20)}
               signedIn
               progress={[
@@ -517,47 +521,66 @@ export function SlatePreviewClient() {
               ]}
             />
 
-            <div className="mt-6">
-              <SectionHead
-                id="preview-positions"
-                title="Riding this week"
-                href="/ledger"
-                linkLabel="Your ledger"
-              />
-              <ul className="flex flex-col gap-2.5">
-                {HOME_POSITIONS.map((p) => (
-                  <PositionRow key={p.game.id} position={p} tz={tz} />
-                ))}
-              </ul>
-            </div>
+            {/* Money and the pool, kept apart — the same split /ledger makes. */}
+            <div className="mt-6 grid gap-7 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] lg:items-start">
+              <div>
+                <SectionHead
+                  id="preview-bets"
+                  title="Your bets"
+                  count="2 open · 2.0u"
+                  href="/ledger"
+                  linkLabel="Ledger"
+                />
+                <ul className="flex flex-col gap-3.5">
+                  {HOME_POSITIONS.bets.map((p) => (
+                    <PositionRow key={`bet-${p.game.id}`} position={p} tz={tz} />
+                  ))}
+                </ul>
 
-            <div className="mt-7">
-              <SectionHead
-                id="preview-groups"
-                title="Your groups"
-                href="/groups"
-                linkLabel="All groups"
-              />
-              <ul className="flex flex-col gap-2.5">
-                {HOME_GROUPS.map((s) => (
-                  <GroupStandingRow key={s.group.id} standing={s} />
-                ))}
-              </ul>
-            </div>
+                <div className="mt-7">
+                  <SectionHead
+                    id="preview-picks"
+                    title="Pool picks"
+                    count="3 in"
+                    href="/groups"
+                    linkLabel="The board"
+                  />
+                  <ul className="flex flex-col gap-3.5">
+                    {HOME_POSITIONS.picks.map((p) => (
+                      <PositionRow key={`pick-${p.game.id}`} position={p} tz={tz} showPool />
+                    ))}
+                  </ul>
+                </div>
+              </div>
 
-            <div className="mt-7">
-              <SectionHead
-                id="preview-season"
-                title="Your season"
-                href="/ledger"
-                linkLabel="Full ledger"
-              />
-              <RecordBlock
-                bets={sampleTally(24, 18, 1, 5.7, 0.19)}
-                picks={sampleTally(31, 19, 1, 6.4, 0.31)}
-                pickGroupCount={2}
-                curve={HOME_CURVE}
-              />
+              <div>
+                <SectionHead
+                  id="preview-groups"
+                  title="Your groups"
+                  href="/groups"
+                  linkLabel="All groups"
+                />
+                <ul className="flex flex-col gap-2.5">
+                  {HOME_GROUPS.map((s) => (
+                    <GroupStandingRow key={s.group.id} standing={s} />
+                  ))}
+                </ul>
+
+                <div className="mt-7">
+                  <SectionHead
+                    id="preview-season"
+                    title="Your season"
+                    href="/ledger"
+                    linkLabel="Full ledger"
+                  />
+                  <RecordBlock
+                    bets={sampleTally(24, 18, 1, 5.7, 0.19)}
+                    picks={sampleTally(31, 19, 1, 6.4, 0.31)}
+                    pickGroupCount={2}
+                    curve={HOME_CURVE}
+                  />
+                </div>
+              </div>
             </div>
 
             {/* First run: what a brand-new account actually lands on. */}

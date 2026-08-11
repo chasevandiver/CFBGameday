@@ -141,6 +141,77 @@ shipping it.
 
 ## Log
 
+### Aug 11 — The hub gets the slate's scoreboard, and stops mixing money with the pool
+
+No model change. `DEFAULT_PARAMS` untouched, no tuner run.
+
+Three complaints from seeing the hub logged in on an iPad, and one design
+round to answer them. Three directions went up as standalone HTML under
+`public/design/` per `docs/DESIGN.md` exploration mode — **A** inside the
+existing language, **B** a dense sportsbook board, **C** a broadcast score bug.
+**A was chosen**, with one amendment: its score was a 10px `24–21` in the row's
+corner, which made the most important number on a live row the smallest thing
+on it.
+
+**The scoreboard is the slate's, not a summary of it.** Each team now gets its
+own row on its team-colour rail with a 24px tabular score at the right, the mark
+growing 32→44px once there is a score, and the losing side of a final faded —
+the construction `GameCard` has used since the cards were built. That
+construction moved out of `GameCard.tsx` into `TeamScoreLine` in
+`components/slate/TeamLine.tsx`, and **both screens use it**. What stayed in the
+card is what only a card has: the star button, the possession football, the
+score-flash and the odds cells, all passed in through a `trailing` and a `right`
+slot. `GameCard` had no tests, which is exactly why a refactor of it needed
+some: `TeamLine.test.tsx` pins the score/record switch, the losing-side fade,
+the rank superscript naming its poll, and the colour rail.
+
+**Bets and pool picks are two sections.** The first hub rendered them as
+differently-tinted chips on one row, which undid what the ledger's two tabs
+exist for — and the real account has the case that proves it: **UNC held at +7
+in the pool and +6.5 on a ticket**, two numbers on one game that the old row
+showed as one line. `splitPositions` puts a game with both in both lists
+carrying only that list's layer, and narrows the game's own `myPicks`/`myBets`
+with it, so a pool pick can't colour a money row's aura.
+
+**The rows say something the slate can't: whether your number is still good.**
+Every position line carries `held +4.5 · now +3.5 ▲1.0`. The arithmetic is
+`spreadClv` / `totalClv` — this is the same question CLV asks, against the
+running line instead of the close, and those two already encode the asymmetry
+that makes it easy to invert (a spread holder wants a bigger number, an over a
+smaller one, an under a bigger one). Deriving the signs a second time would only
+have been a second chance to get one backwards. Seven worked examples in
+`home.test.ts` cover it, including the home-side ticket and the over/under
+split.
+
+**And it looks like the app now.** `max-w-3xl` under a `max-w-7xl` nav became
+`max-w-6xl` splitting into two columns on `lg` — positions left, groups and
+season right. Rows carry the slate's `glass-wrap` aura through `tintFor`
+unchanged, which works because `buildPositions` attaches the viewer's layers to
+the `GameView`; that one assignment also makes every helper in
+`live-status.ts` work on the hub. The CTA is capped at `max-w-sm` instead of
+`flex-1`, which had it spanning the whole column on a tablet. The pool name is
+dropped when you are only in one pool — it was printing "Test Group" five times
+and saying nothing.
+
+**The `web-design-guidelines` pass on the diff found three, all fixed.** The hub
+was the one screen with no `h1` — its sections were `h2`s under nothing — so the
+hero's week is now the page heading. The `▲`/`▼` glyphs are `aria-hidden` with a
+sentence behind them, since "up-pointing triangle" helps nobody. And the 10.5px
+`held · now` labels sat at `text-chalk/45`, around 3.3:1 on the card; they use
+`--text-dim` now, which is what that token is for.
+
+**Checked.** 432 tests, lint, types and build clean. `/slate/preview` renders
+the new rows pregame, live and final in both themes at 375px and 1024px, beside
+the real game cards on the same page — and the cards are unchanged after the
+extraction. `fetchHomeData` re-run against the live project: 23 requests, no
+errors. `/` rendered signed out off the real database, one `h1`, zero
+horizontal overflow.
+
+**Still not done, and worth deciding separately:** the hub is a server component,
+so its scores are as-of page load. The slate polls (`use-games-realtime`,
+`/api/slate`); the hub does not. Making the score the biggest thing on the row
+makes staleness more misleading, not less.
+
 ### Aug 10 — The site stops opening on the slate
 
 No model change. `DEFAULT_PARAMS` is untouched, no tuner was run, and nothing

@@ -1,12 +1,12 @@
-import { ArrowRight, ClipboardList, Ticket, Users } from "lucide-react";
+import { ArrowRight, ClipboardList, Ticket, Tv, Users } from "lucide-react";
 import Link from "next/link";
-import { LiveStatusChip, PickedChip, ResultChip } from "../slate/chips";
-import { TeamLine } from "../slate/TeamLine";
+import { LiveBadge, LiveStatusChip, PickedChip, ResultChip } from "../slate/chips";
+import { TeamScoreLine } from "../slate/TeamLine";
 import { StatTile } from "../StatTile";
 import { UnitsCurve } from "../UnitsCurve";
-import type { GroupStanding, HomeBet, HomePick, Position, WeekProgress } from "../../lib/home";
-import { DEFAULT_TZ, kickParts, tzLabel } from "../../lib/kick";
-import { statusForBet, statusForPick } from "../../lib/live-status";
+import { heldVsNow, type GroupStanding, type HomeBet, type HomePick, type Position, type WeekProgress } from "../../lib/home";
+import { DEFAULT_TZ, kickParts, periodLabel, tzLabel } from "../../lib/kick";
+import { statusForBet, statusForPick, tintFor } from "../../lib/live-status";
 import { formatRecord, type Tally } from "../../lib/records";
 import { betSideLabel, pickSideLabel, type GameView } from "../../lib/slate";
 
@@ -76,7 +76,10 @@ export function HomeHero({
       </div>
       <section className="card relative overflow-hidden p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-          <h2 className="text-lg leading-none">Week {week}</h2>
+          {/* The page's h1. The wordmark above is a link, not a heading, so
+              without this the hub was the one screen with no top-level heading
+              and its sections were h2s under nothing. */}
+          <h1 className="text-lg leading-none">Week {week}</h1>
           {liveCount > 0 ? (
             <p className="stat text-[11px] text-chalk/55">
               {liveCount} {liveCount === 1 ? "game" : "games"} playing now
@@ -124,9 +127,11 @@ export function HomeHero({
         )}
 
         <div className="mt-3.5 flex flex-wrap items-center gap-2">
+          {/* Capped, not flex-1: on a tablet the full-width version stretched
+              across the whole column and stopped reading as a button. */}
           <Link
             href="/slate"
-            className="stat inline-flex min-h-12 flex-1 items-center justify-center gap-1.5 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink"
+            className="stat inline-flex min-h-12 max-w-sm flex-1 items-center justify-center gap-1.5 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink"
           >
             Go to the slate
             <ArrowRight size={15} aria-hidden />
@@ -155,78 +160,152 @@ export function HomeHero({
  * with the group mark; a logged bet is accent — accent means money, and a card
  * that renders the two identically cannot tell you what you have money on.
  */
-export function PositionRow({ position, tz = DEFAULT_TZ }: { position: Position; tz?: string }) {
+export function PositionRow({
+  position,
+  tz = DEFAULT_TZ,
+  /** Only worth naming the pool when the viewer is in more than one. */
+  showPool = false,
+}: {
+  position: Position;
+  tz?: string;
+  showPool?: boolean;
+}) {
   const { game, picks, bets } = position;
   const live = game.status === "in_progress";
   const final = game.status === "final";
   const settled = live || final;
+  const showScore = live || final;
   const h = game.homePoints ?? 0;
   const a = game.awayPoints ?? 0;
-  const kick = game.startTs === null ? null : kickParts(game.startTs, tz);
+
+  // The card's own aura logic, unchanged — `buildPositions` attaches the
+  // viewer's layers to the game so `tintFor` reads them here exactly as it does
+  // on the slate. A settled verdict glows; a matchup you haven't played yet
+  // gets its two team colours.
+  const tint = tintFor(game);
+  const hasVerdict = tint !== "teams";
+  const aura =
+    tint === "covering"
+      ? ["var(--win)", "var(--win)"]
+      : tint === "losing"
+        ? ["var(--loss)", "var(--loss)"]
+        : tint === "bubble"
+          ? ["var(--accent)", "var(--accent)"]
+          : [muted(game.away.color), muted(game.home.color)];
 
   return (
-    <li className="card overflow-hidden">
-      <Link href={`/game/${game.id}`} className="flex items-start gap-2 px-3 py-2">
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <TeamLine team={game.away} size={20} showRecord={false} />
-          <TeamLine team={game.home} size={20} showRecord={false} />
-        </span>
-        <span className="stat shrink-0 text-right text-[10.5px] leading-tight text-dim">
-          {final ? (
-            <>
-              Final
-              {/* `a`/`h`, not the raw nullable columns: a game the scoreboard
-                  marked done before the score landed would render a bare
-                  en dash where a number goes. */}
-              <span className="block text-chalk">
-                {a}–{h}
-              </span>
-            </>
-          ) : live ? (
-            <>
-              <span className="text-live">Live</span>
-              <span className="block text-chalk">
-                {a}–{h}
-              </span>
-            </>
-          ) : kick ? (
-            <>
-              {kick.day}
-              <span className="block text-chalk">
-                {kick.time} {tzLabel(tz)}
-              </span>
-            </>
-          ) : (
-            "TBD"
-          )}
-        </span>
-      </Link>
+    <li
+      className="glass-wrap"
+      data-tint={hasVerdict ? "position" : "teams"}
+      style={
+        { "--aura-strength": hasVerdict ? (live ? 0.42 : 0.14) : final ? 0.1 : 0.28 } as React.CSSProperties
+      }
+    >
+      <div className="glass-aura" aria-hidden>
+        <span className="aura-a" style={{ background: aura[0] }} />
+        <span className="aura-b" style={{ background: aura[1] }} />
+      </div>
+      <div className="card overflow-hidden">
+        <Link href={`/game/${game.id}`} className="block px-3 pb-2.5 pt-2">
+          <RowHeader game={game} live={live} final={final} tz={tz} />
+          {/* The slate's scoreboard, not a summary of it: each team on its own
+              team-coloured rail with a 24px score at the right. */}
+          <div className="mt-1.5 flex flex-col gap-1">
+            <TeamScoreLine
+              team={game.away}
+              score={game.awayPoints}
+              showScore={showScore}
+              dimmed={final && a < h}
+            />
+            <TeamScoreLine
+              team={game.home}
+              score={game.homePoints}
+              showScore={showScore}
+              dimmed={final && h < a}
+            />
+          </div>
+        </Link>
 
-      <ul className="flex flex-wrap items-center gap-1.5 border-t border-chalk/8 px-3 py-2">
-        {picks.map((p) => (
-          <li key={`${p.groupId}-${p.market}`}>
-            <PositionChip
-              label={pickSideLabel(p.market, p.side, p.line, game.home.abbr, game.away.abbr, {
-                compact: true,
-              })}
-              kind="pick"
-              note={p.groupName}
-              verdict={verdictForPick(p, game, settled, h, a)}
-            />
-          </li>
-        ))}
-        {bets.map((b) => (
-          <li key={b.id}>
-            <PositionChip
-              label={betSideLabel(b.betType, b.side, b.line, game.home.abbr, game.away.abbr)}
-              kind="bet"
-              note={null}
-              verdict={verdictForBet(b, settled, h, a)}
-            />
-          </li>
-        ))}
-      </ul>
+        <ul className="border-t border-chalk/8">
+          {picks.map((p) => (
+            <li key={`${p.groupId}-${p.market}`}>
+              <PositionLine
+                label={pickSideLabel(p.market, p.side, p.line, game.home.abbr, game.away.abbr, {
+                  compact: true,
+                })}
+                kind="pick"
+                note={showPool ? p.groupName : null}
+                verdict={verdictForPick(p, settled, h, a)}
+                move={heldVsNow(p.market, p.side, p.line, game.lines)}
+              />
+            </li>
+          ))}
+          {bets.map((b) => (
+            <li key={b.id}>
+              <PositionLine
+                label={betSideLabel(b.betType, b.side, b.line, game.home.abbr, game.away.abbr)}
+                kind="bet"
+                note={null}
+                verdict={verdictForBet(b, settled, h, a)}
+                move={heldVsNow(b.betType, b.side ?? "home", b.line, game.lines)}
+              />
+            </li>
+          ))}
+        </ul>
+      </div>
     </li>
+  );
+}
+
+/**
+ * Pull a team colour toward the surface, the way `GameCard` does. Half the
+ * sport wears red, and a full-chroma red glow is the slate's word for "your
+ * bet is losing" — identity must not be able to fake a verdict.
+ */
+const muted = (color: string | null): string =>
+  `color-mix(in srgb, ${color ?? "var(--push)"} 55%, var(--surface))`;
+
+/** Live clock, Final, or the kickoff — plus the network. The card's idiom. */
+function RowHeader({
+  game,
+  live,
+  final,
+  tz,
+}: {
+  game: GameView;
+  live: boolean;
+  final: boolean;
+  tz: string;
+}) {
+  const kick = game.startTs === null ? null : kickParts(game.startTs, tz);
+  return (
+    <div className="flex min-h-5 items-center justify-between gap-2">
+      <div className="flex min-w-0 items-center gap-2">
+        {live ? (
+          <>
+            <LiveBadge />
+            <span className="stat text-xs font-semibold text-chalk">
+              {periodLabel(game.period)}
+              {game.clock ? ` · ${game.clock}` : ""}
+            </span>
+          </>
+        ) : final ? (
+          <span className="stat text-xs font-semibold uppercase tracking-wide text-dim">Final</span>
+        ) : kick ? (
+          <span className="stat text-xs text-dim">
+            <span className="font-semibold text-chalk">{kick.day}</span> {kick.time} {tzLabel(tz)}
+          </span>
+        ) : (
+          <span className="stat text-xs text-dim">TBD</span>
+        )}
+      </div>
+      {game.tv && (
+        <span className="stat flex shrink-0 items-center gap-1 text-[11px] font-medium text-dim">
+          <Tv size={12} aria-hidden />
+          {game.tv}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -250,13 +329,7 @@ function verdictForBet(b: HomeBet, settled: boolean, h: number, a: number): Verd
   return status ? { kind: "live", status } : null;
 }
 
-function verdictForPick(
-  p: HomePick,
-  game: GameView,
-  settled: boolean,
-  h: number,
-  a: number,
-): Verdict {
+function verdictForPick(p: HomePick, settled: boolean, h: number, a: number): Verdict {
   if (p.result && p.result !== "void") return { kind: "graded", result: chipResult(p.result) };
   if (!settled) return null;
   const status = statusForPick(p.market, p.side, p.line, h, a);
@@ -266,21 +339,30 @@ function verdictForPick(
 const chipResult = (result: string): "pass" | "fail" | "push" =>
   result === "win" ? "pass" : result === "loss" ? "fail" : "push";
 
-/** Your side, plus what it's doing. Icon and text carry it; colour never alone. */
-function PositionChip({
+/**
+ * One thing you hold on this game: what it is, what it's doing, and whether the
+ * number is still good.
+ *
+ * A line rather than a chip in a wrapping row, because a game can carry several
+ * — two markets in a pool, or the same game bet twice at different numbers —
+ * and those need to read as separate positions rather than as a pile.
+ */
+function PositionLine({
   label,
   kind,
   note,
   verdict,
+  move,
 }: {
   label: string;
   kind: "pick" | "bet";
   /** The pool a pick was made in — nothing for a bet, which is yours alone. */
   note: string | null;
   verdict: Verdict;
+  move: ReturnType<typeof heldVsNow>;
 }) {
   return (
-    <span className="inline-flex items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2">
       {kind === "pick" ? (
         <PickedChip label={label} />
       ) : (
@@ -290,13 +372,48 @@ function PositionChip({
           {label}
         </span>
       )}
-      {note && <span className="stat text-[10.5px] text-chalk/45">{note}</span>}
+      {note && <span className="stat text-[10.5px] text-dim">{note}</span>}
       {verdict?.kind === "live" && <LiveStatusChip prefix="" status={verdict.status} />}
       {verdict?.kind === "graded" && (
         <ResultChip
           label={verdict.result === "pass" ? "Won" : verdict.result === "fail" ? "Lost" : "Push"}
           result={verdict.result}
         />
+      )}
+      {move && move.now !== null && <LineMove move={move} />}
+    </div>
+  );
+}
+
+/**
+ * Your number against the board's, and which way it went.
+ *
+ * Sits at the end of the line and only when there is a current number to
+ * compare. The delta is the point: a green figure means you are holding
+ * something better than what is available now.
+ */
+function LineMove({ move }: { move: NonNullable<ReturnType<typeof heldVsNow>> }) {
+  const { held, now, delta, isTotal } = move;
+  // Spreads carry their sign; totals are bare — the same split fmtSpread and
+  // fmtTotal make everywhere else.
+  const fmt = (v: number) => (isTotal ? `${v}` : v > 0 ? `+${v}` : `${v}`);
+  return (
+    <span className="stat ml-auto shrink-0 text-[10.5px] text-dim">
+      held <span className="text-chalk">{fmt(held)}</span>
+      {" · now "}
+      <span className="text-chalk">{fmt(now as number)}</span>
+      {delta !== null && delta !== 0 && (
+        <span className={delta > 0 ? "text-win" : "text-loss"}>
+          {" "}
+          {/* The glyph is the non-colour cue for sighted readers; the sentence
+              underneath is the one for everyone else. Announcing "up-pointing
+              triangle" helps nobody. */}
+          <span aria-hidden>{delta > 0 ? "▲" : "▼"}</span>
+          {Math.abs(delta)}
+          <span className="sr-only">
+            {delta > 0 ? " better than the current number" : " worse than the current number"}
+          </span>
+        </span>
       )}
     </span>
   );
@@ -401,7 +518,9 @@ export function RecordBlock({
           .
         </p>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-2">
+          {/* Back to two across once this sits in the hub's right rail: four
+              columns of a ~380px rail is not wide enough for "24-18-1". */}
           <StatTile label="Record" value={formatRecord(bets)} />
           <StatTile
             label="Units"
@@ -455,11 +574,14 @@ export function RecordBlock({
 export function SectionHead({
   id,
   title,
+  count,
   href,
   linkLabel,
 }: {
   id: string;
   title: string;
+  /** What the section holds — "6 open · 6.0u", "7 in". Omitted when empty. */
+  count?: string;
   href?: string;
   linkLabel?: string;
 }) {
@@ -468,6 +590,7 @@ export function SectionHead({
       <h2 id={id} className="text-sm text-accent">
         {title}
       </h2>
+      {count && <span className="stat text-[11px] text-dim">{count}</span>}
       <span className="h-px flex-1 bg-chalk/10" aria-hidden />
       {href && linkLabel && (
         <Link href={href} className="stat text-[11px] text-dim hover:text-chalk">
