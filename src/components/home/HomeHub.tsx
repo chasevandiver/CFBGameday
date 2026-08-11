@@ -193,7 +193,7 @@ export function PositionRow({
       ? ["var(--win)", "var(--win)"]
       : tint === "losing"
         ? ["var(--loss)", "var(--loss)"]
-        : tint === "bubble"
+        : tint === "push"
           ? ["var(--accent)", "var(--accent)"]
           : [muted(game.away.color), muted(game.home.color)];
 
@@ -202,7 +202,7 @@ export function PositionRow({
       className="glass-wrap"
       data-tint={hasVerdict ? "position" : "teams"}
       style={
-        { "--aura-strength": hasVerdict ? (live ? 0.42 : 0.14) : final ? 0.1 : 0.28 } as React.CSSProperties
+        { "--aura-strength": hasVerdict ? (live ? 0.55 : 0.2) : final ? 0.1 : 0.28 } as React.CSSProperties
       }
     >
       <div className="glass-aura" aria-hidden>

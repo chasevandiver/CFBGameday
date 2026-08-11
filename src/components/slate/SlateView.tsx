@@ -371,7 +371,7 @@ export function SlateView({
   // Only when sorted by kickoff — explicit sorts stay a flat grid.
   const sections = useMemo(() => {
     if (sort !== "kickoff") return null;
-    // within Live, the sweats lead: bubble picks, then losing, covering, no pick
+    // within Live, the sweats lead: closest to the number first, no pick last
     const liveGames = [...sorted.filter(isLive)].sort((a, b) => liveUrgency(a) - liveUrgency(b));
     const finalGames = sorted.filter(isFinal);
     const upcoming = sorted.filter((g) => !isLive(g) && !isFinal(g));

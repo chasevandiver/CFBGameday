@@ -133,8 +133,9 @@ export function GameCard({
   const awayColor = game.away.color ?? "var(--push)";
 
   /* The aura carries one fact: is your money good? Green covering, red not,
-     amber on the bubble — and when you have nothing on the game, the two team
-     colours instead. A live game glows hardest; a final barely at all.
+     amber only when the game sits exactly on your number — and when you have
+     nothing on the game, the two team colours instead. A live game glows
+     hardest; a final barely at all.
 
      Team colours are muted toward the surface first. Plenty of schools wear a
      red or a green (Alabama and Georgia are both red, so that card would wash a
@@ -148,21 +149,23 @@ export function GameCard({
       ? ["var(--win)", "var(--win)"]
       : tint === "losing"
         ? ["var(--loss)", "var(--loss)"]
-        : tint === "bubble"
+        : tint === "push"
           ? ["var(--accent)", "var(--accent)"]
           : [muted(awayColor), muted(homeColor)];
   /* Verdicts are loud while they can still change and fade once settled. Team
-     colours sit at a steady middle — they're identity, not news — and can carry
-     that brightness without shouting because the CSS desaturates them. */
+     colours sit lower — they're identity, not news — and the gap between the
+     two is the point: a glance down the slate should find the verdict glows
+     before anything else. (0.42/0.36 was tried first and the six-hundredths
+     gap was invisible; the verdict now sits a third above the wallpaper.) */
   const auraStrength = dead
     ? 0
     : position
       ? live
-        ? 0.42
-        : 0.14
+        ? 0.55
+        : 0.2
       : final
         ? 0.14
-        : 0.36;
+        : 0.3;
 
   return (
     <div
@@ -179,7 +182,7 @@ export function GameCard({
       </div>
       <article
         className={`card card-hover card-in relative overflow-hidden ${live ? "card-live" : ""} ${
-          cover?.tier === "bubble" ? "card-bubble" : ""
+          cover?.tier === "push" ? "card-push" : ""
         } ${final && !featured ? "card-final" : ""} ${featured ? "ring-1 ring-accent/40" : ""}`}
         style={{ animationDelay: `${Math.min(index * 30, 150)}ms` }}
       >
@@ -272,7 +275,7 @@ function CoverStrip({ cover, pick }: { cover: PickCoverView; pick: string }) {
     <div className={`cover-strip relative z-10 pointer-events-none cover-${cover.tier}`}>
       <span className="cover-word">{cover.word}</span>
       {/* the margin earns its place only when the number is in doubt */}
-      {cover.tier !== "covering" && cover.margin && <span className="cover-margin">{cover.margin}</span>}
+      {cover.margin && <span className="cover-margin">{cover.margin}</span>}
       {cover.sub && <span className="cover-sub">{cover.sub}</span>}
       <span className="cover-pick">Pick {pick}</span>
     </div>

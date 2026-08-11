@@ -145,15 +145,15 @@ describe("tintFor", () => {
     expect(tintFor(g({ status: "scheduled", homePoints: null, awayPoints: null }))).toBe("teams");
   });
 
-  it("reads a pick as covering, losing, or on the bubble", () => {
-    // home up 8: -3.5 covers by 4.5; -14.5 is down 6.5, out of reach of one
-    // score; -10.5 is down only 2.5, so a field goal still flips it
+  it("reads a pick by its sign alone — close games are still green or red", () => {
+    // home up 8: -3.5 covers by 4.5; -14.5 is down 6.5; -10.5 is down only 2.5
+    // but the tint no longer has a "close" tier — down is down
     expect(tintFor(g({ myPicks: [{ market: "spread", side: "home", line: -3.5 }] }))).toBe("covering");
     expect(tintFor(g({ myPicks: [{ market: "spread", side: "home", line: -14.5 }] }))).toBe("losing");
-    expect(tintFor(g({ myPicks: [{ market: "spread", side: "home", line: -10.5 }] }))).toBe("bubble");
+    expect(tintFor(g({ myPicks: [{ market: "spread", side: "home", line: -10.5 }] }))).toBe("losing");
   });
 
-  it("drops the bubble once the game is final — nothing can flip it", () => {
+  it("keeps the verdict on a final", () => {
     const settled = { status: "final", myPicks: [{ market: "spread", side: "home", line: -6.5 }] } as Partial<GameView>;
     expect(tintFor(g(settled))).toBe("covering");
   });
@@ -166,7 +166,13 @@ describe("tintFor", () => {
     ).toBe("losing");
   });
 
-  it("stays neutral on a push rather than inventing a verdict", () => {
-    expect(tintFor(g({ myPicks: [{ market: "spread", side: "home", line: -8 }], status: "final" }))).toBe("teams");
+  it("goes amber on a push — live on the number, or graded as one", () => {
+    expect(tintFor(g({ myPicks: [{ market: "spread", side: "home", line: -8 }] }))).toBe("push");
+    expect(tintFor(g({ myPicks: [{ market: "spread", side: "home", line: -8 }], status: "final" }))).toBe("push");
+  });
+
+  it("goes amber on a pushed ledger bet too", () => {
+    const bets = [{ id: 1, betType: "spread", side: "home", line: -8 }];
+    expect(tintFor(g({ myBets: bets as GameView["myBets"], status: "final" }))).toBe("push");
   });
 });

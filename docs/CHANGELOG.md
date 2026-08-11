@@ -141,7 +141,73 @@ shipping it.
 
 ## Log
 
-### Aug 11 — A demo you can send someone
+### Aug 11 — Amber means push, the glow gets loud, and the ticker learns whose money is where
+
+No model change. `DEFAULT_PARAMS` untouched, no tuner run.
+
+Owner feedback on the demo, verbatim in spirit: you can't tell at a glance
+whether a game is covering. Three causes, three changes, and one bug the work
+uncovered.
+
+**The bubble tier is retired — amber now means exactly one thing: a push.**
+`CoverTier` and `CardTint` are sign-based (green covering, red losing) with
+amber reserved for a game sitting exactly on the number, live or graded. The
+old "within a field goal" amber made the one distinction colour exists for —
+good or bad — unreadable, and an actual push fell through to *team colours*,
+the tint that means "you have nothing on this". The knife-edge read survives in
+text: the cover strip now prints its margin in every tier ("COVERING +½" is the
+sweat; the colour no longer pretends to be). `liveUrgency` lost its
+bubble-first key and sorts by distance from the number, ascending — an
+on-the-number game is the hardest sweat there is — and now reads the same
+stake the aura does (ledger bet first, then pick), so the card the sort leads
+with is the card glowing loudest.
+
+**Found while retiring it: away spread picks graded backwards in the aura and
+the strip.** `pickCoverView` and `tintFor` hand-rolled `sideMargin + line`
+against the home-perspective `line_at_pick`, flipping the verdict for away
+picks — the strip could say "Covering" while the chip on the same card said
+"Down 7 ATS" (the chips route through `statusForPick`, which was right). Both
+now go through `coverMargin`, the grader's own formula, and
+`slate-live.test.ts` pins the convention with worked away-side examples.
+
+**The verdict glow is now unmistakably louder than the wallpaper.** Live
+verdict auras 0.42 → **0.55**, settled verdicts 0.14 → **0.20**, pregame team
+tints 0.36 → **0.30** — the six-hundredths gap between "your money" and
+"identity" was below noticing, which defeated the whole two-vocabulary
+design. The aura's side inset widened −2px → **−6px** so the halo reaches into
+the grid's 14px gutters, where a glance actually lands. Checked in both themes
+at 375px; light mode still reads as glow, not stain.
+
+**The ticker knows whose money is where.** `TickerGame` carries
+`mine: covering | losing | push | on` — computed by `tickerMine()`, which
+reads `tintFor` so the strip can never disagree with the aura. `/api/ticker`
+fills it for a signed-in session (two RLS-scoped queries; signed-out gets
+the plain strip), and `ScoreTicker` renders it as a 2px verdict underline —
+an inset box-shadow, so a verdict appearing mid-drive cannot shift the strip —
+with the read spelled out in sr-only text. "On" (plain chalk) marks action
+that has no verdict yet.
+
+**The demo gets the ticker, and stops phoning home.** `ScoreTicker` was the
+one component on `/demo` still reaching past the page — polling the real
+`/api/ticker` and joining the realtime channel, so the demo wore real games
+(or an empty strip) above invented ones. `AppNav` now takes a `demoTicker`
+payload built by `demoTickerData()`; in demo mode there is no fetch, no
+channel, and chips don't link (there is no `/game/:id` for an invented game).
+Selection reads the pose, not the clock — windowing against real time would
+empty the "up next" chips six days a week. Verified headless: zero `/api/*`
+requests from both demo pages over 65 seconds.
+
+**And the demo slate finally shows a verdict.** The first demo shipped the
+slate bare — no `myPicks`/`myBets` on any game — so the screen meant to show
+off the verdict system never showed one, while the hub next to it posed a
+signed-in viewer. `demoSlateData` now attaches the same positions
+`demoPositions` builds, which also makes the "My bets"/"My picks" filters do
+something. The three live games land one on each colour, arranged so every
+state is honest arithmetic: OSU −3 down three (red), Ole Miss +7 with UGA up
+exactly seven (amber), Utah +3.5 down three (green, by half a point).
+
+469 tests pass, including new pins for push-only amber, the away-spread
+convention, bet-aware urgency, `tickerMine`, and the demo ticker's pose.
 
 No model change. `DEFAULT_PARAMS` untouched, no tuner run.
 

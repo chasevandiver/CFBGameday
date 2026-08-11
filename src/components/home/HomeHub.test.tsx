@@ -58,7 +58,7 @@ describe("HomeDashboard", () => {
   it("counts open bets and picks in the section heads", () => {
     render(<HomeDashboard data={demoHomeData(NOW)} signedIn />);
     expect(screen.getByText("3 open · 3.0u")).toBeDefined();
-    expect(screen.getByText("4 in")).toBeDefined();
+    expect(screen.getByText("5 in")).toBeDefined();
   });
 
   it("gives every empty section somewhere to go instead of a blank column", () => {

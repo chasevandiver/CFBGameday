@@ -1,7 +1,7 @@
 import { AppNav } from "../../components/AppNav";
 import { DemoBar } from "../../components/DemoBar";
 import { HomeDashboard } from "../../components/home/HomeHub";
-import { demoHomeData } from "../../lib/demo-data";
+import { demoHomeData, demoTickerData } from "../../lib/demo-data";
 import { demoNow } from "../../lib/demo-now";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +28,9 @@ export default async function DemoHubPage() {
   const now = await demoNow();
   return (
     <>
-      <AppNav />
+      {/* The demo ticker rides the sample slate — the live one polls /api/ticker,
+          which would put real games (or an empty strip) above invented ones. */}
+      <AppNav demoTicker={demoTickerData(now)} />
       <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
         <HomeDashboard
           data={demoHomeData(now)}

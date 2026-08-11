@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import type { GameRow, TeamRow } from "../../../lib/db-types";
 import { fetchCurrentSeasonWeek } from "../../../lib/queries";
-import type { TickerData, TickerGame } from "../../../lib/ticker";
+import type { MyBetView, MyPickView } from "../../../lib/slate";
+import { tickerMine, type TickerData, type TickerGame, type TickerMine } from "../../../lib/ticker";
 import { createClient } from "../../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -60,6 +61,63 @@ export async function GET() {
     ]),
   );
 
+  // The broadcast-strip layer: which of these games the viewer has money or a
+  // pick on, and how it's going. Signed-out gets the plain strip — the two
+  // extra queries only run for a session, and RLS scopes both to own rows.
+  const { data: auth } = await supabase.auth.getUser();
+  const userId = auth?.user?.id ?? null;
+  const mineById = new Map<number, TickerMine | null>();
+  if (userId !== null && rows.length > 0) {
+    const gameIds = rows.map((g) => g.id);
+    const [betsRes, picksRes] = await Promise.all([
+      supabase
+        .from("bets")
+        .select("id, game_id, bet_type, side, line_taken")
+        .in("game_id", gameIds)
+        .eq("user_id", userId)
+        .is("voided_at", null)
+        .order("placed_at", { ascending: true }),
+      supabase
+        .from("picks")
+        .select("game_id, market, side, line_at_pick")
+        .in("game_id", gameIds)
+        .eq("user_id", userId),
+    ]);
+    type BetRowSlim = { id: number; game_id: number; bet_type: string; side: string | null; line_taken: number | null };
+    type PickRowSlim = { game_id: number; market: MyPickView["market"]; side: string; line_at_pick: number | null };
+    const betsByGame = new Map<number, MyBetView[]>();
+    for (const b of (betsRes.data ?? []) as BetRowSlim[]) {
+      const view: MyBetView = {
+        id: b.id,
+        betType: b.bet_type,
+        side: b.side,
+        line: b.line_taken === null ? null : Number(b.line_taken),
+      };
+      betsByGame.set(b.game_id, [...(betsByGame.get(b.game_id) ?? []), view]);
+    }
+    const picksByGame = new Map<number, MyPickView[]>();
+    for (const p of (picksRes.data ?? []) as PickRowSlim[]) {
+      const view: MyPickView = {
+        market: p.market,
+        side: p.side,
+        line: p.line_at_pick === null ? null : Number(p.line_at_pick),
+      };
+      picksByGame.set(p.game_id, [...(picksByGame.get(p.game_id) ?? []), view]);
+    }
+    for (const g of rows) {
+      mineById.set(
+        g.id,
+        tickerMine(
+          g.status,
+          g.home_points,
+          g.away_points,
+          betsByGame.get(g.id) ?? [],
+          picksByGame.get(g.id) ?? [],
+        ),
+      );
+    }
+  }
+
   const games: TickerGame[] = rows.map((g) => ({
     id: g.id,
     status: g.status,
@@ -70,6 +128,7 @@ export async function GET() {
     awayAbbr: abbrById.get(g.away_team_id) ?? "?",
     homePoints: g.home_points,
     awayPoints: g.away_points,
+    mine: mineById.get(g.id) ?? null,
   }));
 
   const payload: TickerData = { seasonId, week, games };

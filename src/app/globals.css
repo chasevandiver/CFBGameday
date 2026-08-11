@@ -253,13 +253,31 @@ h2,
   white-space: nowrap;
 }
 
+/* Ticker: the viewer's stake on a game, as a 2px underline in the aura's
+   verdict vocabulary. An inset box-shadow rather than a border so the strip
+   cannot shift when a verdict appears mid-drive; plain chalk means "you have
+   action, nothing to grade yet". The words live in sr-only text in the chip —
+   colour is never alone. */
+.ticker-mine-covering {
+  box-shadow: inset 0 -2px 0 var(--win);
+}
+.ticker-mine-losing {
+  box-shadow: inset 0 -2px 0 var(--loss);
+}
+.ticker-mine-push {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+.ticker-mine-on {
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--text) 40%, transparent);
+}
+
 /* ---- Game card: cover strip, team rails, field strip ------------------ */
 
 /* Cover strip — the verdict on a live card. Italic condensed, the way a
    broadcast score bug sets its verdict. All three tiers share one construction:
-   coloured text, a soft gradient, a 3px inset edge bar. Bubble used to be a
-   solid amber block instead, which made it the loudest thing on the slate and
-   fought the amber aura now sitting right behind it. */
+   coloured text, a soft gradient, a 3px inset edge bar. The push tier is the
+   old bubble slot with a narrower meaning: amber appears only when the game
+   sits exactly on the number, never for "close". */
 .cover-strip {
   display: flex;
   align-items: baseline;
@@ -308,23 +326,23 @@ h2,
   background: linear-gradient(90deg, color-mix(in srgb, var(--loss) 17%, transparent), transparent 70%);
   box-shadow: inset 3px 0 0 var(--loss);
 }
-.cover-bubble {
+.cover-push {
   color: var(--accent);
   background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%);
   box-shadow: inset 3px 0 0 var(--accent);
 }
 /* The tier hues are tuned against a dark ground. On white the same colours land
    at 3.1–4.1:1 over the strip's own tint — under the 4.5:1 that 13px text needs,
-   and bubble worst of all now that it no longer inverts on a solid fill. Mixing
-   toward --text darkens them without inventing a colour or losing the hue. Only
-   the text moves; the gradient and edge bar stay at full chroma. */
+   and the amber worst of all now that it no longer inverts on a solid fill.
+   Mixing toward --text darkens them without inventing a colour or losing the
+   hue. Only the text moves; the gradient and edge bar stay at full chroma. */
 html[data-theme="light"] .cover-covering {
   color: color-mix(in srgb, var(--win) 80%, var(--text));
 }
 html[data-theme="light"] .cover-losing {
   color: color-mix(in srgb, var(--loss) 80%, var(--text));
 }
-html[data-theme="light"] .cover-bubble {
+html[data-theme="light"] .cover-push {
   color: color-mix(in srgb, var(--accent) 72%, var(--text));
 }
 /* The same medicine for the three colours used as ordinary TEXT in light mode
@@ -343,7 +361,7 @@ html[data-theme="light"] .text-win {
 html[data-theme="light"] .text-loss {
   color: color-mix(in srgb, var(--loss) 80%, var(--text));
 }
-.card-bubble {
+.card-push {
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
   box-shadow:
     var(--shadow-card),
@@ -361,8 +379,8 @@ html[data-theme="light"] .text-loss {
    them. The slate's ground is a flat --bg, so backdrop-filter would spend GPU
    blurring a solid colour for no visible gain; it is reserved for the bars
    that genuinely have content scrolling underneath (nav, header, ticker).
-   Colour meaning lives in tintFor() — green covering, red not, amber on the
-   bubble, team colours when you have nothing riding on it.
+   Colour meaning lives in tintFor() — green covering, red not, amber only on
+   an exact push, team colours when you have nothing riding on it.
 
    Those two vocabularies must not be confusable at a glance, since half the
    sport wears red. Three cues keep them apart: verdict colours are fully
@@ -375,7 +393,10 @@ html[data-theme="light"] .text-loss {
 }
 .glass-aura {
   position: absolute;
-  inset: -12px -2px -16px;
+  /* Sides used to sit at -2px, which left the glow with nowhere to escape
+     laterally — the card grid's 14px gutters are exactly where a glance looks
+     for colour, so the halo now reaches into them. */
+  inset: -12px -6px -16px;
   z-index: -1;
   border-radius: 28px;
   filter: blur(30px);
