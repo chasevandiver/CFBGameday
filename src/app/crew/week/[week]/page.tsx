@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ACTIVE_GROUP_COOKIE, resolveActiveGroup } from "../../../../lib/groups";
 import { createClient } from "../../../../lib/supabase/server";
+import { isValidWeek } from "../../../../lib/week-range";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,6 @@ export default async function CrewWeekRedirect({
     (await cookies()).get(ACTIVE_GROUP_COOKIE)?.value ?? null,
   );
   const n = Number(week);
-  const safe = Number.isInteger(n) && n >= 1 && n <= 20 ? n : null;
+  const safe = isValidWeek(n) ? n : null;
   redirect(active && safe ? `/groups/${active.slug}/week/${safe}` : "/groups");
 }

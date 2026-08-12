@@ -7,6 +7,7 @@ import { buildGroupShareContext } from "../../../../lib/group-share";
 import { fetchGroupMembers, fetchGroupWeek, resolveActiveGroup } from "../../../../lib/groups";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../../lib/queries";
 import { createClient } from "../../../../lib/supabase/server";
+import { isValidWeek } from "../../../../lib/week-range";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +48,7 @@ export default async function GroupPicksPage({
 
   const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(supabase);
   const parsed = Number(weekParam);
-  const week = Number.isInteger(parsed) && parsed >= 1 && parsed <= 20 ? parsed : currentWeek;
+  const week = isValidWeek(parsed) ? parsed : currentWeek;
 
   const [groupWeek, members, slate, lifetimeRes] = await Promise.all([
     fetchGroupWeek(supabase, active.id, seasonId, week, seasonType),

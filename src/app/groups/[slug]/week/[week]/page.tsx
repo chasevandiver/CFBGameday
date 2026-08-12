@@ -12,6 +12,7 @@ import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../../../lib/queri
 import { EMPTY_TALLY, formatRecord, tallyBy } from "../../../../../lib/records";
 import { pickSideLabel, type GameView } from "../../../../../lib/slate";
 import { createClient } from "../../../../../lib/supabase/server";
+import { isValidWeek } from "../../../../../lib/week-range";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,7 @@ export default async function GroupWeekPage({
   const view: View = viewParam === "pick" ? "pick" : "person";
 
   const week = Number(weekStr);
-  if (!Number.isInteger(week) || week < 1 || week > 20) notFound();
+  if (!isValidWeek(week)) notFound();
 
   const supabase = await createClient();
   const {

@@ -17,6 +17,7 @@ import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../lib/queries";
 import { byLeagueRules, EMPTY_TALLY, tallyBy } from "../../../lib/records";
 import { pickableSlots } from "../../../lib/slate";
 import { createClient } from "../../../lib/supabase/server";
+import { isValidWeek } from "../../../lib/week-range";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +59,7 @@ export default async function GroupHomePage({
 
   const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(supabase);
   const parsed = Number(weekParam);
-  const week = Number.isInteger(parsed) && parsed >= 1 && parsed <= 20 ? parsed : currentWeek;
+  const week = isValidWeek(parsed) ? parsed : currentWeek;
 
   // Two kinds of group, two entirely different homes. A betting group has no
   // board to configure, no picks and no minimum — it reads its members'

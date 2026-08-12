@@ -4,6 +4,7 @@ import { SlateView } from "../../components/slate/SlateView";
 import { ACTIVE_GROUP_COOKIE, activeOfKind, resolveActiveGroup } from "../../lib/groups";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../lib/queries";
 import { createClient } from "../../lib/supabase/server";
+import { isValidWeek } from "../../lib/week-range";
 
 export const dynamic = "force-dynamic";
 
@@ -18,11 +19,11 @@ export default async function SlatePage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(supabase);
+  const { seasonId, week: currentWeek, seasonType, minWeek } = await fetchCurrentSeasonWeek(supabase);
 
   const { week: weekParam, st: stParam, g: groupParam } = await searchParams;
   const parsed = Number(weekParam);
-  const hasWeekParam = Number.isInteger(parsed) && parsed >= 1 && parsed <= 20;
+  const hasWeekParam = isValidWeek(parsed);
   // ?st=post pins the bowls/CFP view; an explicit ?week= means the regular
   // season; otherwise the default follows the calendar into the postseason.
   const st =
@@ -71,6 +72,7 @@ export default async function SlatePage({
         <SlateView
           initial={initial}
           currentWeek={currentWeek}
+          minWeek={minWeek}
           favoriteTeamIds={favoriteTeamIds}
         />
       </main>

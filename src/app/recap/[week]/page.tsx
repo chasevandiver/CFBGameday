@@ -13,6 +13,7 @@ import { fetchCurrentSeasonWeek, fetchProfiles } from "../../../lib/queries";
 import { formatRecord, tallyBy } from "../../../lib/records";
 import { fmtPct } from "../../../lib/slate";
 import { createClient } from "../../../lib/supabase/server";
+import { isValidWeek } from "../../../lib/week-range";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ const abbrOf = (t: TeamRow | undefined): string =>
 export default async function RecapPage({ params }: { params: Promise<{ week: string }> }) {
   const { week: weekParam } = await params;
   const week = Number(weekParam);
-  if (!Number.isInteger(week) || week < 1 || week > 20) notFound();
+  if (!isValidWeek(week)) notFound();
 
   const supabase = await createClient();
   const { seasonId } = await fetchCurrentSeasonWeek(supabase);

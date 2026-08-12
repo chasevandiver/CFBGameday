@@ -657,12 +657,12 @@ export async function fetchTeamAtsSeason(
  */
 let pointerCache: {
   at: number;
-  value: { seasonId: number; week: number; seasonType: SeasonType };
+  value: { seasonId: number; week: number; seasonType: SeasonType; minWeek: number };
 } | null = null;
 
 export async function fetchCurrentSeasonWeek(
   supabase: SupabaseClient,
-): Promise<{ seasonId: number; week: number; seasonType: SeasonType }> {
+): Promise<{ seasonId: number; week: number; seasonType: SeasonType; minWeek: number }> {
   if (pointerCache && Date.now() - pointerCache.at < 60_000) return pointerCache.value;
   const { data: season } = await supabase
     .from("seasons")
@@ -671,8 +671,20 @@ export async function fetchCurrentSeasonWeek(
     .maybeSingle();
   if (!season) throw new Error("No current season configured — seed the seasons table.");
 
+  // Does this season have a Week 0? Some do (2026: Aug 29), some don't, and the
+  // week selector should not offer a week with nothing in it. One indexed
+  // existence check, on the same 60s cache as the pointer it travels with.
+  const { data: wk0 } = await supabase
+    .from("games")
+    .select("id")
+    .eq("season_id", season.id)
+    .eq("week", 0)
+    .eq("season_type", "regular")
+    .limit(1)
+    .maybeSingle();
+
   const pointer = await fetchCurrentSlate(supabase, season.id);
-  const value = { seasonId: season.id, ...pointer };
+  const value = { seasonId: season.id, ...pointer, minWeek: wk0 ? 0 : 1 };
   pointerCache = { at: Date.now(), value };
   return value;
 }
