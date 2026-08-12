@@ -95,16 +95,19 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
       emitted its `COPY` block. Verified against a stubbed `pg_dump` in all
       three modes: good → green, auth failure → red, partial → red naming the
       missing tables.
-- [ ] **Run the `backup` dispatch once** and confirm the artifact. **Four red
-      runs so far, four distinct defects, all now fixed:** wrong task dispatched
-      (run-name added); `backup` unfindable at position 14 of 20 (moved to
-      first, which also makes the accidental default read-only); unqualified
-      pooler username (preflight now names it); and `pg_dump` 16 against a
-      Postgres 17.6 server (client major pinned). The connection itself is
-      confirmed working — the preflight authenticated with
-      `user="postgres.mjijyutmbtnwcjspozsx" password_len=20`. Expect
-      `wrote backup-YYYYMMDD.sql.gz (…, 11 tables)` and a `db-backup` artifact
-      at 90-day retention. This is what closes P1-9a. · 0.25 h · owner
+- [x] **The backup runs, proved on real rows.** Run #110, `jobs · backup`,
+      green 2026-08-12 20:26 UTC: `wrote backup-20260812.sql.gz (16K, 11
+      tables)`, artifact `db-backup` 14,261 bytes, 90-day retention. **P1-9a is
+      closed** — the append-only `predictions` / `picks` / `bets` now have a
+      copy outside the 7-day PITR window, which was the largest open risk in the
+      product by elimination.
+      Five red runs preceded it, on five distinct defects, none of which would
+      have been *visible* a week ago because the step exited 0 with a 20-byte
+      artifact regardless: wrong task dispatched (`run-name`, #42); `backup`
+      unfindable at position 14 of 20 (moved first, #43); unqualified pooler
+      username (preflight, #45); `pg_dump` 16 against a 17.6 server (client
+      major pinned, #46); and `postgresql-client-17` not installable from the
+      stock image, which the PGDG fallback caught on its first real run.
 - [ ] **P1-9b** Create a healthchecks.io project, set `HEALTHCHECK_PING_URL`
       (the ping step is already wired). · 0.5 h
 - [ ] **P1-9c / F2** Add `ANTHROPIC_API_KEY`, dispatch `verdicts` once, or team

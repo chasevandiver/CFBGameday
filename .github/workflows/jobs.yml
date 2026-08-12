@@ -244,9 +244,13 @@ jobs:
                 PG_DUMP="/usr/lib/postgresql/$PG_MAJOR/bin/pg_dump"
                 if [ ! -x "$PG_DUMP" ]; then
                   sudo apt-get -qq update
-                  # PGDG is already configured on GitHub's images (the stock
-                  # client reports itself as ...pgdg24.04+1). The fallback is for
-                  # images where it is not.
+                  # The fallback is NOT theoretical: on ubuntu-24.04 the first
+                  # install fails with "E: Unable to locate package
+                  # postgresql-client-17". The stock client reports itself as
+                  # ...pgdg24.04+1, which looks like PGDG is configured — it is
+                  # baked into the image, but the apt source is not present, so
+                  # only the pinned-in major is installable. Adding the repo and
+                  # retrying is the path that actually runs, every time.
                   sudo apt-get -qq install -y "postgresql-client-$PG_MAJOR" || {
                     sudo install -d /usr/share/postgresql-common/pgdg
                     sudo curl -fsS -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
