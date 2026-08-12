@@ -207,9 +207,15 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
       — seed week 1, not a 10-game week.
 - [ ] **DB-3 — `0017_rivalries_seed` is not in the applied-migrations ledger**,
       though `rivalries` holds its 29 rows, so the seed reached the database by
-      some other path. Harmless today; it means a `db push` against a fresh
-      project (or a restore into one) would not reproduce this database from the
-      repo. Reconcile the ledger. · 0.25 h
+      some other path. Two consequences, found separately and both real: a
+      `db push` against a fresh project (or a restore into one) would not
+      reproduce this database from the repo — and, re-confirmed 2026-08-12 while
+      reconciling 31 recorded rows against 32 files, a `db push` against
+      **production** would see the file as unapplied and re-run it. The seed has
+      no `on conflict` clause, so that means duplicating 29 rivalries or failing
+      on a constraint. Reconcile the ledger
+      (`supabase migration repair --status applied 0017`) rather than
+      discovering this mid-push. · 0.25 h
 - [ ] **DB-4 — no postseason rows** (`games` is 888, all `season_type =
       'regular'`). Expected — CFBD publishes bowls in December — but it means
       the postseason ingestion path shipped in `§23 #35` has never run against
@@ -548,16 +554,6 @@ closing before Week 0.
       waves. Plus per-kind defaults in `notification_settings.default_enabled`,
       with bad beats shipping **off**. Migrations 0032/0033, applied
       2026-08-12. Owner request.
-- [ ] **DB-3** `0017_rivalries_seed.sql` is in the repo but has **no row in
-      `supabase_migrations`**, and it has no `on conflict` clause. The data is
-      there (29 rivalries, verified), so it was applied outside the CLI at some
-      point. The hazard is the next `supabase db push` against production: it
-      will see the file as unapplied and re-run it, duplicating the seed or
-      failing on a constraint. Found 2026-08-12 while reconciling the migration
-      count; predates the push work. Fix is a one-row repair
-      (`supabase migration repair --status applied 0017`) or an `on conflict do
-      nothing`, and it should be a deliberate choice rather than a surprise
-      mid-push. · 15 min
 - [ ] **PUSH-10** Absence check on the notify jobs. `watchdogJob` covers three
       jobs and none of them are these, so a picks-due or log-bets cron that
       silently stops running produces no signal at all — the send log shows
