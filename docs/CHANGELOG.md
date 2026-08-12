@@ -165,6 +165,41 @@ shipping it.
 
 ## Log
 
+### Aug 12 — The board was already a Week 0 board
+
+`supabase/migrations/0030_move_board_to_week_zero.sql`, applied. No model change.
+
+Asked to create a Week 0 board for the crew, and found one already there under
+the wrong number. The single `group_week_config` row sat at week 1 with four
+handpicked games — TCU/North Carolina, Virginia/NC State, Stanford/Hawai'i,
+UNLV/Memphis. Every one kicks Aug 29 or 30, so 0029 had just moved all four to
+week 0. The owner had handpicked the Week 0 slate; there was simply no Week 0 to
+file it under at the time.
+
+Creating a *second* board would have been the wrong read of the request.
+`group_week_games_for` resolves a handpicked board straight from
+`group_week_games` on `(group, season, week, season_type)` and never re-checks
+`games.week` (`0020:175-182`), so the untouched board would have kept rendering
+its four Aug 29 games under a "Week 1" heading, beside a slate that now starts
+Sep 3 — while the real Week 1, 91 games including the Georgia opener, had no
+board at all. Two wrong weeks instead of one.
+
+So the board moves rather than multiplies, carrying `selection_mode`, `markets`,
+`conference`, `min_picks_per_week` and `updated_by` untouched. The mechanics are
+worth recording: `group_week_games` has a **composite** foreign key onto
+`group_week_config` (group, season, week, season_type), so `update … set week =
+0` fails on either table alone — the child cannot point at a parent that does not
+exist yet, and the parent cannot leave while a child still points at it. Copy the
+parent to week 0, move the children, drop the old parent.
+
+Guarded so it can only ever fire on this shape: unlocked boards only, only when
+**every** pinned game moved to week 0 (a board legitimately spanning the new week
+1 is left alone), and never when a week-0 board already exists.
+
+**Week 1 now has no board, deliberately.** Which games, and handpicked versus
+full slate, is an owner's choice made in `/groups/[slug]/settings` — not
+something a migration should decide on their behalf.
+
 ### Aug 12 — Week 0 is a week, and 297 receipts nobody wrote
 
 `scripts/lib/weeks.ts` (pure, 9 tests), `src/lib/week-range.ts`, migrations 0028
