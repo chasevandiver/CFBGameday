@@ -48,6 +48,12 @@ on:
           # Access gate: what the CFBD key's TIER grants, which is a different
           # question from what CFBD has published. Read-only, 11 calls.
           - cfbd-probe
+          # Liveness gate: does /scoreboard actually MOVE during a game?
+          # cfbd-probe answers "reachable", which is a different question, and
+          # the endpoint takes no year/week so there is nothing to replay —
+          # this has to be dispatched over a real kickoff. Read-only against
+          # the DB (metering aside), so it can run beside scoreboard-loop.
+          - observe-scoreboard
           # Rebuild the preseason ratings and load them. Gated on
           # preseason-check passing, and skips the append-only tables — see
           # scripts/load-preseason.ts.
@@ -208,6 +214,13 @@ jobs:
             # Handled by its own step below, so that a preseason refresh which
             # declines (and exits 0 on purpose) can never skip it.
             cfbd-probe) echo "access probe runs in the CFBD access probe step" ;;
+            # Dispatch this over a kickoff. 70 min fits inside the 75-min job
+            # timeout with room for npm ci. Goes RED on STALE/UNKNOWN_STATUS —
+            # the two states where the live layer is broken and every other
+            # signal we have would stay green. A run with no live game exits 0
+            # with a notice: mistimed is not the same as passing.
+            observe-scoreboard)
+              npx tsx scripts/observe-scoreboard.ts --minutes 70 --interval 30 --out "$RUNNER_TEMP/board.jsonl" ;;
             # Build, then load. --check is the gate: it exits non-zero when an
             # input is still falling back, and we stop there rather than
             # shipping a rating built on last year's talent.
@@ -262,6 +275,17 @@ jobs:
       - name: CFBD access probe
         if: ${{ always() && (steps.task.outputs.task == 'preseason-refresh' || steps.task.outputs.task == 'cfbd-probe') }}
         run: npx tsx scripts/probe-cfbd.ts
+      # The raw board, kept whether the run passed or failed — a STALE verdict
+      # is precisely when you want the samples, and the window it saw cannot be
+      # replayed (/scoreboard has no year/week parameter).
+      - name: Upload observed board
+        if: ${{ always() && steps.task.outputs.task == 'observe-scoreboard' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: scoreboard-samples
+          path: ${{ runner.temp }}/board.jsonl
+          retention-days: 30
+          if-no-files-found: ignore
       # Keep the weekly dump for a season; the retention outlives the free
       # tier's own 7-day PITR window, which is the point.
       - name: Upload backup
