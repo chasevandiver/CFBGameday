@@ -92,6 +92,8 @@ on:
           # picks still open. Lead time lives in notification_settings and is
           # edited from /admin, not here.
           - notify-picks-due
+          # Betting groups only, 15 min before each Saturday kickoff wave.
+          - notify-log-bets
   schedule:
     # Lines 2x daily (8am/6pm ET) — display freshness only
     - cron: "0 12,22 * * *"
@@ -112,6 +114,15 @@ on:
     - cron: "0 15 * * 6"
     - cron: "0 18 * * 6"
     - cron: "0 22 * * 4,5"
+    # "Log your bets", 15 min before the three grouped Saturday waves —
+    # 11:00 / 14:30 / 18:30 CT, which is 16:00 / 19:30 / 23:30 UTC while CDT is
+    # in force. Like every cron in this file these are UTC and do NOT shift for
+    # DST, so from Nov they fire an hour later against the clock. The job also
+    # skips games that have already kicked, so a badly delayed run sends
+    # nothing rather than something useless.
+    - cron: "45 15 * * 6"
+    - cron: "15 19 * * 6"
+    - cron: "15 23 * * 6"
     # Scoreboard: hourly launches of a continuous polling loop (Actions cron
     # can't fire sub-5-minute reliably). Each run polls every 30s while games
     # are live, 120s around kickoffs, and makes zero CFBD calls when idle;

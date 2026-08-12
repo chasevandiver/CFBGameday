@@ -518,16 +518,21 @@ same way a missed `freeze` does, which is a red run and an email.
 trigger — some event nothing currently watches. Timing, copy, audience, turning
 a trigger off, and one-off sends are all table edits from `/admin`.
 
-**Built 2026-08-12** — PUSH-1, 2, 3, 4 and 7. PUSH-6 (caps, quiet hours) is
-the only code left. Two operational steps are outstanding and cannot be done
+**Built and live 2026-08-12** — PUSH-1, 2, 3, 4, 7 and 8, plus a fourth kind
+(`log_bets`, betting groups before each Saturday wave) and per-kind defaults
+with bad beats shipping off. Migrations 0032/0033 applied. **PUSH-6 is the only
+item left, and it is the one that protects a Saturday:** nothing caps how many
+bad-beat notifications one chaotic afternoon can send, and nothing respects
+`profiles.timezone`, so a late Pac-after-dark flip will buzz at 2am. Neither has
+bitten yet because no game has gone live since the feature shipped. Worth
+closing before Week 0. Two operational steps are outstanding and cannot be done
 from a branch:
 
-- [ ] **PUSH-8** Apply migration `0031_push_notifications.sql` to production and
-      set `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` in Vercel
-      and in Actions secrets, plus `NEXT_PUBLIC_VAPID_PUBLIC_KEY`. Generate with
-      `node -e "console.log(require('web-push').generateVAPIDKeys())"`. Until
-      both are done `/admin` shows the "not configured" banner and every send
-      is a no-op — deliberately, rather than a stack trace. · owner, 15 min
+- [x] **PUSH-8** Migration 0031 applied and VAPID keys set in Vercel and
+      Actions, 2026-08-12. **Verified end to end on a real iPhone (iOS 18.7):**
+      installed to the Home Screen, subscription stored, test notification
+      delivered, receipt logged `sent`. That closes the one thing BRAND-4 could
+      not check from CI — a real handset has now taken a push from this app.
 
 **Product / UX**
 - [ ] **G10-v1** Copy-digest ShareButton: Thursday (frozen slate / edges / "N

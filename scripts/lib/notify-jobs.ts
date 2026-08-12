@@ -132,6 +132,118 @@ export async function notifyPicksDueJob(db: SupabaseClient): Promise<Json> {
   };
 }
 
+/**
+ * A wave's stable identity: its date and UTC hour. Two runs looking at the same
+ * kickoff wave agree on this even when they disagree about which of its games
+ * has yet to start.
+ */
+function waveKey(kickoff: string): string {
+  const d = new Date(kickoff);
+  return `${d.toISOString().slice(0, 10)}:${d.getUTCHours()}`;
+}
+
+/**
+ * "Log your bets", to betting groups shortly before a Saturday kickoff wave.
+ *
+ * Betting groups only — `groups.kind = 'betting'`, the same flag
+ * `group_is_betting` reads. A pick'em group has nothing to log.
+ *
+ * Games that have already kicked off are excluded, which is also the failure
+ * mode: if Actions lags past the wave this sends nothing rather than telling
+ * someone to log a bet on a game already playing. A late reminder here is worse
+ * than none, so missing is the right way to fail.
+ */
+export async function notifyLogBetsJob(db: SupabaseClient): Promise<Json> {
+  if (!pushConfigured()) return { skipped: "no vapid keys" };
+  const settings = await activeSettings(db, "log_bets");
+  if (!settings) return { skipped: "disabled in notification_settings" };
+
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+  const windowEnd = new Date(now + settings.lead_minutes * 60_000).toISOString();
+
+  const { data: rows, error } = await db
+    .from("group_week_games")
+    .select("group_id, season_id, week, games!inner(start_ts), groups!inner(name, slug, kind)")
+    .eq("groups.kind", "betting")
+    .gte("games.start_ts", nowIso)
+    .lte("games.start_ts", windowEnd);
+  if (error) return { error: error.message };
+
+  type Row = {
+    group_id: string;
+    season_id: number;
+    week: number;
+    games: { start_ts: string };
+    groups: { name: string; slug: string };
+  };
+
+  // ONE notification per group per wave — never one per game. The body names
+  // the group and the time and says nothing about which games are unlogged,
+  // because this is a reminder to open the sheet, not a checklist.
+  const waves = new Map<
+    string,
+    { group_id: string; name: string; slug: string; season_id: number; week: number; kickoff: string }
+  >();
+  for (const row of (rows ?? []) as unknown as Row[]) {
+    const key = `${row.group_id}:${row.season_id}:${row.week}`;
+    const current = waves.get(key);
+    if (!current || row.games.start_ts < current.kickoff) {
+      waves.set(key, {
+        group_id: row.group_id,
+        name: row.groups.name,
+        slug: row.groups.slug,
+        season_id: row.season_id,
+        week: row.week,
+        kickoff: row.games.start_ts,
+      });
+    }
+  }
+
+  let notified = 0;
+  const problems: string[] = [];
+
+  for (const [, wave] of waves) {
+    const { data: members } = await db
+      .from("group_members")
+      .select("user_id")
+      .eq("group_id", wave.group_id);
+
+    const kickoff = new Date(wave.kickoff).toLocaleString("en-US", {
+      timeZone: "America/Chicago",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+
+    for (const member of (members ?? []) as { user_id: string }[]) {
+      try {
+        const result = await sendToUser(
+          db,
+          member.user_id,
+          "log_bets",
+          // Keyed on the wave, not on the earliest kickoff still in the
+          // window. Those differ: a run that lags past the first game filters
+          // it out as already-started, the "earliest" becomes the next game,
+          // and a kickoff-keyed subject would let a second notification
+          // through for the wave it already covered. The UTC hour is stable
+          // across every run that can see the same wave.
+          `bets:${wave.group_id}:${waveKey(wave.kickoff)}`,
+          {
+            title: fill(settings.title, { group: wave.name, kickoff }),
+            body: fill(settings.body, { group: wave.name, kickoff }),
+            url: `/groups/${wave.slug}`,
+          },
+        );
+        if (result.sent > 0) notified++;
+      } catch (err) {
+        problems.push(err instanceof Error ? err.message : String(err));
+      }
+    }
+  }
+
+  return { waves: waves.size, notified, ...(problems.length ? { problems: problems.slice(0, 5) } : {}) };
+}
+
 /** A cover flip, as the scoreboard job has just written it. */
 export interface FlipNotice {
   game_id: number;

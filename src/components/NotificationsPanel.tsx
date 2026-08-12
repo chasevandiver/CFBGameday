@@ -39,11 +39,13 @@ export interface AudienceOption {
 /** Which `{{tokens}}` each trigger's templates can use, shown beside the field. */
 const TOKENS: Record<string, string> = {
   picks_due: "{{count}} {{group}} {{kickoff}}",
+  log_bets: "{{group}} {{kickoff}}",
   bad_beat: "{{team}} {{home}} {{away}} {{detail}}",
 };
 
 const LABELS: Record<string, string> = {
   picks_due: "Picks closing",
+  log_bets: "Log your bets",
   bad_beat: "Bad beats",
   admin: "Ad-hoc and tests",
 };
@@ -150,7 +152,7 @@ export function NotificationsPanel({
                   />
                   {LABELS[s.kind] ?? s.kind}
                 </label>
-                {s.kind === "picks_due" && (
+                {s.kind !== "bad_beat" && (
                   <label className="flex items-center gap-1.5 text-xs text-dim">
                     <input
                       type="number"
@@ -163,7 +165,7 @@ export function NotificationsPanel({
                     min ahead
                   </label>
                 )}
-                {s.kind !== "picks_due" && <input type="hidden" name="lead_minutes" value={0} />}
+                {s.kind === "bad_beat" && <input type="hidden" name="lead_minutes" value={0} />}
               </div>
               <input
                 name="title"

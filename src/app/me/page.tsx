@@ -19,7 +19,8 @@ export default async function MePage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { data: teamRows }, { data: prefRows }] = await Promise.all([
+  const [{ data: profile }, { data: teamRows }, { data: prefRows }, { data: defaultRows }] =
+    await Promise.all([
     supabase
       .from("profiles")
       .select("display_name, favorite_team_ids, is_admin")
@@ -31,12 +32,17 @@ export default async function MePage() {
       .eq("classification", "fbs")
       .order("school"),
     supabase.from("notification_prefs").select("kind, enabled").eq("user_id", user.id),
+    supabase.from("notification_settings").select("kind, default_enabled"),
   ]);
 
-  // Absent row means opted in, so only the explicit offs need carrying.
+  // An absent pref row means "never touched"; the kind's default decides.
   const prefs: Record<string, boolean> = {};
   for (const row of (prefRows ?? []) as { kind: string; enabled: boolean }[]) {
     prefs[row.kind] = row.enabled;
+  }
+  const defaults: Record<string, boolean> = {};
+  for (const row of (defaultRows ?? []) as { kind: string; default_enabled: boolean }[]) {
+    defaults[row.kind] = row.default_enabled;
   }
 
   const teams: FavTeam[] = ((teamRows ?? []) as TeamRow[]).map((t) => ({
@@ -56,7 +62,7 @@ export default async function MePage() {
           favoriteIds={profile?.favorite_team_ids ?? []}
           teams={teams}
         />
-        <PushSettings prefs={prefs} />
+        <PushSettings prefs={prefs} defaults={defaults} />
         {profile?.is_admin && (
           <p className="mt-6 text-xs text-dim">
             <Link href="/admin" className="text-accent underline-offset-2 hover:underline">

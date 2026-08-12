@@ -193,7 +193,7 @@ export async function updateNotificationSetting(formData: FormData): Promise<Pus
   if (!admin) return { ok: false, message: "Commissioner only" };
 
   const kind = String(formData.get("kind") ?? "") as NotificationKind;
-  if (!["picks_due", "bad_beat", "admin"].includes(kind)) {
+  if (!["picks_due", "bad_beat", "log_bets", "admin"].includes(kind)) {
     return { ok: false, message: "Unknown notification kind" };
   }
   const lead = Number(formData.get("lead_minutes") ?? 0);
