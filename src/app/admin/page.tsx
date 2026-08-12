@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdjustmentsPanel, type AdjustmentView } from "../../components/AdjustmentsPanel";
 import { AppNav } from "../../components/AppNav";
@@ -133,6 +134,14 @@ export default async function AdminPage() {
       <AppNav />
       <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
         <h1 className="text-2xl">Admin</h1>
+        {/* The nav's account button now lands admins here rather than on /me,
+            so this is the only route to display name, favourites and sign-out. */}
+        <p className="mb-4 mt-1 text-xs text-dim">
+          <Link href="/me" className="text-accent underline-offset-2 hover:underline">
+            Account settings
+          </Link>{" "}
+          — display name, favourite teams, sign out.
+        </p>
         <p className="mb-6 text-sm text-dim">
           Site-wide. Group formats are set by each group&rsquo;s own admin.
         </p>

@@ -1,31 +1,45 @@
 "use client";
 
-import { UserRound } from "lucide-react";
+import { ShieldCheck, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createClient } from "../lib/supabase/client";
 
 /**
  * Session-aware nav button: signed-out visitors get "Sign in" (the site is
- * public to browse; an account saves picks and bets), members get the
- * Account page (display name, favorites, sign out). Renders nothing until
- * the session is known so neither state flashes.
+ * public to browse; an account saves picks and bets), members get Account, and
+ * an admin gets Admin — the console is the page they actually want, and it was
+ * previously reachable only from an 11px footnote at the bottom of /me.
+ * Account settings live one link away at the top of /admin, so nothing is lost.
+ *
+ * Renders nothing until the session AND the role are known: resolving them
+ * separately would flash "Account" before settling on "Admin".
  */
 export function AuthButton() {
-  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const [state, setState] = useState<"loading" | "out" | "member" | "admin">("loading");
   useEffect(() => {
     let alive = true;
-    createClient()
-      .auth.getSession()
-      .then(({ data }) => {
-        if (alive) setSignedIn(data.session !== null);
-      });
+    const db = createClient();
+    db.auth.getSession().then(async ({ data }) => {
+      const id = data.session?.user.id;
+      if (!id) {
+        if (alive) setState("out");
+        return;
+      }
+      const { data: profile } = await db
+        .from("profiles")
+        .select("is_admin")
+        .eq("id", id)
+        .maybeSingle();
+      if (alive) setState(profile?.is_admin ? "admin" : "member");
+    });
     return () => {
       alive = false;
     };
   }, []);
 
-  if (signedIn === null) return null;
+  const signedIn = state === "member" || state === "admin";
+  if (state === "loading") return null;
 
   if (!signedIn) {
     return (
@@ -38,13 +52,14 @@ export function AuthButton() {
     );
   }
 
+  const admin = state === "admin";
   return (
     <Link
-      href="/me"
+      href={admin ? "/admin" : "/me"}
       className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-chalk/10 px-2.5 text-xs font-medium text-dim transition-colors hover:border-chalk/25 hover:text-chalk"
     >
-      <UserRound size={13} aria-hidden />
-      Account
+      {admin ? <ShieldCheck size={13} aria-hidden /> : <UserRound size={13} aria-hidden />}
+      {admin ? "Admin" : "Account"}
     </Link>
   );
 }

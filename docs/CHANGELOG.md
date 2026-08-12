@@ -165,6 +165,24 @@ shipping it.
 
 ## Log
 
+### Aug 12 — The admin console stops hiding behind a footnote
+
+`/admin` has existed since the invites work and was reachable exactly one way:
+an 11px line of dim text at the bottom of `/me`, below the favourite-team
+picker. The owner — the only account in the database, and `is_admin` since the
+first migration — could not find it.
+
+The nav's account button now resolves the role, not just the session, and sends
+an admin to `/admin` and everyone else to `/me`. It waits for both before
+rendering: resolving them separately flashes "Account" and then settles on
+"Admin", which is worse than the 200ms of nothing it already renders while the
+session loads. `/admin` gains the link back to account settings it never needed
+before, since it is now the page an admin lands on.
+
+No new gate. `is_admin` was already checked server-side in the page itself and
+that is still the only thing enforcing anything — the button is navigation, not
+authorisation, and a non-admin who types the URL still gets a 404.
+
 ### Aug 12 — Field becomes a third theme, not a replacement
 
 Correction to the entry below. The palette and the display face were applied to
