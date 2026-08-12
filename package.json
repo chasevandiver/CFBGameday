@@ -10,7 +10,8 @@
     "test": "vitest run",
     "backtest": "tsx scripts/backtest.ts",
     "db:test": "bash scripts/db-test.sh",
-    "probe:cfbd": "tsx scripts/probe-cfbd.ts"
+    "probe:cfbd": "tsx scripts/probe-cfbd.ts",
+    "observe:scoreboard": "tsx scripts/observe-scoreboard.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

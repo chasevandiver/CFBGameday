@@ -165,6 +165,71 @@ shipping it.
 
 ## Log
 
+### Aug 12 — "Reachable" is not "live": an instrument for the one thing the probe can't ask
+
+No model change. `scripts/lib/observe.ts` (pure, 30 tests),
+`scripts/observe-scoreboard.ts`, an `observe-scoreboard` dispatch task.
+
+The access probe closed the question of whether `/scoreboard` **answers**. It
+left open whether it **moves**, and those fail differently. `scoreboardPatch`
+matches the status string exactly:
+
+```ts
+g.status === "in_progress" ? "in_progress" : g.status === "completed" ? "final" : "scheduled"
+if (status === "scheduled") return null;   // no write
+```
+
+so a feed that says `in-progress`, or renames `homeTeam.points`, produces zero
+writes, `{live_or_final: 0, updated: 0}`, and a **green run**. Nothing else in
+the stack contradicts it: realtime has nothing to push, the slate polls a table
+that is correct-and-unchanging, and `watchdogVerdict` checks scoreboard
+freshness only `if (gameLive)` — where `gameLive` is read from our own `games`
+table, which in this exact failure never flips. **A dead live layer and a quiet
+Saturday are the same observation.** That blind spot is real and still open;
+this entry does not close it.
+
+Why it can't be tested any other way: `/scoreboard` takes no year/week
+parameter (the Aug 12 probe's other discovery), so there is no historical
+replay. Liveness is only observable over a live game, once, unrepeatably.
+
+**What it measures**, folded purely over samples so the analysis is testable
+without a network, a clock, or a key:
+
+| | why it is the number that matters |
+|---|---|
+| raw `status` strings, counted | the rename check — the failure above, named |
+| lag from kickoff to leaving `scheduled` | how late our "LIVE" chip is, in seconds |
+| median gap between any field changing | the real freshness floor. Polling faster than CFBD moves just re-reads the same board — the 30s loop interval is an upper bound on staleness only if this number is smaller |
+| longest quiet stretch while live | halftime, or a frozen feed |
+| fields **never** populated while live | `detectCoverFlips` reads `situation`/`lastPlay`/`possession`; absence is the actionable half |
+
+Median, not mean, for the gap: one 20-minute halftime drags a mean of
+30s/30s/20min to ~7 minutes, which is the wrong number to design a poll around.
+
+**Four verdicts, and the ranking is deliberate.** `UNKNOWN_STATUS` outranks
+`STALE` — when the enum drifts, "nothing changed" is the symptom and reporting
+it would send someone hunting a polling bug. And `NO_LIVE_GAMES` is **not a
+pass**: a mistimed run proves nothing, which is the same trap `emptyIsHealthy`
+set in the probe, where a working key and a broken one looked identical because
+nobody separated "we asked and it said no" from "we never got to ask". CI goes
+red on the first two, exits 0 with a notice on the third.
+
+Read-only against the DB apart from metering, so it runs beside the real
+scoreboard-loop without racing it — but it does spend CFBD calls (140 at
+70min/30s), so it meters into `api_call_log` like every other job rather than
+quietly corrupting the budget the loop throttles off. Raw samples upload as an
+artifact on failure too: a `STALE` verdict is exactly when the window you cannot
+replay is worth keeping.
+
+**Dispatch it over the Aug 29 openers.** Until then the liveness half of the
+contract is still an assumption — the instrument exists, the measurement does
+not.
+
+Also noted, not fixed: `scripts/lib/probe.ts:52` still says `/scoreboard`
+"returns `[]` all week and only fills on a Saturday". The Aug 12 probe disproved
+that (whole season, 889 rows), and it is the stated justification for
+`emptyIsHealthy` — which today would mask a genuinely empty board.
+
 ### Aug 12 — The tiers were mis-levelled by ten points, and the table that would have caught it
 
 **Model change: 2026.5.0.** `DEFAULT_PARAMS` untouched — the change is a
