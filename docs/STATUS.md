@@ -59,9 +59,19 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
 
 ### 2.1 Now (Aug 12–14)
 
-- [ ] **🔑 Rotate the CFBD key** — it was pasted into a chat transcript to run
-      the Aug 12 probe and backtest. `collegefootballdata.com/key`, then update
-      the GitHub secret. · 0.25 h · human
+- [x] **CFBD key — rotation declined, 2026-08-12, owner call.** The key was
+      pasted into a chat transcript to run the Aug 12 probe and backtest. Not
+      rotating is defensible and is recorded rather than nagged about: the key
+      grants **read-only** public sports data on Tier 2, no writes, no personal
+      data, no billing surface. The whole worst case is quota theft — someone
+      burning the 30,000/month against an expected ~10,000 — and that failure is
+      already instrumented: every call meters into `api_call_log`,
+      `scoreboard-loop` throttles at 80% and refuses to poll at 95%
+      (`scoreboard-loop.ts:100-112`). **What to watch instead of rotating:** the
+      monthly call count on the admin freshness card. A jump toward 24,000 with
+      no matching activity is the tell, and the consequence of ignoring it is
+      degraded live scores on a Saturday, not a breach. Revisit only if the
+      transcript is ever shared outside the account.
 - [x] **P1-9a** `SUPABASE_DB_URL` set — **by the owner, 2026-08-12.** It had been
       empty in all 98 runs, so the weekly `pg_dump` had never executed and the
       append-only `predictions` / `picks` / `bets` had no copy beyond the 7-day
@@ -109,11 +119,15 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
       major pinned, #46); and `postgresql-client-17` not installable from the
       stock image, which the PGDG fallback caught on its first real run.
 - [ ] **P1-9b** Create a healthchecks.io project, set `HEALTHCHECK_PING_URL`
-      (the ping step is already wired). · 0.5 h
-- [ ] **P1-9c / F2** Add `ANTHROPIC_API_KEY`, dispatch `verdicts` once, or team
-      pages launch without the LLM tier. · 0.5 h
+      (the ping step is already wired; free tier covers this). **Now load-bearing
+      rather than nice-to-have:** with the LLM tier off and no other channel
+      added, GitHub's failure email is the *only* thing that tells you a job
+      died, and it only fires when a run ERRORS — a scheduler that silently
+      stops firing alerts nobody. That is exactly the hole this closes. · 0.5 h
 - [ ] **P1-8** Check the inbox: a watchdog failure email fired Aug 10 — did it
-      arrive? An unverified failure channel is no failure channel. · human
+      arrive? **The single highest-value 2 minutes left on this list.** It is
+      now the primary alerting channel, and an unverified failure channel is no
+      failure channel. · human
 - [x] **P0-4** Run 2026-08-12: `ratings` **138** rows, all week 0, all
       `2026.2.0` (expected ~136 ✓, and it confirms the four-versions-behind
       row above); `team_hfa` **138**; `line_snapshots` **808**. Also
