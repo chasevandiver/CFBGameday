@@ -16,6 +16,14 @@
 
 name: jobs
 
+# Every run of this workflow used to be titled "jobs" in the Actions list, for
+# all 19 tasks and 25 crons. That made a mis-dispatch invisible: `task` is a
+# required choice with no default, so GitHub pre-selects the FIRST option
+# (refresh-lines) and a "Run workflow" click that never touched the dropdown
+# runs the wrong job and goes green — indistinguishable, from the list, from
+# the job you meant. Happened on run #106 while verifying the backup.
+run-name: jobs · ${{ inputs.task || github.event.schedule || 'scheduled' }}
+
 on:
   workflow_dispatch:
     inputs:
