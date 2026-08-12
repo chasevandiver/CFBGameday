@@ -165,6 +165,81 @@ shipping it.
 
 ## Log
 
+### Aug 12 — The Slate S: one master, every size cut from it
+
+New brand identity (`docs/BRAND.md`, supplied v1.0). Icon, logo and the iOS /
+Android install surfaces only — **the app's own palette and display face did
+not move**, see the seam below.
+
+The old mark was a rotated gold football on warm charcoal, drawn twice: once as
+`app/icon.svg` and once, differently, as a JSX `apple-icon.tsx` that rendered
+the letter **H**. Two hand-drawn copies of one logo is how a logo drifts, and
+this one had already drifted into a different glyph.
+
+Everything now comes off one vector master. `src/lib/brand.ts` holds the
+palette and the geometry — the S outline, the seam crescent, the six laces —
+and both consumers read it: `scripts/lib/brand-mark.ts` composes the SVG for
+the exports, `src/components/SlateMark.tsx` renders the same paths in React for
+the nav and the share cards. `npm run brand` writes every asset. Nothing is
+drawn per size; the variants differ only in detail level and foreground scale.
+
+**The letter.** 118-unit bars on a 424×628 box, outer corners cut at 45°,
+terminal inner corners cut smaller, reflex corners left sharp — the sharp
+reflex corners are what make it read as varsity block rather than a rounded
+geometric S. Counters are 306×138 top and bottom, so the letter is symmetric
+under 180° rotation. The seam is a crescent across the middle bar that enters
+inside the letter on the left and breaks past its right edge into the dark;
+laces sit square to the local tangent. Under the chalk face is a gold copy
+offset (9, 12), which is the whole of the "dimensional edge" — no bevel filter.
+
+**No text anywhere in the master.** The yard numbers are built from rectangles
+as scoreboard segments, so the vector master has no font dependency and needs
+no outlining step before it opens in an editor (§20). The wordmark is outlined
+at build time from Graduate with hand-rolled tracking (`opentype.js`); the
+committed SVG and the splash PNGs carry outlines only.
+
+**Detail is a function of size, not a redraw.** The master carries field
+markings, yard numbers, vignette and a drop shadow. The 32px cut drops all of
+it and pushes the letter out to 1.16 — at that size the field is mud and the
+contrast is worth more. The maskable cut pulls the foreground to 0.94, which
+puts the worst-case vertex at 337 of the 409.6 safe radius (82%); the field
+markings are allowed to be cropped, the S is not.
+
+Four things are now asserted in `scripts/lib/brand-mark.test.ts` rather than
+eyeballed, because each is a Definition-of-Done line that otherwise only fails
+after someone installs it: the maskable safe-radius margin, the laces staying
+on the seam, **zero transparent pixels** in the master (iOS composites the
+touch icon over white — one transparent pixel and the tile grows a bright
+fringe), and **square corners** (the OS rounds the tile; rounding it here too
+gives the double corner that is the most reliable tell of a homemade icon).
+
+The contact sheet §21 calls mandatory is generated too — `/brand/contact-sheet.html`,
+the master downscaled by the browser at 300/120/72/60/40/32 on near-black, plus
+the maskable under circle and squircle crops.
+
+**iOS launch.** 13 portrait startup images with device media queries, written
+by hand in `layout.tsx` because the Next metadata API has no
+`apple-touch-startup-image` field, plus `apple-mobile-web-app-capable` — Next
+emits only the standardised `mobile-web-app-capable`, and iOS before 16.4 reads
+only the apple-prefixed one. The splash aura is a disc around the mark rather
+than a wash over the screen: §15 wants it localized, and a full-canvas gradient
+cost 20× the bytes in a PNG that is otherwise flat black (6.2 MB → 3.4 MB
+across the set). Landscape startup images are deliberately not built — iPhone
+ignores them and iPad cold-launches to portrait almost always.
+
+**The seam that is left.** The icon, the manifest, the launch chrome and both
+OG cards are now on the brand's green (`#020A08` / `#08251C` / `#0E3B2C`). The
+application shell is still on the warm charcoal tokens in `globals.css`
+(`--bg: #100e0b`, `--accent: #f2b63c`) and still sets headings in Barlow
+Condensed, not Graduate. Both near-blacks are effectively black on a phone, so
+the launch-to-app transition holds — but §5, §12 and §41.4–5 are not satisfied
+and the two accents are visibly different side by side. Recolouring the app is
+a whole-product change against `docs/DESIGN.md`'s "no new colours" rule and was
+not in scope here; it is queued as **BRAND-2 / BRAND-3** in `docs/STATUS.md`.
+The in-app mark sidesteps the mismatch by taking `currentColor` for the letter
+and `var(--accent)` for the seam, so it is correct under whichever palette is
+live, in both themes.
+
 ### Aug 12 — Every run was called "jobs", so the wrong one looked right
 
 `run-name` on `.github/workflows/jobs.yml`. Nothing else.

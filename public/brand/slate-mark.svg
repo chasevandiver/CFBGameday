@@ -1,34 +1,34 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
 
   <defs>
-    <radialGradient id="fbg" cx="0.28" cy="0.22" r="0.80">
+    <radialGradient id="nbg" cx="0.28" cy="0.22" r="0.80">
       <stop offset="0" stop-color="#0E3B2C"/>
       <stop offset="0.34" stop-color="#08251C"/>
       <stop offset="0.80" stop-color="#020A08"/>
       <stop offset="1" stop-color="#020A08"/>
     </radialGradient>
-    <radialGradient id="fvignette" cx="0.5" cy="0.5" r="0.72">
+    <radialGradient id="nvignette" cx="0.5" cy="0.5" r="0.72">
       <stop offset="0.40" stop-color="#000000" stop-opacity="0"/>
       <stop offset="1" stop-color="#000000" stop-opacity="0.52"/>
     </radialGradient>
-    <linearGradient id="flightGreen" x1="0" y1="0" x2="0.62" y2="0.62">
+    <linearGradient id="nlightGreen" x1="0" y1="0" x2="0.62" y2="0.62">
       <stop offset="0" stop-color="#7FE3B8" stop-opacity="0.15"/>
       <stop offset="1" stop-color="#7FE3B8" stop-opacity="0"/>
     </linearGradient>
-    <linearGradient id="flightGold" x1="1" y1="1" x2="0.42" y2="0.42">
+    <linearGradient id="nlightGold" x1="1" y1="1" x2="0.42" y2="0.42">
       <stop offset="0" stop-color="#E8B93D" stop-opacity="0.13"/>
       <stop offset="1" stop-color="#E8B93D" stop-opacity="0"/>
     </linearGradient>
-    <linearGradient id="fchalk" x1="0.2" y1="0" x2="0.8" y2="1">
+    <linearGradient id="nchalk" x1="0.2" y1="0" x2="0.8" y2="1">
       <stop offset="0" stop-color="#FBF8F0"/>
       <stop offset="0.55" stop-color="#F4EFE2"/>
       <stop offset="1" stop-color="#DED5BF"/>
     </linearGradient>
-    <linearGradient id="fgoldEdge" x1="0.1" y1="0" x2="0.9" y2="1">
+    <linearGradient id="ngoldEdge" x1="0.1" y1="0" x2="0.9" y2="1">
       <stop offset="0" stop-color="#8C6A1C"/>
       <stop offset="1" stop-color="#E8B93D"/>
     </linearGradient>
-    <linearGradient id="fgoldSeam" x1="0" y1="0" x2="0.4" y2="1">
+    <linearGradient id="ngoldSeam" x1="0" y1="0" x2="0.4" y2="1">
       <stop offset="0" stop-color="#F6D579"/>
       <stop offset="0.5" stop-color="#E8B93D"/>
       <stop offset="1" stop-color="#C08F1E"/>
@@ -36,22 +36,17 @@
     
   </defs>
 
-  <rect width="1024" height="1024" fill="#020A08"/>
-  <rect width="1024" height="1024" fill="url(#fbg)"/>
-  
-  <rect width="1024" height="1024" fill="url(#flightGreen)"/>
-  <rect width="1024" height="1024" fill="url(#flightGold)"/>
 
-  <g transform="translate(512 512) scale(1.16) translate(-512 -512)">
+  <g transform="translate(512 512) scale(1.07) translate(-512 -512)">
 
   <g>
-    <g transform="translate(9 12)"><path d="M338 198 L686 198 L724 236 L724 294 L702 316 L418 316 L418 454 L702 454 L724 476 L724 788 L686 826 L338 826 L300 788 L300 730 L322 708 L606 708 L606 572 L322 572 L300 550 L300 236 Z" fill="url(#fgoldEdge)"/></g>
-    <path d="M338 198 L686 198 L724 236 L724 294 L702 316 L418 316 L418 454 L702 454 L724 476 L724 788 L686 826 L338 826 L300 788 L300 730 L322 708 L606 708 L606 572 L322 572 L300 550 L300 236 Z" fill="url(#fchalk)"/>
+    <g transform="translate(9 12)"><path d="M338 198 L686 198 L724 236 L724 294 L702 316 L418 316 L418 454 L702 454 L724 476 L724 788 L686 826 L338 826 L300 788 L300 730 L322 708 L606 708 L606 572 L322 572 L300 550 L300 236 Z" fill="url(#ngoldEdge)"/></g>
+    <path d="M338 198 L686 198 L724 236 L724 294 L702 316 L418 316 L418 454 L702 454 L724 476 L724 788 L686 826 L338 826 L300 788 L300 730 L322 708 L606 708 L606 572 L322 572 L300 550 L300 236 Z" fill="url(#nchalk)"/>
     <path d="M338 198 L686 198 L724 236 L724 294 L702 316 L418 316 L418 454 L702 454 L724 476 L724 788 L686 826 L338 826 L300 788 L300 730 L322 708 L606 708 L606 572 L322 572 L300 550 L300 236 Z" fill="none" stroke="#E8B93D" stroke-opacity="0.24" stroke-width="2.5"/>
   </g>
 
   
-  <g fill="url(#fgoldSeam)">
+  <g fill="url(#ngoldSeam)">
     <path d="M360 514 C 480 466 672 480 816 578 C 664 526 476 534 360 514 Z"/>
     <rect x="479" y="482" width="14" height="54" rx="5" transform="rotate(2 486 509)"/><rect x="515" y="480" width="14" height="60" rx="5" transform="rotate(3 522 510)"/><rect x="551" y="480" width="14" height="64" rx="5" transform="rotate(4 558 512)"/><rect x="587" y="484" width="14" height="64" rx="5" transform="rotate(7 594 516)"/><rect x="623" y="492" width="14" height="60" rx="5" transform="rotate(9 630 522)"/><rect x="659" y="501" width="14" height="54" rx="5" transform="rotate(11 666 528)"/>
   </g>

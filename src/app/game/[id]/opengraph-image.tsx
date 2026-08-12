@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { BRAND, slateMarkSvg } from "../../../lib/brand";
 import { createClient } from "../../../lib/supabase/server";
 import { consensusFromSnapshots } from "../../../lib/consensus";
 import { fmtSpread } from "../../../lib/slate";
@@ -9,6 +10,9 @@ import { fmtSpread } from "../../../lib/slate";
 export const alt = "Matchup on The CFB Slate";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
+
+// Same stamp the site card uses, inlined so the card never depends on a fetch.
+const MARK = `data:image/svg+xml;base64,${Buffer.from(slateMarkSvg()).toString("base64")}`;
 
 export default async function Image({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -22,16 +26,19 @@ export default async function Image({ params }: { params: Promise<{ id: string }
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        background: "#12100D",
-        color: "#F2EEE5",
+        background: BRAND.nearBlack,
+        color: BRAND.chalk,
         textAlign: "center",
         padding: "80px",
       }}
     >
       <div style={{ fontSize: 84, fontWeight: 800 }}>{main}</div>
-      {sub ? <div style={{ fontSize: 40, color: "#A89F90", marginTop: 20 }}>{sub}</div> : null}
-      <div style={{ fontSize: 28, letterSpacing: 4, color: "#F2B63C", marginTop: 40, textTransform: "uppercase" }}>
-        The CFB Slate
+      {sub ? <div style={{ fontSize: 40, color: "#8FA79B", marginTop: 20 }}>{sub}</div> : null}
+      <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 40 }}>
+        <img src={MARK} width={40} height={40} alt="" />
+        <div style={{ fontSize: 28, letterSpacing: 4, color: BRAND.gold, textTransform: "uppercase" }}>
+          The CFB Slate
+        </div>
       </div>
     </div>
   );
@@ -80,22 +87,25 @@ export default async function Image({ params }: { params: Promise<{ id: string }
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          background: "#12100D",
-          color: "#F2EEE5",
+          background: BRAND.nearBlack,
+          color: BRAND.chalk,
           padding: "70px",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 40, fontSize: 130, fontWeight: 800 }}>
           <span>{away}</span>
-          <span style={{ fontSize: 60, color: "#A89F90" }}>@</span>
+          <span style={{ fontSize: 60, color: "#8FA79B" }}>@</span>
           <span>{home}</span>
         </div>
-        <div style={{ fontSize: 44, color: "#F2B63C", marginTop: 36 }}>
+        <div style={{ fontSize: 44, color: BRAND.gold, marginTop: 36 }}>
           {spread ?? "line pending"}
         </div>
-        <div style={{ fontSize: 34, color: "#A89F90", marginTop: 16 }}>{kick}</div>
-        <div style={{ fontSize: 26, letterSpacing: 4, color: "#F2EEE5", marginTop: 44, textTransform: "uppercase", opacity: 0.6 }}>
-          The CFB Slate
+        <div style={{ fontSize: 34, color: "#8FA79B", marginTop: 16 }}>{kick}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 44, opacity: 0.72 }}>
+          <img src={MARK} width={38} height={38} alt="" />
+          <div style={{ fontSize: 26, letterSpacing: 4, color: BRAND.chalk, textTransform: "uppercase" }}>
+            The CFB Slate
+          </div>
         </div>
       </div>
     ),

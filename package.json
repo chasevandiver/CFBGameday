@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "backtest": "tsx scripts/backtest.ts",
+    "brand": "tsx scripts/build-brand-assets.ts",
     "db:test": "bash scripts/db-test.sh",
     "probe:cfbd": "tsx scripts/probe-cfbd.ts",
     "observe:scoreboard": "tsx scripts/observe-scoreboard.ts"
@@ -24,14 +25,17 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@tailwindcss/postcss": "^4",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^20",
+    "@types/opentype.js": "^1.3.10",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
     "jsdom": "^30.0.1",
+    "opentype.js": "^2.0.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.7",
     "typescript": "^5",

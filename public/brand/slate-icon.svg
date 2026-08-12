@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+
+  <defs>
+    <radialGradient id="mbg" cx="0.28" cy="0.22" r="0.80">
+      <stop offset="0" stop-color="#0E3B2C"/>
+      <stop offset="0.34" stop-color="#08251C"/>
+      <stop offset="0.80" stop-color="#020A08"/>
+      <stop offset="1" stop-color="#020A08"/>
+    </radialGradient>
+    <radialGradient id="mvignette" cx="0.5" cy="0.5" r="0.72">
+      <stop offset="0.40" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.52"/>
+    </radialGradient>
+    <linearGradient id="mlightGreen" x1="0" y1="0" x2="0.62" y2="0.62">
+      <stop offset="0" stop-color="#7FE3B8" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#7FE3B8" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="mlightGold" x1="1" y1="1" x2="0.42" y2="0.42">
+      <stop offset="0" stop-color="#E8B93D" stop-opacity="0.13"/>
+      <stop offset="1" stop-color="#E8B93D" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="mchalk" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#FBF8F0"/>
+      <stop offset="0.55" stop-color="#F4EFE2"/>
+      <stop offset="1" stop-color="#DED5BF"/>
+    </linearGradient>
+    <linearGradient id="mgoldEdge" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#8C6A1C"/>
+      <stop offset="1" stop-color="#E8B93D"/>
+    </linearGradient>
+    <linearGradient id="mgoldSeam" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#F6D579"/>
+      <stop offset="0.5" stop-color="#E8B93D"/>
+      <stop offset="1" stop-color="#C08F1E"/>
+    </linearGradient>
+    <filter id="mdrop" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="20" stdDeviation="28" flood-color="#000000" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" fill="#020A08"/>
+  <rect width="1024" height="1024" fill="url(#mbg)"/>
+  <rect width="1024" height="1024" fill="url(#mvignette)"/>
+  <rect width="1024" height="1024" fill="url(#mlightGreen)"/>
+  <rect width="1024" height="1024" fill="url(#mlightGold)"/>
+
+  <g fill="#6FCBA4">
+    <g opacity="0.095"><rect x="138" y="157" width="58" height="6"/><rect x="828" y="157" width="58" height="6"/><rect x="138" y="245" width="58" height="6"/><rect x="828" y="245" width="58" height="6"/><rect x="138" y="333" width="58" height="6"/><rect x="828" y="333" width="58" height="6"/><rect x="138" y="421" width="58" height="6"/><rect x="828" y="421" width="58" height="6"/><rect x="138" y="509" width="58" height="6"/><rect x="828" y="509" width="58" height="6"/><rect x="138" y="597" width="58" height="6"/><rect x="828" y="597" width="58" height="6"/><rect x="138" y="685" width="58" height="6"/><rect x="828" y="685" width="58" height="6"/><rect x="138" y="773" width="58" height="6"/><rect x="828" y="773" width="58" height="6"/><rect x="138" y="861" width="58" height="6"/><rect x="828" y="861" width="58" height="6"/></g>
+    <g opacity="0.06"><rect x="152" y="201.5" width="30" height="5"/><rect x="842" y="201.5" width="30" height="5"/><rect x="152" y="289.5" width="30" height="5"/><rect x="842" y="289.5" width="30" height="5"/><rect x="152" y="377.5" width="30" height="5"/><rect x="842" y="377.5" width="30" height="5"/><rect x="152" y="465.5" width="30" height="5"/><rect x="842" y="465.5" width="30" height="5"/><rect x="152" y="553.5" width="30" height="5"/><rect x="842" y="553.5" width="30" height="5"/><rect x="152" y="641.5" width="30" height="5"/><rect x="842" y="641.5" width="30" height="5"/><rect x="152" y="729.5" width="30" height="5"/><rect x="842" y="729.5" width="30" height="5"/><rect x="152" y="817.5" width="30" height="5"/><rect x="842" y="817.5" width="30" height="5"/></g>
+    <g opacity="0.075"><rect x="211.5" y="137" width="9" height="46"/><rect x="241" y="137" width="32" height="9"/><rect x="264" y="137" width="9" height="27.5"/><rect x="264" y="155.5" width="9" height="27.5"/><rect x="241" y="174" width="32" height="9"/><rect x="241" y="155.5" width="9" height="27.5"/><rect x="241" y="137" width="9" height="27.5"/><rect x="200" y="225" width="32" height="9"/><rect x="223" y="225" width="9" height="27.5"/><rect x="200" y="243.5" width="32" height="9"/><rect x="200" y="243.5" width="9" height="27.5"/><rect x="200" y="262" width="32" height="9"/><rect x="241" y="225" width="32" height="9"/><rect x="264" y="225" width="9" height="27.5"/><rect x="264" y="243.5" width="9" height="27.5"/><rect x="241" y="262" width="32" height="9"/><rect x="241" y="243.5" width="9" height="27.5"/><rect x="241" y="225" width="9" height="27.5"/><rect x="200" y="313" width="32" height="9"/><rect x="223" y="313" width="9" height="27.5"/><rect x="200" y="331.5" width="32" height="9"/><rect x="223" y="331.5" width="9" height="27.5"/><rect x="200" y="350" width="32" height="9"/><rect x="241" y="313" width="32" height="9"/><rect x="264" y="313" width="9" height="27.5"/><rect x="264" y="331.5" width="9" height="27.5"/><rect x="241" y="350" width="32" height="9"/><rect x="241" y="331.5" width="9" height="27.5"/><rect x="241" y="313" width="9" height="27.5"/><rect x="200" y="401" width="9" height="27.5"/><rect x="200" y="419.5" width="32" height="9"/><rect x="223" y="401" width="9" height="27.5"/><rect x="223" y="419.5" width="9" height="27.5"/><rect x="241" y="401" width="32" height="9"/><rect x="264" y="401" width="9" height="27.5"/><rect x="264" y="419.5" width="9" height="27.5"/><rect x="241" y="438" width="32" height="9"/><rect x="241" y="419.5" width="9" height="27.5"/><rect x="241" y="401" width="9" height="27.5"/><rect x="200" y="489" width="32" height="9"/><rect x="200" y="489" width="9" height="27.5"/><rect x="200" y="507.5" width="32" height="9"/><rect x="223" y="507.5" width="9" height="27.5"/><rect x="200" y="526" width="32" height="9"/><rect x="241" y="489" width="32" height="9"/><rect x="264" y="489" width="9" height="27.5"/><rect x="264" y="507.5" width="9" height="27.5"/><rect x="241" y="526" width="32" height="9"/><rect x="241" y="507.5" width="9" height="27.5"/><rect x="241" y="489" width="9" height="27.5"/></g>
+    <g opacity="0.085">
+      <rect x="509" y="118" width="6" height="44"/>
+      <rect x="509" y="862" width="6" height="44"/>
+    </g>
+  </g>
+  <g fill="#E8B93D" opacity="0.34">
+    <path d="M150 499 L172 512 L150 525 Z"/>
+    <path d="M874 499 L852 512 L874 525 Z"/>
+  </g>
+  <g transform="translate(512 512) scale(1.07) translate(-512 -512)">
+
+  <g filter="url(#mdrop)">
+    <g transform="translate(9 12)"><path d="M338 198 L686 198 L724 236 L724 294 L702 316 L418 316 L418 454 L702 454 L724 476 L724 788 L686 826 L338 826 L300 788 L300 730 L322 708 L606 708 L606 572 L322 572 L300 550 L300 236 Z" fill="url(#mgoldEdge)"/></g>
+    <path d="M338 198 L686 198 L724 236 L724 294 L702 316 L418 316 L418 454 L702 454 L724 476 L724 788 L686 826 L338 826 L300 788 L300 730 L322 708 L606 708 L606 572 L322 572 L300 550 L300 236 Z" fill="url(#mchalk)"/>
+    <path d="M338 198 L686 198 L724 236 L724 294 L702 316 L418 316 L418 454 L702 454 L724 476 L724 788 L686 826 L338 826 L300 788 L300 730 L322 708 L606 708 L606 572 L322 572 L300 550 L300 236 Z" fill="none" stroke="#E8B93D" stroke-opacity="0.24" stroke-width="2.5"/>
+  </g>
+
+  <g transform="translate(0 7)" fill="#3D2E08" opacity="0.34"><path d="M360 514 C 480 466 672 480 816 578 C 664 526 476 534 360 514 Z"/><rect x="479" y="482" width="14" height="54" rx="5" transform="rotate(2 486 509)"/><rect x="515" y="480" width="14" height="60" rx="5" transform="rotate(3 522 510)"/><rect x="551" y="480" width="14" height="64" rx="5" transform="rotate(4 558 512)"/><rect x="587" y="484" width="14" height="64" rx="5" transform="rotate(7 594 516)"/><rect x="623" y="492" width="14" height="60" rx="5" transform="rotate(9 630 522)"/><rect x="659" y="501" width="14" height="54" rx="5" transform="rotate(11 666 528)"/></g>
+  <g fill="url(#mgoldSeam)">
+    <path d="M360 514 C 480 466 672 480 816 578 C 664 526 476 534 360 514 Z"/>
+    <rect x="479" y="482" width="14" height="54" rx="5" transform="rotate(2 486 509)"/><rect x="515" y="480" width="14" height="60" rx="5" transform="rotate(3 522 510)"/><rect x="551" y="480" width="14" height="64" rx="5" transform="rotate(4 558 512)"/><rect x="587" y="484" width="14" height="64" rx="5" transform="rotate(7 594 516)"/><rect x="623" y="492" width="14" height="60" rx="5" transform="rotate(9 630 522)"/><rect x="659" y="501" width="14" height="54" rx="5" transform="rotate(11 666 528)"/>
+  </g>
+  </g>
+</svg>

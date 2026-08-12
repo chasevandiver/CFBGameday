@@ -30,6 +30,11 @@ Two live documents, then the history.
   widening early-season sigma) have already been tested and rejected on
   evidence. Check there before proposing one.
 - `docs/SPEC.md` — what we're building and why.
+- `docs/BRAND.md` — Brand System v1.0: the Slate S, the palette, the launch
+  surfaces. The `§` numbers in `src/lib/brand.ts`, `scripts/lib/brand-mark.ts`
+  and `app/manifest.ts` point here. Identity only — DESIGN.md still governs
+  behaviour, and what has actually shipped from it is in `docs/STATUS.md`
+  (BRAND-1…BRAND-5).
 - `docs/DESIGN.md` — design rules for this product. Read before any UI work.
   Says which of the installed design skills owns what, and carries the
   product-specific constraints those skills can't know (glanceable, no layout

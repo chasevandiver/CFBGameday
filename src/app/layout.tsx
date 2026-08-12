@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Archivo, Barlow_Condensed, IBM_Plex_Mono } from "next/font/google";
+import { APPLE_STARTUP_IMAGES } from "../lib/apple-startup-images";
+import { BRAND } from "../lib/brand";
 import "./globals.css";
 
 const archivo = Archivo({
@@ -28,6 +30,16 @@ export const metadata: Metadata = {
   description:
     "College football ratings, edges, pick'em, and the crew ledger — what matters right now, every Saturday.",
   applicationName: "The CFB Slate",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    // What sits under the icon on the home screen. "The CFB Slate" truncates
+    // to an ellipsis there; the icon already says which app this is.
+    title: "CFB Slate",
+    // Not black-translucent: the app does not pad for the top inset, and a
+    // translucent bar would drop the status text on top of the header.
+    statusBarStyle: "black",
+  },
   openGraph: {
     siteName: "The CFB Slate",
     type: "website",
@@ -39,7 +51,7 @@ export const viewport: Viewport = {
      nav and the bet slip both sit in the home-indicator zone. */
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#12100D" },
+    { media: "(prefers-color-scheme: dark)", color: BRAND.nearBlack },
     { media: "(prefers-color-scheme: light)", color: "#F2F3F6" },
   ],
 };
@@ -54,6 +66,18 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       suppressHydrationWarning
       className={`${archivo.variable} ${barlow.variable} ${plexMono.variable} h-full antialiased`}
     >
+      <head>
+        {/* Next emits the standardised `mobile-web-app-capable`; iOS before
+            16.4 only reads the apple-prefixed one, and that is exactly the
+            population that would otherwise get a Safari chrome bar. */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        {/* Written by hand, not by the metadata API: Next has no
+            apple-touch-startup-image field, and iOS needs one exact
+            device-media match or it shows a blank frame on launch. */}
+        {APPLE_STARTUP_IMAGES.map(({ href, media }) => (
+          <link key={href} rel="apple-touch-startup-image" href={href} media={media} />
+        ))}
+      </head>
       <body className="min-h-full flex flex-col">
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
         {children}
