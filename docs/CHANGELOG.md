@@ -165,6 +165,54 @@ shipping it.
 
 ## Log
 
+### Aug 12 — Four checklists, one of them lying: the open work gets a single list
+
+No model change, no code change. `docs/STATUS.md` (new), and four documents
+edited to stop competing with it.
+
+**The problem was arithmetic, not prose.** "What's left?" had six answers:
+`audit/CHECKLIST.md`'s Packages A–C plus its deferred and calendar sections;
+`docs/AUDIT-2026-08.md`'s §16 bug table, its §23 status table, *and* its 46 raw
+checkboxes; `audit/KICKOFF_READINESS.md`'s P0/P1/P2 findings, §9 decisions and
+§10 day plan; and this file's Open items. Three ID schemes — `04:DQ-13`,
+`P2-1`, `§23 #40` — with no map between them, and at least one item appearing
+in three of them under three names.
+
+**The 46 boxes were the trap, and they were documented as one.** `AGENTS.md`
+told readers *"read the table, not the boxes"* — a rule that only helps someone
+who read `AGENTS.md` first. The boxes sat all-`[ ]` above a table saying 38 of
+them were done. They are checked now, each carrying the table's verdict, so
+both halves say the same thing and the warning is unnecessary.
+
+**Two open items existed only as prose in this file** and had never reached any
+checklist: re-running `--tune-churn` (the Aug 12 portal fix invalidated the
+input distribution `returningProdWeight = 6` was fitted against) and dispatching
+`observe-scoreboard` over the openers (the instrument shipped; the measurement
+it exists for is still an assumption). A paragraph is not a tracked item —
+that is how `03:M-3` went missing long enough to let a +9.8-point cross-tier
+lean into the build.
+
+**Three checked boxes were re-opened after reading the code**, which is the
+whole reason the pass was worth doing rather than collating:
+
+| ID | Claimed | Actually |
+|---|---|---|
+| `05:N9` | postponed/canceled grade `void` | The grader is right (`jobs-core.ts:953-977`); **nothing writes those statuses** (`sync-games.ts:93` asserts only `final`), so Rule #4 is unreachable → **P1-1** |
+| `04:DQ-13` | rejects NaN/**empty** `PRESEASON_TILT_CARRY` | `Number("")` is `0`, not `NaN`, so the guard never fires and a fitted parameter disables itself silently → **P2-1** |
+| `SEC-01` | "migration 0026" | 0026 and 0027 are taken; next free is 0028 |
+
+Fourteen more open findings were re-verified against the code and stand: P1-3
+(no `.env.example`), P1-4 (no cron maps to `refresh-lines-burst`), P1-6,
+P2-3, P2-6, P2-10 (the existing `0 10 * * 6` is the weather cron, not lines),
+P2-11, and audit rows #31/#38/#40/#42/#44/#45.
+
+`docs/STATUS.md` is now the only place with unchecked boxes. `audit/CHECKLIST.md`
+becomes the completed record of Packages A–C, `KICKOFF_READINESS.md` and
+`AUDIT-2026-08.md` become the analysis behind the findings, and this file keeps
+what a changelog owes a reader: the model state, and the residuals recorded
+rather than hidden. Nothing was deleted and nothing was back-dated — the
+superseded documents keep their original text and say what superseded them.
+
 ### Aug 12 — "Reachable" is not "live": an instrument for the one thing the probe can't ask
 
 No model change. `scripts/lib/observe.ts` (pure, 30 tests),
@@ -2016,6 +2064,13 @@ and signed-error reporting; nine backtest tuners.
 
 ## Open items
 
+> **The actionable list moved to `docs/STATUS.md` (2026-08-12)** — every open
+> item in the repo, with its ID, evidence and date, in one place. What stays
+> here is the model-and-data state a changelog reader needs in context. Two
+> items that lived *only* in this section's prose — re-running `--tune-churn`
+> after the portal fix, and dispatching `observe-scoreboard` over the openers —
+> are now tracked rows there instead of paragraphs here.
+
 - **CLV has no data yet.** Built and migrated, but the first values arrive the
   Sunday after Week 1 — the grader has nothing to grade until games are final.
   The path is unexercised against real rows until then.
@@ -2051,9 +2106,8 @@ and signed-error reporting; nine backtest tuners.
   fallback reads `var(--push)`.
 - **Three audit items remain open**, all additive: futures tracker with weekly
   mark-to-market (#40), generated db types (#44), ⌘K quick-switcher (#45). OG
-  share images (#46) closed on 08-10. Five more are partial — see the status
-  table in `docs/AUDIT-2026-08.md` §23 for exactly which piece each is missing,
-  and `audit/CHECKLIST.md` for what is actually queued.
+  share images (#46) closed on 08-10. Five more are partial. All eight, plus
+  everything else outstanding, are in `docs/STATUS.md` §5.
 - **Off/Def are built but dark**, for the same reason everything else is: the
   production ratings are still 2026.2.0 with even splits. The columns appear on
   their own once the preseason refresh lands.
