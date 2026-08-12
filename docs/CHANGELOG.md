@@ -165,6 +165,69 @@ shipping it.
 
 ## Log
 
+### Aug 12 — Week 0 is a week, and 297 receipts nobody wrote
+
+`scripts/lib/weeks.ts` (pure, 9 tests), `src/lib/week-range.ts`, migrations 0028
+and 0029, both applied to the live project. No model change; `DEFAULT_PARAMS`
+untouched.
+
+**The freeze that would have fired into a wall.** Every one of the 99 games in
+CFBD's week 1 carried **three** frozen `predictions` rows — 297 total, from
+three `load-preseason --bootstrap` runs on Aug 5 and Aug 7 at model versions
+2026.1.0, 2026.2.0 and 2026.3.0. `predictions` has an identity primary key, so
+an upsert appends; the Operations note in this file already warned that a second
+`--bootstrap` duplicates them.
+
+The duplication was not the damage. `freezeJob` builds `alreadyFrozen` from any
+`frozen = true` row and `freezableGames` drops those games, so **the Thursday
+freeze before the openers would have returned `{frozen: 0, already_frozen: 99}`
+and gone green.** Week 1 would have shipped receipts computed on Aug 5 against
+Aug 5 lines; 2026.5.0's market-anchored tier recentre — the fix for a measured
+~10-point cross-classification lean — could never have reached the openers; the
+grader would have counted every game three times across three models; and two of
+the three rows per game carry `total = 57.0`, the constant-for-every-game number
+the original audit filed as bug #4.
+
+`0028` clears them, scoped to season 2026, unstarted games, the three superseded
+versions and ungraded rows only, with a guard that aborts above three rows per
+game. 297 → 0. The append-only guarantee is *restored* by this, not bent: it
+exists so a receipt somebody acted on is never rewritten, `picks` was 0 rows and
+`profiles` 1, and from here every row in the table was written by a freeze.
+
+**A finding that was wrong, recorded rather than quietly dropped.** The same pass
+reported 400 of 808 `line_snapshots` rows as duplicates. They are not. The
+grouping key omitted `provider`: the pairs are DraftKings and Bovada captured at
+the same instant with different numbers (−28.5 vs −25.5 on the first game
+checked). On the full column set there are **zero** duplicates — a two-book
+consensus working as designed. The claim had already reached a merged PR, so it
+is corrected in place in `docs/STATUS.md` rather than deleted.
+
+**Week 0 is a week.** CFBD labels the Aug 29 openers and the Sep 5 slate both
+`week: 1` — 99 games over ten days and two Saturdays. Every surface keys on
+`week`, so that is not cosmetic: it put the Sep 5 Georgia opener on the same
+slate as games played the previous weekend, gave that slate seven day-tabs, and
+asked one freeze to price both weekends. `freezeJob`'s per-game horizon exists
+specifically to survive this; it stays correct and stops being load-bearing.
+
+The split goes at ingest, and is derived rather than dated: within an
+over-long regular-season week 1 (span > 8 days — a normal week is ~6), find the
+largest gap between consecutive kickoffs, and if it is at least 2 days, the
+earlier cluster is week 0. In seasons CFBD labels correctly, rule 2 never fires
+and it is a no-op. 2026's seam is a **4.83-day hole** before the Sep 3 kickoff:
+**8 games → week 0, 91 stay in week 1.** `0029` backfills the stored rows with
+the same rule expressed in SQL, and is idempotent — afterwards week 1 spans four
+days and the rule declines to fire.
+
+Two consequences worth naming. Eight route validators hardcoded `week >= 1` and
+would have 404'd or silently redirected the new slate — `UX-17` had aligned
+their numbers but left eight copies, so they are now one `src/lib/week-range.ts`.
+And the week selector offers Week 0 only when the season has one, via a `minWeek`
+flag on the already-cached season pointer rather than a ninth magic number.
+
+550 tests pass, `tsc` and lint clean. **Owner note:** the one `group_week_config`
+row is (2026, week 1) and keeps week 1, now the Sep 3–7 slate. A Week 0 board is
+a separate, deliberate act.
+
 ### Aug 12 — The backup could not fail, which is not the same as working
 
 No model change. `.github/workflows/jobs.yml`.

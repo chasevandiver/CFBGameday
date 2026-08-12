@@ -43,11 +43,14 @@ const SPREAD_RANGES = [
 export function SlateView({
   initial,
   currentWeek,
+  minWeek = 1,
   favoriteTeamIds = [],
   demo = false,
 }: {
   initial: SlateData;
   currentWeek: number;
+  /** 0 in seasons that have a Week 0 (CFBD merges it into week 1 — see scripts/lib/weeks.ts). */
+  minWeek?: number;
   /** Server-side favorites (/me) — pinned like local stars, roam across devices */
   favoriteTeamIds?: number[];
   /**
@@ -417,6 +420,7 @@ export function SlateView({
             week={week}
             seasonType={seasonType}
             currentWeek={currentWeek}
+            minWeek={minWeek}
             onChange={changeWeek}
             disabled={demo}
           />
@@ -663,12 +667,15 @@ function WeekSelect({
   week,
   seasonType,
   currentWeek,
+  minWeek = 1,
   onChange,
   disabled = false,
 }: {
   week: number;
   seasonType: "regular" | "postseason";
   currentWeek: number;
+  /** 0 when the season has a Week 0 — the last Saturday of August. */
+  minWeek?: number;
   onChange: (w: number | "post") => void;
   /** The demo holds one week. A control that changes nothing is worse than none. */
   disabled?: boolean;
@@ -684,7 +691,7 @@ function WeekSelect({
         }
         className="display h-8 appearance-none rounded-lg border border-chalk/12 bg-surface pl-3 pr-8 text-base text-chalk focus:border-accent/60 focus:outline-none disabled:opacity-60"
       >
-        {Array.from({ length: 16 }, (_, i) => i + 1).map((w) => (
+        {Array.from({ length: 16 + (1 - minWeek) }, (_, i) => i + minWeek).map((w) => (
           <option key={w} value={w}>
             Week {w}
             {w === currentWeek && seasonType === "regular" ? " ·" : ""}

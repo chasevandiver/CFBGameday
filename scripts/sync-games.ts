@@ -15,6 +15,7 @@ import { cfbd, cfbdCallCount } from "../src/lib/cfbd";
 import { logCfbdCalls, recordJobRun } from "./lib/jobs-core";
 import { DAY_MS, envDays, idleOverridden, msUntilNextGame } from "./lib/idle";
 import { SEASON, chunk, createSink } from "./lib/ingest";
+import { resolvedWeek, weekZeroIds } from "./lib/weeks";
 
 const MONDAY = 1;
 
@@ -73,10 +74,18 @@ async function run(
     if (!tvByGame.has(m.id)) tvByGame.set(m.id, m.outlet);
   }
 
+  // CFBD merges Week 0 into Week 1 in seasons like 2026 — 99 games over ten
+  // days and two Saturdays. Split it back out before anything stores a week,
+  // because every surface downstream keys on that number. No-op when the feed
+  // already labels Week 0 properly. See scripts/lib/weeks.ts.
+  const weekZero = weekZeroIds(games);
+  if (weekZero.size > 0)
+    console.log(`  week 0 split out of CFBD's week 1: ${weekZero.size} games`);
+
   const rows = games.map((g) => ({
     id: g.id,
     season_id: SEASON,
-    week: g.week,
+    week: resolvedWeek(g, weekZero),
     season_type: g.seasonType,
     start_ts: g.startDate,
     start_time_tbd: g.startTimeTBD,

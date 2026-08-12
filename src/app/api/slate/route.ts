@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { ACTIVE_GROUP_COOKIE, activeOfKind, resolveActiveGroup } from "../../../lib/groups";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../lib/queries";
 import { createClient } from "../../../lib/supabase/server";
+import { isValidWeek } from "../../../lib/week-range";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
   const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(supabase);
   const stParam = request.nextUrl.searchParams.get("st");
   const weekParam = Number(request.nextUrl.searchParams.get("week"));
-  const hasWeek = Number.isInteger(weekParam) && weekParam >= 1 && weekParam <= 20;
+  const hasWeek = isValidWeek(weekParam);
   const week = hasWeek ? weekParam : currentWeek;
   const st =
     stParam === "postseason" || stParam === "regular"
