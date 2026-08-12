@@ -47,6 +47,7 @@ import {
   type TeamRating,
 } from "../src/model/ratings";
 import { buildCoachTransitions } from "./lib/coaching";
+import { portalPoints, portalScale } from "./lib/portal";
 import {
   cached,
   chainPriors,
@@ -214,9 +215,13 @@ async function main() {
       if (t) portalNet.set(t.id, (portalNet.get(t.id) ?? 0) - stars);
     }
   }
-  const portalVals = [...portalNet.values()];
-  const pStd =
-    Math.sqrt(portalVals.reduce((a, b) => a + b * b, 0) / Math.max(portalVals.length, 1)) || 1;
+  // Standardize over the FBS teams the adjustment is applied to, centred on
+  // their mean — see scripts/lib/portal.ts for what each half of that fixes and
+  // for the headcount problem it deliberately does NOT fix.
+  const pScale = portalScale(
+    fbs.map((t) => t.id),
+    portalNet,
+  );
 
   // ---- 5. Luck inputs from 2025 results ------------------------------------
   const games2025 = seasons[2].games;
@@ -293,7 +298,7 @@ async function main() {
         returningProduction: retOverall ?? 0.6,
         qbReturns: ret && retPassing !== null ? retPassing >= 0.5 : null,
         olReturningShare: 0.5, // no data source — neutral (docs/SPEC.md §3 v2)
-        netPortalPoints: clamp(((portalNet.get(team.id) ?? 0) / pStd) * 1.5, -4, 4),
+        netPortalPoints: portalPoints(portalNet.get(team.id) ?? 0, pScale),
         blueChipFreshmen: 0,
         talentBaseline: tal,
       },

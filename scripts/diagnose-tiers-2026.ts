@@ -38,6 +38,7 @@ import {
   preseasonRating,
 } from "../src/model/ratings";
 import { buildCoachTransitions } from "./lib/coaching";
+import { portalPoints, portalScale } from "./lib/portal";
 import {
   FCS_RATING,
   cached,
@@ -164,9 +165,12 @@ async function main() {
       if (t) portalNet.set(t.id, (portalNet.get(t.id) ?? 0) - stars);
     }
   }
-  const portalVals = [...portalNet.values()];
-  const pStd =
-    Math.sqrt(portalVals.reduce((a, b) => a + b * b, 0) / Math.max(portalVals.length, 1)) || 1;
+  // Same standardization the build uses since the portal-scaling fix
+  // (scripts/lib/portal.ts): centred on the FBS mean, scaled by FBS SD.
+  const pScale = portalScale(
+    fbs.map((t) => t.id),
+    portalNet,
+  );
 
   const games2025 = seasons[2].games;
   interface LuckAgg {
@@ -220,7 +224,7 @@ async function main() {
         returningProduction: retOverall ?? 0.6,
         qbReturns: ret && retPassing !== null ? retPassing >= 0.5 : null,
         olReturningShare: 0.5,
-        netPortalPoints: clamp(((portalNet.get(team.id) ?? 0) / pStd) * 1.5, -4, 4),
+        netPortalPoints: portalPoints(portalNet.get(team.id) ?? 0, pScale),
         blueChipFreshmen: 0,
         talentBaseline: tal,
       },

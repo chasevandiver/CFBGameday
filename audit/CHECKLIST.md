@@ -130,7 +130,7 @@ explain themselves.
 - [ ] **04:§5** Run the 7 preseason smell tests on the first real `--top 40` table before/at load
 - [ ] **F2** Add `ANTHROPIC_API_KEY` secret + dispatch `verdicts` once (questions then runs Fridays)
 - [ ] **OPS-1b** Dispatch one deliberately-failing run; confirm who receives the failure email
-- [ ] **OPS-14b** Verify the real CFBD tier matches the hardcoded 30,000 budget
+- [x] **OPS-14b** Verify the real CFBD tier matches the hardcoded 30,000 budget — **Tier 2, 30,000/month, confirmed 2026-08-12.** Matches `scoreboard-loop.ts:28` exactly, against ~9–10k of estimated monthly use, so the 80%/95% throttles are calibrated to the real cap. No `CFBD_MONTHLY_BUDGET` override needed. **Volume was never the risk — entitlement is:** `/scoreboard` (Tier 1+) has never been called with this key, because every offseason poll exits via `idleSkip` first. `npm run probe:cfbd` / the `cfbd-probe` Actions task answers that now; see `audit/KICKOFF_READINESS.md` P0-5.
 - [ ] **09:§3** Re-verify current Supabase free-tier limits against the pricing page
 - [ ] **SEC-13** Decide TBD-kickoff pick policy (null `start_ts` = un-pickable + blind-hidden today) before Aug 29
 - [ ] **UX-32** Eyeball the matchup cards with real names on the first real Saturday

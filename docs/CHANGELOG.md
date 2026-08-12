@@ -245,6 +245,212 @@ mis-levelling.
 488 tests pass, including sign-convention pins for the G5-signed edge (the
 Toledo worked example is a test case) and `recenterTierGap` invariants
 (exact target gap, mean preservation, no within-pool reordering).
+### Aug 12 — The endpoint we bet the live layer on has never been called
+
+`audit/KICKOFF_READINESS.md`, then a probe for the one thing it couldn't
+settle.
+
+**The audit.** Read-only pass 18 days out from the openers. 472 tests, 118 DB
+assertions, tsc/lint/build all green, and — the result worth recording —
+**zero regressions**: every correctness fix from the August program landed once
+and was never overwritten, no migration re-grants anything a later one revoked,
+and there is still exactly one CFBD fetcher. 19 findings, none of them a defect
+in the model or the ledger.
+
+**Then the run logs moved three of them.** Reading `jobs.yml`'s 98 Actions runs
+resolved five of the six things the repo alone couldn't answer:
+
+| Was | Now |
+|---|---|
+| CFBD tier unverified vs a hardcoded 30k budget | Tier 2 / 30k against ~10k of use. `OPS-14b` closed. |
+| Has any scheduled job ever run? | 98 runs, 97 green. Secrets work, 2026 schedule ingested. |
+| Is the preseason blocked on several inputs? | **One**: 2026 talent. Returning production, portal, coaches, games, lines, SP+ all live. |
+| No Saturday line pass before 12:00 UTC ⇒ early kickoffs lose CLV | **Wrong.** `days_to_kickoff: 18.2` dates the first kick at ~Aug 29 14:48 UTC; the 12:00 pass is 2.8 h ahead of it, inside the 6 h stale-close guard. Downgraded P0→P2. |
+
+That last row is the lesson, and it is the same one the decisions table keeps
+teaching: **reason about a schedule, verify against the schedule.** The
+early-kickoff CLV loss was ranked the #1 launch blocker on a completely
+plausible reading of the cron table. One field in one job log disproved it.
+
+**What the logs could NOT see, and neither could `--check`.** `/scoreboard` is
+Tier 1+ and drives the whole live layer — scores, status transitions, the
+cover-flip detector. It has **never been called with this key**. Every
+scoreboard launch all summer exits through `idleSkip` before spending a call
+(the Aug 12 01:16 run's job step took *two seconds*), so on a season opening
+Aug 29 with `SCOREBOARD_IDLE_DAYS` at 2, its first real invocation lands Aug 27.
+Two days of runway to discover an entitlement problem.
+
+`build-preseason.ts --check` cannot cover this, and the reason is structural
+rather than an oversight: it probes preseason *inputs*, and the tier-gated
+endpoints are precisely the ones the preseason build never touches.
+
+**`scripts/probe-cfbd.ts`** (+ `scripts/lib/probe.ts`, 13 tests). 11 endpoints,
+all through `src/lib/cfbd.ts` — a diagnostic is not an exemption from SPEC §1's
+one-fetcher rule. The design decision is the four-way status:
+
+```
+DENIED  401/403  → buy a tier
+EMPTY   200, []  → wait for CFBD to publish
+ERROR   5xx/net  → CFBD is having a bad day
+OK
+```
+
+Collapsing DENIED and EMPTY into "no data" is how you spend $10 on the wrong
+problem, or wait three weeks for data that was never coming. Two supports for
+that split: historical probes run against `SEASON−1`, so EMPTY is unambiguous
+rather than "2026 hasn't happened yet"; and `/scoreboard` carries an
+`emptyIsHealthy` flag, because an empty board on a Wednesday is the correct
+answer and demanding rows from it in August would report a working key as
+broken.
+
+Exit code is non-zero only for a **required** endpoint — `/stats/game/advanced`
+is Tier 1+ but only feeds `--tune-epa`, which is rejected and sitting at
+`epaWeight` 0, so losing it must not turn a launch-week run red.
+
+Wired as the `cfbd-probe` dispatch task and as its own `always()` step beside
+the daily August `preseason-refresh` — deliberately not `&&`-chained onto it,
+because a declined refresh exits 0 on purpose and would have silently skipped
+the probe. Exactly the failure mode the probe exists to catch.
+
+**Also caught, from the env block printed in all 98 runs:** `ANTHROPIC_API_KEY`,
+`SUPABASE_DB_URL` and `HEALTHCHECK_PING_URL` are all empty. The first is the
+designated slip item. The second means **the append-only `predictions` / `picks`
+/ `bets` tables have no copy beyond a 7-day PITR window** — which is the exact
+thing the backup job was written to outlive. And the Aug 10 red run turns out to
+have been the watchdog working correctly against a cold `job_runs` table, which
+means `OPS-1b` (dispatch a deliberately-failing run, confirm who gets the email)
+already happened for free — the only open question is whether the email arrived.
+
+**The probe ran, and the answer is boring in the best way.** All 11 endpoints
+reachable on Tier 2, including both Tier 1+ ones — `/scoreboard` 889 rows,
+`/games/media` 103. No purchase, no code change, and the Aug 27 cliff is gone
+for 11 calls.
+
+It did teach us one thing nobody knew: **`/scoreboard` returns the whole season
+(889 rows), not just live games**, and takes no week parameter. `scoreboardJob`
+is already correct — it filters to `in_progress | completed` first and returns
+early — but every live poll pulls ~889 games, 120×/hour on a Saturday. A
+payload question rather than a call-count one, with no narrowing available.
+Worth watching in the load rehearsal.
+
+**And the backtest was re-run against the live key, because the audit was
+quoting this file as evidence for itself.** Full cold 2023–25 plus
+`--diagnose-edges`. Every claim reproduces:
+
+| | recorded here | live run |
+|---|---|---|
+| model margin MAE | 13.25 / 13.27 | **13.25 / 13.26** |
+| market margin MAE | 11.98 | **11.98** |
+| signed bias | +0.03 | **+0.03 ± 0.33** |
+| totals: model vs constant-57 | 13.09 vs 13.72 | **13.09 vs 13.72** |
+| encompassing b₁ / b₂ | 0.035 (t 0.84) / 0.987 (t 22.81) | **0.035 (t 0.83) / 0.985 (t 22.87)** |
+| n | 2611 | **2611** |
+| five tier tests | all fail | **all fail** |
+
+**A methodology finding, and it belongs in that section above.** Every figure
+that drifted is computed *from the market line* (edge-flag n 1801→1825, the 6–10
+bucket 53.5→53.8%, opener CLV +0.27→+0.26); every figure computed from our own
+model was exact. The cause is that **the backtest is not bit-reproducible —
+CFBD backfills `/lines`**, so the multi-book consensus shifts between runs and
+reshuffles marginal games across edge buckets. Magnitudes are ~1% and no verdict
+moves. But it means a future run differing in the third significant figure is
+**not** a regression, and nothing said so until now. If it ever matters, commit
+a hash of `.backtest-cache/lines-*.json` beside a recorded result.
+
+Two things the summary tables hide, both relevant to opening weekend:
+
+- **Weeks 1–2 margin MAE is 14.27 against a pooled 13.25.** The model is a full
+  point worse on exactly the weekend we launch. Expected — in week 1 the rating
+  *is* the preseason prior — but it is the honest number to set expectations
+  against, not the season average.
+- **The `--tune-sigma` rejection is visible in the standard report.** Weeks 1–2
+  fit σ 18.08 against a pooled 16.67, which looks like an argument for widening
+  until you read the next column: weeks 1–2 NLL is **0.3526**, far better than
+  weeks 5–8 at 0.5677. Exactly the cupcake-blowout mechanism the decisions table
+  describes — huge residuals against near-certain winners. Flat sigma stays.
+- One caveat on framing: totals beat the constant-57 strawman (13.09 vs 13.72)
+  and that is what they shipped on, but against the **market** they lose,
+  12.51 to 13.09, in every week segment. "Beats a constant" and "is good" are
+  different claims and only the first is supported. Consistent with O/U leans
+  staying unflagged.
+
+No model change from the audit or the probe; `DEFAULT_PARAMS` is untouched by
+either. The portal fix below is a different matter.
+
+### Aug 12 — The portal term was counting suitcases, not players
+
+Found by eyeballing the ratings table — *"Vanderbilt above Texas, South Florida
+above Alabama"* — which is worth recording, because **no automated check in this
+repo would have caught it.** The unit tests pass, the DB assertions pass, the
+backtest reproduces. A human looked at a list of teams and said "that's wrong."
+
+The two named examples turned out to be the stale 2026.2.0 production build
+(Texas is 11th and above Vanderbilt at 2026.4.1; Alabama 22nd and above USF).
+But the instinct was right, and the cause was not the SP+ carry it was aimed at.
+
+`churnAdjustment` takes `netPortalPoints` in rating points, so the builder
+converted net star count with what was meant to be a z-score. **Both halves were
+wrong.**
+
+**Wrong population.** The divisor was computed over every school appearing
+anywhere in the portal feed — 417 of them for 2026, only 138 FBS. The other 279
+are FCS/D2 programs with small net movements, and they compress the spread:
+
+| pool | n | mean | SD | RMS (as coded) |
+|---|---|---|---|---|
+| all schools (used) | 417 | −6.4 | 14.9 | **16.2** |
+| **FBS only (where it is applied)** | **138** | **−6.9** | **21.6** | 22.7 |
+
+FBS teams absent from the feed were dropped from the pool entirely, when their
+true value is 0 and they belong at its centre.
+
+**Wrong statistic.** `sqrt(Σv²/n)` is RMS about zero, not a standard deviation,
+and nothing subtracted the mean. The mean is −6.9 because ~22% of entries (976
+of 4,439) have no destination yet, so their origin is debited and nobody is
+credited. *That debit is correct* — a player who enters the portal is gone
+whether or not he has signed. Treating the resulting negative mean as zero is
+not: **the average FBS team carried a −0.59 point penalty for an unremarkable
+off-season.**
+
+Together: the term was ~33% too large and shifted. A uniform shift cancels in a
+spread; this one scaled with outflow, so it taxed whoever lost the most players.
+**8 of 138 teams pinned at the ±4 clamp** — Florida State −68, Oregon −58, Ohio
+State −55, Michigan State −53, South Alabama −51. Ohio State sent 37 out and
+brought 17 in, almost all 3-star: −5.09, clamped to −4. Four rating points for
+shedding buried backups.
+
+`scripts/lib/portal.ts` (`portalScale`/`portalPoints`, 10 tests) centres on the
+mean and scales by the SD over exactly the 138 FBS teams the adjustment reaches.
+Clamped teams **8 → 1** (only Florida State).
+
+| | before | after |
+|---|---|---|
+| Ohio State | 20.9 (2nd), churn −2.8 | **21.6 (1st)**, churn −2.1 |
+| Alabama | 9.0 (22nd), churn −3.6 | 9.9 (22nd), churn −2.8 |
+| Penn State | 10.4 (16th), churn −5.4 | 11.5 (14th), churn −4.3 |
+| Vanderbilt | 10.7 (14th) | 11.3 (**16th**) |
+| South Florida | 7.1 (29th) | 7.1 (**30th**) |
+
+**What this deliberately does NOT fix.** 91% of portal entries are 2- or 3-star
+(3,470 threes, 122 twos, 579 null→2; only 268 are 4/5-star), so the signal is
+**headcount, not talent** — ~0.28 points per net player, and a team shedding 20
+backups scores like one losing 20 starters. Only weighting by production, or by
+the `rating` field the builder ignores (present on 65% of entries — `04/DQ-12`),
+can tell those apart. That is a design question for `--tune-churn`, and patching
+it silently alongside a defect fix would break the gating rule in `AGENTS.md`.
+
+**This is a bug fix, not a parameter change, so it gets no decisions-table row —
+but it invalidates one.** `returningProdWeight = 6` and `talentReloadStrength =
+1` were fitted by `--tune-churn` against the broken input, so they are now fitted
+on something that no longer exists. **`--tune-churn` should re-run before Aug
+29**, and given that its recorded gain was already inside the ~0.25 SE
+("a harmful setting was removed", not "churn improved"), the honest outcome may
+be `netPortalPoints = 0`. Every other unearned parameter here sits at an
+identity default.
+
+Caveat for whoever re-tunes: `replaySeason` never calls `churnAdjustment` —
+churn enters only through `build-preseason.ts` for the 2026 prior. Read how
+`tuneChurn` builds its evaluation before trusting a new number from it.
 
 ### Aug 11 — The demo stops offering exits that don't exist, and gets a link card
 
