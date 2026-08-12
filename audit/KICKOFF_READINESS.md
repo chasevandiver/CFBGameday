@@ -297,6 +297,52 @@ HEALTHCHECK_PING_URL:
 The LLM one is the designated slip item and is a decision, not a defect. **The backup is not** — 18 days from launch, the irreplaceable tables are unbacked.
 **Estimate:** 1h for all three (create a healthchecks.io project, paste two connection strings).
 
+### P1-10. The net-portal signal was standardized against the wrong population, with the wrong statistic
+**Classification:** BUG · **Evidence:** `scripts/build-preseason.ts:216-218` (pre-fix) · **Opened and fixed 2026-08-12**
+**Found by the owner eyeballing the ratings table** — "Vanderbilt above Texas, South Florida above Alabama" — which is worth recording, because no automated check in this repo would have caught it.
+
+`churnAdjustment` takes `netPortalPoints` already in rating points, so the builder converted net star count with what was meant to be a z-score:
+
+```ts
+const portalVals = [...portalNet.values()];
+const pStd = Math.sqrt(portalVals.reduce((a, b) => a + b * b, 0) / Math.max(portalVals.length, 1)) || 1;
+…
+netPortalPoints: clamp(((portalNet.get(team.id) ?? 0) / pStd) * 1.5, -4, 4)
+```
+
+**Both halves of the standardization were wrong.**
+
+1. **Wrong population.** `portalNet` is keyed by any school appearing anywhere in the portal feed — **417 schools for 2026, of which only 138 are FBS**. The other 279 are FCS/D2 programs with small net movements, and they compress the divisor. Measured on the live 2026 feed:
+
+   | pool | n | mean | SD | RMS (as coded) |
+   |---|---|---|---|---|
+   | all schools (used) | 417 | −6.4 | 14.9 | **16.2** |
+   | **FBS only (where it is applied)** | **138** | **−6.9** | **21.6** | 22.7 |
+
+   FBS teams *absent* from the feed were also dropped from the pool entirely, when their true value is 0 and they belong at its centre.
+
+2. **Wrong statistic.** `sqrt(Σv²/n)` is RMS about zero, not a standard deviation, and nothing subtracted the mean. The 2026 FBS mean is **−6.9 stars** — strongly negative because ~22% of entries (976 of 4,439) have no destination yet, so their origin is debited and no school is credited. *That debit is correct* — a player who enters the portal is gone whether or not he has signed. What is not correct is treating the resulting negative mean as zero: **the average FBS team carried a −0.59 point penalty for having a completely unremarkable off-season.**
+
+Net effect: the term was **~33% too large** (divisor 16.2 against a true 21.6) **and shifted**. A uniform shift would cancel in a spread (home − away); this one scaled with outflow, so it did not cancel — it taxed whoever lost the most players.
+
+**Blast radius, measured.** 8 of 138 FBS teams were pinned at the ±4 clamp — **Florida State −68, Oregon −58, Ohio State −55, Michigan State −53, South Alabama −51.** Ohio State sent 37 players out and brought 17 in, almost all 3-star, and was scored −5.09 → clamped to −4: four full rating points for shedding buried backups.
+
+**Fixed.** `scripts/lib/portal.ts` (`portalScale` / `portalPoints`, 10 tests), called from `build-preseason.ts`. Centred on the mean, scaled by the SD, over exactly the 138 FBS teams the adjustment is applied to. Clamped teams: **8 → 1** (only Florida State still saturates).
+
+| | before | after |
+|---|---|---|
+| Ohio State | 20.9 (2nd), churn −2.8 | **21.6 (1st)**, churn −2.1 |
+| Alabama | 9.0 (22nd), churn −3.6 | 9.9 (22nd), churn −2.8 |
+| Penn State | 10.4 (16th), churn −5.4 | 11.5 (14th), churn −4.3 |
+| Vanderbilt | 10.7 (14th) | 11.3 (**16th**) |
+| South Florida | 7.1 (29th) | 7.1 (**30th**) |
+
+**What this does NOT fix, deliberately.** 91% of the 4,439 portal entries are 2- or 3-star (3,470 threes, 122 twos, 579 null defaulted to 2; only 268 are 4/5-star). So the signal is dominated by **headcount, not talent** — ~0.28 rating points per net player. A team shipping 20 buried backups scores identically to one losing 20 starters. Only weighting by production, or by the `rating` field the builder currently ignores (present on 65% of entries — `04/DQ-12`), can see that difference. **That is a design question for `--tune-churn`, not a bug**, and patching it silently alongside a defect fix would violate the gating rule in `AGENTS.md`.
+
+**Two consequences for §9-Q8 below.** First, this changes the input distribution `--tune-churn` fit `returningProdWeight = 6` and `talentReloadStrength = 1` against, so those values are now fitted on a superseded input and **the tuner should re-run before launch**. Second, the changelog already records churn's fitted gain (~0.002 NLL / 0.19 MAE) as *inside* the ~0.25 SE, with the defensible claim being only "a harmful setting was removed" — so a re-run may well conclude the whole term belongs at an identity default.
+
+**Caveat for whoever re-tunes:** `replaySeason` never calls `churnAdjustment`; churn enters only through `build-preseason.ts` for the 2026 prior. Read how `tuneChurn` constructs its evaluation before trusting a new number from it.
+
 ### P1-5. `/ratings` has no empty state
 **Classification:** WEAKNESS · **Evidence:** `src/app/ratings/page.tsx:38-39`, `src/components/RatingsTable.tsx:137`
 
@@ -677,6 +723,10 @@ Replaced by **Q2′: does Tier 2 grant `/scoreboard`?** Volume was never the ris
 **Q6. TBD kickoffs (`start_ts` null) — `SEC-13`, due before Aug 29.**
 Today a null `start_ts` is un-pickable (`0021:200`), un-removable (`:255`), stays blind (`0023:30`), gets **no** close and therefore no CLV (`jobs-core.ts:84-85`), but **does** get frozen (`jobs-core.ts:1006`).
 → **Recommended: keep exactly as-is.** Every branch fails closed, which is the right default for a security boundary and a receipt. The only cost is that a TBD game is un-pickable until CFBD firms the time, which `sync-games` does daily.
+
+**Q8. Re-run `--tune-churn` before Aug 29, or ship churn at an identity default?**
+The P1-10 fix changed the input distribution that `returningProdWeight = 6` and `talentReloadStrength = 1` were fitted against, so both are now fitted on a superseded input.
+→ **Recommended: re-run `--tune-churn`, and set `netPortalPoints = 0` if it doesn't clear its bar.** The changelog already grades churn's gain as inside the standard error — "a harmful setting was removed", not "churn improved". With the portal half now measuring headcount on a corrected scale rather than headcount on a broken one, the honest outcome may still be that this term doesn't earn its place. Every other unearned parameter in this repo sits at an identity default; churn shouldn't get an exemption for being older. One backtest run, ~16 calls, and the answer goes in the decisions table either way.
 
 **Q7. Delete the dead edge function?**
 → **Recommended: yes, delete `supabase/functions/jobs/`.** It has inverted CLV in all four branches and is 4 versions behind `jobs-core.ts`. `05:C5` calls it "a deliberate tombstone decision" — but a tombstone with a live landmine in it is worse than no tombstone. The git history preserves it. 0.5h. Say no and I will leave it and add a `DO NOT DEPLOY` banner instead.

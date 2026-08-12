@@ -270,7 +270,83 @@ Two things the summary tables hide, both relevant to opening weekend:
   different claims and only the first is supported. Consistent with O/U leans
   staying unflagged.
 
-No model change; no decisions-table row. `DEFAULT_PARAMS` is untouched.
+No model change from the audit or the probe; `DEFAULT_PARAMS` is untouched by
+either. The portal fix below is a different matter.
+
+### Aug 12 — The portal term was counting suitcases, not players
+
+Found by eyeballing the ratings table — *"Vanderbilt above Texas, South Florida
+above Alabama"* — which is worth recording, because **no automated check in this
+repo would have caught it.** The unit tests pass, the DB assertions pass, the
+backtest reproduces. A human looked at a list of teams and said "that's wrong."
+
+The two named examples turned out to be the stale 2026.2.0 production build
+(Texas is 11th and above Vanderbilt at 2026.4.1; Alabama 22nd and above USF).
+But the instinct was right, and the cause was not the SP+ carry it was aimed at.
+
+`churnAdjustment` takes `netPortalPoints` in rating points, so the builder
+converted net star count with what was meant to be a z-score. **Both halves were
+wrong.**
+
+**Wrong population.** The divisor was computed over every school appearing
+anywhere in the portal feed — 417 of them for 2026, only 138 FBS. The other 279
+are FCS/D2 programs with small net movements, and they compress the spread:
+
+| pool | n | mean | SD | RMS (as coded) |
+|---|---|---|---|---|
+| all schools (used) | 417 | −6.4 | 14.9 | **16.2** |
+| **FBS only (where it is applied)** | **138** | **−6.9** | **21.6** | 22.7 |
+
+FBS teams absent from the feed were dropped from the pool entirely, when their
+true value is 0 and they belong at its centre.
+
+**Wrong statistic.** `sqrt(Σv²/n)` is RMS about zero, not a standard deviation,
+and nothing subtracted the mean. The mean is −6.9 because ~22% of entries (976
+of 4,439) have no destination yet, so their origin is debited and nobody is
+credited. *That debit is correct* — a player who enters the portal is gone
+whether or not he has signed. Treating the resulting negative mean as zero is
+not: **the average FBS team carried a −0.59 point penalty for an unremarkable
+off-season.**
+
+Together: the term was ~33% too large and shifted. A uniform shift cancels in a
+spread; this one scaled with outflow, so it taxed whoever lost the most players.
+**8 of 138 teams pinned at the ±4 clamp** — Florida State −68, Oregon −58, Ohio
+State −55, Michigan State −53, South Alabama −51. Ohio State sent 37 out and
+brought 17 in, almost all 3-star: −5.09, clamped to −4. Four rating points for
+shedding buried backups.
+
+`scripts/lib/portal.ts` (`portalScale`/`portalPoints`, 10 tests) centres on the
+mean and scales by the SD over exactly the 138 FBS teams the adjustment reaches.
+Clamped teams **8 → 1** (only Florida State).
+
+| | before | after |
+|---|---|---|
+| Ohio State | 20.9 (2nd), churn −2.8 | **21.6 (1st)**, churn −2.1 |
+| Alabama | 9.0 (22nd), churn −3.6 | 9.9 (22nd), churn −2.8 |
+| Penn State | 10.4 (16th), churn −5.4 | 11.5 (14th), churn −4.3 |
+| Vanderbilt | 10.7 (14th) | 11.3 (**16th**) |
+| South Florida | 7.1 (29th) | 7.1 (**30th**) |
+
+**What this deliberately does NOT fix.** 91% of portal entries are 2- or 3-star
+(3,470 threes, 122 twos, 579 null→2; only 268 are 4/5-star), so the signal is
+**headcount, not talent** — ~0.28 points per net player, and a team shedding 20
+backups scores like one losing 20 starters. Only weighting by production, or by
+the `rating` field the builder ignores (present on 65% of entries — `04/DQ-12`),
+can tell those apart. That is a design question for `--tune-churn`, and patching
+it silently alongside a defect fix would break the gating rule in `AGENTS.md`.
+
+**This is a bug fix, not a parameter change, so it gets no decisions-table row —
+but it invalidates one.** `returningProdWeight = 6` and `talentReloadStrength =
+1` were fitted by `--tune-churn` against the broken input, so they are now fitted
+on something that no longer exists. **`--tune-churn` should re-run before Aug
+29**, and given that its recorded gain was already inside the ~0.25 SE
+("a harmful setting was removed", not "churn improved"), the honest outcome may
+be `netPortalPoints = 0`. Every other unearned parameter here sits at an
+identity default.
+
+Caveat for whoever re-tunes: `replaySeason` never calls `churnAdjustment` —
+churn enters only through `build-preseason.ts` for the 2026 prior. Read how
+`tuneChurn` builds its evaluation before trusting a new number from it.
 
 ### Aug 11 — The demo stops offering exits that don't exist, and gets a link card
 
