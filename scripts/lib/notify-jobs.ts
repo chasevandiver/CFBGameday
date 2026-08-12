@@ -133,6 +133,16 @@ export async function notifyPicksDueJob(db: SupabaseClient): Promise<Json> {
 }
 
 /**
+ * A wave's stable identity: its date and UTC hour. Two runs looking at the same
+ * kickoff wave agree on this even when they disagree about which of its games
+ * has yet to start.
+ */
+function waveKey(kickoff: string): string {
+  const d = new Date(kickoff);
+  return `${d.toISOString().slice(0, 10)}:${d.getUTCHours()}`;
+}
+
+/**
  * "Log your bets", to betting groups shortly before a Saturday kickoff wave.
  *
  * Betting groups only — `groups.kind = 'betting'`, the same flag
@@ -168,9 +178,9 @@ export async function notifyLogBetsJob(db: SupabaseClient): Promise<Json> {
     groups: { name: string; slug: string };
   };
 
-  // One notification per group per wave, keyed on the wave's earliest kickoff —
-  // so the three Saturday waves are three separate subjects and each sends
-  // once, however many crons or games are involved.
+  // ONE notification per group per wave — never one per game. The body names
+  // the group and the time and says nothing about which games are unlogged,
+  // because this is a reminder to open the sheet, not a checklist.
   const waves = new Map<
     string,
     { group_id: string; name: string; slug: string; season_id: number; week: number; kickoff: string }
@@ -211,7 +221,13 @@ export async function notifyLogBetsJob(db: SupabaseClient): Promise<Json> {
           db,
           member.user_id,
           "log_bets",
-          `bets:${wave.group_id}:${wave.season_id}:${wave.week}:${wave.kickoff}`,
+          // Keyed on the wave, not on the earliest kickoff still in the
+          // window. Those differ: a run that lags past the first game filters
+          // it out as already-started, the "earliest" becomes the next game,
+          // and a kickoff-keyed subject would let a second notification
+          // through for the wave it already covered. The UTC hour is stable
+          // across every run that can see the same wave.
+          `bets:${wave.group_id}:${waveKey(wave.kickoff)}`,
           {
             title: fill(settings.title, { group: wave.name, kickoff }),
             body: fill(settings.body, { group: wave.name, kickoff }),

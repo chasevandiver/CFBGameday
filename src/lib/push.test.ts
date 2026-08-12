@@ -74,6 +74,25 @@ describe("fill", () => {
   });
 });
 
+describe("blanket notifications", () => {
+  it("keys a wave by date and hour, not by which game is still upcoming", () => {
+    // Regression: the subject used to carry the earliest kickoff still in the
+    // window. A run that lagged past the first game filtered it out, promoted
+    // the next one, and produced a different subject — a second "log your
+    // bets" for a wave already covered. The reminder is one per wave, always.
+    const waveKey = (kickoff: string) => {
+      const d = new Date(kickoff);
+      return `${d.toISOString().slice(0, 10)}:${d.getUTCHours()}`;
+    };
+    // Two games in the 16:00 UTC wave; either could be "earliest".
+    expect(waveKey("2026-09-05T16:00:00Z")).toBe(waveKey("2026-09-05T16:15:00Z"));
+    // A different wave the same day is still distinct.
+    expect(waveKey("2026-09-05T16:00:00Z")).not.toBe(waveKey("2026-09-05T19:30:00Z"));
+    // And so is the same wave a week later.
+    expect(waveKey("2026-09-05T16:00:00Z")).not.toBe(waveKey("2026-09-12T16:00:00Z"));
+  });
+});
+
 describe("sendToUser", () => {
   it("treats a unique violation on the receipt as already-sent", async () => {
     const { db, recorded } = stubDb({

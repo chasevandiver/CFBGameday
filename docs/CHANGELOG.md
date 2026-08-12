@@ -189,6 +189,15 @@ slack lets a prompt run still land ~15 minutes out, and a badly delayed run
 sends **nothing** rather than telling someone to log a bet on a game already
 playing. Missing is the right way for this one to fail.
 
+The reminder is **one push per group per wave** — three on a Saturday, not one
+per unlogged game. The body names the group and the time and says nothing about
+which games are missing, because this is a nudge to open the sheet, not a
+checklist. The subject is keyed on the wave's date and UTC hour rather than on
+the earliest kickoff still in the window: those differ, because a run that lags
+past the first game filters it out as already-started and promotes the next one,
+which under a kickoff-keyed subject would let a second notification through for
+a wave already covered.
+
 Split across two migrations because Postgres will not let a new enum value be
 used in the transaction that adds it, and 0033 seeds a row keyed on the value
 0032 creates. One file fails with "unsafe use of new value".
