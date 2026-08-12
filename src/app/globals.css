@@ -116,6 +116,72 @@ html[data-theme="light"] {
   --glass-floor: transparent;
 }
 
+/* ---- Field: the brand palette, as a third mode --------------------------
+   docs/BRAND.md §5. Charcoal dark and light are the product's own two themes
+   and are untouched; this is the identity palette offered alongside them, so
+   the app can be made to match its own icon without that being forced on
+   anyone. Everything below is an override of the dark defaults above. */
+html[data-theme="field"] {
+  color-scheme: dark;
+
+  --bg: #020a08;
+  /* Raised field green, taken down from the brand's #0e3b2c: that value is
+     specified for a card, and a card is small. Spread across a slate of them
+     it turns the page into a green wash and breaks the 60/25 ratio §6 asks
+     for — the product should read dark first, green second. */
+  --surface: #0b2e23;
+  /* One quiet step above the card, not a jump. --elev is what the odds cells
+     are made of, and at the brand's raised green every cell read as pressed.
+     Selection is gold's job. */
+  --elev: #113c2e;
+  --line: rgba(244, 239, 226, 0.13);
+  --line-strong: rgba(244, 239, 226, 0.24);
+  --text: #f4efe2;
+  --text-dim: #8fa79b;
+  --accent: #e8b93d;
+  --accent-ink: #020a08;
+  /* --live stays red. §35 asks for a gold pulse or a restrained green
+     indicator and both are wrong here: gold is this product's value language
+     and green reads as a win, so either would make a kicking-off game look
+     like a graded pick. */
+  --live: #ff4b57;
+  --win: #35a46f;
+  --loss: #e4572e;
+  --push: #7e958a;
+  --edge-c: #e8b93d;
+
+  --glass-surface: color-mix(in srgb, var(--surface) 80%, transparent);
+  --glass-edge: rgba(244, 239, 226, 0.16);
+  /* Navigation and headers are field green, not the page's near-black (§5) —
+     which is what keeps the header a surface rather than a hole. */
+  --glass-bar: color-mix(in srgb, #08251c 82%, transparent);
+}
+
+/* Graduate is the brand's display face (§12). It is loaded always but only
+   takes effect here, so the default themes keep the condensed face the product
+   was designed around. One weight, no faux bold, and the tracking comes down
+   because Graduate is considerably wider. */
+html[data-theme="field"] h1,
+html[data-theme="field"] h2,
+html[data-theme="field"] .display {
+  font-family: var(--font-display-brand), var(--font-body), sans-serif;
+  letter-spacing: 0.005em;
+  font-weight: 400;
+}
+
+/* Two things stay off the display face even here. Scores are numbers, and §12
+   puts every number on the mono — Graduate has no tabular figures and a
+   varsity ornament on the 1 that has no business in a live score. The cover
+   word is italic, and Graduate has none. */
+html[data-theme="field"] .scorebug {
+  font-family: var(--font-numeric), monospace;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+html[data-theme="field"] .cover-word {
+  font-family: var(--font-body), sans-serif;
+}
+
 @theme inline {
   --color-background: var(--bg);
   --color-surface: var(--surface);

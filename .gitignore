@@ -42,3 +42,6 @@ next-env.d.ts
 
 # backtest data cache
 .backtest-cache/
+
+# brand asset build: downloaded OFL fonts, re-fetched on demand
+.brand-cache/

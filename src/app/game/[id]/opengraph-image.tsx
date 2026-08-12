@@ -1,4 +1,6 @@
 import { ImageResponse } from "next/og";
+import { BRAND } from "../../../lib/brand";
+import { SLATE_MARK_ASPECT, SLATE_MARK_DATA_URI } from "../../../lib/brand-mark-data";
 import { createClient } from "../../../lib/supabase/server";
 import { consensusFromSnapshots } from "../../../lib/consensus";
 import { fmtSpread } from "../../../lib/slate";
@@ -22,16 +24,19 @@ export default async function Image({ params }: { params: Promise<{ id: string }
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        background: "#12100D",
-        color: "#F2EEE5",
+        background: BRAND.nearBlack,
+        color: BRAND.chalk,
         textAlign: "center",
         padding: "80px",
       }}
     >
       <div style={{ fontSize: 84, fontWeight: 800 }}>{main}</div>
-      {sub ? <div style={{ fontSize: 40, color: "#A89F90", marginTop: 20 }}>{sub}</div> : null}
-      <div style={{ fontSize: 28, letterSpacing: 4, color: "#F2B63C", marginTop: 40, textTransform: "uppercase" }}>
-        The CFB Slate
+      {sub ? <div style={{ fontSize: 40, color: "#8FA79B", marginTop: 20 }}>{sub}</div> : null}
+      <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 40 }}>
+        <img src={SLATE_MARK_DATA_URI} height={46} width={Math.round(46 * SLATE_MARK_ASPECT)} alt="" />
+        <div style={{ fontSize: 28, letterSpacing: 4, color: BRAND.gold, textTransform: "uppercase" }}>
+          The CFB Slate
+        </div>
       </div>
     </div>
   );
@@ -80,22 +85,25 @@ export default async function Image({ params }: { params: Promise<{ id: string }
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          background: "#12100D",
-          color: "#F2EEE5",
+          background: BRAND.nearBlack,
+          color: BRAND.chalk,
           padding: "70px",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 40, fontSize: 130, fontWeight: 800 }}>
           <span>{away}</span>
-          <span style={{ fontSize: 60, color: "#A89F90" }}>@</span>
+          <span style={{ fontSize: 60, color: "#8FA79B" }}>@</span>
           <span>{home}</span>
         </div>
-        <div style={{ fontSize: 44, color: "#F2B63C", marginTop: 36 }}>
+        <div style={{ fontSize: 44, color: BRAND.gold, marginTop: 36 }}>
           {spread ?? "line pending"}
         </div>
-        <div style={{ fontSize: 34, color: "#A89F90", marginTop: 16 }}>{kick}</div>
-        <div style={{ fontSize: 26, letterSpacing: 4, color: "#F2EEE5", marginTop: 44, textTransform: "uppercase", opacity: 0.6 }}>
-          The CFB Slate
+        <div style={{ fontSize: 34, color: "#8FA79B", marginTop: 16 }}>{kick}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 44, opacity: 0.72 }}>
+          <img src={SLATE_MARK_DATA_URI} height={44} width={Math.round(44 * SLATE_MARK_ASPECT)} alt="" />
+          <div style={{ fontSize: 26, letterSpacing: 4, color: BRAND.chalk, textTransform: "uppercase" }}>
+            The CFB Slate
+          </div>
         </div>
       </div>
     ),

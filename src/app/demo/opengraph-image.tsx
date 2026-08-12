@@ -16,13 +16,16 @@ export const alt = "The CFB Slate — a live demo with invented games and invent
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-const BG = "#12100D";
-const SURFACE = "#241D16";
-const TEXT = "#F2EEE5";
-const DIM = "#A89F90";
-const ACCENT = "#F2B63C";
-const WIN = "#34C77B";
-const LOSS = "#F0616D";
+// The brand palette, mirroring the runtime tokens in globals.css. Literal here
+// rather than imported from CSS because this renders on the edge with no
+// stylesheet — but they must move together.
+const BG = "#020A08";
+const SURFACE = "#0B2E23";
+const TEXT = "#F4EFE2";
+const DIM = "#8FA79B";
+const ACCENT = "#E8B93D";
+const WIN = "#35A46F";
+const LOSS = "#E4572E";
 
 /** One team's line in the mock scorebug, on its own colour rail. */
 function Row({

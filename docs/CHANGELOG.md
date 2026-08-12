@@ -165,6 +165,241 @@ shipping it.
 
 ## Log
 
+### Aug 12 — Field becomes a third theme, not a replacement
+
+Correction to the entry below. The palette and the display face were applied to
+the whole product; they should have been offered, not imposed. Dark and light
+are back to exactly what they were — charcoal tokens, Barlow Condensed
+headings, the scorebug on the condensed face, `.cover-word` italic. The brand
+palette now lives behind `html[data-theme="field"]`, and the toggle cycles
+**dark → light → field**.
+
+Everything the Field theme changes is an override in one block: the tokens, the
+glass bar (field green, so the header is a surface and not a hole), and three
+type rules — Graduate for headings, Plex Mono for `.scorebug`, Archivo for
+`.cover-word`. Graduate loads always but only binds under that selector, so the
+default themes are byte-for-byte the design they were.
+
+`useLightTheme` becomes `useTheme`, returning the current theme, a setter and a
+cycle. The pre-paint script in the layout now accepts `light` or `field` rather
+than testing for one string, so a saved Field choice does not flash charcoal
+first. The toggle shows where you *are* rather than where you are going — three
+states need a legend, and the Slate S is the one that needs no explaining.
+
+`theme-color` goes back to the app's own `#100e0b`: a media query cannot know
+which of three themes a reader picked, so it tracks the OS default. The launch
+chrome in `manifest.ts` stays on the brand near-black, which is what the icon
+sits on.
+
+What stays from the recolour: the traced vector mark and its lockup in the nav,
+every icon and startup image, and the three share cards, which are standalone
+brand surfaces rather than app UI.
+
+**BRAND-2, BRAND-3 and BRAND-5 are reopened as an opt-in theme rather than the
+default**, which is what they now are in `docs/STATUS.md`.
+
+### Aug 12 — A traced vector, and the app finally matches its own icon
+
+**Partly superseded the same day — see above.** The vector and the nav lockup
+stand; the palette and the display face were reverted to opt-in.
+
+Three things, in the order they unblock each other.
+
+**1. A vector, traced rather than drawn.** `scripts/trace-brand-mark.ts` walks
+the boundary between lit and unlit pixels in the supplied artwork and chains the
+resulting edges into closed loops — outer contour and both counters in one pass
+— then Douglas–Peucker straightens the staircase into the letter's real edges.
+Every vertex comes off the owner's pixels, so the letterform is exact; the check
+is to render both paths translucent on top of the source at full size and see
+the S disappear underneath them.
+
+Separating the seam from the letter took three tries, and the failures are worth
+recording. Distance-from-the-edge does not work: the blade is drawn *along* the
+letter's diagonal edge, so no gold pixel is more than 15 units from a boundary.
+"Everything that isn't chalk" does not work either — the gold extrude is also
+not chalk. What works is connected components with two tests: the seam is the
+only gold blob whose box spans nearly the letter's full width *and* straddles
+its vertical centre. The extrude sits along the bottom, around a counter, or in
+the notch, and each fails one. The gold test itself had to be loosened well past
+a saturation cut — tight enough to exclude chalk also drops the lit tops of the
+laces, which is how an earlier pass traced the blade's darkest edge and nothing
+else, producing a hairline where a football seam should be.
+
+`<SlateMark>` renders the two paths with the letter on `currentColor`, which is
+what makes it legal on the light theme, and the seam pinned to `--accent`. It is
+back in the nav lockup. **BRAND-6 closed.**
+
+**2. The palette.** `globals.css` is on the brand tokens. Two values are
+deliberately not what §5 prints:
+
+- `--surface` is `#0b2e23`, not the brand's raised green `#0e3b2c`. That value is
+  specified for *a card*, and a card is small; spread across a slate of them it
+  turns the page into a green wash and breaks the 60/25 ratio §6 asks for. Dark
+  first, green second.
+- `--elev` is a quiet step above the card rather than a jump. It is what the odds
+  cells are made of, and at the brand's raised green every cell read as pressed.
+  Selection is gold's job.
+
+`--live` stays red. §35 asks for a gold pulse or a restrained green indicator and
+both are wrong here: gold is this product's value language and green reads as a
+win, so either would make a kicking-off game look like a graded pick. Recorded
+rather than quietly ignored.
+
+**3. Typography.** Graduate is the display face — one weight, no faux bold, and
+tracking cut because it is much wider than the condensed face it replaced. Two
+things moved *off* the display face rather than onto it: `.scorebug`, which is
+numbers and therefore Plex Mono per §12 (Graduate has no tabular figures and a
+varsity ornament on the 1 that has no business in a live score; negative tracking
+claws back the width a mono costs in a dense row), and `.cover-word`, which is
+italic — Graduate has none, and a synthesised slant at 13px is mush. Barlow
+Condensed is gone entirely, so the app loads three faces, not four.
+
+Both share cards and the demo card move to the brand palette with the traced
+stamp. Verified by screenshot at 420px in both themes: the light theme is the
+same relationships inverted — chalk becomes the ground, field green the ink, and
+gold darkens until it clears contrast on it.
+
+**BRAND-2, BRAND-3, BRAND-5 and BRAND-6 close.** Still open: **BRAND-4** (install
+on real hardware — the row test needs a phone) and **BRAND-7** (a layered vector
+master; a trace is a silhouette and carries no bevel, grain or rim light).
+
+### Aug 12 — The icon was supplied; I should have used it
+
+Correction to the entry below. The first pass rebuilt the Slate S as vector
+geometry — a block S with a horizontal middle bar, then a redraw with a diagonal
+spine, a stroked bevel and a turbulence grain. Both were recreations of artwork
+that already existed, and both were visibly off: the counters, the bevel, the
+rim light and the chalk texture are not things you converge on by eye against a
+reference.
+
+The supplied PNG is now the master. `public/brand/slate-icon-source.png`,
+1254×1254, committed as delivered. **`scripts/build-brand-assets.ts` does not
+draw the icon any more** — every export is a resample, a crop or a composite of
+those exact pixels. The only things the script still draws are the splash ground
+and the outlined Graduate wordmark under the mark. `scripts/lib/brand-mark.ts`,
+the S geometry in `src/lib/brand.ts` and `<SlateMark>` are deleted; the palette
+is all that is left in `brand.ts`.
+
+**What the artwork made easy.** The letter sits 0.369 of the canvas from centre,
+inside the 0.400 Android safe radius, so the maskable exports are the same file
+— no second composition to drift out of sync. The square is painted near-black
+corner to corner with no alpha, so the iOS tile needs nothing done to it. Both
+are asserted in `scripts/brand-assets.test.ts` rather than assumed, along with
+every export the manifest and layout reference.
+
+**What it made harder, and how.** Three surfaces cannot take a 1254px tile:
+
+- *32px favicon.* A downscale of the whole artwork turns the sideline rail into
+  three grey specks. The tab cut is the mark alone on flat field green (§30).
+- *Splash and share cards.* Both sit on near-black and want the letter without
+  its panel. The mark is keyed out by flood-filling it away from the dark field
+  and using the blurred fill as an alpha channel — `slate-mark.png`. The keyed
+  edge is only ever composited onto near-black, which is where it is invisible.
+  A 192px copy is base64'd into `src/lib/brand-mark-data.ts` for the OG routes,
+  which run on the edge and cannot read from disk.
+- *The nav.* Reverted to the wordmark alone. The mark is a chalk letter on a
+  dark field and this header also renders on the light theme, where chalk
+  disappears. That needs a light variant or an outline that can take
+  `currentColor` — **BRAND-6**.
+
+Sharp's `joinChannel` cost an hour: it promotes a single-band mask to 3-band
+sRGB on the way out, so the alpha plane was a third of the buffer read at the
+wrong stride and the mark came out inverted — solid bowls, invisible letter.
+`.toColourspace("b-w").raw()` fixes it, and the test now pins three pixels
+(corner clear, arm opaque, bowl clear) so it cannot come back.
+
+Two size decisions. There is no 1024 export: the committed source is 1254² and
+the manifest lists it directly, rather than a megabyte of near-identical pixels
+beside it. And the splash set and the keyed mark are palette-quantised — a
+splash is one dark ground, one aura and two colours of type, which 256 entries
+hold without a visible step, and it takes the startup images from 5.5 MB to
+936 KB. The icons stay full-colour, where the rim gradient would band.
+
+**Still not met: §20, the true vector master with outlined typography.** The
+supplied artwork is a raster, so there is no vector to export, and every size
+below 1254 is a downscale rather than a re-render. Nothing on a phone shows it —
+the largest surface any of this feeds is a 512px launcher icon — but print, a
+large-format OG variant, or a recolour would all need the vector. Tracked as
+**BRAND-7**.
+
+### Aug 12 — The Slate S: one master, every size cut from it
+
+**Superseded the same day — see the correction above.** The letterform
+described here was a recreation and is no longer in the repo; the manifest,
+layout, startup-image and share-card wiring it introduced all survived.
+
+New brand identity (`docs/BRAND.md`, supplied v1.0). Icon, logo and the iOS /
+Android install surfaces only — **the app's own palette and display face did
+not move**, see the seam below.
+
+The old mark was a rotated gold football on warm charcoal, drawn twice: once as
+`app/icon.svg` and once, differently, as a JSX `apple-icon.tsx` that rendered
+the letter **H**. Two hand-drawn copies of one logo is how a logo drifts, and
+this one had already drifted into a different glyph.
+
+Everything now comes off one vector master. `src/lib/brand.ts` holds the
+palette and the geometry — the S outline, the seam crescent, the six laces —
+and both consumers read it: `scripts/lib/brand-mark.ts` composes the SVG for
+the exports, `src/components/SlateMark.tsx` renders the same paths in React for
+the nav and the share cards. `npm run brand` writes every asset. Nothing is
+drawn per size; the variants differ only in detail level and foreground scale.
+
+**The letter.** 118-unit bars on a 424×628 box, outer corners cut at 45°,
+terminal inner corners cut smaller, reflex corners left sharp — the sharp
+reflex corners are what make it read as varsity block rather than a rounded
+geometric S. Counters are 306×138 top and bottom, so the letter is symmetric
+under 180° rotation. The seam is a crescent across the middle bar that enters
+inside the letter on the left and breaks past its right edge into the dark;
+laces sit square to the local tangent. Under the chalk face is a gold copy
+offset (9, 12), which is the whole of the "dimensional edge" — no bevel filter.
+
+**No text anywhere in the master.** The yard numbers are built from rectangles
+as scoreboard segments, so the vector master has no font dependency and needs
+no outlining step before it opens in an editor (§20). The wordmark is outlined
+at build time from Graduate with hand-rolled tracking (`opentype.js`); the
+committed SVG and the splash PNGs carry outlines only.
+
+**Detail is a function of size, not a redraw.** The master carries field
+markings, yard numbers, vignette and a drop shadow. The 32px cut drops all of
+it and pushes the letter out to 1.16 — at that size the field is mud and the
+contrast is worth more. The maskable cut pulls the foreground to 0.94, which
+puts the worst-case vertex at 337 of the 409.6 safe radius (82%); the field
+markings are allowed to be cropped, the S is not.
+
+Four things are now asserted in `scripts/lib/brand-mark.test.ts` rather than
+eyeballed, because each is a Definition-of-Done line that otherwise only fails
+after someone installs it: the maskable safe-radius margin, the laces staying
+on the seam, **zero transparent pixels** in the master (iOS composites the
+touch icon over white — one transparent pixel and the tile grows a bright
+fringe), and **square corners** (the OS rounds the tile; rounding it here too
+gives the double corner that is the most reliable tell of a homemade icon).
+
+The contact sheet §21 calls mandatory is generated too — `/brand/contact-sheet.html`,
+the master downscaled by the browser at 300/120/72/60/40/32 on near-black, plus
+the maskable under circle and squircle crops.
+
+**iOS launch.** 13 portrait startup images with device media queries, written
+by hand in `layout.tsx` because the Next metadata API has no
+`apple-touch-startup-image` field, plus `apple-mobile-web-app-capable` — Next
+emits only the standardised `mobile-web-app-capable`, and iOS before 16.4 reads
+only the apple-prefixed one. The splash aura is a disc around the mark rather
+than a wash over the screen: §15 wants it localized, and a full-canvas gradient
+cost 20× the bytes in a PNG that is otherwise flat black (6.2 MB → 3.4 MB
+across the set). Landscape startup images are deliberately not built — iPhone
+ignores them and iPad cold-launches to portrait almost always.
+
+**The seam that is left.** The icon, the manifest, the launch chrome and both
+OG cards are now on the brand's green (`#020A08` / `#08251C` / `#0E3B2C`). The
+application shell is still on the warm charcoal tokens in `globals.css`
+(`--bg: #100e0b`, `--accent: #f2b63c`) and still sets headings in Barlow
+Condensed, not Graduate. Both near-blacks are effectively black on a phone, so
+the launch-to-app transition holds — but §5, §12 and §41.4–5 are not satisfied
+and the two accents are visibly different side by side. Recolouring the app is
+a whole-product change against `docs/DESIGN.md`'s "no new colours" rule and was
+not in scope here; it is queued as **BRAND-2 / BRAND-3** in `docs/STATUS.md`.
+The in-app mark sidesteps the mismatch by taking `currentColor` for the letter
+and `var(--accent)` for the seam, so it is correct under whichever palette is
+live, in both themes.
 ### Aug 12 — The safest job goes first, because the first job is the default
 
 `jobs.yml` option order. Nothing else.

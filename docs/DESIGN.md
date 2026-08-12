@@ -2,6 +2,13 @@
 
 Project-specific design context. General design principles are handled by the installed skills, not here.
 
+**`docs/BRAND.md` owns the identity** — the mark, the approved palette, the
+typefaces, the launch surfaces. This file owns behaviour. Where they touch,
+BRAND.md says what it should look like and this file says what it must do; if
+they conflict, say so rather than picking silently. Note that the brand palette
+has shipped on the icon and install surfaces only — the app still runs on the
+charcoal tokens below, tracked as BRAND-2/BRAND-3 in `docs/STATUS.md`.
+
 **Division of labor.** `frontend-design` owns aesthetic direction: palette, typography, restraint, avoiding templated defaults. `web-design-guidelines` owns the review pass: accessibility, UX standards, interface quality. `vercel-react-best-practices` owns performance. This file only covers what those skills cannot know about this product. Do not duplicate them here, and if this file contradicts one of them, say so instead of picking silently.
 
 ---

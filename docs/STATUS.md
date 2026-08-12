@@ -15,6 +15,7 @@ lands the fix, so the file is truthful at every commit.
 | `docs/CHANGELOG.md` | What shipped + the decisions table (incl. rejections) | ✅ append here on every change |
 | `docs/SPEC.md` | What we're building and why | ✅ |
 | `docs/DESIGN.md` | Design rules; read before UI work | ✅ |
+| `docs/BRAND.md` | Brand System v1.0 — the mark, the palette, the launch surfaces | ✅ identity spec |
 | `audit/CHECKLIST.md` | The Aug 10 Package A–C program — **completed record** | 📕 history |
 | `audit/KICKOFF_READINESS.md` | Aug 11–12 readiness audit (P0/P1/P2 analysis, backtest re-run, day plan) | 📕 history — findings tracked here |
 | `audit/00`–`10` | Aug 9 workstream reports; source of the `NN:XX-N` IDs | 📕 history |
@@ -31,7 +32,7 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **550 tests across 38 files**, `tsc` and lint clean — run in-session 2026-08-12 after the Week 0 split. 118 DB assertions carried from CI. |
+| **Build** | **569 tests across 39 files**, `tsc` and lint clean — run in-session 2026-08-12 after the brand-asset exports. 118 DB assertions carried from CI. |
 | **Scheduler** | 98 Actions runs, 97 green. The one red was the watchdog firing correctly on a cold `job_runs` table. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
@@ -311,6 +312,7 @@ These block nothing today but change what gets built. Recommendations are from
 | **Q7** | Delete the dead edge function? | **Delete `supabase/functions/jobs/`.** It has inverted CLV in all four branches and is 4+ versions behind `jobs-core.ts`. `05:C5` calls it a deliberate tombstone — but a tombstone with a live landmine in it is worse than none. Git preserves it. Say no and it gets a `DO NOT DEPLOY` banner instead. |
 | **Q6 / SEC-13** | TBD kickoffs (`start_ts` null) — policy before Aug 29 | **Keep as-is.** Un-pickable, un-removable, stays blind, no close and therefore no CLV, but still frozen. Every branch fails closed, which is right for a security boundary and a receipt. Cost: a TBD game is un-pickable until CFBD firms the time, which `sync-games` does daily. |
 | ~~**Q9**~~ | ~~Duplicate frozen predictions~~ | **Answered and done 2026-08-12** — cleared via migration 0028. DB-2 turned out not to be a defect at all. See §2.1b. |
+| ~~**BRAND-1**~~ | ~~Recolour before Aug 29 or after?~~ | **Answered 2026-08-12: now.** Owner call, against the recommendation below; shipped the same day. Original note: **After.** `docs/BRAND.md` §5 replaces every surface colour and §12 swaps the display face — that is every page, 17 days out, against DESIGN.md's "build one screen, get it approved, then propagate". Both near-blacks read as black on a phone, so nothing looks broken today; the visible tell is the two golds (`#E8B93D` vs `#f2b63c`) side by side. Queued as BRAND-2/BRAND-3. |
 | **UX-33** | Does `/edges` keep a permanent bottom-nav slot now that edges are demoted to information? | Owner call. |
 | **09:§3** | Re-verify current Supabase free-tier limits against the pricing page | Human, 0.25 h. |
 | **OPS-1b** | Dispatch one deliberately-failing run and confirm who receives the email | Human, 0.25 h. Pairs with P1-8. |
@@ -320,6 +322,39 @@ These block nothing today but change what gets built. Recommendations are from
 ## 4. Queued for after launch
 
 Real work, deliberately not before Aug 29.
+
+**Brand rollout** — icon and install surfaces landed 2026-08-12, then the
+traced vector, the palette and the display face the same day (`docs/CHANGELOG.md`).
+Two items remain open; the closed ones are kept for the record.
+- [x] **BRAND-2** Brand palette shipped as the opt-in **Field** theme, not as
+      the default (§5, §6, §41.4). Dark and light are untouched. `--surface`
+      Inside that theme, `--surface` and `--elev` sit below the brand's printed
+      raised green on purpose — a value specified for one card turns a slate of
+      them into a green wash. `--live` stays red, also deliberately.
+- [x] **BRAND-3** Graduate as the display face (§12, §41.5) — inside the Field
+      theme only. Barlow Condensed stays the default. Under Field, `.scorebug`
+      is Plex Mono (numbers, §12) and `.cover-word` is Archivo (no italic in
+      Graduate).
+- [ ] **BRAND-4** Install the PWA on a real iPhone and a real Android and check
+      the three things CI cannot: the home-screen tile beside DraftKings/ESPN
+      (§22), the startup image matching on a device that is actually in the
+      media-query table, and that no white band appears between tap and first
+      paint (§41.15–17). The unit tests cover transparency, square corners and
+      the maskable safe radius; they cannot cover any of these. · 0.5 h, human
+- [x] **BRAND-5** Game cards, pick'em and the edge display as descendants of
+      the icon (§32–34) — carried by the token swap, and therefore only in the
+      Field theme. Verified by screenshot at 420px in all three.
+- [ ] **BRAND-8** Decide whether Field ever becomes the default. It exists so
+      the app can match its own icon; today it is one of three and the owner
+      picked charcoal. No work until that call. · owner call
+- [x] **BRAND-6** An S in the nav lockup, from the traced outline
+      (`src/lib/brand-mark-outline.ts`). Letter takes `currentColor`, so it
+      inverts for the light theme; only the seam is pinned to the accent.
+- [ ] **BRAND-7** A true vector master (§20). The supplied artwork is a 1254²
+      raster, so every export is a downscale and there is nothing to hand to a
+      printer or recolour. No shipped surface needs it — the largest is a 512px
+      launcher icon — but a large-format OG variant or any print use would.
+      Either trace it or rebuild it in a vector editor. · owner call
 
 **Correctness / security**
 - [ ] **P2-4 / SEC-10** Drop the dead `picks` policies 0018 recreated — the
