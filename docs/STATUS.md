@@ -168,10 +168,20 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
       updating either table alone — keeping mode, markets, conference, min-picks
       and `updated_by` exactly as set. Verified: board at week 0, 4 pinned games,
       all `games.week = 0`, unlocked.
-- [ ] **Week 1 has no board.** After DB-6 the Sep 3–7 slate (91 games, incl. the
-      Georgia opener) has no `group_week_config`. Which games, and handpicked vs
-      full slate, is a real choice — `/groups/[slug]/settings`, week 1. Not
-      something a migration should pick for you. · owner
+- [x] **DB-7 — Week 1 board created, full slate.** `group_week_config` for
+      (2026, week 1, regular): `selection_mode = full_slate`, markets
+      `[spread, total]`, min-picks 0 — matching the Week 0 board. Written as
+      ordinary app data, not a migration: a migration inserting one group's
+      config would be meaningless on a fresh project where that group UUID does
+      not exist. Verified via `group_week_game_ids`: **resolves to all 91 games**,
+      0 materialised, which is correct for `full_slate` while unlocked — the
+      `freeze-groups` job materialises `group_week_games` and stamps `locked_at`
+      at the first kickoff (`0020:175-190`).
+      **Two consequences worth watching.** 91 games × 2 markets = 182 pickable
+      legs per person; `min_picks_per_week` is 0, so nobody is *required* to
+      pick, but the board page is now long. And this is the realistic load case
+      for `09:P-10` (board picks-query collapse) and for the `09:P-16` rehearsal
+      — seed week 1, not a 10-game week.
 - [ ] **DB-3 — `0017_rivalries_seed` is not in the applied-migrations ledger**,
       though `rivalries` holds its 29 rows, so the seed reached the database by
       some other path. Harmless today; it means a `db push` against a fresh
