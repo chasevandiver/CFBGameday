@@ -441,7 +441,9 @@ Apple Developer account, no APNs certificate.
       silently. A server action in `src/app/actions/` to store and revoke, and
       `web-push` in the job runner. Secrets: `VAPID_PUBLIC_KEY`,
       `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, plus the public key as
-      `NEXT_PUBLIC_VAPID_PUBLIC_KEY`. · 5 h
+      `NEXT_PUBLIC_VAPID_PUBLIC_KEY`. `web-push` goes in **dependencies**, not
+      dev: PUSH-2 wants a "send me a test" button, and that runs on Vercel. It
+      is server-side only and never reaches the browser bundle. · 5 h
 - [ ] **PUSH-2 — the opt-in.** A row in `/me`. Permission has to be requested
       from a tap (iOS refuses on load), so it is a button, not an effect. When
       the app is not installed the row explains Share → Add to Home Screen
@@ -456,8 +458,6 @@ Apple Developer account, no APNs certificate.
       this joins it to picks and bets and notifies only the people holding the
       side that moved. Send inside the scoreboard job, wrapped so a push
       failure can never fail a scoreboard poll. · 3 h
-- [ ] **PUSH-5 — Sunday results.** One digest after grading: your record, the
-      crew leader, one line. Folds into the recap cadence. · 2 h
 - [ ] **PUSH-6 — guardrails.** Daily cap per user, quiet hours off
       `profiles.timezone` (already on the table, defaulted to CT), prune
       subscriptions on 404/410 from the push service, and a preference per kind
@@ -465,14 +465,17 @@ Apple Developer account, no APNs certificate.
 
 **Deliberately not notified:** line moves, edge alerts, "your game is starting".
 BRAND §16 and §38 — this is an intelligence tool, and a product that pings you
-about a two-point move is how people turn notifications off. PUSH-3 through
-PUSH-5 are three interruptions a week at most.
+about a two-point move is how people turn notifications off. PUSH-3 and PUSH-4
+are two interruptions a week at most.
 
-**Decisions owed before PUSH-1:** whether all three triggers ship or only
-picks-due and bad-beat (recommend both, skip the digest until someone asks);
-and whether `web-push` goes in dependencies or devDependencies — devDeps is
-enough while only the job runner sends, and becomes wrong the moment a server
-action sends a test notification.
+**PUSH-5, a Sunday results digest, was declined by the owner on 2026-08-12** and
+the ID is left vacant rather than reused. It would have been one push after
+grading with your record and the crew leader. The reasoning against: the recap
+page already exists and Sunday is the one day nobody needs prompting to go look
+at it — a digest would have been the first notification anyone muted, and
+muting is per-app, so it would have taken the two that matter with it.
+
+Both open decisions are now settled; PUSH-1 is unblocked.
 
 **Product / UX**
 - [ ] **G10-v1** Copy-digest ShareButton: Thursday (frozen slate / edges / "N
