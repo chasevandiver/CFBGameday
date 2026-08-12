@@ -400,6 +400,50 @@ not in scope here; it is queued as **BRAND-2 / BRAND-3** in `docs/STATUS.md`.
 The in-app mark sidesteps the mismatch by taking `currentColor` for the letter
 and `var(--accent)` for the seam, so it is correct under whichever palette is
 live, in both themes.
+### Aug 12 — Two wrong things, one sentence: the backup learns to say which
+
+`scripts/lib/db-url.ts` (pure, 10 tests), `scripts/check-db-url.ts`, a preflight
+line in the backup job. No model change.
+
+Three backup runs failed on:
+
+```
+FATAL:  password authentication failed for user "postgres"
+```
+
+and the password was never the problem. Supabase's pooler routes by tenant, so
+it needs `postgres.<project-ref>`; handed a bare `postgres` it rejects the
+credential rather than reporting an unknown tenant. **A wrong username and a
+wrong password produce the identical sentence**, so each round of diagnosis was
+a guess, and the fix for one looks nothing like the fix for the other.
+
+The job now describes the secret before it dials: username, host, port,
+database, and the password's **length** — never the password, never the whole
+string. Length alone separates "empty" from "placeholder" from "real", which
+covers most of what goes wrong, and a length is not a secret.
+
+It fails fast on the three misconfigurations that cannot connect from a runner,
+each with the fix rather than the symptom: an unqualified username on a pooler
+host, port 6543 (the transaction pooler, which drops what `pg_dump` needs), and
+the `db.<ref>.supabase.co` direct host, which is IPv6-only while Actions runners
+are not. It warns, without failing, on a password carrying URI-significant
+characters — those end a component early and silently deliver a *different*
+password than the one typed.
+
+Pure and total, so all ten cases are tested without a network, a database or a
+secret — including that the password never appears in anything printable.
+
+Two process notes worth keeping. The first attempt at this put a Python heredoc
+inside the workflow's `case` block; `yaml.safe_load` passed and it would have
+failed on the runner, because an indented heredoc terminator never closes in
+bash and uniformly-indented Python is an `IndentationError`. **Validating the
+YAML is not validating the shell inside it** — which is the same class of error
+as the `pipefail` bug this job already had. And one of the ten tests was wrong,
+not the code: WHATWG's URL parser splits userinfo at the *last* `@`, so an
+unencoded `@` in a password parses fine and quietly yields a different password.
+That is exactly what the unsafe-character check is for, so the test now asserts
+the warning instead of a parse failure that does not happen.
+
 ### Aug 12 — The safest job goes first, because the first job is the default
 
 `jobs.yml` option order. Nothing else.

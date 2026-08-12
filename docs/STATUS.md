@@ -95,7 +95,13 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
       emitted its `COPY` block. Verified against a stubbed `pg_dump` in all
       three modes: good → green, auth failure → red, partial → red naming the
       missing tables.
-- [ ] **Run the `backup` dispatch once** and confirm the artifact. Actions →
+- [ ] **Run the `backup` dispatch once** and confirm the artifact. **Three runs
+      so far, all red on `password authentication failed for user "postgres"` —
+      the username, not the password.** The pooler needs
+      `postgres.mjijyutmbtnwcjspozsx`, and the secret still carries bare
+      `postgres`. The job now runs `scripts/check-db-url.ts` first and says
+      which field is wrong (no secret material printed), so the next red run
+      names its own cause. Actions →
       jobs → Run workflow → task `backup`. Expect `wrote backup-YYYYMMDD.sql.gz
       (…, 11 tables)` and a `db-backup` artifact at 90-day retention. This is
       what actually closes P1-9a — the secret being set is not the same as the
