@@ -503,6 +503,44 @@ not in scope here; it is queued as **BRAND-2 / BRAND-3** in `docs/STATUS.md`.
 The in-app mark sidesteps the mismatch by taking `currentColor` for the letter
 and `var(--accent)` for the seam, so it is correct under whichever palette is
 live, in both themes.
+### Aug 12 — Reconciling the tracker against a day it did not keep up with
+
+`docs/STATUS.md`, `docs/AUDIT-2026-08.md`. No code.
+
+The point of a single tracker is that it is true; a day of parallel work is
+exactly when that stops being free. Re-checked §1's numbers against the repo and
+the live project rather than against the last time they were written:
+
+| claim | was | is |
+|---|---|---|
+| reconciled at | `61e1363` | `cc1a9d8` (8 commits behind) |
+| tests | 569 / 39 files | **585 / 41** |
+| migrations applied | 28 | **31** |
+| Actions runs | 98, 97 green | **111**, reds are the backup sequence |
+| §5 route-smoke row | "37 files, 488 tests" | 41 / 585 |
+
+**A claim of my own was wrong and is corrected in place.** The backup closeout
+said "five red runs, five distinct defects". There were **three** red runs
+(#107–109). Two of the five defects never produced a red run at all — the
+mis-dispatch produced a *green* run of the wrong job, and the unfindable
+dropdown option produced no run to look at. Conflating defects with runs
+undersells the actual finding, which is that the two worst failures were the
+invisible ones.
+
+**Push notifications shipped from another session**, so audit row #38 goes from
+`~` to done — with the piece that did *not* ship named, as the row format
+requires: red-zone is still an alert state, not a push. PUSH-6 (caps, quiet
+hours) stays open in `docs/STATUS.md`.
+
+**The invariant is now literally true.** "STATUS.md is the only file with
+unchecked boxes" was nearly true — the Aug 6 audit still carried three `[ ] ❌`
+rows for the same items STATUS §5 tracks. They keep their text and lose the
+checkbox, so a reader scanning for open work cannot find a second list.
+
+Also recorded, because it cost a wrong conclusion here: **a stale `node_modules`
+fails two suites on missing deps and reads exactly like a regression.** `npm ci`
+first, then believe the number.
+
 ### Aug 12 — The receipts have a copy
 
 Run #110, `jobs · backup`, green:

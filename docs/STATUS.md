@@ -1,7 +1,11 @@
 # The CFB Slate — Status
 
 **The one file that answers "what's left."** Reconciled 2026-08-12 against the
-code on `main` at `61e1363`. Week 0 is **Sat Aug 29** — 17 days.
+code on `main` at `cc1a9d8`. Week 0 is **Sat Aug 29** — 17 days.
+
+§1's numbers are point-in-time and go stale between reconciliations; the boxes
+do not, because they are checked in the commit that lands the fix. If §1
+disagrees with a box, trust the box.
 
 Every open item in this repo lives here, once, with its original audit ID. If
 it isn't in this file, it isn't queued. Boxes are checked in the commit that
@@ -32,12 +36,12 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **569 tests across 39 files**, `tsc` and lint clean — run in-session 2026-08-12 after the brand-asset exports. 118 DB assertions carried from CI. |
-| **Scheduler** | 98 Actions runs, 97 green. The one red was the watchdog firing correctly on a cold `job_runs` table. |
+| **Build** | **585 tests across 41 files**, `tsc` and lint clean — run in-session 2026-08-12 after the push-notification merge. 118 DB assertions carried from CI. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
+| **Scheduler** | 111 completed runs. Reds to date: one watchdog firing correctly on a cold `job_runs` table, and runs #107–109 — the backup verification sequence, each a real defect, all closed. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
 | **Model in code** | `2026.5.0` — tilt carry, `baseHfa` 3.0, centered team-HFA, portal fix, market-anchored tier recentre |
-| **Database** | Verified live 2026-08-12: **28** migrations applied, `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
+| **Database** | Verified live 2026-08-12: **31** migrations applied, `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
 | **Model in production** | ⚠️ `2026.2.0`. **Four versions behind**, pricing every cross-classification opener ~10 points toward the G5. Waiting on CFBD to publish 2026 talent; `preseason-refresh` retries daily and loads itself the first morning `--check` is green. |
 | **The edge verdict** | b₁ = 0.035 (t = 0.84) for the model vs 0.987 (t = 22.81) for the market, n = 2611; flagged edges 49.2% ATS vs the close. Edges are **information, not bets** — and no model-accuracy work belongs in the next 17 days. |
 
@@ -111,13 +115,17 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
       closed** — the append-only `predictions` / `picks` / `bets` now have a
       copy outside the 7-day PITR window, which was the largest open risk in the
       product by elimination.
-      Five red runs preceded it, on five distinct defects, none of which would
-      have been *visible* a week ago because the step exited 0 with a 20-byte
-      artifact regardless: wrong task dispatched (`run-name`, #42); `backup`
-      unfindable at position 14 of 20 (moved first, #43); unqualified pooler
-      username (preflight, #45); `pg_dump` 16 against a 17.6 server (client
-      major pinned, #46); and `postgresql-client-17` not installable from the
-      stock image, which the PGDG fallback caught on its first real run.
+      **Three red runs (#107–109) and two silent misfires, five distinct
+      defects** — an earlier note here said "five red runs", which conflated
+      defects with runs and is corrected: two of the five never produced a red
+      run at all, which was the point. Wrong task dispatched → a *green* run of
+      `refresh-lines` (`run-name`, #42); `backup` unfindable at position 14 of
+      20 → no run to look at (moved first, #43); unqualified pooler username
+      (preflight, #45); `pg_dump` 16 against a 17.6 server (client major
+      pinned, #46); and `postgresql-client-17` not installable from the stock
+      image, which the PGDG fallback caught on its first real run. None of the
+      three reds would have been *visible* a week ago — the step exited 0 with a
+      20-byte artifact regardless.
 - [ ] **P1-9b** Create a healthchecks.io project, set `HEALTHCHECK_PING_URL`
       (the ping step is already wired; free tier covers this). **Now load-bearing
       rather than nice-to-have:** with the LLM tier off and no other channel
@@ -580,7 +588,7 @@ Additive features, no defect behind any of them. Verified still open 2026-08-12.
 | §23 #44 | Generated db types — `src/lib/db-types.ts` is still hand-written | Drift risk is real but slow; `next typegen` in CI covers the route layer only |
 | §23 #45 | ⌘K quick-switcher + keyboard navigation | Table stakes for a "command center", zero users blocked today |
 | §23 #31 | BetForm game **search** — labels, validation and the −3d/+9d window shipped; the picker is a plain `<select>` | Fine at 60 games/week |
-| §23 #42 | **Route smoke tests** — 37 test files, 488 tests, none exercise a route | The one partial that touches correctness; named, not rounded up |
+| §23 #42 | **Route smoke tests** — 41 test files, 585 tests, none exercise a route | The one partial that touches correctness; named, not rounded up |
 
 **Explicit slip order** if time runs out (`SPEC.md:253`): team-page LLM verdicts
 and the admin review queue first, then F13/F9/F16, then P1-2 FCS buckets, then
