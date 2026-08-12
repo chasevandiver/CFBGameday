@@ -400,6 +400,40 @@ not in scope here; it is queued as **BRAND-2 / BRAND-3** in `docs/STATUS.md`.
 The in-app mark sidesteps the mismatch by taking `currentColor` for the letter
 and `var(--accent)` for the seam, so it is correct under whichever palette is
 live, in both themes.
+### Aug 12 — The receipts have a copy
+
+Run #110, `jobs · backup`, green:
+
+```
+conn: user="postgres.mjijyutmbtnwcjspozsx" host="aws-0-us-east-2.pooler.supabase.com" port=5432 db="postgres" password_len=20
+pg_dump (PostgreSQL) 17.10 (Ubuntu 17.10-1.pgdg24.04+1)
+wrote backup-20260812.sql.gz (16K, 11 tables)
+```
+
+Artifact `db-backup`, 14,261 bytes, 90-day retention. `predictions`, `picks` and
+`bets` are append-only and had no copy outside Supabase's 7-day PITR window;
+they do now. That was the largest open risk in the product by elimination, and
+it is closed.
+
+**A comment corrected on the strength of one run.** The PGDG fallback added in
+the previous entry was written as insurance for images where the repo is not
+configured, on the reasoning that GitHub's is — the stock client reports itself
+as `...pgdg24.04+1`. Wrong. The log shows `E: Unable to locate package
+postgresql-client-17`, the fallback firing, and 17.10 installing from the repo
+it added. The PGDG *build* is baked into the image; the apt *source* is not, so
+only the pinned-in major is installable. The comment now says what the log says.
+Had that fallback been left out as unnecessary — which the reasoning supported
+— this would have been a sixth red run.
+
+**Five red runs, five distinct defects**, worth listing once because the shape
+matters more than any of them: wrong task dispatched; the option unfindable in a
+20-long dropdown; an unqualified pooler username; a client major behind the
+server; and a package that is not installable from the stock image. Every one
+was a real defect, and every one would have exited **0** with a 20-byte artifact
+before this week's `pipefail` fix. A backup job that cannot fail is not a backup
+job — it is a weekly green tick over an empty file, and it would have held that
+posture until the first restore.
+
 ### Aug 12 — The backup ran, and the client was a year behind the server
 
 `jobs.yml` backup step. No model change.
