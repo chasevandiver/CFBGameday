@@ -58,6 +58,7 @@ import {
   replaySeason,
   teamIdsByNameFrom,
 } from "./lib/replay";
+import { tierOf } from "./lib/tiers";
 
 // Env-driven like the rest of the pipeline (scripts/lib/ingest reads the same
 // var): the loader validates its dir against CFB_SEASON, so a hardcode here
@@ -350,6 +351,91 @@ async function main() {
       retDef: ret?.usage ?? null,
     });
   }
+  // ---- 6½. Tier recentre — market-anchored (fitted rule: --tune-tier-recenter)
+  //
+  // A margin-Elo's intra-pool games are zero-sum within the pool, so the P4/G5
+  // LEVEL is set almost entirely by the prior, and every regression in the
+  // chain (0.7× toward zero between replay seasons, 0.3 toward a talent
+  // baseline whose P4−G5 separation is ~half the market's) shrinks the pool
+  // gap that the replay finals carry. The ~1.5 cross-tier games per team per
+  // season restore it at only K/2·error per game — measured, a week-1
+  // mis-level decays to ~0 only by week 9. Unpatched, the 2026 build priced
+  // every P4-vs-G5 opener ~10 points toward the G5 (mean +10.4, t = 7.8 vs
+  // the week-1 market; Toledo a double-digit road favourite at Michigan State).
+  //
+  // The patch: shift the two pools (zero-sum, membership-weighted — within-
+  // pool ordering untouched) so the mean G5-signed cross-tier edge against
+  // the week-1 consensus lines is zero. Week-1 lines exist before week 1, so
+  // this is point-in-time sound. Anchoring to the market each August rather
+  // than a fitted constant is deliberate: the fit was +4.4 (2024) and +4.7
+  // (2025) but +10.4 (2026) — the offseason P4/G5 divergence is accelerating
+  // and a constant fit on 2023–25 under-corrects the present.
+  //
+  // Validated by `backtest.ts --tune-tier-recenter` (pre-registered rule, all
+  // four criteria passed): weeks 2–4 cross-tier edge +5.41 → +0.78 (out-of-
+  // fit), weeks 1–4 bias vs actual −6.31 (t −4.7) → −1.57 (t −1.2), P4vP4
+  // unmoved (+0.51), pooled MAE 13.22 → 13.14, NLL 0.4994 → 0.4956.
+  //
+  // The fit prices with flat baseHfa — the exact configuration the tuner
+  // validated; the team-HFA blend's mean is pinned to baseHfa, so the
+  // difference is tenths. FCS opponents stay at the flat −30, which was
+  // implicitly calibrated against the OLD G5 level; September FCS games will
+  // pull the pools back together by ~1–1.5 points through the Elo (each G5
+  // team's FCS buy game now under-predicts it) — a known, bounded decay,
+  // watched by the FBS-vs-FCS row of the backtest's slice table.
+  const tierById = new Map(
+    fbs.map((t) => [t.id, tierOf(t.conference, t.school, SEASON, true)] as const),
+  );
+  let tierRecenter: { shift: number; p4: number; g5: number; n: number } | null = null;
+  {
+    const ratingById = new Map(preseason.map((p) => [p.teamId, p.rating]));
+    const linesByGame = new Map(lines2026.map((l) => [l.id, l]));
+    const edges: number[] = [];
+    for (const g of games2026 as CfbdGame[]) {
+      if (g.week !== 1 || g.seasonType !== "regular") continue;
+      const vegas = consensusLine(linesByGame.get(g.id));
+      if (vegas === null) continue;
+      const hr = ratingById.get(g.homeId);
+      const ar = ratingById.get(g.awayId);
+      if (hr === undefined || ar === undefined) continue;
+      const ht = tierById.get(g.homeId);
+      const at = tierById.get(g.awayId);
+      const cross = (ht === "P4" && at === "G5") || (ht === "G5" && at === "P4");
+      if (!cross) continue;
+      const margin = hr - ar + (g.neutralSite ? 0 : DEFAULT_PARAMS.baseHfa);
+      const edge = -margin - vegas; // + = we favour the away side vs market
+      edges.push(at === "G5" ? edge : -edge);
+    }
+    if (edges.length < 10) {
+      console.log(
+        `  WARNING: tier recentre SKIPPED — only ${edges.length} cross-tier week-1 games with lines ` +
+          `(need 10). The cross-classification level is unpatched in this build.`,
+      );
+    } else {
+      const shift = edges.reduce((a, b) => a + b, 0) / edges.length;
+      if (Math.abs(shift) > 15) {
+        throw new Error(
+          `tier recentre fit ${shift.toFixed(2)} exceeds the ±15 sanity bound — ` +
+            `the lines feed or the ratings are broken; refusing to ship either`,
+        );
+      }
+      const nP4 = fbs.filter((t) => tierById.get(t.id) === "P4").length;
+      const nG5 = fbs.filter((t) => tierById.get(t.id) === "G5").length;
+      const p4Shift = (shift * nG5) / (nP4 + nG5);
+      const g5Shift = (-shift * nP4) / (nP4 + nG5);
+      for (const p of preseason) {
+        const tier = tierById.get(p.teamId);
+        p.rating += tier === "P4" ? p4Shift : tier === "G5" ? g5Shift : 0;
+      }
+      console.log(
+        `  tier recentre: week-1 cross-tier lean vs market ${shift >= 0 ? "+" : ""}${shift.toFixed(2)} ` +
+          `on n=${edges.length} → P4 ${p4Shift >= 0 ? "+" : ""}${p4Shift.toFixed(2)}, ` +
+          `G5 ${g5Shift >= 0 ? "+" : ""}${g5Shift.toFixed(2)} (zero-sum)`,
+      );
+      tierRecenter = { shift, p4: p4Shift, g5: g5Shift, n: edges.length };
+    }
+  }
+
   const newHires = preseason.filter((p) => p.coach !== null).length;
   console.log(
     `  coaching: ${newHires} new head coaches detected` +
@@ -418,6 +504,11 @@ async function main() {
     }
     if (portal.length === 0) problems.push("portal: no transfer entries — feed not published yet");
     if (lines2026.length === 0) problems.push("lines: no week-1 lines posted yet");
+    if (!tierRecenter) {
+      problems.push(
+        "tier recentre: fewer than 10 cross-tier week-1 games with lines — the P4/G5 level would ship unpatched",
+      );
+    }
     const clampedNow = preseason.filter((p) => Math.abs(Math.abs(p.churn) - 6) < 0.001).length;
     if (clampedNow > 15) problems.push(`churn: ${clampedNow} teams at the ±6 clamp`);
 
@@ -647,6 +738,15 @@ async function main() {
         coach: p.coach,
         coach_over_perf: p.overPerf !== null ? r2(p.overPerf) : null,
         tilt_carry: TILT_CARRY,
+        // The team's share of the market-anchored tier recentre — the sixth
+        // term of "how the number is built"; without it the component tiles
+        // no longer sum to the rating.
+        tier_level: tierRecenter
+          ? r2(tierById.get(p.teamId) === "P4" ? tierRecenter.p4 : tierRecenter.g5)
+          : null,
+        tier_recenter: tierRecenter
+          ? { shift: r2(tierRecenter.shift), n: tierRecenter.n }
+          : null,
       },
     })),
   );

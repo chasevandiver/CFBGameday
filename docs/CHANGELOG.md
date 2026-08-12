@@ -27,14 +27,16 @@ carries the number that killed it.
 
 ## Current state
 
-**`MODEL_VERSION` 2026.4.1** (`src/model/ratings.ts`) — 2026.4.0 (PR #12,
-2026-08-07) plus the centered team-HFA blend (Aug 10, below).
+**`MODEL_VERSION` 2026.5.0** (`src/model/ratings.ts`) — 2026.4.1 plus the
+market-anchored tier recentre in the preseason build (Aug 12, below), which
+removes a measured +9.8-point cross-classification lean from the 2026 openers.
 
 ⚠️ **In the code, not yet in production.** As of 2026-08-07 the database serves
-`ratings` at **2026.2.0** — the site is running a model three versions behind
+`ratings` at **2026.2.0** — the site is running a model four versions behind
 this table. `team_hfa` rows are derived from `baseHfa` at build time, so the
 `2.3 → 3.0` fix in particular does nothing until `build-preseason.ts` is re-run
-and reloaded.
+and reloaded — and the tier recentre likewise only reaches production through a
+rebuild.
 
 That reload is now automatic: the `preseason-refresh` job (below) retries every
 morning in August and loads on the first day `--check` reports READY. Nothing to
@@ -58,6 +60,7 @@ run by hand. See Open items for what it is waiting on.
 | `newHcIntercept` / `newHcSlope` | 0 / 0 | **Identity** — unconverged, not shipped |
 | `epaWeight` | 0 | **Identity** — tested, rejected |
 | `PRESEASON_TILT_CARRY` | 0.4 | Fitted (env var in `build-preseason.ts`) |
+| tier recentre | market-anchored | Fitted **rule** `--tune-tier-recenter` (build-time step in `build-preseason.ts`, not a constant — the shift is re-fit to each August's week-1 lines) |
 
 "Identity" means the machinery exists and is tested, but reproduces the previous
 model exactly. Each is documented in place so it isn't rediscovered.
@@ -66,7 +69,7 @@ model exactly. Each is documented in place so it isn't rediscovered.
 
 ## Decisions log
 
-Nine experiments, each with a decision rule fixed **before** the run. Three
+Eleven experiments, each with a decision rule fixed **before** the run. Four
 shipped.
 
 | Experiment | Result | Verdict |
@@ -80,6 +83,8 @@ shipped.
 | `--tune-epa` | Best case **0.010** MAE; NLL degraded monotonically (0.5005 → 0.5095) and early MAE got worse. PPA coverage was fine (1492/1606/1658 games). | Rejected. Swapping the scoreboard margin for a PPA margin still feeds one noisy per-game number into an Elo that already averages a dozen games. |
 | `--tune-ensemble` | Pure 50/50 with weekly Elo is **worse than our model alone (−0.069)**. Fitted weights: true holdout 0.138 vs bar 0.15. Prior-season SP+ t=0.43. | Rejected. The apparent gain was an intercept, not information — which is how the home bias was found. |
 | `--diagnose-edges` | b₁ = **0.035 (t=0.84)** for our model vs **0.987 (t=22.81)** for the market, n=2611. All five pre-registered tier tests failed (totals, thin/thick market, conference/non-). | Rejected → **edges demoted to information.** `stakeForPrediction` replaced by `modelSideOf`; ¼-Kelly stake removed from the UI. |
+| `--diagnose-tiers` (chain grid) | Cross-tier G5-signed edge, wks 1–4: bare chain **+7.08 (t=14.8)**; best variant (0.7·finals+0.3·talent) still **+4.81 (t=10.6)**. On the 2026 wk-1 market all six constructions land **+9.7…+10.4** — incl. α=0 (pure SP+ baseline) and FCS −25/−35. | Rejected as fixes: **no prior-chain construction moves the 2026 number.** `REPLAY_SHARE` stays 0.5 (re-tested, not re-litigated). Root cause isolated to pool-LEVEL regression, not the blend. |
+| `--tune-tier-recenter` | Market-anchored: wks 2–4 cross-tier edge (out-of-fit) **+5.41 → +0.78 (t=1.5)**; wks 1–4 bias vs actual **−6.31 (t −4.7) → −1.57 (t −1.2)**; P4vP4 +0.51 unmoved; pooled MAE **13.22 → 13.14**, NLL **0.4994 → 0.4956**; worst bucket 2.7. Static δ=4 matches on 2023–25 but under-corrects 2026 by ~6 (fits: +4.4 '24, +4.7 '25, **+10.4 '26**). | **Shipped (2026.5.0).** All four pre-registered criteria passed; market-anchored chosen over a constant because the offseason P4/G5 divergence is accelerating. |
 
 ### Why edges are not bets
 
@@ -116,6 +121,25 @@ off either way. A +0.74 bias survived a full calibration pass and surfaced only
 because an unrelated ensemble regression kept demanding a +2 intercept. The
 backtest now prints mean signed error with its SE, flagged past 2 SE.
 
+**A pooled signed error cannot see a lean on a minority slice, either.** The
+sequel to the finding above: after the HFA fix, pooled bias read +0.03 — while
+cross-classification games (11% of the sample) carried a +9.8-point lean that
+put a BIG EDGE flag on essentially every P4-vs-G5 opener. It survived because
+`03:M-3` (signed error by slice) was deferred and nothing printed a per-slice
+number. The slice tables now run on every report, and the market is the sharper
+instrument for them: books disagree with us with ~7-point SD where actual
+margins carry σ≈17, so a lean shows at |t|>2 on a tenth of the games. Slice
+before you average, and test against the line before the scoreboard.
+
+**A margin-Elo cannot re-level POOLS from inside a season.** Intra-pool games
+are zero-sum within the pool; the ~1.5 cross-tier games per team per season
+correct a pool-level offset at K/2·error a game, so a week-1 mis-level decays
+to ~0 only around week 8–9 (measured in the by-week slice table). Every
+between-season regression — 0.7× toward zero, or toward talent (P4−G5
+separation ~8) — therefore compresses the pool gap the replay finals carry
+(~15–16) and nothing restores it before the openers are priced. Mean-reversion
+belongs WITHIN a pool; applied across pools it manufactures a lean.
+
 **Five parameters ran to a grid boundary** — coaching (−2.5, then −5), reload
 (1.0, then 2.0), K (0.4), and nearly HFA. A boundary optimum usually means the
 parameter is absorbing a misspecification rather than measuring an effect. This
@@ -141,6 +165,86 @@ shipping it.
 
 ## Log
 
+### Aug 12 — The tiers were mis-levelled by ten points, and the table that would have caught it
+
+**Model change: 2026.5.0.** `DEFAULT_PARAMS` untouched — the change is a
+preseason-build construction step, validated by a new tuner with a
+pre-registered rule.
+
+**The defect, measured before any code was written.** The 2026 preseason
+ratings priced all 99 week-1 games; on the 29 cross-classification games with
+a market line, the mean G5-signed edge was **+9.8 (t = 7.7)** — Toledo a
+double-digit road favourite at Michigan State, Indiana −16 against a market of
+−41, a BIG EDGE flag toward the G5 on essentially every P4-vs-G5 opener.
+Within-tier slices were fine (P4vP4 −0.14). Independently, our twelve largest
+rank overrates vs published 2026 FPI were all G5, the twelve largest underrates
+all P4.
+
+**The blind spot was fixed before the bug** (`03:M-3`, deferred until now):
+`report()` prints signed error by slice — tier matchup, cross-tier by week,
+favourite-signed by spread size, per conference — against the market AND
+against actual margins, flagged past |t| ≥ 2, in every backtest run and in the
+CI job summary (`scripts/lib/tiers.ts`, `scripts/lib/slices.ts`). Re-run on
+2023–25, the table shows the same lean the 2026 market saw: cross-tier +4.03
+pooled (t 9.8), +4.63 in weeks 1–2 decaying to +0.47 by week 9+, and — the
+part that settles who is right — the G5 sides **underperform our numbers by
+6.0 points** (t −4.2) in weeks 1–2. The market was right and we were wrong,
+which is what makes this a defect and not a disagreement.
+
+**Root cause, isolated by experiment** (`--diagnose-tiers`): the prior chain's
+between-season regressions compress the P4−G5 pool gap, and a margin-Elo
+cannot restore a pool LEVEL from within — intra-pool games are zero-sum, and
+~1.5 cross-tier games per team per season re-level at only K/2·error per game.
+The replay finals carry a ~16.5-point gap (final SP+: ~16); `chainPriors`'
+0.7×-toward-zero cuts it to ~11.5 (weeks 1–4 lean +7.08, t 14.8); regressing
+toward talent instead (gap ~8) still lands at +4.81. The three mechanism
+hypotheses that did NOT survive: the SP+ blend share (`REPLAY_SHARE` swept 0
+to 1 — on the 2026 market every construction lands +9.7…+10.4, because replay
+finals and SP+ agree with each other and both sit ~8 below what the 2026
+market prices); the flat FCS −30 (swept −25/−35: cross-tier moves ~0.1); scale
+compression (the cross-tier edge regressed on the market gap is
+intercept-only: 12.20 − 0.070·gap, slope se 0.133 — a pure level offset).
+
+**The fix** (`--tune-tier-recenter`, rule fixed before the run): after the
+build assembles ratings, shift the two pools zero-sum so the mean G5-signed
+edge against the week-1 consensus lines is zero. Within-pool ordering is
+untouched by construction; week-1 lines exist before week 1, so it is
+point-in-time sound. Anchored to the market each August rather than a fitted
+constant because the offseason divergence is accelerating: the fit is +4.4
+(2024), +4.7 (2025), **+10.4 (2026)** — a δ fitted on 2023–25 under-corrects
+2026 by ~6 points, and the static-δ grid is printed in the tuner to keep that
+honest. Validation on 2024–25 (fit week 1, score out-of-fit): weeks 2–4
+cross-tier edge +5.41 → **+0.78 (t 1.5)**; weeks 1–4 bias vs actual −6.31
+(t −4.7) → **−1.57 (t −1.2)**; P4vP4 +0.51 unmoved; pooled MAE
+**13.22 → 13.14**; NLL **0.4994 → 0.4956**; worst win-prob bucket 2.7. All
+four pre-registered criteria passed — recentring is not a trade, it improves
+the pooled numbers too.
+
+**Verified on the real build output**: frozen week-1 cross-tier edge mean
+−0.08 (t −0.06), n=28; SD 6.9 — per-game disagreement survives, only the
+systematic lean is gone. BIG EDGE flags on cross-tier games drop 24 → 17;
+Toledo @ Michigan State prices MSU −1.2 against a market of −10.5 (a
+disagreement, no longer an absurdity). The recentre lands in
+`preseason_components.detail` (`tier_level` per team) and the team page's
+"How the number is built" grid gained the sixth tile so the decomposition
+still sums to the rating.
+
+**Known residuals, recorded not hidden.** (1) The FCS anchor (flat −30) was
+implicitly calibrated against the OLD G5 level; with G5 down ~5.1, September
+FCS buy games will pull the pools back together ~1–1.5 points through the Elo
+before prior decay makes it moot — watched by the FBS-vs-FCS slice row.
+(2) Within-pool spread is compressed too (our SD ~8 vs SP+'s ~10.5-11): a
+separate, smaller defect the recentre deliberately does not touch; the
+intercept-only regression says it is not what drove this one. (3) The 2026
+gate's week-1 lines are the fit set — t < 2 there is by construction; the
+out-of-sample evidence is the 2024–25 weeks-2–4 result and, going forward, the
+weeks-2+ 2026 lines as they post. (4) `--tune-sp-blend`'s α=0.5 was re-tested
+under the slice metric and left alone: it neither causes nor can fix the
+mis-levelling.
+
+488 tests pass, including sign-convention pins for the G5-signed edge (the
+Toledo worked example is a test case) and `recenterTierGap` invariants
+(exact target gap, mean preservation, no within-pool reordering).
 ### Aug 12 — The endpoint we bet the live layer on has never been called
 
 `audit/KICKOFF_READINESS.md`, then a probe for the one thing it couldn't
@@ -1850,10 +1954,12 @@ and signed-error reporting; nine backtest tuners.
 - **CLV has no data yet.** Built and migrated, but the first values arrive the
   Sunday after Week 1 — the grader has nothing to grade until games are final.
   The path is unexercised against real rows until then.
-- **Production is three model versions behind.** `ratings` in the database are
-  `2026.2.0`; the code is `2026.4.1` (`src/model/ratings.ts:56`). Everything
+- **Production is four model versions behind.** `ratings` in the database are
+  `2026.2.0`; the code is `2026.5.0` (`src/model/ratings.ts`). Everything
   since — the tilt carry, the churn restructure, `baseHfa` 3.0, the centered
-  team-HFA blend — is dark until a rebuild lands.
+  team-HFA blend, the tier recentre — is dark until a rebuild lands. Until it
+  does, production is pricing every cross-classification opener ~10 points
+  toward the G5.
 - **2026 talent is unpublished**, which is what the rebuild is waiting on.
   `build-preseason` silently falls back to 2025, so a build today would carry
   **no incoming recruiting class**. `--check` catches this and refuses; the
@@ -1887,7 +1993,11 @@ and signed-error reporting; nine backtest tuners.
   production ratings are still 2026.2.0 with even splits. The columns appear on
   their own once the preseason refresh lands.
 - Untested model ideas that remain plausible: pass/rush splits, special teams and
-  field position, QB modeling from player PPA (currently one boolean).
+  field position, QB modeling from player PPA (currently one boolean),
+  re-expanding the compressed within-pool rating spread (our SD ~8 vs SP+'s
+  ~10.5–11 — measured Aug 12, deliberately not patched), and letting the FCS
+  anchor follow the recentred G5 pool (its −30 was calibrated against the old
+  level; ~1–1.5 pts of September pull-back is the accepted cost).
 
 ---
 
@@ -1909,7 +2019,12 @@ npx tsx scripts/backtest.ts [--cached]
 --tune-ensemble     # weekly Elo + prior SP+ blended into our margin
 --tune-prior        # preseason carryover weight
 --tune-sp-blend     # prior-year SP+ blend
+--tune-tier-recenter # validate the week-1-anchored P4/G5 recentre (2026.5.0)
 --diagnose-edges    # market MAE + encompassing regression (the edge gate)
+--diagnose-tiers    # cross-classification level vs prior-chain construction
+
+# The 2026 week-1 market gate for the tier level (candidates side by side)
+npx tsx scripts/diagnose-tiers-2026.ts --examples
 
 # Preseason — build
 npx tsx scripts/build-preseason.ts --check          # readiness; non-zero exit when inputs incomplete

@@ -155,6 +155,19 @@ export interface ReplayPrediction {
   startDate: string;
   homeId: number;
   awayId: number;
+  /**
+   * Identity for the signed-error-by-slice tables (audit 03:M-3). Conference
+   * is the season's alignment as /games reports it; null when the cached
+   * season file predates the field (those games slice as "unknown", never
+   * silently as G5). `homeFbs`/`awayFbs` mean "had an FBS rating in this
+   * replay" — false is an FCS opponent priced at the flat FCS_RATING.
+   */
+  homeTeam: string;
+  awayTeam: string;
+  homeConference: string | null;
+  awayConference: string | null;
+  homeFbs: boolean;
+  awayFbs: boolean;
 }
 
 const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
@@ -218,6 +231,10 @@ export function replaySeason(
    *  Leaves margins untouched (off+def ≡ prior) but makes preseason totals
    *  informative from week 1. Seed from SP+ via subTiltsFromSp. */
   tilts?: Map<number, number>,
+  /** Rating assigned to opponents with no FBS prior (FCS buy games).
+   *  Diagnostic knob for --diagnose-tiers; every production path leaves it at
+   *  the flat FCS_RATING default. */
+  fcsRating: number = FCS_RATING,
 ): {
   predictions: ReplayPrediction[];
   finalRatings: Map<number, number>;
@@ -253,7 +270,7 @@ export function replaySeason(
       const blended = (teamId: number): TeamRating => {
         const prior = priors.get(teamId);
         if (prior === undefined)
-          return { overall: FCS_RATING, offense: FCS_RATING / 2, defense: FCS_RATING / 2, tempo: 70 };
+          return { overall: fcsRating, offense: fcsRating / 2, defense: fcsRating / 2, tempo: 70 };
         const pOff = prior / 2 + tiltOf(teamId);
         const pDef = prior / 2 - tiltOf(teamId);
         const off = blendWithPrior(pOff, offense.get(teamId) ?? pOff, week, params);
@@ -306,6 +323,12 @@ export function replaySeason(
         startDate: g.startDate,
         homeId: g.homeId,
         awayId: g.awayId,
+        homeTeam: g.homeTeam,
+        awayTeam: g.awayTeam,
+        homeConference: g.homeConference ?? null,
+        awayConference: g.awayConference ?? null,
+        homeFbs: priors.has(g.homeId),
+        awayFbs: priors.has(g.awayId),
       });
       weekPredictions.push({ game: g, home, away });
     }

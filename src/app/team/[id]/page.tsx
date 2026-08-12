@@ -39,7 +39,7 @@ interface ComponentsRow {
   churn_adjustment: number | null;
   coaching_adjustment: number | null;
   luck_correction: number | null;
-  detail: { proxies?: string[] } | null;
+  detail: { proxies?: string[]; tier_level?: number | null } | null;
 }
 
 interface VerdictRow {
@@ -256,6 +256,15 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
               <Component label="Churn" value={comp.churn_adjustment} hint="Returning production + portal" />
               <Component label="Coaching" value={comp.coaching_adjustment} hint="Admin adjustments handle changes" />
               <Component label="Luck" value={comp.luck_correction} hint="2025 record vs second-order wins" />
+              {/* Only builds ≥ 2026.5.0 write this; without the tile the five
+                  numbers above stop summing to the rating. */}
+              {typeof comp.detail?.tier_level === "number" && (
+                <Component
+                  label="Tier level"
+                  value={comp.detail.tier_level}
+                  hint="P4/G5 pool level, anchored to the week-1 market"
+                />
+              )}
             </div>
             {comp.detail?.proxies && (
               <p className="mt-3 text-xs text-dim">

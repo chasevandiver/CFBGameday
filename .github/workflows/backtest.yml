@@ -23,6 +23,10 @@ on:
           - tune-preseason-tilts
           - tune-coaching
           - tune-anchors
+          - tune-sp-blend
+          - tune-prior
+          - diagnose-tiers
+          - tune-tier-recenter
   pull_request:
     paths:
       - "src/model/**"
@@ -44,16 +48,20 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # The full report — including the 03:M-3 signed-error-by-slice tables —
+      # lands in the job summary, so a directional lean is one click away on
+      # every model PR instead of buried in a log nobody expands.
       - name: Run backtest
         run: |
           EXPERIMENT="${{ inputs.experiment || 'none' }}"
           if [ "$EXPERIMENT" != "none" ] && [ -n "$EXPERIMENT" ]; then
-            npx tsx scripts/backtest.ts "--$EXPERIMENT"
+            npx tsx scripts/backtest.ts "--$EXPERIMENT" | tee backtest.log
           elif [ "${{ inputs.tune || 'false' }}" = "true" ]; then
-            npx tsx scripts/backtest.ts --tune
+            npx tsx scripts/backtest.ts --tune | tee backtest.log
           else
-            npx tsx scripts/backtest.ts
+            npx tsx scripts/backtest.ts | tee backtest.log
           fi
+          { echo '```'; cat backtest.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       # The edge gate runs on every model PR: if a change ever makes the model
       # carry information the closing line lacks, this is where it shows up.

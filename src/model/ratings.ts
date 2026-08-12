@@ -44,6 +44,26 @@
 //     does help, but its fit was still unconverged at the grid edge.
 //   - preseason anchors (week-1 Elo, preseason AP): ΔNLL 0.0026 vs a
 //     pre-registered bar of 0.003. Missed, so not adopted.
+// 2026.5.0: market-anchored tier recentre in the preseason build. The 2026
+// preseason priced every cross-classification opener ~10 points toward the
+// G5 side (mean G5-signed edge vs the week-1 market +10.4, t=7.8; Toledo a
+// double-digit road favourite at Michigan State). Root cause: the prior
+// chain's regressions (0.7× toward zero between replay seasons, 0.3 toward a
+// talent baseline whose P4−G5 separation is ~8 vs the ~15 the replay finals
+// and final SP+ both carry, and ~23 the 2026 market demands) shrink the pool
+// gap, and a margin-Elo cannot restore a POOL level from within — intra-pool
+// games are zero-sum, and the ~1.5 cross-tier games per team per season
+// re-level at K/2·error per game (a week-1 mis-level measurably persists to
+// ~week 8). The build now shifts the two pools zero-sum so the mean
+// cross-tier edge against the week-1 consensus lines is zero — anchored to
+// the market each August because the offseason divergence is NOT a stable
+// constant (fit: +4.4 in 2024, +4.7 in 2025, +10.4 in 2026 — the portal-era
+// drain accelerates). Validated by --tune-tier-recenter (pre-registered):
+// weeks 2–4 cross-tier edge (out-of-fit) +5.41 → +0.78, weeks 1–4 bias vs
+// actual −6.31 (t −4.7) → −1.57 (t −1.2), P4vP4 unmoved, pooled MAE
+// 13.22 → 13.14, NLL 0.4994 → 0.4956. DEFAULT_PARAMS is untouched — this is
+// a preseason-build construction step (like REPLAY_SHARE), not a pricing
+// parameter. Week-0 ratings must be rebuilt for it to reach production.
 // 2026.4.1 centers the team-HFA blend (centeredBlendedHfa): raw home/away
 // margin splits are inflated ~+1.9 at the FBS mean by scheduling — FBS teams
 // host their FCS buy games, so home opponents average weaker — and blending
@@ -53,7 +73,7 @@
 // applied HFA equal the fitted baseHfa while keeping the between-team spread.
 // The per-team component itself is still unvalidated by any replay (audit
 // 03/M-1); the tuner for it can only run once CFBD publishes 2026 data.
-export const MODEL_VERSION = "2026.4.1";
+export const MODEL_VERSION = "2026.5.0";
 
 /**
  * Did this model version price totals for real? Rows frozen before 2026.3.0

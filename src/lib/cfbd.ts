@@ -126,10 +126,17 @@ export interface CfbdGame {
   venueId: number | null;
   homeId: number;
   homeTeam: string;
+  /** Conference at game time — the season's alignment, not the current one.
+   *  Optional: .backtest-cache season files written before this field was
+   *  consumed don't carry it; readers must tolerate undefined. */
+  homeConference?: string | null;
+  homeClassification?: string | null; // fbs | fcs | ii | iii
   homePoints: number | null;
   homePostgameWinProbability: number | null;
   awayId: number;
   awayTeam: string;
+  awayConference?: string | null;
+  awayClassification?: string | null;
   awayPoints: number | null;
   completed: boolean;
   notes: string | null;

@@ -78,7 +78,7 @@ explain themselves.
 
 - [ ] **02:M-04** `--production-chain` replay mode (measure backtest↔production prior drift) — M, tuner/CI-key work; first in-season week
 - [ ] **02:M-05/03-M-1v** Team-HFA replay validation with pre-registered rule (else set blend 0) — M, tuner work
-- [ ] **03:M-3** Signed-error-by-slice table in `report()` — S–M, needs backtest run
+- [x] **03:M-3** Signed-error-by-slice table in `report()` — shipped 2026-08-12 (`scripts/lib/slices.ts` + CI job summary), after its absence let a +9.8-pt cross-tier lean into the 2026 build; see the changelog's Aug 12 entry
 - [ ] **02:M-13/03:M-4** Real per-team tempo + `--tune-tempo` — M, tuner work
 - [ ] **03:M-6/M-7/M-8b/M-9a** Decay-knot grid, heteroscedastic σ, smooth cap, rest/travel tuner — S each, tuner work
 - [ ] **02:§2b** Promote `warnIfTooGood`/negative-coefficient checks to CI-failing assertions — S–M, backtest CI
