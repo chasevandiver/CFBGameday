@@ -400,6 +400,27 @@ not in scope here; it is queued as **BRAND-2 / BRAND-3** in `docs/STATUS.md`.
 The in-app mark sidesteps the mismatch by taking `currentColor` for the letter
 and `var(--accent)` for the seam, so it is correct under whichever palette is
 live, in both themes.
+### Aug 12 — The safest job goes first, because the first job is the default
+
+`jobs.yml` option order. Nothing else.
+
+`backup` was added to the dispatch list at position 14 of 20 and then could not
+be found in the dropdown at all — GitHub's dispatch form does not reliably
+render a `choice` list that long. So the secret that had gone unverified for a
+day stayed unverified for another one, this time because the control to verify
+it was not reachable.
+
+Moved to the top, which fixes a second thing for free. The first option is the
+**default**: `task` is `required` with no `default:`, so GitHub pre-selects the
+head of the list and a "Run workflow" click that never touches the dropdown runs
+it. That used to be `refresh-lines` — a live job that writes line snapshots and
+chains `freeze-groups` — which is exactly the accident that happened on run
+#106. Now the accident is a read-only `pg_dump`.
+
+The rule this settles: **order the dispatch list by what is safe to run by
+mistake, not by what runs most often.** The crons resolve their own task from
+the schedule string and never read this list, so frequency was never a reason to
+put `refresh-lines` first — it just happened to be written first.
 
 ### Aug 12 — Every run was called "jobs", so the wrong one looked right
 
