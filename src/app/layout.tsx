@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { Archivo, Graduate, IBM_Plex_Mono } from "next/font/google";
+import { Archivo, Barlow_Condensed, Graduate, IBM_Plex_Mono } from "next/font/google";
 import { APPLE_STARTUP_IMAGES } from "../lib/apple-startup-images";
-import { BRAND } from "../lib/brand";
 import "./globals.css";
 
 const archivo = Archivo({
@@ -9,11 +8,17 @@ const archivo = Archivo({
   subsets: ["latin"],
 });
 
-/* Display face, docs/BRAND.md §12. One weight is all Graduate has, and all it
-   needs: it is a varsity face used at heading size, never for body copy and
-   never for numbers. */
-const graduate = Graduate({
+const barlow = Barlow_Condensed({
   variable: "--font-display",
+  weight: ["500", "600", "700"],
+  subsets: ["latin"],
+});
+
+/* The brand's display face (docs/BRAND.md §12). Loaded always, applied only by
+   the Field theme — the default themes keep the condensed face the product was
+   designed around. One weight is all Graduate has, and all it needs. */
+const graduate = Graduate({
+  variable: "--font-display-brand",
   weight: "400",
   subsets: ["latin"],
 });
@@ -54,20 +59,24 @@ export const viewport: Viewport = {
      nav and the bet slip both sit in the home-indicator zone. */
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: BRAND.nearBlack },
+    // The app's own dark ground, not the icon's: a media query cannot know
+    // whether the reader has picked the Field theme, so this tracks the
+    // default the OS will ask for. The launch chrome in manifest.ts stays on
+    // the brand near-black, which is what the icon sits on.
+    { media: "(prefers-color-scheme: dark)", color: "#100e0b" },
     { media: "(prefers-color-scheme: light)", color: "#F2F3F6" },
   ],
 };
 
-/* Runs before paint so a saved light-mode choice never flashes dark. */
-const themeInit = `(function(){try{if(localStorage.getItem("slate-theme")==="light")document.documentElement.dataset.theme="light"}catch(e){}})()`;
+/* Runs before paint so a saved theme never flashes the default one first. */
+const themeInit = `(function(){try{var t=localStorage.getItem("slate-theme");if(t==="light"||t==="field")document.documentElement.dataset.theme=t}catch(e){}})()`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${archivo.variable} ${graduate.variable} ${plexMono.variable} h-full antialiased`}
+      className={`${archivo.variable} ${barlow.variable} ${graduate.variable} ${plexMono.variable} h-full antialiased`}
     >
       <head>
         {/* Next emits the standardised `mobile-web-app-capable`; iOS before

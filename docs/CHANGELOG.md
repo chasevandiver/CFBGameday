@@ -165,7 +165,43 @@ shipping it.
 
 ## Log
 
+### Aug 12 — Field becomes a third theme, not a replacement
+
+Correction to the entry below. The palette and the display face were applied to
+the whole product; they should have been offered, not imposed. Dark and light
+are back to exactly what they were — charcoal tokens, Barlow Condensed
+headings, the scorebug on the condensed face, `.cover-word` italic. The brand
+palette now lives behind `html[data-theme="field"]`, and the toggle cycles
+**dark → light → field**.
+
+Everything the Field theme changes is an override in one block: the tokens, the
+glass bar (field green, so the header is a surface and not a hole), and three
+type rules — Graduate for headings, Plex Mono for `.scorebug`, Archivo for
+`.cover-word`. Graduate loads always but only binds under that selector, so the
+default themes are byte-for-byte the design they were.
+
+`useLightTheme` becomes `useTheme`, returning the current theme, a setter and a
+cycle. The pre-paint script in the layout now accepts `light` or `field` rather
+than testing for one string, so a saved Field choice does not flash charcoal
+first. The toggle shows where you *are* rather than where you are going — three
+states need a legend, and the Slate S is the one that needs no explaining.
+
+`theme-color` goes back to the app's own `#100e0b`: a media query cannot know
+which of three themes a reader picked, so it tracks the OS default. The launch
+chrome in `manifest.ts` stays on the brand near-black, which is what the icon
+sits on.
+
+What stays from the recolour: the traced vector mark and its lockup in the nav,
+every icon and startup image, and the three share cards, which are standalone
+brand surfaces rather than app UI.
+
+**BRAND-2, BRAND-3 and BRAND-5 are reopened as an opt-in theme rather than the
+default**, which is what they now are in `docs/STATUS.md`.
+
 ### Aug 12 — A traced vector, and the app finally matches its own icon
+
+**Partly superseded the same day — see above.** The vector and the nav lockup
+stand; the palette and the display face were reverted to opt-in.
 
 Three things, in the order they unblock each other.
 

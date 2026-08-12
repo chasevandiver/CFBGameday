@@ -326,13 +326,15 @@ Real work, deliberately not before Aug 29.
 **Brand rollout** — icon and install surfaces landed 2026-08-12, then the
 traced vector, the palette and the display face the same day (`docs/CHANGELOG.md`).
 Two items remain open; the closed ones are kept for the record.
-- [x] **BRAND-2** App palette on the brand tokens (§5, §6, §41.4). `--surface`
-      and `--elev` sit below the brand's printed raised green on purpose — see
-      the changelog; a value specified for one card turns a slate of them into
-      a green wash. `--live` stays red, also deliberately.
-- [x] **BRAND-3** Graduate as the display face (§12, §41.5). Barlow Condensed
-      removed. `.scorebug` moved to Plex Mono (numbers, §12) and `.cover-word`
-      to Archivo (Graduate has no italic).
+- [x] **BRAND-2** Brand palette shipped as the opt-in **Field** theme, not as
+      the default (§5, §6, §41.4). Dark and light are untouched. `--surface`
+      Inside that theme, `--surface` and `--elev` sit below the brand's printed
+      raised green on purpose — a value specified for one card turns a slate of
+      them into a green wash. `--live` stays red, also deliberately.
+- [x] **BRAND-3** Graduate as the display face (§12, §41.5) — inside the Field
+      theme only. Barlow Condensed stays the default. Under Field, `.scorebug`
+      is Plex Mono (numbers, §12) and `.cover-word` is Archivo (no italic in
+      Graduate).
 - [ ] **BRAND-4** Install the PWA on a real iPhone and a real Android and check
       the three things CI cannot: the home-screen tile beside DraftKings/ESPN
       (§22), the startup image matching on a device that is actually in the
@@ -340,8 +342,11 @@ Two items remain open; the closed ones are kept for the record.
       paint (§41.15–17). The unit tests cover transparency, square corners and
       the maskable safe radius; they cannot cover any of these. · 0.5 h, human
 - [x] **BRAND-5** Game cards, pick'em and the edge display as descendants of
-      the icon (§32–34) — carried by the token swap; verified by screenshot at
-      420px in both themes.
+      the icon (§32–34) — carried by the token swap, and therefore only in the
+      Field theme. Verified by screenshot at 420px in all three.
+- [ ] **BRAND-8** Decide whether Field ever becomes the default. It exists so
+      the app can match its own icon; today it is one of three and the owner
+      picked charcoal. No work until that call. · owner call
 - [x] **BRAND-6** An S in the nav lockup, from the traced outline
       (`src/lib/brand-mark-outline.ts`). Letter takes `currentColor`, so it
       inverts for the light theme; only the seam is pinned to the accent.

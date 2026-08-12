@@ -17,23 +17,40 @@ const subscribeTheme = (cb: () => void) => {
   return () => themeListeners.delete(cb);
 };
 
-export function useLightTheme(): [boolean, (light: boolean) => void] {
-  const light = useSyncExternalStore(
+/** The three themes. `dark` is the default and carries no data-theme attribute. */
+export type Theme = "dark" | "light" | "field";
+
+const THEME_ORDER: Theme[] = ["dark", "light", "field"];
+
+/**
+ * Theme, cycling dark → light → field.
+ *
+ * `field` is the brand palette from docs/BRAND.md §5 — the one that matches the
+ * app icon. It is a third option rather than a replacement: the charcoal dark
+ * and light themes are what the product was designed in, and swapping them out
+ * from under people who like them is not an upgrade.
+ */
+export function useTheme(): [Theme, (next: Theme) => void, () => void] {
+  const theme = useSyncExternalStore(
     subscribeTheme,
-    () => document.documentElement.dataset.theme === "light",
-    () => false,
+    () => (document.documentElement.dataset.theme as Theme) || "dark",
+    () => "dark" as Theme,
   );
-  const setLight = useCallback((next: boolean) => {
-    if (next) document.documentElement.dataset.theme = "light";
-    else delete document.documentElement.dataset.theme;
+  const setTheme = useCallback((next: Theme) => {
+    if (next === "dark") delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = next;
     try {
-      localStorage.setItem("slate-theme", next ? "light" : "dark");
+      localStorage.setItem("slate-theme", next);
     } catch {
       /* private mode */
     }
     themeListeners.forEach((l) => l());
   }, []);
-  return [light, setLight];
+  const cycle = useCallback(() => {
+    const current = (document.documentElement.dataset.theme as Theme) || "dark";
+    setTheme(THEME_ORDER[(THEME_ORDER.indexOf(current) + 1) % THEME_ORDER.length]);
+  }, [setTheme]);
+  return [theme, setTheme, cycle];
 }
 
 /* ---- starred teams ------------------------------------------------------ */
