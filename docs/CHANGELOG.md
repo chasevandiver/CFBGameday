@@ -165,6 +165,29 @@ shipping it.
 
 ## Log
 
+### Aug 12 — Every run was called "jobs", so the wrong one looked right
+
+`run-name` on `.github/workflows/jobs.yml`. Nothing else.
+
+The first attempt to verify the backup ran `refresh-lines` instead. `task` is a
+`required` choice with **no `default:`**, so GitHub pre-selects the first option
+— `refresh-lines` — and a "Run workflow" click that never touches the dropdown
+runs that, succeeds, and looks exactly like the run you meant. The log said so
+plainly (`{"job":"refresh-lines","skipped":"next_game_gt_7d"}`) but only if you
+opened it; from the Actions list all 19 tasks and 25 crons render as one
+undifferentiated column of "jobs".
+
+`run-name: jobs · ${{ inputs.task || github.event.schedule || 'scheduled' }}`
+puts the task in the run title, so the list reads `jobs · backup`,
+`jobs · scoreboard-loop`, `jobs · 0 13 * * 0`. The mis-dispatch that took a log
+read to find is now visible at a glance.
+
+Not fixed, deliberately: the dropdown still defaults to `refresh-lines`. Giving
+it a harmless default would mean either adding a no-op task to the enum or
+reordering the list so the first entry is the safest rather than the most
+common, and neither is worth it when the run title now names what ran. Worth
+knowing when dispatching: **change the dropdown, or you get lines.**
+
 ### Aug 12 — Week 1 takes the full slate
 
 No model change, no migration. One `group_week_config` row.
