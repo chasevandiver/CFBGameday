@@ -36,6 +36,7 @@ rows were decided by reading code, not by reading commit messages.
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
 | **Model in code** | `2026.5.0` — tilt carry, `baseHfa` 3.0, centered team-HFA, portal fix, market-anchored tier recentre |
+| **Database** | Verified live 2026-08-12: 25 migrations applied, `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (wk1 = 99, Aug 29–Sep 7), `rivalries` 29, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. **Two data defects, below.** |
 | **Model in production** | ⚠️ `2026.2.0`. **Four versions behind**, pricing every cross-classification opener ~10 points toward the G5. Waiting on CFBD to publish 2026 talent; `preseason-refresh` retries daily and loads itself the first morning `--check` is green. |
 | **The edge verdict** | b₁ = 0.035 (t = 0.84) for the model vs 0.987 (t = 22.81) for the market, n = 2611; flagged edges 49.2% ATS vs the close. Edges are **information, not bets** — and no model-accuracy work belongs in the next 17 days. |
 
@@ -107,6 +108,50 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
 - [ ] **P0-4** Three `select count(*)`: `ratings` (week 0, expect ~136),
       `team_hfa`, `line_snapshots`. Jobs are running; this confirms the rows
       landed. · 0.5 h
+
+### 2.1b Found in the live database, 2026-08-12 — decide before Aug 28
+
+- [ ] **DB-1 — the Aug 28 freeze will freeze nothing, and go green.** Every one
+      of the **99 week-1 games** (Aug 29–Sep 7, CFBD's merged Week 0/1) already
+      carries **three frozen `predictions` rows** — 297 total, written by three
+      `load-preseason --bootstrap` runs on Aug 5 15:38, Aug 5 16:26 and Aug 7
+      04:44, at model versions `2026.1.0`, `2026.2.0` and `2026.3.0`. This is
+      the duplication the changelog's Operations note warns about: *"a second
+      `--bootstrap` duplicates them."*
+      `freezeJob` builds `alreadyFrozen` from any `frozen = true` row and
+      `freezableGames` drops those games (`jobs-core.ts:1004-1008`), so the
+      Thursday 03:00 UTC run on Aug 28 returns
+      `{frozen: 0, already_frozen: 99}` — **a green run that does nothing.**
+      What that costs, if nothing changes:
+      - Week 1's receipts are **Aug-5 preseason numbers against Aug-5 lines**
+        (worked example: TCU/North Carolina, model −11.8 vs `vegas_spread`
+        −6.7, `BIG_EDGE`), not a Thursday freeze against the Thursday line.
+      - **2026.5.0 never reaches Week 1.** The market-anchored tier recentre —
+        the fix for the ~10-point cross-classification lean — cannot appear in
+        the receipts for the openers even if the preseason refresh lands Aug 26.
+      - The grader **triple-counts every Week 1 game** and blends three model
+        versions into one model ATS record.
+      - Two of the three rows carry `total: 57.0` — the constant-57 from the
+        original audit's bug #4 — inside the receipts table.
+      - CLV is computed three times per game against three stale
+        `vegas_spread` values.
+      **Owner decision** (append-only table, so this is the integrity thesis'
+      call, not a maintenance one — see §3 Q9.)
+- [ ] **DB-2 — `line_snapshots` are duplicated by the same three runs.** 808
+      rows over **51 games** and three dates (Aug 5 / 6 / 7), of which **800 sit
+      in exact duplicate groups** on `(game_id, source, captured_at)`. Uniform
+      duplication leaves a median consensus unchanged, so this is the milder of
+      the two — but it double-weights any book that is duplicated unevenly, and
+      it is the same root cause. Decide alongside DB-1.
+- [ ] **DB-3 — `0017_rivalries_seed` is not in the applied-migrations ledger**,
+      though `rivalries` holds its 29 rows, so the seed reached the database by
+      some other path. Harmless today; it means a `db push` against a fresh
+      project (or a restore into one) would not reproduce this database from the
+      repo. Reconcile the ledger. · 0.25 h
+- [ ] **DB-4 — no postseason rows** (`games` is 888, all `season_type =
+      'regular'`). Expected — CFBD publishes bowls in December — but it means
+      the postseason ingestion path shipped in `§23 #35` has never run against
+      real rows. Re-check in November. · watch
 
 ### 2.2 This week (Aug 14–18)
 
@@ -226,6 +271,7 @@ These block nothing today but change what gets built. Recommendations are from
 | **Q4** | FCS: build the two buckets, or amend the spec to one? | **Amend to one bucket at −30, delete the dead constants.** Changing the input distribution 17 days out with no tuner behind it is the bad trade. `--tune-fcs` in the offseason. |
 | **Q7** | Delete the dead edge function? | **Delete `supabase/functions/jobs/`.** It has inverted CLV in all four branches and is 4+ versions behind `jobs-core.ts`. `05:C5` calls it a deliberate tombstone — but a tombstone with a live landmine in it is worse than none. Git preserves it. Say no and it gets a `DO NOT DEPLOY` banner instead. |
 | **Q6 / SEC-13** | TBD kickoffs (`start_ts` null) — policy before Aug 29 | **Keep as-is.** Un-pickable, un-removable, stays blind, no close and therefore no CLV, but still frozen. Every branch fails closed, which is right for a security boundary and a receipt. Cost: a TBD game is un-pickable until CFBD firms the time, which `sync-games` does daily. |
+| **Q9** | The 297 duplicate frozen predictions and 800 duplicate line snapshots (DB-1/DB-2) — delete, keep, or schema-fix? | **Delete all 297 predictions and the 400 duplicate snapshot rows, before Aug 28**, and let the Thursday freeze write one honest receipt per game at 2026.5.0 against the Thursday line. The append-only guarantee exists so that receipts users acted on are never rewritten — and nobody acted on these: `picks` is 0, `profiles` is 1, and they were written by three development bootstrap runs a week before launch. Keeping them means launching with a receipts table whose Week 1 rows are provably worse than the model that shipped. Alternative if you'd rather not delete: keep them and accept Week 1 has no real freeze, or add a `superseded_at` column and teach `freezeJob`, the grader and Receipts to ignore superseded rows — more code, on the critical path, 17 days out. |
 | **UX-33** | Does `/edges` keep a permanent bottom-nav slot now that edges are demoted to information? | Owner call. |
 | **09:§3** | Re-verify current Supabase free-tier limits against the pricing page | Human, 0.25 h. |
 | **OPS-1b** | Dispatch one deliberately-failing run and confirm who receives the email | Human, 0.25 h. Pairs with P1-8. |
