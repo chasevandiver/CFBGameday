@@ -289,8 +289,48 @@ export const MARK_SEAM_PATH =
 `,
   );
 
+  // The §20 vector master. Layered and named, so it opens in a vector editor as
+  // something you can recolour a layer of rather than one flattened blob.
+  //
+  // Flat on purpose. §20 lists Bevel and Lighting layers, and the honest answer
+  // is that those live in the raster: reconstructing them as vector would be
+  // guessing at the original's lighting, which is the mistake this whole file
+  // exists to avoid. A flat master is also what print, embroidery and a
+  // one-colour reversal actually want. For anything that should look
+  // dimensional, use public/brand/slate-icon-source.png.
+  writeFileSync(
+    join(ROOT, "public/brand/slate-icon-master.svg"),
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${vw} ${vh}" width="${vw}" height="${vh}">
+  <title>The CFB Slate — vector master</title>
+  <desc>Traced from slate-icon-source.png. Flat: no bevel, grain or rim light — those are in the raster. Print, embroidery and recolour master.</desc>
+  <defs>
+    <!-- Brand palette, docs/BRAND.md §5. Recolour here, not per path. -->
+    <style>
+      .chalk { fill: #F4EFE2 }
+      .gold  { fill: #E8B93D }
+      .ground { fill: #020A08 }
+    </style>
+  </defs>
+
+  <g id="Ground">
+    <!-- Off by default: the mark is usually placed on its own ground. -->
+    <rect class="ground" width="${vw}" height="${vh}" display="none"/>
+  </g>
+
+  <g id="S">
+    <path class="chalk" fill-rule="evenodd" d="${letterPath}"/>
+  </g>
+
+  <g id="Football-Seam">
+    <path class="gold" fill-rule="evenodd" d="${seamPath}"/>
+  </g>
+</svg>
+`,
+  );
+
   console.log(`viewBox 0 0 ${vw} ${vh}`);
   console.log(`letter ${letterPath.length} chars, seam ${seamPath.length} chars`);
+  console.log("  public/brand/slate-icon-master.svg");
 }
 
 function objectBounds(mask: Uint8Array, W: number, H: number) {

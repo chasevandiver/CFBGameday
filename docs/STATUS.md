@@ -205,17 +205,16 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
       pick, but the board page is now long. And this is the realistic load case
       for `09:P-10` (board picks-query collapse) and for the `09:P-16` rehearsal
       — seed week 1, not a 10-game week.
-- [ ] **DB-3 — `0017_rivalries_seed` is not in the applied-migrations ledger**,
-      though `rivalries` holds its 29 rows, so the seed reached the database by
-      some other path. Two consequences, found separately and both real: a
-      `db push` against a fresh project (or a restore into one) would not
-      reproduce this database from the repo — and, re-confirmed 2026-08-12 while
-      reconciling 31 recorded rows against 32 files, a `db push` against
-      **production** would see the file as unapplied and re-run it. The seed has
-      no `on conflict` clause, so that means duplicating 29 rivalries or failing
-      on a constraint. Reconcile the ledger
-      (`supabase migration repair --status applied 0017`) rather than
-      discovering this mid-push. · 0.25 h
+- [x] **DB-3 — `0017_rivalries_seed` recorded in the ledger**, 2026-08-12.
+      The seed had reached the database by some other path (29 rivalries live)
+      but had no row in `supabase_migrations`, so a `db push` against a fresh
+      project or a restore would not reproduce this database from the repo.
+      Repaired by recording version `20260806061800`; 32 files now match 32
+      recorded rows. **Correction:** an intermediate version of this entry
+      claimed re-running the seed would duplicate rows or hit a constraint. It
+      would not — the insert carries a `where not exists` guard on the pair in
+      both directions. That was a grep for `on conflict` finding nothing and
+      concluding the worst.
 - [ ] **DB-4 — no postseason rows** (`games` is 888, all `season_type =
       'regular'`). Expected — CFBD publishes bowls in December — but it means
       the postseason ingestion path shipped in `§23 #35` has never run against
@@ -376,17 +375,24 @@ Two items remain open; the closed ones are kept for the record.
 - [x] **BRAND-5** Game cards, pick'em and the edge display as descendants of
       the icon (§32–34) — carried by the token swap, and therefore only in the
       Field theme. Verified by screenshot at 420px in all three.
-- [ ] **BRAND-8** Decide whether Field ever becomes the default. It exists so
-      the app can match its own icon; today it is one of three and the owner
-      picked charcoal. No work until that call. · owner call
+- [x] **BRAND-8 — answered 2026-08-12: no.** Field stays one of three. The
+      owner wants the three options, so charcoal dark remains the default and
+      the brand palette is a choice rather than a migration.
 - [x] **BRAND-6** An S in the nav lockup, from the traced outline
       (`src/lib/brand-mark-outline.ts`). Letter takes `currentColor`, so it
       inverts for the light theme; only the seam is pinned to the accent.
-- [ ] **BRAND-7** A true vector master (§20). The supplied artwork is a 1254²
-      raster, so every export is a downscale and there is nothing to hand to a
-      printer or recolour. No shipped surface needs it — the largest is a 512px
-      launcher icon — but a large-format OG variant or any print use would.
-      Either trace it or rebuild it in a vector editor. · owner call
+- [x] **BRAND-7** Vector master, 2026-08-12:
+      `public/brand/slate-icon-master.svg` — layered and named
+      (Ground / S / Football-Seam) with the palette in a `<style>` block, so a
+      recolour is one edit rather than one per path. Outlines traced from the
+      supplied raster, so the letterform is exact at any size: print,
+      embroidery, a large-format OG variant, a one-colour reversal.
+      **It is flat, deliberately.** §20 also lists Bevel and Lighting layers;
+      those live in the raster, and rebuilding them as vector would be guessing
+      at the original's lighting — the exact mistake the traced outline exists
+      to avoid. Anything that should look dimensional uses
+      `slate-icon-source.png`. A layered *dimensional* vector, if ever genuinely
+      needed, has to come from whatever produced the artwork.
 
 **Correctness / security**
 - [ ] **P2-4 / SEC-10** Drop the dead `picks` policies 0018 recreated — the
@@ -503,7 +509,14 @@ items are what is genuinely left.
       change, which is the difference between the owner running this and the
       owner filing a ticket for it. Ships with PUSH-2: together they are the
       point where the feature is self-serve. · 4 h
-- [ ] **PUSH-6 — guardrails.** Two of the four scoped here already shipped
+- [~] **PUSH-6 — guardrails. Declined by the owner 2026-08-12.** Kept rather
+      than deleted because the exposure is real and someone will rediscover it:
+      with no daily cap a chaotic Saturday sends one bad-beat push per late
+      swing, and with no quiet hours a Pac-after-dark flip buzzes at 2am. The
+      mitigating fact, and presumably why it was declined: bad beats now
+      default OFF, so this reaches only someone who deliberately switched them
+      on and can switch them back off. Revisit if anyone turns them on and
+      regrets it. Original scope: two of the four shipped
       with PUSH-1: 404/410 pruning is in `sendToUser`, and per-kind preferences
       are the `notification_prefs` table. **What is left is the daily cap per
       user and quiet hours off `profiles.timezone`** — nothing limits how many
@@ -554,13 +567,14 @@ closing before Week 0.
       waves. Plus per-kind defaults in `notification_settings.default_enabled`,
       with bad beats shipping **off**. Migrations 0032/0033, applied
       2026-08-12. Owner request.
-- [ ] **PUSH-10** Absence check on the notify jobs. `watchdogJob` covers three
-      jobs and none of them are these, so a picks-due or log-bets cron that
-      silently stops running produces no signal at all — the send log shows
-      what was sent, never what should have been. Not a one-liner: both jobs
-      are weekly and seasonal, so a naive hours-since-last-ok horizon goes red
-      every week from December to August. Needs a cadence the offseason does
-      not trip. · 1 h
+- [x] **PUSH-10** Absence check on the notify jobs, 2026-08-12. `watchdogJob`
+      now covers `notify-picks-due` and `notify-log-bets` on an 8-day horizon,
+      **gated on there being a scheduled game inside the next week**. That gate
+      is the whole design: both jobs are weekly and seasonal, so from December
+      to August they are correctly silent, and an hours-since-last-ok check
+      would go red every week for eight months until nobody read it. 8 days,
+      not 7, so a run that slips a day is not a fault. Four tests, including
+      the offseason case.
 
 **Product / UX**
 - [ ] **G10-v1** Copy-digest ShareButton: Thursday (frozen slate / edges / "N

@@ -152,8 +152,16 @@ export async function recordJobRun<T extends Json>(
  * scoreboardPatch/freezableGames pattern).
  */
 export function watchdogVerdict(
-  agesH: { refreshLines: number; syncGames: number; scoreboard: number },
+  agesH: {
+    refreshLines: number;
+    syncGames: number;
+    scoreboard: number;
+    picksDue?: number;
+    logBets?: number;
+  },
   gameLive: boolean,
+  /** Any scheduled game inside the next week. Gates the weekly notify jobs. */
+  gamesThisWeek = false,
 ): string[] {
   const problems: string[] = [];
   if (agesH.refreshLines > 26)
@@ -165,6 +173,19 @@ export function watchdogVerdict(
     problems.push(
       `scoreboard-loop: a game is LIVE and no launch succeeded in ${agesH.scoreboard.toFixed(1)}h`,
     );
+
+  // The notify jobs are weekly AND seasonal, which is why they cannot use an
+  // hours-since-last-run horizon like the others: from December to August they
+  // are correctly silent, and a naive check would go red every week for eight
+  // months until nobody read it any more. The gate is whether there is anything
+  // to notify about — a scheduled game inside the next week. 8 days, not 7, so
+  // a run that slips a day does not trip it.
+  const WEEKLY = 8 * 24;
+  if (gamesThisWeek && (agesH.picksDue ?? 0) > WEEKLY)
+    problems.push(`notify-picks-due: games this week and no successful run in ${Math.round(agesH.picksDue!)}h`);
+  if (gamesThisWeek && (agesH.logBets ?? 0) > WEEKLY)
+    problems.push(`notify-log-bets: games this week and no successful run in ${Math.round(agesH.logBets!)}h`);
+
   return problems;
 }
 
@@ -188,16 +209,36 @@ export async function watchdogJob(db: SupabaseClient): Promise<Json> {
     .eq("status", "in_progress")
     .limit(1);
 
+  const { data: upcoming } = await db
+    .from("games")
+    .select("id")
+    .eq("season_id", SEASON)
+    .gte("start_ts", new Date(now).toISOString())
+    .lte("start_ts", new Date(now + 7 * 24 * 3600_000).toISOString())
+    .limit(1);
+
   const problems = watchdogVerdict(
     {
       refreshLines: await lastOkAgeH("refresh-lines"),
       syncGames: await lastOkAgeH("sync-games"),
       scoreboard: await lastOkAgeH("scoreboard-loop"),
+      picksDue: await lastOkAgeH("notify-picks-due"),
+      logBets: await lastOkAgeH("notify-log-bets"),
     },
     (live ?? []).length > 0,
+    (upcoming ?? []).length > 0,
   );
   if (problems.length > 0) throw new Error(`watchdog: ${problems.join("; ")}`);
-  return { checked: ["refresh-lines", "sync-games", "scoreboard-loop"], ok: true };
+  return {
+    checked: [
+      "refresh-lines",
+      "sync-games",
+      "scoreboard-loop",
+      "notify-picks-due",
+      "notify-log-bets",
+    ],
+    ok: true,
+  };
 }
 
 /**

@@ -165,6 +165,44 @@ shipping it.
 
 ## Log
 
+### Aug 12 — Closing out the brand and push queues
+
+Four owner decisions and two builds.
+
+**PUSH-10, the absence check.** `watchdogJob` now covers `notify-picks-due` and
+`notify-log-bets`, and the interesting part is the gate rather than the horizon.
+Both jobs are weekly *and* seasonal, so a plain hours-since-last-ok check would
+go red every week from December to August — and a watchdog that cries every week
+for eight months is one nobody reads by the time it matters. The check only
+applies when there is a scheduled game inside the next week. 8 days rather than
+7, so a run that slips a day is not a fault. Four tests, including the offseason
+case, which is the one that would have made this useless.
+
+**BRAND-7, the vector master.** `public/brand/slate-icon-master.svg`: layered
+and named, palette in a `<style>` block so a recolour is one edit. Outlines are
+the trace, so the letterform is exact at any size — print, embroidery, a
+one-colour reversal.
+
+It is **flat**, and that is the decision worth recording. §20 also asks for Bevel
+and Lighting layers. Those live in the raster, and rebuilding them as vector
+would mean guessing at the original's lighting — which is exactly the mistake
+that produced two rejected recreations earlier today. A flat master is also what
+print and embroidery actually want. Anything that should look dimensional uses
+the raster.
+
+**DB-3 closed, and a correction.** `0017_rivalries_seed` is now recorded in
+`supabase_migrations` (version `20260806061800`); 32 files match 32 rows. An
+intermediate version of that entry claimed re-running the seed would duplicate
+rows or hit a constraint. **It would not** — the insert has a `where not exists`
+guard on the pair in both directions. That claim came from grepping for
+`on conflict`, finding none, and concluding the worst instead of reading twelve
+more lines. The original entry, which called it harmless, was right.
+
+**PUSH-6 declined, BRAND-8 answered no.** Field stays one of three themes. PUSH-6
+is kept in the file rather than deleted: the exposure is real — no daily cap, no
+quiet hours — but bad beats now default off, so it reaches only someone who
+switched them on and can switch them back.
+
 ### Aug 12 — Bad beats go opt-in, and betting groups get a nudge
 
 Two owner requests, migrations 0032/0033, both applied.
