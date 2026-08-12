@@ -400,6 +400,44 @@ not in scope here; it is queued as **BRAND-2 / BRAND-3** in `docs/STATUS.md`.
 The in-app mark sidesteps the mismatch by taking `currentColor` for the letter
 and `var(--accent)` for the seam, so it is correct under whichever palette is
 live, in both themes.
+### Aug 12 — The backup ran, and the client was a year behind the server
+
+`jobs.yml` backup step. No model change.
+
+With the connection string finally right — the preflight from the previous entry
+printing `user="postgres.mjijyutmbtnwcjspozsx" … password_len=20` and Postgres
+accepting it — the dump hit the next wall:
+
+```
+pg_dump: error: aborting because of server version mismatch
+pg_dump: detail: server version: 17.6; pg_dump version: 16.14
+```
+
+`pg_dump` refuses to dump a server newer than itself, `ubuntu-24.04` ships
+`postgresql-client-16`, and the project is on Postgres 17.6. The guard made it
+worse rather than better: `which pg_dump || install` found the v16 binary and
+installed nothing, so the mismatch was structural and would have recurred every
+Sunday. Now the client major is pinned to the server's and invoked by absolute
+path (`/usr/lib/postgresql/17/bin/pg_dump`) rather than trusting whatever
+`pg_dump` resolves to, with a PGDG fallback for images where the repo is not
+already configured. When Supabase upgrades the project, bump `PG_MAJOR` — the
+failure names both versions, so it diagnoses itself.
+
+**Verified by running the step, not by reading it.** The previous entry's
+process note was that validating the YAML is not validating the shell inside it;
+this time the `Run job` script was extracted from the workflow, `bash -n`'d, and
+then *executed* against a stubbed `pg_dump` at the pinned path in three
+scenarios: good string → `wrote backup-20260812.sql.gz (4.0K, 11 tables)`,
+exit 0; pinned binary absent → apt install attempted and a loud failure, never a
+silent fall-through to v16; bad username → the preflight fails first, exit 1,
+before apt or pg_dump are touched at all.
+
+Four red runs to get here, each on a genuinely different defect: the wrong task
+dispatched, then an option that could not be found in the dropdown, then an
+unqualified pooler username, then this. None of them would have been visible
+before this week — the step used to exit 0 with a 20-byte artifact no matter
+what happened.
+
 ### Aug 12 — Two wrong things, one sentence: the backup learns to say which
 
 `scripts/lib/db-url.ts` (pure, 10 tests), `scripts/check-db-url.ts`, a preflight

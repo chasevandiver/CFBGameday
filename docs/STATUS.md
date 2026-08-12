@@ -95,17 +95,16 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
       emitted its `COPY` block. Verified against a stubbed `pg_dump` in all
       three modes: good → green, auth failure → red, partial → red naming the
       missing tables.
-- [ ] **Run the `backup` dispatch once** and confirm the artifact. **Three runs
-      so far, all red on `password authentication failed for user "postgres"` —
-      the username, not the password.** The pooler needs
-      `postgres.mjijyutmbtnwcjspozsx`, and the secret still carries bare
-      `postgres`. The job now runs `scripts/check-db-url.ts` first and says
-      which field is wrong (no secret material printed), so the next red run
-      names its own cause. Actions →
-      jobs → Run workflow → task `backup`. Expect `wrote backup-YYYYMMDD.sql.gz
-      (…, 11 tables)` and a `db-backup` artifact at 90-day retention. This is
-      what actually closes P1-9a — the secret being set is not the same as the
-      dump running. · 0.25 h · owner
+- [ ] **Run the `backup` dispatch once** and confirm the artifact. **Four red
+      runs so far, four distinct defects, all now fixed:** wrong task dispatched
+      (run-name added); `backup` unfindable at position 14 of 20 (moved to
+      first, which also makes the accidental default read-only); unqualified
+      pooler username (preflight now names it); and `pg_dump` 16 against a
+      Postgres 17.6 server (client major pinned). The connection itself is
+      confirmed working — the preflight authenticated with
+      `user="postgres.mjijyutmbtnwcjspozsx" password_len=20`. Expect
+      `wrote backup-YYYYMMDD.sql.gz (…, 11 tables)` and a `db-backup` artifact
+      at 90-day retention. This is what closes P1-9a. · 0.25 h · owner
 - [ ] **P1-9b** Create a healthchecks.io project, set `HEALTHCHECK_PING_URL`
       (the ping step is already wired). · 0.5 h
 - [ ] **P1-9c / F2** Add `ANTHROPIC_API_KEY`, dispatch `verdicts` once, or team

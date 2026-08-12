@@ -230,7 +230,34 @@ jobs:
                 # runs were spent guessing. Prints user/host/port/db and the
                 # password's LENGTH, never the password.
                 npx tsx scripts/check-db-url.ts
-                which pg_dump || { sudo apt-get -qq update && sudo apt-get -qq install -y postgresql-client; }
+                # pg_dump refuses to dump a server NEWER than itself, and the
+                # ubuntu-24.04 runner ships postgresql-client-16 against a
+                # Postgres 17.6 project:
+                #   "aborting because of server version mismatch"
+                # The old guard was `which pg_dump || install` — pg_dump exists,
+                # so it never installed anything and the mismatch was structural
+                # rather than transient. Pin the client major to the server's.
+                #
+                # WHEN SUPABASE UPGRADES THE PROJECT: bump PG_MAJOR. The failure
+                # is loud and names both versions, so it is self-diagnosing.
+                PG_MAJOR=17
+                PG_DUMP="/usr/lib/postgresql/$PG_MAJOR/bin/pg_dump"
+                if [ ! -x "$PG_DUMP" ]; then
+                  sudo apt-get -qq update
+                  # PGDG is already configured on GitHub's images (the stock
+                  # client reports itself as ...pgdg24.04+1). The fallback is for
+                  # images where it is not.
+                  sudo apt-get -qq install -y "postgresql-client-$PG_MAJOR" || {
+                    sudo install -d /usr/share/postgresql-common/pgdg
+                    sudo curl -fsS -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+                      https://www.postgresql.org/media/keys/ACCC4CF8.asc
+                    echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+                      | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+                    sudo apt-get -qq update
+                    sudo apt-get -qq install -y "postgresql-client-$PG_MAJOR"
+                  }
+                fi
+                "$PG_DUMP" --version
                 STAMP="$(date -u +%Y%m%d)"
                 TABLES="predictions picks bets groups group_members group_week_config group_week_games line_snapshots ratings profiles rating_adjustments"
                 # pipefail, or the exit code is gzip's. A pg_dump that dies on a
@@ -240,7 +267,7 @@ jobs:
                 # copy of the receipts outside a 7-day PITR window is exactly
                 # where a silent success is worst.
                 set -o pipefail
-                pg_dump "$SUPABASE_DB_URL" --no-owner --no-privileges \
+                "$PG_DUMP" "$SUPABASE_DB_URL" --no-owner --no-privileges \
                   $(for t in $TABLES; do printf -- '-t public.%s ' "$t"; done) \
                   | gzip > "backup-$STAMP.sql.gz"
                 gzip -t "backup-$STAMP.sql.gz"
