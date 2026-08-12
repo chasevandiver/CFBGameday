@@ -36,7 +36,7 @@ rows were decided by reading code, not by reading commit messages.
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
 | **Model in code** | `2026.5.0` — tilt carry, `baseHfa` 3.0, centered team-HFA, portal fix, market-anchored tier recentre |
-| **Database** | Verified live 2026-08-12: **27** migrations applied, `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
+| **Database** | Verified live 2026-08-12: **28** migrations applied, `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
 | **Model in production** | ⚠️ `2026.2.0`. **Four versions behind**, pricing every cross-classification opener ~10 points toward the G5. Waiting on CFBD to publish 2026 talent; `preseason-refresh` retries daily and loads itself the first morning `--check` is green. |
 | **The edge verdict** | b₁ = 0.035 (t = 0.84) for the model vs 0.987 (t = 22.81) for the market, n = 2611; flagged edges 49.2% ATS vs the close. Edges are **information, not bets** — and no model-accuracy work belongs in the next 17 days. |
 
@@ -153,8 +153,25 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
       slate are now one shared `src/lib/week-range.ts` (`UX-17` aligned their
       numbers; this removes the copies), and the week selector offers Week 0 only
       when the season has one (`minWeek` on the cached season pointer).
-      **Owner note:** the single `group_week_config` row is (2026, week 1) and
-      keeps week 1 — now the Sep 3–7 slate. A Week 0 board is a separate act.
+      **Follow-up:** the board moved with its games — see DB-6.
+- [x] **DB-6 — the crew's board follows its games to Week 0.** The one
+      `group_week_config` row sat at week 1 with four handpicked games —
+      TCU/North Carolina, Virginia/NC State, Stanford/Hawai'i, UNLV/Memphis —
+      **all of which kick Aug 29–30**, so 0029 moved every one of them to week 0.
+      It was always a Week 0 board; there had been no Week 0 to file it under.
+      Left alone it misfiles both ways: `group_week_games_for` resolves a
+      handpicked board from `group_week_games` and never re-checks `games.week`
+      (`0020:175-182`), so the board would render Aug 29 games under a "Week 1"
+      heading beside a slate starting Sep 3. `0030_move_board_to_week_zero.sql`
+      (applied) moves the config and its pins together — copy the parent, move
+      the children, drop the old parent, because the composite FK forbids
+      updating either table alone — keeping mode, markets, conference, min-picks
+      and `updated_by` exactly as set. Verified: board at week 0, 4 pinned games,
+      all `games.week = 0`, unlocked.
+- [ ] **Week 1 has no board.** After DB-6 the Sep 3–7 slate (91 games, incl. the
+      Georgia opener) has no `group_week_config`. Which games, and handpicked vs
+      full slate, is a real choice — `/groups/[slug]/settings`, week 1. Not
+      something a migration should pick for you. · owner
 - [ ] **DB-3 — `0017_rivalries_seed` is not in the applied-migrations ledger**,
       though `rivalries` holds its 29 rows, so the seed reached the database by
       some other path. Harmless today; it means a `db push` against a fresh
