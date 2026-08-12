@@ -224,6 +224,12 @@ jobs:
               if [ -z "$SUPABASE_DB_URL" ]; then
                 echo "::notice::SUPABASE_DB_URL not set — backup skipped"
               else
+                # Say what the secret CONTAINS before dialling. Postgres answers
+                # a wrong username and a wrong password with the same sentence,
+                # and against the pooler it is usually the username — three
+                # runs were spent guessing. Prints user/host/port/db and the
+                # password's LENGTH, never the password.
+                npx tsx scripts/check-db-url.ts
                 which pg_dump || { sudo apt-get -qq update && sudo apt-get -qq install -y postgresql-client; }
                 STAMP="$(date -u +%Y%m%d)"
                 TABLES="predictions picks bets groups group_members group_week_config group_week_games line_snapshots ratings profiles rating_adjustments"
