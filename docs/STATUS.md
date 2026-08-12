@@ -64,11 +64,20 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
       `pg_dump` has **never executed** — the append-only `predictions` / `picks`
       / `bets` have no copy beyond the 7-day PITR window. By elimination this is
       the largest open risk in the product. · 1 h
-      **Where:** Supabase dashboard → project `the-cfb-slate`
-      (ref `mjijyutmbtnwcjspozsx`, us-east-2) → Settings → Database →
-      Connection string → URI, **Session pooler (port 5432)** — `pg_dump` cannot
-      run through the transaction pooler on 6543, and the direct
-      `db.<ref>.supabase.co` host is IPv6-only, which Actions runners are not.
+      **Where:** the **`Connect` button in the dashboard top bar** for project
+      `the-cfb-slate` (ref `mjijyutmbtnwcjspozsx`, us-east-2) —
+      `dashboard/project/mjijyutmbtnwcjspozsx?showConnect=true`. *Not* Settings →
+      Database, which in the current UI holds only pool sizing; the strings live
+      in the Connect modal. Take the **Session pooler** row (IPv4-compatible),
+      **URI** tab:
+      `postgresql://postgres.mjijyutmbtnwcjspozsx:[PASSWORD]@aws-N-us-east-2.pooler.supabase.com:5432/postgres`.
+      The other two rows both fail here and fail confusingly: **Direct
+      connection** resolves `db.<ref>.supabase.co`, which is IPv6-only while
+      Actions runners are not, and **Transaction pooler** (6543) drops the
+      session-level features `pg_dump` needs. Copy the host from the modal —
+      the `aws-0-`/`aws-1-` prefix varies by provisioning date. Password: reset
+      at Settings → Database → Database password if unknown; nothing else in
+      this repo uses it (the app talks REST with the service-role key).
       Then GitHub → Settings → Secrets and variables → Actions → `SUPABASE_DB_URL`.
 - [ ] **`backup` has no dispatch option.** `jobs.yml:169` maps it to the
       `0 15 * * 0` cron only; it is absent from the `workflow_dispatch` task
