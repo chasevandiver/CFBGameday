@@ -165,6 +165,34 @@ shipping it.
 
 ## Log
 
+### Aug 12 — Week 1 takes the full slate
+
+No model change, no migration. One `group_week_config` row.
+
+The Week 1 board (Sep 3–7, 91 games including the Georgia opener) is
+`full_slate`, markets `[spread, total]`, min-picks 0 — the same settings the
+Week 0 board carries, so the two weeks behave alike apart from the selection.
+
+**Written as data, not as a migration**, deliberately. 0028–0030 were schema-
+adjacent corrections that belong in the ledger; a board is ordinary app state
+that `/groups/[slug]/settings` writes every week. A migration inserting one
+group's config would also be meaningless on a fresh project, where that group
+UUID does not exist — it would silently insert nothing and pretend to have
+worked.
+
+Verified through the resolver rather than by reading the row back:
+`group_week_game_ids` returns **91** for week 1 with **0** rows materialised,
+which is what `full_slate` should do while unlocked — the live branch at
+`0020:184-200` resolves from `games` so a late schedule addition joins the board
+on its own, and `freeze-groups` materialises `group_week_games` and stamps
+`locked_at` at the first kickoff. Week 0 still resolves to its 4 handpicked
+games from the materialised list.
+
+Two things this makes real rather than hypothetical: 91 games × 2 markets is 182
+pickable legs per person on one page, and that page is now the honest load case
+for `09:P-10` (board picks-query collapse) and the `09:P-16` rehearsal — seeding
+a 10-game week would measure nothing.
+
 ### Aug 12 — The board was already a Week 0 board
 
 `supabase/migrations/0030_move_board_to_week_zero.sql`, applied. No model change.
