@@ -1,33 +1,40 @@
 /**
- * Renders every brand asset from the one vector master in scripts/lib/brand-mark.ts.
+ * Cuts every brand asset from the supplied icon artwork.
  *
- *   npx tsx scripts/build-brand-assets.ts
+ *   npm run brand
  *
- * Nothing here is hand-drawn per size — that is the rule the brand spec is
- * strictest about. Change the master, re-run this, commit what moves.
+ * The master is `public/brand/slate-icon-source.png` — the 1254×1254 file the
+ * owner supplied. **Nothing here redraws it.** Every export is a resample, a
+ * crop, or a composite of those exact pixels; the only things this script draws
+ * are the splash ground and the outlined wordmark that sits under the mark.
+ * If the artwork changes, replace the source and re-run.
  *
  * Writes:
- *   public/brand/*.svg          vector master, maskable, favicon, transparent mark, wordmark
+ *   public/brand/slate-mark.png       the mark keyed to transparency, tight crop
  *   public/brand/contact-sheet.html   the mandatory small-size test, on near-black
- *   public/icons/*.png          1024 / 512 / 192 / 180 / 32 + maskable 512 / 192
- *   public/splash/*.png         iOS startup images, portrait, per device
- *   src/app/favicon.ico         16 / 32 / 48
- *   src/app/apple-icon.png      180, the iOS home-screen tile
+ *   public/icons/*.png                1024 / 512 / 192 / 180 / 32 + maskable 512 / 192
+ *   public/splash/*.png               iOS startup images, portrait, per device
+ *   src/app/favicon.ico               16 / 32 / 48
+ *   src/app/icon.png                  32, the browser tab
+ *   src/app/apple-icon.png            180, the iOS home-screen tile
  *   src/lib/apple-startup-images.ts   device table the layout renders <link>s from
+ *   src/lib/brand-mark-data.ts        96px mark, base64, for the edge-rendered OG cards
  *
- * Fonts: the wordmark is outlined at build time from Graduate and IBM Plex Mono
- * (both OFL, fetched from Google Fonts and cached in .brand-cache/). The
- * committed SVG and PNGs carry outlines only — no font dependency ships.
+ * Fonts: the splash wordmark is outlined at build time from Graduate and IBM
+ * Plex Mono (both OFL, fetched from Google Fonts and cached in .brand-cache/).
+ * The committed PNGs carry outlines only — no font dependency ships.
  */
 
 import { Resvg } from "@resvg/resvg-js";
 import opentype from "opentype.js";
+import sharp from "sharp";
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { BRAND, buildMark } from "./lib/brand-mark";
+import { BRAND } from "../src/lib/brand";
 
 const ROOT = join(import.meta.dirname, "..");
 const CACHE = join(ROOT, ".brand-cache");
+const SOURCE = join(ROOT, "public/brand/slate-icon-source.png");
 
 const out = (...p: string[]) => {
   const path = join(ROOT, ...p);
@@ -35,48 +42,156 @@ const out = (...p: string[]) => {
   return path;
 };
 
-function writeSvg(path: string, svg: string) {
-  writeFileSync(out(path), svg);
-  console.log(`  ${path}`);
-}
-
-function png(svg: string, width: number): Buffer {
-  return Buffer.from(
-    new Resvg(svg, { fitTo: { mode: "width", value: width } }).render().asPng(),
-  );
-}
-
-function writePng(path: string, svg: string, width: number) {
-  const data = png(svg, width);
+function report(path: string, data: Buffer) {
   writeFileSync(out(path), data);
   console.log(`  ${path}  ${(data.length / 1024).toFixed(0)} KB`);
   return data;
 }
 
-/* ── Variants ─────────────────────────────────────────────────────────────
-   Four, and only four. Everything exported below is one of these at a size. */
+/**
+ * Downscale the master. Lanczos3 — the icon is a rendered object with a hard
+ * bevel and a 7px rim, and bilinear turns both to mush by 192px.
+ */
+function resize(input: Buffer, size: number): Promise<Buffer> {
+  return sharp(input).resize(size, size, { kernel: "lanczos3" }).png({ compressionLevel: 9 }).toBuffer();
+}
 
-/** The master: full field, numbers, lighting, dimensional S. Full bleed. */
-const MASTER = buildMark({ idPrefix: "m" });
+/* ── Where the mark actually sits ─────────────────────────────────────────
+   Measured off the source rather than eyeballed, so a re-supplied artwork with
+   a different crop still produces correct exports. */
+
+interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 /**
- * Android maskable. Same artwork, foreground pulled to 0.94 so the S sits at
- * 82% of the 80% safe circle — the field markings are decorative and are
- * allowed to be cropped, the S and seam are not.
+ * Flood-fill the S and its seam out of the dark field, from seeds inside the
+ * letter. The plate's rim light is bright too, but it is separated from the
+ * letter by dark field, so the fill never reaches it.
+ *
+ * Returns the mark's bounding box and a matching 8-bit mask.
  */
-const MASKABLE = buildMark({ idPrefix: "k", foregroundScale: 0.94 });
+async function findMark(): Promise<{ box: Box; mask: Buffer; width: number; height: number }> {
+  const { data, info } = await sharp(SOURCE).raw().toBuffer({ resolveWithObject: true });
+  const { width: W, height: H, channels: C } = info;
+  const lit = (x: number, y: number) => {
+    const i = (y * W + x) * C;
+    return data[i] + data[i + 1] + data[i + 2] > 110;
+  };
+
+  const mask = Buffer.alloc(W * H);
+  let x0 = W;
+  let y0 = H;
+  let x1 = 0;
+  let y1 = 0;
+
+  // Several seeds: the seam's cast shadow cuts the letter in two for the
+  // purposes of a 4-connected fill, so one seed only ever finds half of it.
+  const seeds: [number, number][] = [
+    [Math.round(W * 0.49), Math.round(H * 0.24)],
+    [Math.round(W * 0.49), Math.round(H * 0.72)],
+    [Math.round(W * 0.36), Math.round(H * 0.33)],
+    [Math.round(W * 0.64), Math.round(H * 0.64)],
+    [Math.round(W * 0.5), Math.round(H * 0.5)],
+  ];
+
+  for (const [sx, sy] of seeds) {
+    if (mask[sy * W + sx] || !lit(sx, sy)) continue;
+    const stack = [sy * W + sx];
+    mask[sy * W + sx] = 255;
+    while (stack.length) {
+      const p = stack.pop()!;
+      const x = p % W;
+      const y = (p - x) / W;
+      if (x < x0) x0 = x;
+      if (y < y0) y0 = y;
+      if (x > x1) x1 = x;
+      if (y > y1) y1 = y;
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const q = ny * W + nx;
+        if (mask[q] || !lit(nx, ny)) continue;
+        mask[q] = 255;
+        stack.push(q);
+      }
+    }
+  }
+
+  return { box: { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 }, mask, width: W, height: H };
+}
 
 /**
- * 32px and below. No field, no numbers, no drop shadow — all of it turns to
- * mud at that size — and the S pushed out to 1.16 to hold contrast in a tab.
+ * The mark on transparency, tight-cropped.
+ *
+ * The fill mask is binary, so it is blurred by under a pixel before becoming
+ * the alpha channel — that is what keeps the bevel's edge from going stair-
+ * stepped. Both places this is used (splash, share cards) sit on near-black,
+ * which is also where the keyed edge is invisible.
  */
-const FAVICON = buildMark({ idPrefix: "f", detail: "simple", foregroundScale: 1.16 });
+async function buildKeyedMark(found: Awaited<ReturnType<typeof findMark>>): Promise<Buffer> {
+  const { box, mask, width, height } = found;
+  const pad = 12;
+  const crop = {
+    left: Math.max(0, box.x - pad),
+    top: Math.max(0, box.y - pad),
+    width: Math.min(width, box.x + box.w + pad) - Math.max(0, box.x - pad),
+    height: Math.min(height, box.y + box.h + pad) - Math.max(0, box.y - pad),
+  };
 
-/** Transparent mark for in-app use, where the app supplies the ground. */
-const MARK = buildMark({ idPrefix: "n", background: false, detail: "simple" });
+  // toColourspace + raw, or sharp promotes the single-band mask to 3-band sRGB
+  // on the way out and joinChannel reads a third of it as the alpha plane.
+  const alpha = await sharp(mask, { raw: { width, height, channels: 1 } })
+    .extract(crop)
+    .blur(0.7)
+    .toColourspace("b-w")
+    .raw()
+    .toBuffer();
 
-/** Same mark with its shadow and seam cut intact — the splash has room for depth. */
-const MARK_FULL = buildMark({ idPrefix: "p", background: false, detail: "full" });
+  // No ensureAlpha() first: the source is 3-band, and joinChannel appends the
+  // mask as the 4th. Adding an alpha channel beforehand makes it 5-band, which
+  // sharp writes out with the wrong band as alpha — the mark comes out inverted.
+  return sharp(SOURCE)
+    .extract(crop)
+    .joinChannel(alpha, { raw: { width: crop.width, height: crop.height, channels: 1 } })
+    // Palette here too: the mark is only ever composited onto near-black, and
+    // 256 entries carry the chalk ramp and the gold without a visible step.
+    .png({ palette: true, quality: 95, effort: 9 })
+    .toBuffer();
+}
+
+/**
+ * The favicon cut: the keyed mark on flat field green, nothing else.
+ *
+ * §30 asks for a simplified version of the same mark at 32px — keep the S and
+ * the seam, drop the yard numbers and the texture, preserve contrast. Cropping
+ * the artwork instead would drag the sideline rail into a 32px tile, where it
+ * reads as three grey specks.
+ */
+async function buildFaviconTile(keyed: Buffer): Promise<Buffer> {
+  const SIDE = 512;
+  const mark = await sharp(keyed)
+    .resize({ height: Math.round(SIDE * 0.86), kernel: "lanczos3" })
+    .toBuffer();
+  const { width: mw, height: mh } = await sharp(mark).metadata();
+  return sharp({
+    create: { width: SIDE, height: SIDE, channels: 3, background: BRAND.fieldGreen },
+  })
+    .composite([
+      { input: mark, left: Math.round((SIDE - mw!) / 2), top: Math.round((SIDE - mh!) / 2) },
+    ])
+    .png({ compressionLevel: 9 })
+    .toBuffer();
+}
 
 /* ── Wordmark ─────────────────────────────────────────────────────────────── */
 
@@ -108,40 +223,19 @@ async function loadFont(key: keyof typeof FONTS): Promise<opentype.Font> {
  * tracking, so glyphs are advanced by hand — which is what the wordmark needs
  * anyway: display caps at this size want air between them.
  */
-function setLine(
-  font: opentype.Font,
-  text: string,
-  fontSize: number,
-  tracking: number,
-): { d: string; width: number; height: number } {
+function setLine(font: opentype.Font, text: string, fontSize: number, tracking: number) {
   const scale = fontSize / font.unitsPerEm;
   const path = new opentype.Path();
   let x = 0;
-  const glyphs = font.stringToGlyphs(text);
+  // charToGlyph, not stringToGlyphs: the latter runs opentype's shaper, which
+  // throws on lookups these fonts happen to carry. Caps and digits need none.
+  const glyphs = [...text].map((ch) => font.charToGlyph(ch));
   glyphs.forEach((glyph, i) => {
     path.extend(glyph.getPath(x, 0, fontSize));
     x += glyph.advanceWidth! * scale;
     if (i < glyphs.length - 1) x += tracking;
   });
-  return {
-    d: path.toPathData(2),
-    width: x,
-    height: (font.ascender - font.descender) * scale,
-  };
-}
-
-/** THE CFB SLATE, outlined, chalk, on a transparent ground. */
-async function buildWordmark(): Promise<string> {
-  const graduate = await loadFont("graduate");
-  const line = setLine(graduate, "THE CFB SLATE", 100, 9);
-  const pad = 6;
-  // Cap height, not the full em box: the wordmark's box should be the letters.
-  const capTop = -(graduate.tables.os2.sCapHeight ?? 700) * (100 / graduate.unitsPerEm);
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-pad} ${capTop - pad} ${line.width + pad * 2} ${-capTop + pad * 2}">
-  <title>The CFB Slate</title>
-  <path d="${line.d}" fill="${BRAND.chalk}"/>
-</svg>
-`;
+  return { d: path.toPathData(2), width: x };
 }
 
 /* ── favicon.ico ──────────────────────────────────────────────────────────── */
@@ -161,8 +255,6 @@ function buildIco(entries: { size: number; data: Buffer }[]): Buffer {
     const e = Buffer.alloc(16);
     e.writeUInt8(size >= 256 ? 0 : size, 0);
     e.writeUInt8(size >= 256 ? 0 : size, 1);
-    e.writeUInt8(0, 2);
-    e.writeUInt8(0, 3);
     e.writeUInt16LE(1, 4);
     e.writeUInt16LE(32, 6);
     e.writeUInt32LE(data.length, 8);
@@ -177,9 +269,9 @@ function buildIco(entries: { size: number; data: Buffer }[]): Buffer {
 /* ── iOS startup images ───────────────────────────────────────────────────── */
 
 /**
- * Portrait only. Landscape startup images on iPhone are ignored by iOS and on
- * iPad the app is very rarely launched to a cold splash in landscape — the
- * cost is another dozen PNGs in the repo for a frame most users never see.
+ * Portrait only. Landscape startup images on iPhone are ignored by iOS, and on
+ * iPad a cold launch to landscape is rare enough that another dozen PNGs in the
+ * repo is the wrong trade.
  */
 const DEVICES: ReadonlyArray<{ id: string; w: number; h: number; dpr: number; note: string }> = [
   { id: "iphone-xr", w: 414, h: 896, dpr: 2, note: "iPhone 11, XR" },
@@ -198,35 +290,38 @@ const DEVICES: ReadonlyArray<{ id: string; w: number; h: number; dpr: number; no
 ];
 
 /**
- * The splash is the icon's world, not the icon enlarged: near-black ground, one
- * localized green aura, the mark, the wordmark, and the product line. Enormous
- * negative space — the S sits above centre so the type below reads as a base.
+ * The splash extends the icon's world rather than enlarging the icon (§23): the
+ * mark itself on near-black, one localized green aura behind it, the wordmark
+ * and the product line below, and a great deal of nothing.
  */
 function buildSplash(
+  markDataUri: string,
+  markAspect: number,
   w: number,
   h: number,
   wordmark: { d: string; width: number; capTop: number },
   tagline: { d: string; width: number },
 ): string {
   const short = Math.min(w, h);
-  const markW = Math.round(short * 0.40);
+  const markH = Math.round(short * 0.34);
+  const markW = Math.round(markH * markAspect);
   const markX = (w - markW) / 2;
-  const markY = h / 2 - markW * 0.72;
+  const markY = h / 2 - markH * 0.78;
 
   const wordW = short * 0.58;
   const wordScale = wordW / wordmark.width;
-  const wordY = markY + markW + short * 0.10;
+  const wordY = markY + markH + short * 0.1;
 
-  const tagW = short * 0.60;
+  const tagW = short * 0.6;
   const tagScale = tagW / tagline.width;
-  const tagY = wordY + short * 0.085;
+  const tagY = wordY + short * 0.09;
 
-  // The aura is a disc around the mark, not a wash over the screen — §15 wants
-  // it localized, and a full-canvas gradient costs 20× the bytes in a PNG that
-  // is otherwise flat black.
-  const auraR = Math.round(markW * 1.05);
+  // A disc around the mark, not a wash over the screen — §15 wants the aura
+  // localized, and a full-canvas gradient costs 20× the bytes in a PNG that is
+  // otherwise flat black.
+  const auraR = Math.round(markH * 1.05);
   const auraX = Math.round(w / 2);
-  const auraY = Math.round(markY + markW / 2);
+  const auraY = Math.round(markY + markH / 2);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
   <defs>
@@ -238,7 +333,7 @@ function buildSplash(
   </defs>
   <rect width="${w}" height="${h}" fill="${BRAND.nearBlack}"/>
   <circle cx="${auraX}" cy="${auraY}" r="${auraR}" fill="url(#aura)"/>
-  <g transform="translate(${markX} ${markY}) scale(${markW / 1024})">${markBody()}</g>
+  <image href="${markDataUri}" x="${markX}" y="${markY}" width="${markW}" height="${markH}"/>
   <g transform="translate(${(w - wordW) / 2} ${wordY}) scale(${wordScale}) translate(0 ${-wordmark.capTop})">
     <path d="${wordmark.d}" fill="${BRAND.chalk}"/>
   </g>
@@ -249,28 +344,15 @@ function buildSplash(
 `;
 }
 
-/** The transparent mark's contents, unwrapped, for embedding in the splash. */
-function markBody(): string {
-  return MARK_FULL.replace(/^[\s\S]*?<svg[^>]*>/, "").replace(/<\/svg>\s*$/, "");
-}
-
 /* ── Contact sheet ────────────────────────────────────────────────────────── */
 
 function buildContactSheet(): string {
-  const sizes = [300, 120, 72, 60, 40, 32];
-  const cells = sizes
+  const cells = [300, 120, 72, 60, 40, 32]
     .map(
       (s) => `      <figure>
-        <img src="/icons/icon-1024.png" width="${s}" height="${s}" alt="The Slate S at ${s}px">
+        <img src="/brand/slate-icon-source.png" width="${s}" height="${s}" alt="The Slate S at ${s}px">
         <figcaption>${s}px</figcaption>
       </figure>`,
-    )
-    .join("\n");
-
-  const row = ["icon-1024.png", "maskable-512.png"]
-    .map(
-      (f) =>
-        `      <figure><img src="/icons/${f}" width="60" height="60" alt="${f}"><figcaption>${f.replace(".png", "")}</figcaption></figure>`,
     )
     .join("\n");
 
@@ -287,32 +369,36 @@ function buildContactSheet(): string {
   p { color: #8FA79B; max-width: 62ch; margin: 0 0 32px }
   section { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 32px; margin-bottom: 56px }
   figure { margin: 0; text-align: center }
-  img { display: block; image-rendering: auto }
+  img { display: block }
   figcaption { margin-top: 10px; font-size: 11px; letter-spacing: .08em; color: #6E8579;
                font-family: ui-monospace, monospace }
   hr { border: 0; border-top: 1px solid rgba(244,239,226,.08); margin: 0 0 40px }
 </style>
 <h1>Small-size test</h1>
-<p>The master, downscaled by the browser exactly the way a home screen does it.
-   At 60px you should read the S first, then the gold seam. Everything else is
-   allowed to disappear.</p>
+<p>The supplied artwork, downscaled by the browser exactly the way a home screen
+   does it. At 60px you should read the S first, then the gold seam. Everything
+   else is allowed to disappear.</p>
 <section>
 ${cells}
 </section>
 <hr>
 <h1>Maskable, uncropped</h1>
 <p>Android crops this to a circle, a squircle, or a rounded square depending on
-   the launcher. The S must clear every one of them.</p>
+   the launcher. The S must clear every one of them — it sits at 0.37 of the
+   canvas from centre, inside the 0.40 safe radius, so it does.</p>
 <section>
       <figure><img src="/icons/maskable-512.png" width="180" height="180" alt="maskable, uncropped"><figcaption>full</figcaption></figure>
       <figure><img src="/icons/maskable-512.png" width="180" height="180" style="clip-path:circle(50%)" alt="maskable, circle crop"><figcaption>circle</figcaption></figure>
       <figure><img src="/icons/maskable-512.png" width="180" height="180" style="clip-path:inset(0 round 22%)" alt="maskable, squircle crop"><figcaption>rounded</figcaption></figure>
 </section>
 <hr>
-<h1>Home-screen row</h1>
-<p>At 60px against the icons it will actually sit next to.</p>
+<h1>Favicon cut</h1>
+<p>At 32px the panel, the rim and the yard numbers are noise, so the tab icon is
+   cropped to the mark alone (§30).</p>
 <section>
-${row}
+      <figure><img src="/icons/icon-32.png" width="128" height="128" style="image-rendering:pixelated" alt="favicon at 4×"><figcaption>32px at 4×</figcaption></figure>
+      <figure><img src="/icons/icon-32.png" width="32" height="32" alt="favicon"><figcaption>32px</figcaption></figure>
+      <figure><img src="/icons/icon-192.png" width="60" height="60" alt="full icon at 60px"><figcaption>full icon, 60px</figcaption></figure>
 </section>
 `;
 }
@@ -320,35 +406,78 @@ ${row}
 /* ── Run ──────────────────────────────────────────────────────────────────── */
 
 async function main() {
-  console.log("vector masters");
-  writeSvg("public/brand/slate-icon.svg", MASTER);
-  writeSvg("public/brand/slate-icon-maskable.svg", MASKABLE);
-  writeSvg("public/brand/slate-icon-favicon.svg", FAVICON);
-  writeSvg("public/brand/slate-mark.svg", MARK);
+  if (!existsSync(SOURCE)) throw new Error(`missing artwork: ${SOURCE}`);
+  const source = readFileSync(SOURCE);
+  const meta = await sharp(source).metadata();
+  console.log(`source ${meta.width}×${meta.height}, alpha=${meta.hasAlpha}`);
 
-  const wordmarkSvg = await buildWordmark();
-  writeSvg("public/brand/wordmark.svg", wordmarkSvg);
+  const found = await findMark();
+  const c = (found.width - 1) / 2;
+  const reach =
+    Math.max(
+      ...[
+        [found.box.x, found.box.y],
+        [found.box.x + found.box.w, found.box.y],
+        [found.box.x, found.box.y + found.box.h],
+        [found.box.x + found.box.w, found.box.y + found.box.h],
+      ].map(([x, y]) => Math.hypot(x - c, y - c)),
+    ) / found.width;
+  console.log(`mark reaches ${reach.toFixed(3)} of the canvas from centre (maskable safe: 0.400)`);
 
-  // The app's own favicon route — SVG, so it stays sharp in a tab at any DPR.
-  writeSvg("src/app/icon.svg", FAVICON);
+  console.log("mark");
+  const keyed = report("public/brand/slate-mark.png", await buildKeyedMark(found));
 
-  console.log("raster icons");
-  const icon1024 = writePng("public/icons/icon-1024.png", MASTER, 1024);
-  writePng("public/icons/icon-512.png", MASTER, 512);
-  writePng("public/icons/icon-192.png", MASTER, 192);
-  writePng("public/icons/icon-180.png", MASTER, 180);
-  writePng("public/icons/icon-32.png", FAVICON, 32);
-  writePng("public/icons/maskable-512.png", MASKABLE, 512);
-  writePng("public/icons/maskable-192.png", MASKABLE, 192);
+  const keyedMeta = await sharp(keyed).metadata();
+  const markAspect = keyedMeta.width! / keyedMeta.height!;
+  const favSource = await buildFaviconTile(keyed);
 
-  // Next's file conventions: these two emit their own <link> tags.
-  writeFileSync(out("src/app/apple-icon.png"), png(MASTER, 180));
-  console.log("  src/app/apple-icon.png");
-  writeFileSync(
-    out("src/app/favicon.ico"),
-    buildIco([16, 32, 48].map((size) => ({ size, data: png(FAVICON, size) }))),
+  console.log("icons");
+  // No separate 1024 export: the committed source is 1254² and is listed in the
+  // manifest as the large icon. Re-encoding it at 1024 would add 1.2 MB of
+  // near-identical pixels to the repo for nothing.
+  for (const size of [512, 192, 180]) {
+    report(`public/icons/icon-${size}.png`, await resize(source, size));
+  }
+  // The mark already clears the 80% safe circle, so the maskable is the same
+  // artwork — no second crop, no second composition to drift out of sync.
+  for (const size of [512, 192]) {
+    report(`public/icons/maskable-${size}.png`, await resize(source, size));
+  }
+
+  report("public/icons/icon-32.png", await resize(favSource, 32));
+
+  console.log("app routes");
+  report("src/app/apple-icon.png", await resize(source, 180));
+  report("src/app/icon.png", await resize(favSource, 32));
+  report(
+    "src/app/favicon.ico",
+    buildIco(
+      await Promise.all(
+        [16, 32, 48].map(async (size) => ({ size, data: await resize(favSource, size) })),
+      ),
+    ),
   );
-  console.log("  src/app/favicon.ico");
+
+  // Inlined for the OG cards: they render on the edge, and a share card that
+  // has to reach the network to draw its own logo is one that sometimes ships
+  // without one.
+  const stamp = await sharp(keyed).resize({ height: 192, kernel: "lanczos3" }).png().toBuffer();
+  writeFileSync(
+    out("src/lib/brand-mark-data.ts"),
+    `/**
+ * The Slate S, keyed to transparency and inlined as a data URI.
+ * GENERATED by scripts/build-brand-assets.ts from public/brand/slate-icon-source.png.
+ *
+ * Used by the OG image routes, which run on the edge and cannot read from disk.
+ */
+export const SLATE_MARK_DATA_URI =
+  "data:image/png;base64,${stamp.toString("base64")}";
+
+/** Width ÷ height of the image above, for laying it out without a fetch. */
+export const SLATE_MARK_ASPECT = ${(markAspect).toFixed(4)};
+`,
+  );
+  console.log(`  src/lib/brand-mark-data.ts  ${(stamp.length / 1024).toFixed(0)} KB inlined`);
 
   console.log("ios startup images");
   const graduate = await loadFont("graduate");
@@ -356,25 +485,36 @@ async function main() {
   const word = setLine(graduate, "THE CFB SLATE", 100, 9);
   const capTop = -(graduate.tables.os2.sCapHeight ?? 700) * (100 / graduate.unitsPerEm);
   const tag = setLine(plex, "RATINGS · PREDICTIONS · PICKS · BET TRACKING", 100, 4);
+  const markUri = `data:image/png;base64,${keyed.toString("base64")}`;
 
-  let splashBytes = 0;
+  let bytes = 0;
   for (const d of DEVICES) {
-    const w = d.w * d.dpr;
-    const h = d.h * d.dpr;
-    const svg = buildSplash(w, h, { d: word.d, width: word.width, capTop }, tag);
-    const data = Buffer.from(new Resvg(svg).render().asPng());
+    const svg = buildSplash(
+      markUri,
+      markAspect,
+      d.w * d.dpr,
+      d.h * d.dpr,
+      { d: word.d, width: word.width, capTop },
+      tag,
+    );
+    // Palette-quantised: a splash is one dark ground, one aura and two colours
+    // of type. 256 entries hold all of it, and it takes the set from 5.5 MB to
+    // under a megabyte — the icons stay full-colour, where gradients would band.
+    const data = await sharp(Buffer.from(new Resvg(svg).render().asPng()))
+      .png({ palette: true, quality: 92, effort: 9 })
+      .toBuffer();
     writeFileSync(out(`public/splash/${d.id}.png`), data);
-    splashBytes += data.length;
+    bytes += data.length;
   }
-  console.log(`  ${DEVICES.length} files, ${(splashBytes / 1024).toFixed(0)} KB total`);
+  console.log(`  ${DEVICES.length} files, ${(bytes / 1024).toFixed(0)} KB total`);
 
   writeFileSync(
     out("src/lib/apple-startup-images.ts"),
     `/**
- * iOS PWA startup images. GENERATED by scripts/build-brand-assets.ts — edit
- * the device table there, not here.
+ * iOS PWA startup images. GENERATED by scripts/build-brand-assets.ts — edit the
+ * device table there, not here.
  *
- * Next's metadata API has no apple-touch-startup-image support, so the layout
+ * Next's metadata API has no apple-touch-startup-image field, so the layout
  * renders these as <link> elements and lets React hoist them into <head>.
  * Without them iOS shows a blank white frame between the icon tap and first
  * paint, which is the one thing the brand spec says must never happen.
@@ -390,7 +530,7 @@ ${DEVICES.map(
   console.log("  src/lib/apple-startup-images.ts");
 
   writeFileSync(out("public/brand/contact-sheet.html"), buildContactSheet());
-  console.log(`  public/brand/contact-sheet.html  (master is ${(icon1024.length / 1024).toFixed(0)} KB)`);
+  console.log("  public/brand/contact-sheet.html");
 }
 
 main().catch((err) => {

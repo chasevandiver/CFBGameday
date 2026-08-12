@@ -18,11 +18,19 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: BRAND.nearBlack,
     icons: [
       // `any` icons keep their full-bleed square — the launcher applies its own
-      // corner treatment. `maskable` are the same artwork with the S pulled
-      // inside the 80% safe circle, so a round launcher never clips the letter.
+      // corner treatment. The maskable entries are the *same* artwork, not a
+      // second composition: the S already sits at 0.37 of the canvas from
+      // centre, inside the 0.40 safe radius, so a round crop never clips it.
       { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
       { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-      { src: "/icons/icon-1024.png", sizes: "1024x1024", type: "image/png", purpose: "any" },
+      // The supplied artwork itself, at its native size — re-encoding it at
+      // 1024 would add a megabyte of near-identical pixels to the repo.
+      {
+        src: "/brand/slate-icon-source.png",
+        sizes: "1254x1254",
+        type: "image/png",
+        purpose: "any",
+      },
       { src: "/icons/maskable-192.png", sizes: "192x192", type: "image/png", purpose: "maskable" },
       { src: "/icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],

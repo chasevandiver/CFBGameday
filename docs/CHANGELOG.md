@@ -165,7 +165,70 @@ shipping it.
 
 ## Log
 
+### Aug 12 — The icon was supplied; I should have used it
+
+Correction to the entry below. The first pass rebuilt the Slate S as vector
+geometry — a block S with a horizontal middle bar, then a redraw with a diagonal
+spine, a stroked bevel and a turbulence grain. Both were recreations of artwork
+that already existed, and both were visibly off: the counters, the bevel, the
+rim light and the chalk texture are not things you converge on by eye against a
+reference.
+
+The supplied PNG is now the master. `public/brand/slate-icon-source.png`,
+1254×1254, committed as delivered. **`scripts/build-brand-assets.ts` does not
+draw the icon any more** — every export is a resample, a crop or a composite of
+those exact pixels. The only things the script still draws are the splash ground
+and the outlined Graduate wordmark under the mark. `scripts/lib/brand-mark.ts`,
+the S geometry in `src/lib/brand.ts` and `<SlateMark>` are deleted; the palette
+is all that is left in `brand.ts`.
+
+**What the artwork made easy.** The letter sits 0.369 of the canvas from centre,
+inside the 0.400 Android safe radius, so the maskable exports are the same file
+— no second composition to drift out of sync. The square is painted near-black
+corner to corner with no alpha, so the iOS tile needs nothing done to it. Both
+are asserted in `scripts/brand-assets.test.ts` rather than assumed, along with
+every export the manifest and layout reference.
+
+**What it made harder, and how.** Three surfaces cannot take a 1254px tile:
+
+- *32px favicon.* A downscale of the whole artwork turns the sideline rail into
+  three grey specks. The tab cut is the mark alone on flat field green (§30).
+- *Splash and share cards.* Both sit on near-black and want the letter without
+  its panel. The mark is keyed out by flood-filling it away from the dark field
+  and using the blurred fill as an alpha channel — `slate-mark.png`. The keyed
+  edge is only ever composited onto near-black, which is where it is invisible.
+  A 192px copy is base64'd into `src/lib/brand-mark-data.ts` for the OG routes,
+  which run on the edge and cannot read from disk.
+- *The nav.* Reverted to the wordmark alone. The mark is a chalk letter on a
+  dark field and this header also renders on the light theme, where chalk
+  disappears. That needs a light variant or an outline that can take
+  `currentColor` — **BRAND-6**.
+
+Sharp's `joinChannel` cost an hour: it promotes a single-band mask to 3-band
+sRGB on the way out, so the alpha plane was a third of the buffer read at the
+wrong stride and the mark came out inverted — solid bowls, invisible letter.
+`.toColourspace("b-w").raw()` fixes it, and the test now pins three pixels
+(corner clear, arm opaque, bowl clear) so it cannot come back.
+
+Two size decisions. There is no 1024 export: the committed source is 1254² and
+the manifest lists it directly, rather than a megabyte of near-identical pixels
+beside it. And the splash set and the keyed mark are palette-quantised — a
+splash is one dark ground, one aura and two colours of type, which 256 entries
+hold without a visible step, and it takes the startup images from 5.5 MB to
+936 KB. The icons stay full-colour, where the rim gradient would band.
+
+**Still not met: §20, the true vector master with outlined typography.** The
+supplied artwork is a raster, so there is no vector to export, and every size
+below 1254 is a downscale rather than a re-render. Nothing on a phone shows it —
+the largest surface any of this feeds is a 512px launcher icon — but print, a
+large-format OG variant, or a recolour would all need the vector. Tracked as
+**BRAND-7**.
+
 ### Aug 12 — The Slate S: one master, every size cut from it
+
+**Superseded the same day — see the correction above.** The letterform
+described here was a recreation and is no longer in the repo; the manifest,
+layout, startup-image and share-card wiring it introduced all survived.
 
 New brand identity (`docs/BRAND.md`, supplied v1.0). Icon, logo and the iOS /
 Android install surfaces only — **the app's own palette and display face did

@@ -3,12 +3,17 @@
 **Version 1.0 — August 2026.** Supplied by the owner. This is the identity
 spec: what the mark is, what the palette is, and what the launch surfaces have
 to look like. Section numbers here are the `§` references in
-`scripts/lib/brand-mark.ts`, `src/lib/brand.ts` and `src/app/manifest.ts`.
+`scripts/build-brand-assets.ts`, `src/lib/brand.ts` and `src/app/manifest.ts`.
+
+**The icon is supplied artwork.** `public/brand/slate-icon-source.png` (1254²)
+is the master. `npm run brand` resamples, crops and composites it into every
+export and never redraws it. §20's true vector master does not exist yet —
+BRAND-7.
 
 `docs/DESIGN.md` still owns *how the product is built* — glanceable, no layout
 shift, thumb zone, and the two modes. Where the two touch, DESIGN.md governs
 behaviour and this file governs identity. **What has actually shipped from this
-spec, and what has not, is in `docs/STATUS.md` (BRAND-1…BRAND-5), not here.**
+spec, and what has not, is in `docs/STATUS.md` (BRAND-1…BRAND-7), not here.**
 
 ---
 

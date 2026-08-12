@@ -11,54 +11,57 @@
   p { color: #8FA79B; max-width: 62ch; margin: 0 0 32px }
   section { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 32px; margin-bottom: 56px }
   figure { margin: 0; text-align: center }
-  img { display: block; image-rendering: auto }
+  img { display: block }
   figcaption { margin-top: 10px; font-size: 11px; letter-spacing: .08em; color: #6E8579;
                font-family: ui-monospace, monospace }
   hr { border: 0; border-top: 1px solid rgba(244,239,226,.08); margin: 0 0 40px }
 </style>
 <h1>Small-size test</h1>
-<p>The master, downscaled by the browser exactly the way a home screen does it.
-   At 60px you should read the S first, then the gold seam. Everything else is
-   allowed to disappear.</p>
+<p>The supplied artwork, downscaled by the browser exactly the way a home screen
+   does it. At 60px you should read the S first, then the gold seam. Everything
+   else is allowed to disappear.</p>
 <section>
       <figure>
-        <img src="/icons/icon-1024.png" width="300" height="300" alt="The Slate S at 300px">
+        <img src="/brand/slate-icon-source.png" width="300" height="300" alt="The Slate S at 300px">
         <figcaption>300px</figcaption>
       </figure>
       <figure>
-        <img src="/icons/icon-1024.png" width="120" height="120" alt="The Slate S at 120px">
+        <img src="/brand/slate-icon-source.png" width="120" height="120" alt="The Slate S at 120px">
         <figcaption>120px</figcaption>
       </figure>
       <figure>
-        <img src="/icons/icon-1024.png" width="72" height="72" alt="The Slate S at 72px">
+        <img src="/brand/slate-icon-source.png" width="72" height="72" alt="The Slate S at 72px">
         <figcaption>72px</figcaption>
       </figure>
       <figure>
-        <img src="/icons/icon-1024.png" width="60" height="60" alt="The Slate S at 60px">
+        <img src="/brand/slate-icon-source.png" width="60" height="60" alt="The Slate S at 60px">
         <figcaption>60px</figcaption>
       </figure>
       <figure>
-        <img src="/icons/icon-1024.png" width="40" height="40" alt="The Slate S at 40px">
+        <img src="/brand/slate-icon-source.png" width="40" height="40" alt="The Slate S at 40px">
         <figcaption>40px</figcaption>
       </figure>
       <figure>
-        <img src="/icons/icon-1024.png" width="32" height="32" alt="The Slate S at 32px">
+        <img src="/brand/slate-icon-source.png" width="32" height="32" alt="The Slate S at 32px">
         <figcaption>32px</figcaption>
       </figure>
 </section>
 <hr>
 <h1>Maskable, uncropped</h1>
 <p>Android crops this to a circle, a squircle, or a rounded square depending on
-   the launcher. The S must clear every one of them.</p>
+   the launcher. The S must clear every one of them — it sits at 0.37 of the
+   canvas from centre, inside the 0.40 safe radius, so it does.</p>
 <section>
       <figure><img src="/icons/maskable-512.png" width="180" height="180" alt="maskable, uncropped"><figcaption>full</figcaption></figure>
       <figure><img src="/icons/maskable-512.png" width="180" height="180" style="clip-path:circle(50%)" alt="maskable, circle crop"><figcaption>circle</figcaption></figure>
       <figure><img src="/icons/maskable-512.png" width="180" height="180" style="clip-path:inset(0 round 22%)" alt="maskable, squircle crop"><figcaption>rounded</figcaption></figure>
 </section>
 <hr>
-<h1>Home-screen row</h1>
-<p>At 60px against the icons it will actually sit next to.</p>
+<h1>Favicon cut</h1>
+<p>At 32px the panel, the rim and the yard numbers are noise, so the tab icon is
+   cropped to the mark alone (§30).</p>
 <section>
-      <figure><img src="/icons/icon-1024.png" width="60" height="60" alt="icon-1024.png"><figcaption>icon-1024</figcaption></figure>
-      <figure><img src="/icons/maskable-512.png" width="60" height="60" alt="maskable-512.png"><figcaption>maskable-512</figcaption></figure>
+      <figure><img src="/icons/icon-32.png" width="128" height="128" style="image-rendering:pixelated" alt="favicon at 4×"><figcaption>32px at 4×</figcaption></figure>
+      <figure><img src="/icons/icon-32.png" width="32" height="32" alt="favicon"><figcaption>32px</figcaption></figure>
+      <figure><img src="/icons/icon-192.png" width="60" height="60" alt="full icon at 60px"><figcaption>full icon, 60px</figcaption></figure>
 </section>

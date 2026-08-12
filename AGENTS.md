@@ -31,10 +31,14 @@ Two live documents, then the history.
   evidence. Check there before proposing one.
 - `docs/SPEC.md` — what we're building and why.
 - `docs/BRAND.md` — Brand System v1.0: the Slate S, the palette, the launch
-  surfaces. The `§` numbers in `src/lib/brand.ts`, `scripts/lib/brand-mark.ts`
+  surfaces. The `§` numbers in `src/lib/brand.ts`, `scripts/build-brand-assets.ts`
   and `app/manifest.ts` point here. Identity only — DESIGN.md still governs
   behaviour, and what has actually shipped from it is in `docs/STATUS.md`
-  (BRAND-1…BRAND-5).
+  (BRAND-1…BRAND-7).
+  **The icon is supplied artwork, not code.** `public/brand/slate-icon-source.png`
+  is the master; `npm run brand` only resamples, crops and composites it. Do not
+  redraw the mark — that was tried twice and neither attempt held up next to the
+  original.
 - `docs/DESIGN.md` — design rules for this product. Read before any UI work.
   Says which of the installed design skills owns what, and carries the
   product-specific constraints those skills can't know (glanceable, no layout

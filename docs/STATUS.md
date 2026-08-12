@@ -32,7 +32,7 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **554 tests across 39 files**, `tsc` and lint clean — run in-session 2026-08-12 after the brand-mark exports. 118 DB assertions carried from CI. |
+| **Build** | **569 tests across 39 files**, `tsc` and lint clean — run in-session 2026-08-12 after the brand-asset exports. 118 DB assertions carried from CI. |
 | **Scheduler** | 98 Actions runs, 97 green. The one red was the watchdog firing correctly on a cold `job_runs` table. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
@@ -342,6 +342,15 @@ Real work, deliberately not before Aug 29.
       the maskable safe radius; they cannot cover any of these. · 0.5 h, human
 - [ ] **BRAND-5** Game cards, pick'em and the edge display as descendants of
       the icon (§32–34). Follows BRAND-2 — doing it first means doing it twice.
+- [ ] **BRAND-6** An S in the nav lockup. The supplied mark is chalk on a dark
+      field; this header also renders on the light theme, where chalk vanishes.
+      Needs a light-mode variant of the mark, or an outline version that can
+      take `currentColor`. The wordmark alone ships until then. · 1 h
+- [ ] **BRAND-7** A true vector master (§20). The supplied artwork is a 1254²
+      raster, so every export is a downscale and there is nothing to hand to a
+      printer or recolour. No shipped surface needs it — the largest is a 512px
+      launcher icon — but a large-format OG variant or any print use would.
+      Either trace it or rebuild it in a vector editor. · owner call
 
 **Correctness / security**
 - [ ] **P2-4 / SEC-10** Drop the dead `picks` policies 0018 recreated — the
