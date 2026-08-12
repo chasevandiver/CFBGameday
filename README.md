@@ -22,6 +22,7 @@ A college football ratings, edges, pick'em, and bet-tracking site for the crew. 
 | `npm test` | Model and app unit tests (vitest) |
 | `npm run db:test` | Applies every migration to a throwaway Postgres and asserts the RLS policies, grants and security-definer guards (needs local Postgres binaries) |
 | `npm run backtest` | Point-in-time backtest over 2023–2025 (needs `CFBD_API_KEY`; add `-- --cached` to reuse fetched data, `-- --tune` to grid-search parameters) |
+| `npm run probe:cfbd` | What the CFBD key's **tier** grants, endpoint by endpoint (11 calls, read-only). Distinguishes DENIED (buy a tier) from EMPTY (wait for CFBD to publish) — a distinction `build-preseason.ts --check` cannot make, because the tier-gated endpoints are the ones the preseason build never touches. Also runs as the `cfbd-probe` Actions task, and alongside the daily August `preseason-refresh`. |
 
 ## Repo layout
 
