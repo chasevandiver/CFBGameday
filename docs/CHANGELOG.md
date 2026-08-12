@@ -165,6 +165,46 @@ shipping it.
 
 ## Log
 
+### Aug 12 — The backup could not fail, which is not the same as working
+
+No model change. `.github/workflows/jobs.yml`.
+
+`SUPABASE_DB_URL` was set today — the last of the three empty secrets, and the
+one the readiness audit named as the largest open risk by elimination, since
+`predictions` / `picks` / `bets` are append-only and had no copy outside a
+7-day PITR window. Adding a `workflow_dispatch` option for `backup` (it was
+mapped only from the `0 15 * * 0` cron, so the next proof would have been
+Aug 16, then Aug 23, then **Aug 30 — after launch**) surfaced why the proof
+mattered:
+
+```bash
+pg_dump "$SUPABASE_DB_URL" … | gzip > "backup-$STAMP.sql.gz"
+echo "wrote backup-$STAMP.sql.gz ($(du -h …))"
+```
+
+Actions runs `run:` blocks under `bash -e`, **not** `bash -eo pipefail`. So the
+step's exit code is gzip's. A `pg_dump` that dies on a bad password, a wrong
+pooler port or an IPv6-only host writes to stderr, closes the pipe, and gzip
+compresses nothing and exits 0 — **green run, `db-backup` artifact uploaded,
+20 bytes, unpacks to an empty file, 90-day retention.** The one copy of the
+receipts is exactly the place where a silent success is worst, and it would
+have looked healthy every Sunday until someone needed to restore.
+
+Now `set -o pipefail`, then `gzip -t`, then an assertion that all 11 requested
+tables emitted a `COPY public.<t>` block — which catches the other silent
+mode, a dump that connected fine and selected nothing. `COPY` headers are
+emitted for empty tables too, so this checks the dump's shape without
+asserting row counts that legitimately start at zero.
+
+Verified against a stubbed `pg_dump` in three modes rather than reasoned about:
+good dump → green, 11 tables; auth failure → **red** (was green); truncated
+dump → red, naming the ten missing tables.
+
+The same shape as the `observe-scoreboard` finding two entries down: an
+instrument whose failure and whose success produce identical output isn't an
+instrument. That one is still open — the board has to be watched over a real
+kickoff. This one is closed.
+
 ### Aug 12 — Four checklists, one of them lying: the open work gets a single list
 
 No model change, no code change. `docs/STATUS.md` (new), and four documents

@@ -60,11 +60,13 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
 - [ ] **🔑 Rotate the CFBD key** — it was pasted into a chat transcript to run
       the Aug 12 probe and backtest. `collegefootballdata.com/key`, then update
       the GitHub secret. · 0.25 h · human
-- [ ] **P1-9a** Set `SUPABASE_DB_URL`. Empty in all 98 runs, so the weekly
-      `pg_dump` has **never executed** — the append-only `predictions` / `picks`
-      / `bets` have no copy beyond the 7-day PITR window. By elimination this is
-      the largest open risk in the product. · 1 h
-      **Where:** the **`Connect` button in the dashboard top bar** for project
+- [x] **P1-9a** `SUPABASE_DB_URL` set — **by the owner, 2026-08-12.** It had been
+      empty in all 98 runs, so the weekly `pg_dump` had never executed and the
+      append-only `predictions` / `picks` / `bets` had no copy beyond the 7-day
+      PITR window — by elimination the largest open risk in the product. The
+      secret existing is not yet proof the dump runs; the row below is.
+      **Where it came from:** the **`Connect` button in the dashboard top bar**
+      for project
       `the-cfb-slate` (ref `mjijyutmbtnwcjspozsx`, us-east-2) —
       `dashboard/project/mjijyutmbtnwcjspozsx?showConnect=true`. *Not* Settings →
       Database, which in the current UI holds only pool sizing; the strings live
@@ -79,12 +81,23 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
       at Settings → Database → Database password if unknown; nothing else in
       this repo uses it (the app talks REST with the service-role key).
       Then GitHub → Settings → Secrets and variables → Actions → `SUPABASE_DB_URL`.
-- [ ] **`backup` has no dispatch option.** `jobs.yml:169` maps it to the
-      `0 15 * * 0` cron only; it is absent from the `workflow_dispatch` task
-      list (`:8-45`). So the secret above cannot be verified on demand — the
-      next proof is Sun Aug 16, then Aug 23, then **Aug 30, which is after
-      launch**. Add `backup` to the dispatch list so the first backup can be
-      proved the day the secret lands. · 0.25 h
+- [x] **`backup` is dispatchable, and can now fail.** It was cron-only
+      (`0 15 * * 0`), so the secret above could not be verified until a Sunday —
+      the next proofs being Aug 16, Aug 23, then **Aug 30, after launch**. Added
+      to the `workflow_dispatch` list. Adding the dispatch surfaced the reason it
+      mattered: the step ran `pg_dump … | gzip > file` under Actions' default
+      `bash -e`, which is **not** `pipefail`, so a `pg_dump` that died on a bad
+      password closed the pipe, gzip compressed nothing, the step exited **0**,
+      and a 20-byte artifact uploaded as the week's backup. Now `set -o
+      pipefail`, `gzip -t`, and an assertion that every one of the 11 tables
+      emitted its `COPY` block. Verified against a stubbed `pg_dump` in all
+      three modes: good → green, auth failure → red, partial → red naming the
+      missing tables.
+- [ ] **Run the `backup` dispatch once** and confirm the artifact. Actions →
+      jobs → Run workflow → task `backup`. Expect `wrote backup-YYYYMMDD.sql.gz
+      (…, 11 tables)` and a `db-backup` artifact at 90-day retention. This is
+      what actually closes P1-9a — the secret being set is not the same as the
+      dump running. · 0.25 h · owner
 - [ ] **P1-9b** Create a healthchecks.io project, set `HEALTHCHECK_PING_URL`
       (the ping step is already wired). · 0.5 h
 - [ ] **P1-9c / F2** Add `ANTHROPIC_API_KEY`, dispatch `verdicts` once, or team

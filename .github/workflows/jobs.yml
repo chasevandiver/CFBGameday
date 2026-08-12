@@ -37,6 +37,13 @@ on:
           - freeze-groups
           - questions
           - verdicts
+          # Logical backup of the append-only tables. Also on the Sunday
+          # 15:00 UTC cron, but dispatchable because the cron alone made the
+          # SUPABASE_DB_URL secret unverifiable until the next Sunday — and
+          # this is the only copy of predictions/picks/bets outside the 7-day
+          # PITR window, so "did it work" should be answerable the day the
+          # secret lands. Read-only against the database.
+          - backup
           # Read-only preview: builds the preseason ratings and prints the
           # ranking table to the log. Writes JSON to a scratch dir that is
           # thrown away with the runner — nothing reaches the database.
@@ -200,13 +207,32 @@ jobs:
               else
                 which pg_dump || { sudo apt-get -qq update && sudo apt-get -qq install -y postgresql-client; }
                 STAMP="$(date -u +%Y%m%d)"
+                TABLES="predictions picks bets groups group_members group_week_config group_week_games line_snapshots ratings profiles rating_adjustments"
+                # pipefail, or the exit code is gzip's. A pg_dump that dies on a
+                # bad password writes its error to stderr and closes the pipe;
+                # gzip then compresses nothing, exits 0, and this step goes GREEN
+                # with a 20-byte artifact that unpacks to an empty file. The one
+                # copy of the receipts outside a 7-day PITR window is exactly
+                # where a silent success is worst.
+                set -o pipefail
                 pg_dump "$SUPABASE_DB_URL" --no-owner --no-privileges \
-                  -t public.predictions -t public.picks -t public.bets \
-                  -t public.groups -t public.group_members -t public.group_week_config \
-                  -t public.group_week_games -t public.line_snapshots -t public.ratings \
-                  -t public.profiles -t public.rating_adjustments \
+                  $(for t in $TABLES; do printf -- '-t public.%s ' "$t"; done) \
                   | gzip > "backup-$STAMP.sql.gz"
-                echo "wrote backup-$STAMP.sql.gz ($(du -h backup-$STAMP.sql.gz | cut -f1))"
+                gzip -t "backup-$STAMP.sql.gz"
+                # A dump that connected but selected nothing is also a failure,
+                # and it looks identical to a good one from the outside. Every
+                # requested table must appear — pg_dump emits the COPY header
+                # even for an empty table, so this checks the dump's shape
+                # without asserting row counts that legitimately start at zero.
+                MISSING=""
+                for t in $TABLES; do
+                  zgrep -q "COPY public\.$t " "backup-$STAMP.sql.gz" || MISSING="$MISSING $t"
+                done
+                if [ -n "$MISSING" ]; then
+                  echo "::error::backup dumped no COPY block for:$MISSING — the file is not a usable restore"
+                  exit 1
+                fi
+                echo "wrote backup-$STAMP.sql.gz ($(du -h backup-$STAMP.sql.gz | cut -f1), $(echo $TABLES | wc -w) tables)"
               fi ;;
             # Preview only — the JSON goes to a scratch dir and is discarded.
             preseason-preview) npx tsx scripts/build-preseason.ts --out "$RUNNER_TEMP/preseason" --top 40 ;;
