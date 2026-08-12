@@ -105,9 +105,12 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
       pages launch without the LLM tier. · 0.5 h
 - [ ] **P1-8** Check the inbox: a watchdog failure email fired Aug 10 — did it
       arrive? An unverified failure channel is no failure channel. · human
-- [ ] **P0-4** Three `select count(*)`: `ratings` (week 0, expect ~136),
-      `team_hfa`, `line_snapshots`. Jobs are running; this confirms the rows
-      landed. · 0.5 h
+- [x] **P0-4** Run 2026-08-12: `ratings` **138** rows, all week 0, all
+      `2026.2.0` (expected ~136 ✓, and it confirms the four-versions-behind
+      row above); `team_hfa` **138**; `line_snapshots` **808**. Also
+      `preseason_components` 138, `system_ratings` 138, `poll_rankings` 25,
+      `games` 888. The season is ingested and bootstrapped. *(The snapshot
+      count carries a defect — see DB-2.)*
 
 ### 2.1b Found in the live database, 2026-08-12 — decide before Aug 28
 
