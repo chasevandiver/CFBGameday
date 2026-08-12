@@ -14,21 +14,34 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Project context
 
-- **`docs/CHANGELOG.md` — read this first.** Running log of what shipped, plus a
-  decisions table recording every gated experiment *including the rejections*,
-  each with the number that decided it. Several plausible-sounding model ideas
-  (per-play efficiency, blending in SP+, widening early-season sigma) have
-  already been tested and rejected on evidence. Check there before proposing one.
+Two live documents, then the history.
+
+- **`docs/STATUS.md` — what's left. The only file with unchecked boxes.**
+  Every open item in the repo, one list, with its original audit ID, the
+  evidence that decided it, and its date. Blocking work, decisions owed,
+  post-launch queue, deliberate deferrals, and the residuals that are recorded
+  rather than queued. **A box is checked in the commit that lands the fix.** If
+  work isn't in this file, it isn't tracked — add it there, don't start a new
+  list.
+- **`docs/CHANGELOG.md` — what shipped, and what was tried and rejected.**
+  Running log, plus a decisions table recording every gated experiment
+  *including the rejections*, each with the number that decided it. Several
+  plausible-sounding model ideas (per-play efficiency, blending in SP+,
+  widening early-season sigma) have already been tested and rejected on
+  evidence. Check there before proposing one.
 - `docs/SPEC.md` — what we're building and why.
 - `docs/DESIGN.md` — design rules for this product. Read before any UI work.
   Says which of the installed design skills owns what, and carries the
   product-specific constraints those skills can't know (glanceable, no layout
   shift, thumb zone). Also defines the two modes — exploration vs.
   implementation — and the token rules that are hard in the second.
-- `docs/AUDIT-2026-08.md` — Aug 2026 product audit, **reconciled 2026-08-07**.
-  The 18 bugs and the 46-item checklist each carry a status table verified
-  against the code. The raw `[ ]` boxes below those tables are the original
-  text, kept as the historical record — read the table, not the boxes.
+
+The audits are history, kept intact and not edited to look better in hindsight.
+Read them for *why* a finding exists; read `docs/STATUS.md` for whether it is
+still open. `docs/AUDIT-2026-08.md` (Aug 6 product audit, 18 bugs + 46-item
+checklist), `audit/KICKOFF_READINESS.md` (Aug 11–12 Week 0 readiness, P0/P1/P2),
+`audit/CHECKLIST.md` (the completed Package A–C program), `audit/00`–`10` (the
+workstream reports the `NN:XX-N` IDs come from).
 
 ## Model changes
 

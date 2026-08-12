@@ -10,6 +10,16 @@
 >
 > Superseded text is struck through or folded into `<details>`, never deleted. What a pass got wrong is worth more than a clean document — this one ranked a non-issue first and missed the real one entirely, and both are visible above.
 
+> **Tracking moved 2026-08-12. → `docs/STATUS.md`.** This document stays as the
+> analysis: the evidence, the reasoning, the reconciliation in §7, the backtest
+> re-run in §6-Q5, and the two revisions that show what the first pass got
+> wrong. But its P0/P1/P2 findings, the §9 decisions and the §10 day plan are
+> now *carried* in `docs/STATUS.md`, which is the one list of open work. Since
+> this pass: **P1-10 closed** (the portal fix shipped in `5c58fb3`), and it
+> opened a new item — re-run `--tune-churn`, §9-Q8 — that now sits in
+> `docs/STATUS.md` §2.4 rather than only in prose. Read that file for state;
+> read this one for why.
+
 **Classification key:** **BUG** (code does not do what it says) · **SPEC DIVERGENCE** (works, contradicts `docs/SPEC.md`) · **GAP** (specced, never built) · **WEAKNESS** (built, fragile/ugly/slow) · **UNVERIFIED** (cannot be decided from the repo).
 
 ---

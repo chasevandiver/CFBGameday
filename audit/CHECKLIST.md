@@ -1,14 +1,26 @@
-# Audit master checklist
+# Audit master checklist — Packages A–C (completed record)
 
-Single source of truth for what remains from the August 2026 audit
-(`audit/00`–`10`). Every remaining actionable item, one box each, with its
-audit ID, file reference, and effort. **A box is checked in the same commit
-that lands the fix** — the file is truthful at every commit. Any session can
-resume the program by reading this file alone.
+> **Superseded 2026-08-12 as a tracker. → `docs/STATUS.md`.**
+>
+> This file was the single source of truth for the August 2026 remediation
+> program; it is now the **record of what that program shipped**. Every open
+> item it carried — the deferred list, the calendar checkpoints, `09:P-16`, and
+> the eight deferred Package C items — moved to `docs/STATUS.md` with its reason
+> intact, alongside the `KICKOFF_READINESS` P-findings and the open items that
+> lived only in the changelog. One list, one place.
+>
+> Two boxes below are checked that are only **partially** done. They are left
+> checked so the record matches what the commit believed, and re-opened under
+> new IDs in `docs/STATUS.md` §7:
+> - `05:N9` (postponed/canceled → void) — the grader is right, but nothing
+>   writes those statuses ⇒ **P1-1**
+> - `04:DQ-13` (reject NaN/empty tilt carry) — NaN is caught, `""` silently
+>   becomes `0` ⇒ **P2-1**
 
-Packages A–C are the pre-season program (approved Aug 10): buildable now, no
-real-2026-game data needed, one PR per package. Deferred and Calendar sections
-explain themselves.
+Packages A–C were the pre-season program (approved Aug 10): buildable then, no
+real-2026-game data needed, one PR per package. Each box was checked in the
+commit that landed its fix, and every one was independently re-verified against
+the code in `audit/KICKOFF_READINESS.md` §7.
 
 ---
 
@@ -41,7 +53,7 @@ explain themselves.
 - [x] **09:P-4** `poll_rankings` latest-week view (same migration) · S
 - [x] **09:P-5** Game-page `profiles.select("*")` → `id, display_name` — `src/app/game/[id]/page.tsx` · S
 - [x] **09:P-15** In-module ~60s cache for the season/week pointer (`fetchCurrentSeasonWeek` feeds every route + ticker) — `src/lib/queries.ts`/`season.ts` · S
-- [ ] **09:P-16** Load rehearsal — **owner-run** (needs a live server; running it from CI would burn real Supabase egress). Harness: seed via `scripts/seed-fixtures.ts`, `autocannon -c 15/-c 30` against `next start`, record vs bars (p95 <1.5s, tick <300 KB) · S
+- ⟳ **09:P-16** Load rehearsal — **owner-run** (needs a live server; running it from CI would burn real Supabase egress). Harness: seed via `scripts/seed-fixtures.ts`, `autocannon -c 15/-c 30` against `next start`, record vs bars (p95 <1.5s, tick <300 KB) · S · **moved → `docs/STATUS.md`**
 - [x] **04:§2** Remaining `--check` gates: partial coach rows, empty portal feed, empty lines file · S
 - [x] **04:DQ-13** Reject NaN/empty `PRESEASON_TILT_CARRY` loudly — `scripts/build-preseason.ts` · S
 - [x] **04:DQ-14** Reconcile builder `SEASON = 2026` hardcode vs loader `CFB_SEASON` env guard — `scripts/build-preseason.ts` / `load-preseason.ts` · S
@@ -52,91 +64,50 @@ explain themselves.
 - [x] **UX-13** `apple-icon.tsx` via ImageResponse (iOS Add-to-Home-Screen tile) · S
 - [x] **G6** `/model` page rendering the changelog's Current-state + decisions tables, linked from Receipts · S
 - [x] **G12** Ledger CSV export route (own bets + picks; RLS scopes) + link on `/ledger` · S
-- [ ] **G10-v1** Copy-digest ShareButton mode: Thursday (frozen slate/edges/"N haven't picked") + Sunday (results/movers/CLV) — `src/lib/share-text.ts` pattern · S–M — **deferred**: S–M, best paired with the group board's real first Saturday
-- [ ] **UX-14** Groups first-run pointer on the slate ("picks: {group}" chip / link to /groups when none) · S — **deferred**: pairs with G10; needs a live active-group cookie flow to test
+- ⟳ **G10-v1** Copy-digest ShareButton mode: Thursday (frozen slate/edges/"N haven't picked") + Sunday (results/movers/CLV) — `src/lib/share-text.ts` pattern · S–M — **deferred**: S–M, best paired with the group board's real first Saturday · **moved → `docs/STATUS.md`**
+- ⟳ **UX-14** Groups first-run pointer on the slate ("picks: {group}" chip / link to /groups when none) · S — **deferred**: pairs with G10; needs a live active-group cookie flow to test · **moved → `docs/STATUS.md`**
 - [x] **UX-23** Human empty-state copy on the slate (drop "data ingestion" engineer-speak) — `SlateView.tsx:499-502` · S
 - [x] **UX-29** Team page says "verdict pending" instead of silently omitting the promised block — `team/[id]/page.tsx` · S
 - [x] **UX-17** One week range everywhere (settings strip reaches 16+post; align three validators) — `SlateView.tsx:621`, `groups/[slug]/page.tsx:58`, `settings/page.tsx:120` · S
 - [x] **UX-19** Login page gets nav / back-to-slate link — `LoginForm.tsx` · S
 - [x] **UX-18** Ratings rows link to team pages; `/teams` gets a name filter — `RatingsTable.tsx`, `TeamsGrid.tsx` · S
-- [ ] **F10** "Biggest line move" slate sort toggle — `SlateView.tsx` · S — **deferred**: needs real line-movement data to be meaningful
-- [ ] **F13** Returning-production % on team pages (lights up when data lands) — `team/[id]/page.tsx` · S — **deferred**: renders only once returning-production data lands
-- [ ] **UX-08** Remaining sub-44px targets: star, pin, BetSlip remove, void link, units input — `GameCard.tsx`, `BetSlip.tsx`, `VoidBetButton.tsx` · S–M — **deferred**: touch-target sweep, S–M, low Saturday-morning impact
+- ⟳ **F10** "Biggest line move" slate sort toggle — `SlateView.tsx` · S — **deferred**: needs real line-movement data to be meaningful · **moved → `docs/STATUS.md`**
+- ⟳ **F13** Returning-production % on team pages (lights up when data lands) — `team/[id]/page.tsx` · S — **deferred**: renders only once returning-production data lands · **moved → `docs/STATUS.md`**
+- ⟳ **UX-08** Remaining sub-44px targets: star, pin, BetSlip remove, void link, units input — `GameCard.tsx`, `BetSlip.tsx`, `VoidBetButton.tsx` · S–M — **deferred**: touch-target sweep, S–M, low Saturday-morning impact · **moved → `docs/STATUS.md`**
 - [x] **UX-26** Visible focus ring on form inputs/selects (not just a 1px 60%-alpha border tint) — `SlateView.tsx:437,694`, `BetForm.tsx:53`, `BetSlip.tsx:133` · S
-- [ ] **UX-22** MatchupCard push results get icon+colour (not sr-only text) — `MatchupCard.tsx:270-297` · S — **deferred**: MatchupCard push icon, cosmetic
+- ⟳ **UX-22** MatchupCard push results get icon+colour (not sr-only text) — `MatchupCard.tsx:270-297` · S — **deferred**: MatchupCard push icon, cosmetic · **moved → `docs/STATUS.md`**
 - [x] **UX-15** Replace 8 hardcoded `#5b6472` + 1 `#9aa1ad` fallbacks with `var(--push)` — `TeamMark.tsx`, `GameCard.tsx`, `WinProbBar.tsx`, `GameHeader.tsx` · S
 - [x] **UX-20** Receipts private `fmtLine` → shared `fmtSpread` · S
-- [ ] **05:N12** Pin one numeric-arrival convention in `records` (drop the false strings-from-PostgREST premise) — `records.test.ts` · S — **deferred**: records string-convention pin, no user-facing effect
+- ⟳ **05:N12** Pin one numeric-arrival convention in `records` (drop the false strings-from-PostgREST premise) — `records.test.ts` · S — **deferred**: records string-convention pin, no user-facing effect · **moved → `docs/STATUS.md`**
 - [x] **05:N13** ROI column on group standings; ROI denominator stated user-visibly; SPEC §4 rule amended to match code (units primary) · S
 - [x] **05:N7** Moneyline CLV in cents from the captured ml consensus (or documented "–" in /rules) · S
 - [x] **05:N8** `team_total`/`first_half` marked manual-grade in the ledger instead of open-forever; fix stale comment · S
-- [ ] **SEC-01** Join codes to 10-char base32 + per-user attempt throttle in `join_group` (migration 0026) · S — **deferred**: needs full-function migration to rewrite create_group/regenerate_join_code; ~0 real private groups pre-launch, so brute-force risk is negligible until after launch
+- ⟳ **SEC-01** Join codes to 10-char base32 + per-user attempt throttle in `join_group` (migration 0026) · S — **deferred**: needs full-function migration to rewrite create_group/regenerate_join_code; ~0 real private groups pre-launch, so brute-force risk is negligible until after launch · **moved → `docs/STATUS.md`**
 - [x] **SEC-09** Ledger short-circuits `if (!user)` instead of `.eq("user_id","")` — `ledger/page.tsx:41` · S
 - [x] **04:§4** SPEC §5.1 churn claim softened to the defensible version ("priced before the market finishes learning rosters") · S
 
-## Deferred — in-season (reason noted)
+## Deferred and calendar items → `docs/STATUS.md`
 
-- [ ] **02:M-04** `--production-chain` replay mode (measure backtest↔production prior drift) — M, tuner/CI-key work; first in-season week
-- [ ] **02:M-05/03-M-1v** Team-HFA replay validation with pre-registered rule (else set blend 0) — M, tuner work
-- [x] **03:M-3** Signed-error-by-slice table in `report()` — shipped 2026-08-12 (`scripts/lib/slices.ts` + CI job summary), after its absence let a +9.8-pt cross-tier lean into the 2026 build; see the changelog's Aug 12 entry
-- [ ] **02:M-13/03:M-4** Real per-team tempo + `--tune-tempo` — M, tuner work
-- [ ] **03:M-6/M-7/M-8b/M-9a** Decay-knot grid, heteroscedastic σ, smooth cap, rest/travel tuner — S each, tuner work
-- [ ] **02:§2b** Promote `warnIfTooGood`/negative-coefficient checks to CI-failing assertions — S–M, backtest CI
-- [ ] **07:OPS-8b** Scheduled Sunday calibration report run — M, needs season data flowing
-- [ ] **03:M-5** Opener-relative CLV aggregate on Receipts (+1.0 / n≥200 pre-registered) — S code now, meaningful with in-season data
-- [ ] **02:M-07/03:M-9b** "incl. adj" display beside adjusted spreads + admin warning that spec magnitudes are unvalidated — S
-- [ ] **02:M-08** In-sample caveat line on Receipts explainer — S
-- [ ] **02:M-09/M-10/M-11/M-12** Dead-code cleanup: fcs params, `updateFromResult`, `suggestedStake`, stale replay comment — S
-- [ ] **04:DQ-5** Rename/drop `returning_prod_def` column storing an offense metric — S, schema churn during launch not worth it
-- [ ] **04:DQ-6** `qbReturns` from roster facts instead of passing-PPA proxy — M, player-level data
-- [ ] **04:DQ-11** Real `turnoverMargin` for the luck rule — S/M, CFBD data
-- [ ] **04:DQ-12** Portal scoring from `rating` (S) then production/snaps (M) + changelog decision row
-- [ ] **04:DQ-15** `cached()` shouldn't persist empty CFBD responses — S, local-dev only
-- [ ] **05:C5/07:OPS-11/SEC-12** Delete the dead edge function (inverted CLV, baked secrets) — S, deliberate tombstone decision
-- [ ] **07:OPS-6** Backfill mode for null-CLV rows (post-kickoff `captured_at` excluded forever) — S–M, only matters after a missed close
-- [ ] **07:OPS-14a** Meter unmetered CFBD calls (CI/backtest/preseason paths) — S
-- [ ] **07:OPS-18** App-token PRs trigger no CI — process fix — S
-- [ ] **09:P-1b** Slim `/api/slate-live` heal endpoint — M, decide after P-16 numbers
-- [ ] **09:P-11** Cacheable weekly-static pages — M
-- [ ] **09:P-6** `fetchTeamAtsSeason` snapshot re-fetch per game view — M
-- [ ] **09:P-9/P-10/P-12/P-13** Blind-count aggregate RPC; board picks-query collapse; ratings latest-in-Postgres; receipts pagination — S–M each
-- [ ] **G5** Prediction attribution ("why this number") — M, freeze the decomposition; design the column set before first retune
-- [x] **G9** Bad-beat / backdoor-cover log — late ATS + total flips caught live by the scoreboard poll, logged to `cover_flips` (0026), rendered on `/recap/[week]` and named on the group week board. **Was mis-filed as "needs real data": a flip is a transition between two polls and nothing records it after the fact, so the detector had to exist before kickoff or Week 0–1 was lost permanently.**
-- [ ] **G7/G8/G11** Crew disagreement roll-up; fade-the-crew; pick nudge — need a *sample* of graded picks before they say anything true (pre-register n before building)
-- [ ] **G13/F18** Season archive + `SEASON` rollover — offseason
-- [ ] **F3** Injury/news LLM scan producer — M–L
-- [ ] **F4/F5/F6** Rooting guide; playoff race tracker; homepage-by-day — M each
-- [ ] **F7** Futures mark-to-market — M
-- [ ] **F9** Ratings sparklines — needs weekly rating history
-- [ ] **F11** §5.1 soft-market taxonomy content on /edges — editorial
-- [ ] **F12** Preseason team pages freeze at Week-1 kickoff — M, revisit before Week 1 if time
-- [ ] **F16** Systems side-by-side on slate cards (game page has it) — S–M
-- [ ] **F-§3/F-§6** Team-page LLM depth; tale of the tape — L / needs season stats
-- [ ] **UX-06 (residue)** Remaining sub-4.5 tokens: light `chalk/50–55` table headers, dark `/35–/45` decorative labels, edge-on-card — S–M, needs a rendered pass
-- [ ] **UX-21** Ledger "today" keyed to CT for non-CT bettors — S
-- [ ] **UX-24** Week page passes raw string `line_at_pick` into `pickSideLabel` ("0" ≠ "PK") — S
-- [ ] **UX-25** `profiles.timezone` surfaced on /me and used server-side — S–M
-- [ ] **UX-27/UX-28** error.tsx without nav; standings name truncation at 375px — S
-- [ ] **UX-31** Week changes via `pushState` so Back traverses weeks — S
-- [ ] **UX-33** Whether /edges keeps a permanent bottom-nav slot post-demotion — owner call
-- [ ] **SEC-02** Removed admin rejoins as admin; removal not durable — S
-- [ ] **SEC-08** `profiles` world-readable incl. `is_admin` — S
-- [ ] **SEC-10** Drop dead 0018 pick policies — S
-- [ ] **07:OPS-16** Snapshot coarsening job — 2027, explicitly not now
+The 47 in-season deferrals and the 12 calendar/human checkpoints that used to be
+listed here now live in `docs/STATUS.md` — §4 (queued for after launch), §3
+(decisions owed) and §2.5 (the hard dates), each carrying the same ID and the
+same stated reason. They were moved rather than copied: keeping two lists of
+open work is exactly the drift this consolidation was for.
 
-## Calendar / human — cannot be coded
+Two items from those sections shipped before the move and are recorded here:
 
-- [ ] **04:DQ-1/F1 — Aug 26 checkpoint**: `preseason-refresh` green? If not: deliberate stale-talent build vs launch on 2026.2.0 with a note (refresh goes red on its own from Aug 20)
-- [ ] **04:§5** Run the 7 preseason smell tests on the first real `--top 40` table before/at load
-- [ ] **F2** Add `ANTHROPIC_API_KEY` secret + dispatch `verdicts` once (questions then runs Fridays)
-- [ ] **OPS-1b** Dispatch one deliberately-failing run; confirm who receives the failure email
-- [x] **OPS-14b** Verify the real CFBD tier matches the hardcoded 30,000 budget — **Tier 2, 30,000/month, confirmed 2026-08-12.** Matches `scoreboard-loop.ts:28` exactly, against ~9–10k of estimated monthly use, so the 80%/95% throttles are calibrated to the real cap. No `CFBD_MONTHLY_BUDGET` override needed. **Volume was never the risk — entitlement is:** `/scoreboard` (Tier 1+) has never been called with this key, because every offseason poll exits via `idleSkip` first. `npm run probe:cfbd` / the `cfbd-probe` Actions task answers that now; see `audit/KICKOFF_READINESS.md` P0-5.
-- [ ] **09:§3** Re-verify current Supabase free-tier limits against the pricing page
-- [ ] **SEC-13** Decide TBD-kickoff pick policy (null `start_ts` = un-pickable + blind-hidden today) before Aug 29
-- [ ] **UX-32** Eyeball the matchup cards with real names on the first real Saturday
-- [ ] Optional: healthchecks.io project + `HEALTHCHECK_PING_URL` secret (ping already wired); `SUPABASE_DB_URL` secret to arm the backup job (Package B)
-- [ ] **F17** Supervised watch of the first freeze→grade→CLV run (Sun Aug 30)
-- [ ] Light-mode phone pass over the slate (contrast changes are computed, not eyeballed)
+- [x] **03:M-3** Signed-error-by-slice table in `report()` — shipped 2026-08-12
+      (`scripts/lib/slices.ts` + CI job summary), after its absence let a
+      +9.8-pt cross-tier lean into the 2026 build
+- [x] **G9** Bad-beat / backdoor-cover log — late ATS and total flips caught
+      live by the scoreboard poll, logged to `cover_flips` (0026), rendered on
+      `/recap/[week]`. **Was mis-filed as "needs real data":** a flip is a
+      transition between two polls and nothing records it after the fact, so
+      the detector had to exist before kickoff or Week 0–1 was lost permanently.
+- [x] **OPS-14b** CFBD tier verified — **Tier 2, 30,000/month, confirmed
+      2026-08-12**, matching `scoreboard-loop.ts:28` against ~9–10k of estimated
+      monthly use. Volume was never the risk; entitlement was, and
+      `npm run probe:cfbd` closed that too.
 
 <details>
 <summary><strong>Done — shipped in PRs #19–#21 (Aug 10)</strong></summary>
