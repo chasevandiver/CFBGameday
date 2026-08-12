@@ -32,6 +32,24 @@ on:
         required: true
         type: choice
         options:
+          # FIRST ON PURPOSE, for two reasons.
+          #
+          # Visibility: this list is 20 long and GitHub's dispatch form does not
+          # reliably show all of it — `backup` sat at position 14 and was not
+          # findable in the dropdown at all, which is how the secret went
+          # unverified for a day.
+          #
+          # And because the first option is the DEFAULT. `task` is `required`
+          # with no `default:`, so GitHub pre-selects whatever is at the top and
+          # a "Run workflow" click that never touches the dropdown runs it. That
+          # used to be `refresh-lines` — a live job that writes snapshots and
+          # chains freeze-groups. Now the accident is a read-only pg_dump.
+          # Order this list by what is safe to run by mistake, not by what runs
+          # most often; the crons do not read this list at all.
+          #
+          # Also on the Sunday 15:00 UTC cron. Only copy of
+          # predictions/picks/bets outside the 7-day PITR window.
+          - backup
           - refresh-lines
           - refresh-lines-burst
           - sync-games
@@ -45,13 +63,6 @@ on:
           - freeze-groups
           - questions
           - verdicts
-          # Logical backup of the append-only tables. Also on the Sunday
-          # 15:00 UTC cron, but dispatchable because the cron alone made the
-          # SUPABASE_DB_URL secret unverifiable until the next Sunday — and
-          # this is the only copy of predictions/picks/bets outside the 7-day
-          # PITR window, so "did it work" should be answerable the day the
-          # secret lands. Read-only against the database.
-          - backup
           # Read-only preview: builds the preseason ratings and prints the
           # ranking table to the log. Writes JSON to a scratch dir that is
           # thrown away with the runner — nothing reaches the database.
