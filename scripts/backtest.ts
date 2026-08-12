@@ -16,6 +16,8 @@
  *   npx tsx scripts/backtest.ts --tune-prior                 # preseason carryover weight
  *   npx tsx scripts/backtest.ts --tune-sp-blend              # prior-year baseline: replay finals vs final SP+
  *   npx tsx scripts/backtest.ts --diagnose-edges             # THE EDGE GATE: market MAE + encompassing regression
+ *   npx tsx scripts/backtest.ts --diagnose-tiers             # cross-classification level vs prior-chain construction
+ *   npx tsx scripts/backtest.ts --tune-tier-recenter         # validate the week-1-anchored tier recentring patch
  *
  * Each --tune-* flag prints its own pre-registered decision rule alongside the
  * grid: a parameter moves off its identity default only when the rule clears.
@@ -41,9 +43,12 @@ import {
   type ModelParams,
 } from "../src/model/ratings";
 import { buildCoachTransitions, type CoachTransition } from "./lib/coaching";
+import { sliceReport } from "./lib/slices";
 import {
+  FCS_RATING,
   chainPriors,
   chainTilts,
+  consensusLine,
   loadSeason,
   priorsFromSp,
   replaySeason,
@@ -221,6 +226,11 @@ function report(predictions: ReplayPrediction[], params: ModelParams): string {
       "so a true push on 3 or 7 is excluded instead of being scored W or L at random.",
   );
 
+  // 03:M-3: signed error by slice. This is the table whose deferral let a
+  // +9.8-point cross-classification lean ship into the 2026 preseason build —
+  // it prints on every run now, tuners included.
+  lines.push(sliceReport(predictions));
+
   return lines.join("\n");
 }
 
@@ -376,6 +386,356 @@ async function tuneSpBlend(seasons: SeasonData[], teamIdsByName: Map<string, num
     if (!best || nll < best.nll) best = { a, nll };
   }
   if (best) console.log(`\nBest replay share: alpha=${best.a}`);
+}
+
+/**
+ * --diagnose-tiers: which prior-chain step produces the cross-classification
+ * mis-levelling, and which construction removes it?
+ *
+ * Mechanism under test: a margin-Elo's intra-pool games are zero-sum WITHIN
+ * the pool, so the level between two pools is set almost entirely by the
+ * prior; the handful of cross-tier games per season re-level at only
+ * K/2 × error per game. `chainPriors` regresses 30% toward ZERO — the FBS
+ * midpoint — which drags the P4 pool down and the G5 pool up between seasons
+ * by construction, and the replay cannot pull them apart again fast enough.
+ *
+ * Each variant replays 2023→2025 with a different between-season prior
+ * construction and is scored on weeks 1–4 of the chained seasons (where the
+ * prior dominates pricing) plus the pooled full-season report metrics.
+ *
+ * Decision rule (pre-registered, printed before any number): a variant is a
+ * fix CANDIDATE only if, vs the bare-chain baseline —
+ *   1. weeks 1–4 cross-tier G5-signed |mean edge vs market| at least halves;
+ *   2. weeks 1–4 P4-vs-P4 home-signed mean edge stays within ±1.0;
+ *   3. pooled MAE ≤ 13.30 and pooled NLL ≤ 0.5005;
+ *   4. every win-prob calibration bucket within 3 points.
+ * The shipping gate (|t| < 2 on the 2026 Week-1 market) is scored separately
+ * by scripts/diagnose-tiers-2026.ts — this mode picks candidates, not winners.
+ */
+async function diagnoseTiers(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
+  const { talentBySeason, spFinalBySeason } = await loadPriorInputs(teamIdsByName);
+  const { tierOf } = await import("./lib/tiers");
+  const { g5SignedBias, g5SignedEdge, stat, tiersOf } = await import("./lib/slices");
+
+  // Team → conference per season, for prior-separation accounting.
+  const confBySeason = new Map<number, Map<number, { name: string; conf: string | null }>>();
+  for (const s of seasons) {
+    const m = new Map<number, { name: string; conf: string | null }>();
+    for (const g of s.games) {
+      m.set(g.homeId, { name: g.homeTeam, conf: g.homeConference ?? null });
+      m.set(g.awayId, { name: g.awayTeam, conf: g.awayConference ?? null });
+    }
+    confBySeason.set(s.season, m);
+  }
+
+  const tierSeparation = (priors: Map<number, number>, season: number): string => {
+    const teams = confBySeason.get(season);
+    if (!teams) return "–";
+    const pool: Record<string, number[]> = { P4: [], G5: [] };
+    for (const [id, rating] of priors) {
+      const t = teams.get(id);
+      if (!t) continue;
+      const tier = tierOf(t.conf, t.name, season, true);
+      if (tier === "P4" || tier === "G5") pool[tier].push(rating);
+    }
+    if (pool.P4.length === 0 || pool.G5.length === 0) return "–";
+    return (mean(pool.P4) - mean(pool.G5)).toFixed(1);
+  };
+
+  type ChainFn = (finals: Map<number, number>, seasonJustPlayed: number) => Map<number, number>;
+  const talentChain =
+    (alpha: number | null, talentW = 0.3): ChainFn =>
+    (finals, seasonJustPlayed) => {
+      const sp = spFinalBySeason.get(seasonJustPlayed)!;
+      const talent = talentBySeason.get(seasonJustPlayed)!;
+      const next = new Map<number, number>();
+      for (const [teamId, rating] of finals) {
+        const s = alpha === null ? undefined : sp.get(teamId);
+        const base = alpha !== null && s !== undefined ? alpha * rating + (1 - alpha) * s : rating;
+        next.set(teamId, (1 - talentW) * base + talentW * (talent.get(teamId) ?? -8));
+      }
+      return next;
+    };
+
+  const variants: Array<{ label: string; chain: ChainFn; fcs?: number }> = [
+    { label: "bare 0.7×finals (tuner chain)", chain: (f) => chainPriors(f) },
+    { label: "0.7×finals+0.3×talent", chain: talentChain(null) },
+    { label: "SP+ α=0.75 +talent", chain: talentChain(0.75) },
+    { label: "SP+ α=0.50 +talent (≈prod)", chain: talentChain(0.5) },
+    { label: "SP+ α=0.25 +talent", chain: talentChain(0.25) },
+    { label: "SP+ α=0.00 +talent", chain: talentChain(0) },
+    { label: "α=0.50, talent 0.4", chain: talentChain(0.5, 0.4) },
+    { label: "bare chain, FCS −25", chain: (f) => chainPriors(f), fcs: -25 },
+    { label: "bare chain, FCS −35", chain: (f) => chainPriors(f), fcs: -35 },
+  ];
+
+  console.log("\n== --diagnose-tiers: prior chain vs cross-classification level ==");
+  console.log(
+    "Candidate rule (fixed before running): halve wks1–4 cross-tier |edge|, keep P4vP4 within ±1,\n" +
+      "pooled MAE ≤ 13.30, NLL ≤ 0.5005, every win-prob bucket within 3 pts.\n",
+  );
+  console.log(
+    "variant                        cross_mkt(1–4)      cross_act(1–4)   P4vP4(1–4)   pooled MAE / NLL   worst bkt",
+  );
+
+  for (const v of variants) {
+    let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
+    const early: ReplayPrediction[] = [];
+    const all: ReplayPrediction[] = [];
+    const seps: string[] = [];
+    for (const season of seasons) {
+      if (SCORED.includes(season.season)) {
+        seps.push(`${season.season}: ${tierSeparation(priors, season.season)}`);
+      }
+      const { predictions, finalRatings } = replaySeason(
+        season,
+        priors,
+        DEFAULT_PARAMS,
+        undefined,
+        v.fcs ?? FCS_RATING,
+      );
+      all.push(...predictions);
+      if (SCORED.includes(season.season)) {
+        early.push(...predictions.filter((p) => p.week <= 4));
+      }
+      priors = v.chain(finalRatings, season.season);
+    }
+
+    const crossMkt = stat(
+      "x",
+      early.map(g5SignedEdge).filter((x): x is number => x !== null),
+    );
+    const crossAct = stat(
+      "x",
+      early.map(g5SignedBias).filter((x): x is number => x !== null),
+    );
+    const p4p4 = stat(
+      "x",
+      early
+        .filter((p) => {
+          const { home, away } = tiersOf(p);
+          return home === "P4" && away === "P4" && p.edge !== null;
+        })
+        .map((p) => -(p.edge as number)),
+    );
+    const errors = all.map((p) => p.actualMargin - p.margin);
+    const pooledMae = maeOf(errors);
+    const pooledNll = nll(all);
+    // worst win-prob bucket miss, pooled
+    const graded = all.filter((p) => p.favoriteWon !== null);
+    let worst = 0;
+    for (const [lo, hi] of [[0.5, 0.6], [0.6, 0.7], [0.7, 0.8], [0.8, 0.9], [0.9, 1.01]] as const) {
+      const b = graded.filter((p) => p.favWinProb >= lo && p.favWinProb < hi);
+      if (b.length === 0) continue;
+      const predicted = mean(b.map((p) => p.favWinProb));
+      const actual = b.filter((p) => p.favoriteWon).length / b.length;
+      worst = Math.max(worst, Math.abs(predicted - actual) * 100);
+    }
+
+    const f = (s: { mean: number; se: number; t: number } | null) =>
+      s ? `${s.mean >= 0 ? "+" : ""}${s.mean.toFixed(2)} t=${s.t.toFixed(1)}`.padEnd(16) : "–".padEnd(16);
+    console.log(
+      `${v.label.padEnd(30)} ${f(crossMkt)}    ${f(crossAct)} ${
+        p4p4 ? `${p4p4.mean >= 0 ? "+" : ""}${p4p4.mean.toFixed(2)}`.padEnd(10) : "–".padEnd(10)
+      }   ${pooledMae.toFixed(2)} / ${pooledNll.toFixed(4)}     ${worst.toFixed(1)}`,
+    );
+    console.log(`  prior P4−G5 separation at week 0:  ${seps.join("   ")}`);
+  }
+
+  // Reference: what separation do the anchors themselves carry? If the replay
+  // finals sit well below these, the Elo compressed the tiers during the
+  // season; if the priors sit below the finals, the chain step did it.
+  console.log("\nAnchor separations (P4 mean − G5 mean), for reference:");
+  for (const season of SCORED) {
+    const spPrev = spFinalBySeason.get(season - 1);
+    const tal = talentBySeason.get(season - 1);
+    console.log(
+      `  ${season}: final SP+ ${spPrev ? tierSeparation(spPrev, season) : "–"}   ` +
+        `talent ${tal ? tierSeparation(tal, season) : "–"}`,
+    );
+  }
+}
+
+/**
+ * --tune-tier-recenter: validate the tier-recentring patch on 2024–2025
+ * before it prices a single 2026 game.
+ *
+ * The patch: after the preseason prior is built, measure the mean G5-signed
+ * edge of that season's WEEK-1 cross-tier market lines against the prior, and
+ * shift the two pools (zero-sum, membership-weighted) so that mean is zero.
+ * Week-1 lines are available before week 1 — point-in-time sound — and the
+ * within-pool ordering is untouched.
+ *
+ * Why market-anchored rather than a fitted constant: the offseason divergence
+ * is not stable year to year (measured: 2024/2025 needed ~+2 over the
+ * end-of-season gap; the 2026 market demands ~+8 — the portal/rev-share drain
+ * is accelerating), so a constant fit on 2023–25 under-corrects 2026 by
+ * construction. The static-δ grid below is printed to document exactly that.
+ *
+ * Decision rule (pre-registered, fixed before the first run):
+ * ship the market-anchored recentre only if, on the chained seasons —
+ *   1. weeks 2–4 cross-tier |mean edge vs market| ≤ half the unpatched value
+ *      (week 1 is the fit set; weeks 2–4 are out-of-fit);
+ *   2. weeks 1–4 cross-tier bias vs ACTUAL outcomes |t| < 2 (unpatched ≈ −4.7:
+ *      the G5 sides really do underperform our numbers — the market is right);
+ *   3. weeks 1–4 P4-vs-P4 mean edge stays within ±1.0;
+ *   4. pooled MAE ≤ 13.30, NLL ≤ 0.5005, every win-prob bucket within 3 pts.
+ */
+async function tuneTierRecenter(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
+  const { talentBySeason, spFinalBySeason } = await loadPriorInputs(teamIdsByName);
+  const { recenterTierGap, tierGapOf, tierOf } = await import("./lib/tiers");
+  const { g5SignedBias, g5SignedEdge, stat, tiersOf } = await import("./lib/slices");
+
+  // team → tier per season, from the games payload
+  const tierBySeason = new Map<number, Map<number, import("./lib/tiers").Tier>>();
+  for (const s of seasons) {
+    const m = new Map<number, import("./lib/tiers").Tier>();
+    for (const g of s.games) {
+      m.set(g.homeId, tierOf(g.homeConference ?? null, g.homeTeam, s.season, true));
+      m.set(g.awayId, tierOf(g.awayConference ?? null, g.awayTeam, s.season, true));
+    }
+    tierBySeason.set(s.season, m);
+  }
+
+  // production-shaped chain: base = 0.5×finals + 0.5×SP+, prior = 0.7×base + 0.3×talent
+  const chain = (finals: Map<number, number>, seasonJustPlayed: number) => {
+    const sp = spFinalBySeason.get(seasonJustPlayed)!;
+    const talent = talentBySeason.get(seasonJustPlayed)!;
+    const next = new Map<number, number>();
+    for (const [teamId, rating] of finals) {
+      const s = sp.get(teamId);
+      const base = s !== undefined ? 0.5 * rating + 0.5 * s : rating;
+      next.set(teamId, 0.7 * base + 0.3 * (talent.get(teamId) ?? -8));
+    }
+    return next;
+  };
+
+  /** Mean G5-signed edge of a season's week-1 cross-tier lines vs a prior. */
+  const week1CrossEdge = (
+    season: SeasonData,
+    priors: Map<number, number>,
+    tiers: Map<number, import("./lib/tiers").Tier>,
+  ): { mean: number; n: number } => {
+    const linesById = new Map(season.lines.map((l) => [l.id, l]));
+    const edges: number[] = [];
+    for (const g of season.games) {
+      if (g.week !== 1) continue;
+      const vegas = consensusLine(linesById.get(g.id));
+      if (vegas === null) continue;
+      const hr = priors.get(g.homeId);
+      const ar = priors.get(g.awayId);
+      if (hr === undefined || ar === undefined) continue;
+      const ht = tiers.get(g.homeId);
+      const at = tiers.get(g.awayId);
+      const cross = (ht === "P4" && at === "G5") || (ht === "G5" && at === "P4");
+      if (!cross) continue;
+      const margin = hr - ar + (g.neutralSite ? 0 : DEFAULT_PARAMS.baseHfa);
+      const edge = -margin - vegas;
+      edges.push(at === "G5" ? edge : -edge);
+    }
+    return { mean: edges.length ? mean(edges) : 0, n: edges.length };
+  };
+
+  type Mode =
+    | { kind: "off" }
+    | { kind: "market" }
+    | { kind: "delta"; delta: number };
+
+  const run = (mode: Mode) => {
+    let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
+    const early: ReplayPrediction[] = [];
+    const late: ReplayPrediction[] = [];
+    const all: ReplayPrediction[] = [];
+    const fitNotes: string[] = [];
+    for (const season of seasons) {
+      const tiers = tierBySeason.get(season.season)!;
+      if (SCORED.includes(season.season) && mode.kind !== "off") {
+        const gap = tierGapOf(priors, tiers);
+        if (gap !== null) {
+          if (mode.kind === "market") {
+            const { mean: fit, n } = week1CrossEdge(season, priors, tiers);
+            priors = recenterTierGap(priors, tiers, gap + fit);
+            fitNotes.push(`${season.season}: wk1 fit +${fit.toFixed(2)} (n=${n}), gap ${gap.toFixed(1)}→${(gap + fit).toFixed(1)}`);
+          } else {
+            // static δ over the season's blended end-of-prior-season gap: the
+            // chain has already regressed it; restore to base gap + δ.
+            const sp = spFinalBySeason.get(season.season - 1)!;
+            const baseGap = tierGapOf(sp, tiers);
+            if (baseGap !== null) {
+              priors = recenterTierGap(priors, tiers, baseGap + mode.delta);
+              fitNotes.push(`${season.season}: gap ${gap.toFixed(1)}→${(baseGap + mode.delta).toFixed(1)}`);
+            }
+          }
+        }
+      }
+      const { predictions, finalRatings } = replaySeason(season, priors, DEFAULT_PARAMS);
+      all.push(...predictions);
+      if (SCORED.includes(season.season)) {
+        early.push(...predictions.filter((p) => p.week <= 4));
+        late.push(...predictions.filter((p) => p.week >= 2 && p.week <= 4));
+      }
+      priors = chain(finalRatings, season.season);
+    }
+    return { early, late, all, fitNotes };
+  };
+
+  console.log("\n== --tune-tier-recenter ==");
+  console.log(
+    "Rule (pre-registered): ship market-anchored only if wks2–4 cross |edge| halves (out-of-fit),\n" +
+      "wks1–4 cross bias vs actual |t| < 2, P4vP4 within ±1, MAE ≤ 13.30, NLL ≤ 0.5005, buckets ≤ 3.\n",
+  );
+  console.log(
+    "mode              cross_mkt wks2–4     cross_act wks1–4    P4vP4(1–4)   pooled MAE / NLL   worst bkt",
+  );
+
+  const modes: Array<[string, Mode]> = [
+    ["off (baseline)", { kind: "off" }],
+    ["market-anchored", { kind: "market" }],
+    ["static δ=0", { kind: "delta", delta: 0 }],
+    ["static δ=2", { kind: "delta", delta: 2 }],
+    ["static δ=4", { kind: "delta", delta: 4 }],
+    ["static δ=6", { kind: "delta", delta: 6 }],
+    ["static δ=8", { kind: "delta", delta: 8 }],
+  ];
+
+  for (const [label, mode] of modes) {
+    const { early, late, all, fitNotes } = run(mode);
+    const crossLate = stat(
+      "x",
+      late.map(g5SignedEdge).filter((v): v is number => v !== null),
+    );
+    const crossAct = stat(
+      "x",
+      early.map(g5SignedBias).filter((v): v is number => v !== null),
+    );
+    const p4p4 = stat(
+      "x",
+      early
+        .filter((p) => {
+          const { home, away } = tiersOf(p);
+          return home === "P4" && away === "P4" && p.edge !== null;
+        })
+        .map((p) => -(p.edge as number)),
+    );
+    const errors = all.map((p) => p.actualMargin - p.margin);
+    const graded = all.filter((p) => p.favoriteWon !== null);
+    let worst = 0;
+    for (const [lo, hi] of [[0.5, 0.6], [0.6, 0.7], [0.7, 0.8], [0.8, 0.9], [0.9, 1.01]] as const) {
+      const b = graded.filter((p) => p.favWinProb >= lo && p.favWinProb < hi);
+      if (b.length === 0) continue;
+      const predicted = mean(b.map((p) => p.favWinProb));
+      const actual = b.filter((p) => p.favoriteWon).length / b.length;
+      worst = Math.max(worst, Math.abs(predicted - actual) * 100);
+    }
+    const f = (s: { mean: number; se: number; t: number } | null) =>
+      s ? `${s.mean >= 0 ? "+" : ""}${s.mean.toFixed(2)} t=${s.t.toFixed(1)}`.padEnd(18) : "–".padEnd(18);
+    console.log(
+      `${label.padEnd(17)} ${f(crossLate)}  ${f(crossAct)} ${
+        p4p4 ? `${p4p4.mean >= 0 ? "+" : ""}${p4p4.mean.toFixed(2)}`.padEnd(10) : "–".padEnd(10)
+      }   ${maeOf(errors).toFixed(2)} / ${nll(all).toFixed(4)}     ${worst.toFixed(1)}`,
+    );
+    if (fitNotes.length) console.log(`   ${fitNotes.join("   ")}`);
+  }
 }
 
 /**
@@ -1528,6 +1888,8 @@ async function main() {
   const tuneCoachingFlag = process.argv.includes("--tune-coaching");
   const tuneAnchorsFlag = process.argv.includes("--tune-anchors");
   const diagnose = process.argv.includes("--diagnose-edges");
+  const diagnoseTiersFlag = process.argv.includes("--diagnose-tiers");
+  const tuneTierRecenterFlag = process.argv.includes("--tune-tier-recenter");
   const tuneChurnFlag = process.argv.includes("--tune-churn");
   const tuneEpaFlag = process.argv.includes("--tune-epa");
   const tuneEnsembleFlag = process.argv.includes("--tune-ensemble");
@@ -1545,6 +1907,14 @@ async function main() {
   }
   if (tuneSp) {
     await tuneSpBlend(seasons, teamIdsByName);
+    return;
+  }
+  if (diagnoseTiersFlag) {
+    await diagnoseTiers(seasons, teamIdsByName);
+    return;
+  }
+  if (tuneTierRecenterFlag) {
+    await tuneTierRecenter(seasons, teamIdsByName);
     return;
   }
   if (tuneTilts) {

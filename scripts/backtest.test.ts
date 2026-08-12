@@ -26,6 +26,12 @@ const pred = (over: Partial<ReplayPrediction>): ReplayPrediction => ({
   startDate: "2024-09-28T16:00:00.000Z",
   homeId: 1,
   awayId: 2,
+  homeTeam: "Home U",
+  awayTeam: "Away U",
+  homeConference: "SEC",
+  awayConference: "SEC",
+  homeFbs: true,
+  awayFbs: true,
   ...over,
 });
 
