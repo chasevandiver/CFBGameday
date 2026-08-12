@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AppNav } from "../../components/AppNav";
 import { ProfileSettings, type FavTeam } from "../../components/ProfileSettings";
+import { PushSettings } from "../../components/PushSettings";
 import type { TeamRow } from "../../lib/db-types";
 import { createClient } from "../../lib/supabase/server";
 
@@ -18,7 +19,7 @@ export default async function MePage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { data: teamRows }] = await Promise.all([
+  const [{ data: profile }, { data: teamRows }, { data: prefRows }] = await Promise.all([
     supabase
       .from("profiles")
       .select("display_name, favorite_team_ids, is_admin")
@@ -29,7 +30,14 @@ export default async function MePage() {
       .select("id, school, conference, logo_url")
       .eq("classification", "fbs")
       .order("school"),
+    supabase.from("notification_prefs").select("kind, enabled").eq("user_id", user.id),
   ]);
+
+  // Absent row means opted in, so only the explicit offs need carrying.
+  const prefs: Record<string, boolean> = {};
+  for (const row of (prefRows ?? []) as { kind: string; enabled: boolean }[]) {
+    prefs[row.kind] = row.enabled;
+  }
 
   const teams: FavTeam[] = ((teamRows ?? []) as TeamRow[]).map((t) => ({
     id: t.id,
@@ -48,6 +56,7 @@ export default async function MePage() {
           favoriteIds={profile?.favorite_team_ids ?? []}
           teams={teams}
         />
+        <PushSettings prefs={prefs} />
         {profile?.is_admin && (
           <p className="mt-6 text-xs text-dim">
             <Link href="/admin" className="text-accent underline-offset-2 hover:underline">

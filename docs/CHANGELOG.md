@@ -165,6 +165,54 @@ shipping it.
 
 ## Log
 
+### Aug 12 — Push notifications, and the console that drives them
+
+PUSH-1 through PUSH-4 and PUSH-7. Migration 0031, a service worker, a sender,
+two triggers, the opt-in and the admin console.
+
+**The dedupe is the design.** `sendToUser` inserts the `notification_sends`
+receipt *before* it talks to the push service, and a unique violation on
+(user, kind, subject) is what "already told them" looks like. That ordering is
+the whole safety property: the scoreboard loop re-observes the same cover flip
+every 30 seconds and the picks-due job runs on three overlapping crons, and
+neither can notify twice because whoever inserts first owns the slot. Send-then-
+record would double-notify on the race and on any crash between the two. Four
+tests pin it against a stub client, since what is being tested is the order of
+operations rather than any SQL.
+
+**The triggers.** Picks-due is a new job on three crons, firing for any group
+whose first kickoff falls inside `lead_minutes`; running it more often than that
+window is a no-op rather than a duplicate, which is what lets it be scheduled
+early against the 5–30 minute Actions lag. Bad beats send from inside the
+scoreboard job, because a cover flip is a transition and is only observable
+live — the detector was already there since 0026. The send happens after the
+write loop, not inside it, and `notifyBadBeats` cannot throw: a polling job that
+has already written its scores must not die because a push service had a bad
+minute.
+
+**The console.** `/admin` gets compose-and-send (just me / one group / everyone),
+the send log read off the receipts, and a switch per trigger with its lead time
+and copy in `notification_settings` rather than in code. That last part is the
+difference between the owner running this and the owner filing a ticket for it:
+after this, only a genuinely new *kind* of trigger needs a deploy.
+
+**iOS.** The opt-in has three shapes and the platform picks. Not installed on
+iOS gets instructions and no switch — Safari refuses `requestPermission()`
+outside a home-screen app and there is no `beforeinstallprompt` to automate the
+install, so "tap Share" is the only lever that exists. Permission is requested
+from a click handler because iOS drops it silently otherwise, which reads as a
+broken app rather than a policy. The worker handles `pushsubscriptionchange`
+and posts to `/api/push/resubscribe`; the client also re-syncs on launch. Both
+halves are needed — iOS rotates subscriptions while the app is closed, and
+without the worker the user silently stops receiving anything.
+
+The worker caches nothing, deliberately. This app is live scores and lines, and
+a stale-while-revalidate shell is how you end up reading Saturday's board on
+Sunday.
+
+Nothing sends until VAPID keys are set and 0031 is applied; until then `/admin`
+says so in a banner instead of throwing. Tracked as PUSH-8.
+
 ### Aug 12 — The admin console stops hiding behind a footnote
 
 `/admin` has existed since the invites work and was reachable exactly one way:

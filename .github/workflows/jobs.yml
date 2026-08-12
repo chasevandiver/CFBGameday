@@ -88,6 +88,10 @@ on:
           # append-only tables (line_snapshots, predictions) too. Running this
           # twice duplicates them, so it is dispatch-only and never scheduled.
           - preseason-bootstrap
+          # Push: one nudge before the week's first kickoff, to members with
+          # picks still open. Lead time lives in notification_settings and is
+          # edited from /admin, not here.
+          - notify-picks-due
   schedule:
     # Lines 2x daily (8am/6pm ET) — display freshness only
     - cron: "0 12,22 * * *"
@@ -101,6 +105,13 @@ on:
     - cron: "50 22 * * 4,5"
     # Games sync daily
     - cron: "0 9 * * *"
+    # Picks-due nudge, ~2h before each kickoff wave. The job only notifies
+    # groups whose first kickoff falls inside notification_settings.lead_minutes,
+    # so running it more often than that window is a no-op, not a duplicate —
+    # and Actions cron lags 5-30 min, which is exactly why it runs early.
+    - cron: "0 15 * * 6"
+    - cron: "0 18 * * 6"
+    - cron: "0 22 * * 4,5"
     # Scoreboard: hourly launches of a continuous polling loop (Actions cron
     # can't fire sub-5-minute reliably). Each run polls every 30s while games
     # are live, 120s around kickoffs, and makes zero CFBD calls when idle;

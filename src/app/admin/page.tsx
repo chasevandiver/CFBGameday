@@ -3,8 +3,15 @@ import { notFound } from "next/navigation";
 import { AdjustmentsPanel, type AdjustmentView } from "../../components/AdjustmentsPanel";
 import { AppNav } from "../../components/AppNav";
 import { InviteForm } from "../../components/InviteForm";
+import {
+  NotificationsPanel,
+  type AudienceOption,
+  type SendRow,
+  type TriggerSetting,
+} from "../../components/NotificationsPanel";
 import { fetchCfbdCallsThisMonth, fetchCurrentSeasonWeek } from "../../lib/queries";
 import { createClient } from "../../lib/supabase/server";
+import { pushConfigured } from "../../lib/push";
 import { createServiceClient } from "../../lib/supabase/service";
 
 export const dynamic = "force-dynamic";
@@ -38,8 +45,17 @@ export default async function AdminPage() {
   const { seasonId } = await fetchCurrentSeasonWeek(supabase);
   const service = createServiceClient();
 
-  const [{ data: allowlist }, { data: joinedUsers }, { data: ratingRows }, { data: adjRows }, cfbdCalls, { data: runRows }] =
-    await Promise.all([
+  const [
+    { data: allowlist },
+    { data: joinedUsers },
+    { data: ratingRows },
+    { data: adjRows },
+    cfbdCalls,
+    { data: runRows },
+    { data: notifySettings },
+    { data: notifySends },
+    { data: groupRows },
+  ] = await Promise.all([
       service.from("invite_allowlist").select("email").order("created_at"),
       service.auth.admin.listUsers({ perPage: 100 }),
       supabase.from("ratings").select("team_id").eq("season_id", seasonId),
@@ -56,7 +72,32 @@ export default async function AdminPage() {
         .select("job, started_at, status, error")
         .order("started_at", { ascending: false })
         .limit(80),
+      // Push. notification_sends is own-rows-only under RLS; the console reads
+      // everyone's through the service client, behind the is_admin gate above.
+      service.from("notification_settings").select("kind, enabled, lead_minutes, title, body"),
+      service
+        .from("notification_sends")
+        .select("id, kind, subject, title, status, detail, sent_at, profiles(display_name)")
+        .order("sent_at", { ascending: false })
+        .limit(20),
+      service.from("groups").select("id, name").order("name"),
     ]);
+
+  // Flatten the send log for the panel; the joined profile is one name.
+  const sendLog: SendRow[] = (
+    (notifySends ?? []) as unknown as (Omit<SendRow, "who"> & {
+      profiles: { display_name: string } | null;
+    })[]
+  ).map(({ profiles, ...row }) => ({ ...row, who: profiles?.display_name ?? "unknown" }));
+
+  const audiences: AudienceOption[] = [
+    { value: "me", label: "Just me" },
+    { value: "everyone", label: "Everyone with a device" },
+    ...((groupRows ?? []) as { id: string; name: string }[]).map((g) => ({
+      value: String(g.id),
+      label: g.name,
+    })),
+  ];
 
   const joinedEmails = new Set(
     (joinedUsers?.users ?? []).map((u) => u.email?.toLowerCase()).filter(Boolean),
@@ -191,6 +232,13 @@ export default async function AdminPage() {
             </p>
           </section>
         )}
+
+        <NotificationsPanel
+          settings={(notifySettings ?? []) as TriggerSetting[]}
+          sends={sendLog}
+          audiences={audiences}
+          configured={pushConfigured()}
+        />
 
         <section className="card mb-4 p-4">
           <h2 className="mb-1 text-sm text-accent">Jobs</h2>

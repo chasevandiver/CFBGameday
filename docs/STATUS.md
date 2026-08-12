@@ -430,7 +430,7 @@ still missing — there is no service worker anywhere in the tree today.
 Sending is standard VAPID Web Push, the same code as Chrome and Firefox. No
 Apple Developer account, no APNs certificate.
 
-- [ ] **PUSH-1 — the delivery path.** Migration 0031: `push_subscriptions`
+- [x] **PUSH-1 — the delivery path.** Migration 0031: `push_subscriptions`
       (user, endpoint unique, keys, `last_seen_at`, failure count; RLS so a
       user reads and deletes only their own, service role reads all) and
       `notification_sends`, append-only, unique on (user, kind, subject) — the
@@ -444,21 +444,21 @@ Apple Developer account, no APNs certificate.
       `NEXT_PUBLIC_VAPID_PUBLIC_KEY`. `web-push` goes in **dependencies**, not
       dev: PUSH-2 wants a "send me a test" button, and that runs on Vercel. It
       is server-side only and never reaches the browser bundle. · 5 h
-- [ ] **PUSH-2 — the opt-in.** A row in `/me`. Permission has to be requested
+- [x] **PUSH-2 — the opt-in.** A row in `/me`. Permission has to be requested
       from a tap (iOS refuses on load), so it is a button, not an effect. When
       the app is not installed the row explains Share → Add to Home Screen
       instead of offering a switch — iOS has no `beforeinstallprompt`, so the
       instruction is the only lever. · 2 h
-- [ ] **PUSH-3 — picks due.** One nudge, ~90 min before the week's first
+- [x] **PUSH-3 — picks due.** One nudge, ~90 min before the week's first
       kickoff, only to members with unsubmitted picks. New `notify-picks-due`
       task in `run-job.ts` and `jobs.yml`. Schedule it early: Actions cron lags
       5–30 min, which is already budgeted for in the close passes. · 2 h
-- [ ] **PUSH-4 — your bad beat.** `cover_flips` (0026) is written live by the
+- [x] **PUSH-4 — your bad beat.** `cover_flips` (0026) is written live by the
       scoreboard job, so the moment already exists and is already detected;
       this joins it to picks and bets and notifies only the people holding the
       side that moved. Send inside the scoreboard job, wrapped so a push
       failure can never fail a scoreboard poll. · 3 h
-- [ ] **PUSH-7 — the admin console.** A Notifications section on `/admin`,
+- [x] **PUSH-7 — the admin console.** A Notifications section on `/admin`,
       beside Invites and Jobs. Three parts, and the third is the one that
       matters: **compose and send** (title, body, link, audience — just me, one
       group, or everyone) so an ad-hoc push never needs a deploy; the **send
@@ -496,7 +496,16 @@ same way a missed `freeze` does, which is a red run and an email.
 trigger — some event nothing currently watches. Timing, copy, audience, turning
 a trigger off, and one-off sends are all table edits from `/admin`.
 
-Both open decisions are now settled; PUSH-1 is unblocked.
+**Built 2026-08-12** — PUSH-1, 2, 3, 4 and 7. PUSH-6 (caps, quiet hours) is
+the only code left. Two operational steps are outstanding and cannot be done
+from a branch:
+
+- [ ] **PUSH-8** Apply migration `0031_push_notifications.sql` to production and
+      set `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` in Vercel
+      and in Actions secrets, plus `NEXT_PUBLIC_VAPID_PUBLIC_KEY`. Generate with
+      `node -e "console.log(require('web-push').generateVAPIDKeys())"`. Until
+      both are done `/admin` shows the "not configured" banner and every send
+      is a no-op — deliberately, rather than a stack trace. · owner, 15 min
 
 **Product / UX**
 - [ ] **G10-v1** Copy-digest ShareButton: Thursday (frozen slate / edges / "N

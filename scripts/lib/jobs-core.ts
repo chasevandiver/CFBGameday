@@ -10,6 +10,7 @@ import { modelClv, roundClv, spreadClv, totalClv } from "../../src/lib/clv";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
 import { clockToSeconds, coverMargin, spreadCoverSide, totalCoverSide } from "../../src/lib/cover";
 import { gradePick, type PickMarket } from "../../src/lib/grade";
+import { notifyBadBeats, type FlipNotice } from "./notify-jobs";
 import { buildTeamNameIndex } from "../../src/lib/rankings";
 import { fetchCurrentSlate } from "../../src/lib/season";
 import {
@@ -275,6 +276,7 @@ export function scoreboardPatch(
 }
 
 /** One detected cover flip, ready to insert into `cover_flips` (0026). */
+/** Flips written this tick, held for the push pass after the loop. */
 export interface CoverFlip {
   market: "spread" | "total";
   line: number;
@@ -391,6 +393,7 @@ export async function scoreboardJob(db: SupabaseClient): Promise<Json> {
 
   let updated = 0;
   let flipsLogged = 0;
+  const pendingNotices: FlipNotice[] = [];
   for (const g of active) {
     const before = stored.get(g.id);
     const patch = scoreboardPatch(g, before);
@@ -422,8 +425,21 @@ export async function scoreboardJob(db: SupabaseClient): Promise<Json> {
         // 23505 = the (game_id, market, score) unique key doing its job on a
         // retried tick. Anything else is worth knowing about, but never worth
         // failing the scoreboard poll over.
-        if (!flipErr) flipsLogged++;
-        else if (flipErr.code !== "23505")
+        if (!flipErr) {
+          flipsLogged++;
+          // Only a first-time insert notifies: on a retried tick the unique key
+          // above already swallowed the duplicate, so this cannot double-send
+          // even before sendToUser's own dedupe gets involved.
+          pendingNotices.push({
+            game_id: g.id,
+            market: f.market,
+            to_side: f.to_side,
+            home_points: f.home_points,
+            away_points: f.away_points,
+            period: f.period ?? null,
+            clock: f.clock ?? null,
+          });
+        } else if (flipErr.code !== "23505")
           console.error(`cover_flips insert failed for game ${g.id}: ${flipErr.message}`);
       }
     }
@@ -431,7 +447,18 @@ export async function scoreboardJob(db: SupabaseClient): Promise<Json> {
     const { data: touched } = await db.from("games").update(patch).eq("id", g.id).select("id");
     if (touched && touched.length > 0) updated++;
   }
-  return { live_or_final: active.length, updated, flips: flipsLogged };
+
+  // Sending happens after the loop, not inside it: a poll that has already
+  // written its scores should be finished writing them before it starts
+  // talking to Apple. notifyBadBeats never throws — see notify-jobs.ts.
+  const pushed = await notifyBadBeats(db, pendingNotices);
+
+  return {
+    live_or_final: active.length,
+    updated,
+    flips: flipsLogged,
+    ...(pushed.notified || pushed.errors ? { notified: pushed.notified, notify_errors: pushed.errors } : {}),
+  };
 }
 
 /**
