@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Archivo, Barlow_Condensed, IBM_Plex_Mono } from "next/font/google";
+import { Archivo, Graduate, IBM_Plex_Mono } from "next/font/google";
 import { APPLE_STARTUP_IMAGES } from "../lib/apple-startup-images";
 import { BRAND } from "../lib/brand";
 import "./globals.css";
@@ -9,9 +9,12 @@ const archivo = Archivo({
   subsets: ["latin"],
 });
 
-const barlow = Barlow_Condensed({
+/* Display face, docs/BRAND.md §12. One weight is all Graduate has, and all it
+   needs: it is a varsity face used at heading size, never for body copy and
+   never for numbers. */
+const graduate = Graduate({
   variable: "--font-display",
-  weight: ["500", "600", "700"],
+  weight: "400",
   subsets: ["latin"],
 });
 
@@ -64,7 +67,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${archivo.variable} ${barlow.variable} ${plexMono.variable} h-full antialiased`}
+      className={`${archivo.variable} ${graduate.variable} ${plexMono.variable} h-full antialiased`}
     >
       <head>
         {/* Next emits the standardised `mobile-web-app-capable`; iOS before

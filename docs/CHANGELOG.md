@@ -165,6 +165,68 @@ shipping it.
 
 ## Log
 
+### Aug 12 — A traced vector, and the app finally matches its own icon
+
+Three things, in the order they unblock each other.
+
+**1. A vector, traced rather than drawn.** `scripts/trace-brand-mark.ts` walks
+the boundary between lit and unlit pixels in the supplied artwork and chains the
+resulting edges into closed loops — outer contour and both counters in one pass
+— then Douglas–Peucker straightens the staircase into the letter's real edges.
+Every vertex comes off the owner's pixels, so the letterform is exact; the check
+is to render both paths translucent on top of the source at full size and see
+the S disappear underneath them.
+
+Separating the seam from the letter took three tries, and the failures are worth
+recording. Distance-from-the-edge does not work: the blade is drawn *along* the
+letter's diagonal edge, so no gold pixel is more than 15 units from a boundary.
+"Everything that isn't chalk" does not work either — the gold extrude is also
+not chalk. What works is connected components with two tests: the seam is the
+only gold blob whose box spans nearly the letter's full width *and* straddles
+its vertical centre. The extrude sits along the bottom, around a counter, or in
+the notch, and each fails one. The gold test itself had to be loosened well past
+a saturation cut — tight enough to exclude chalk also drops the lit tops of the
+laces, which is how an earlier pass traced the blade's darkest edge and nothing
+else, producing a hairline where a football seam should be.
+
+`<SlateMark>` renders the two paths with the letter on `currentColor`, which is
+what makes it legal on the light theme, and the seam pinned to `--accent`. It is
+back in the nav lockup. **BRAND-6 closed.**
+
+**2. The palette.** `globals.css` is on the brand tokens. Two values are
+deliberately not what §5 prints:
+
+- `--surface` is `#0b2e23`, not the brand's raised green `#0e3b2c`. That value is
+  specified for *a card*, and a card is small; spread across a slate of them it
+  turns the page into a green wash and breaks the 60/25 ratio §6 asks for. Dark
+  first, green second.
+- `--elev` is a quiet step above the card rather than a jump. It is what the odds
+  cells are made of, and at the brand's raised green every cell read as pressed.
+  Selection is gold's job.
+
+`--live` stays red. §35 asks for a gold pulse or a restrained green indicator and
+both are wrong here: gold is this product's value language and green reads as a
+win, so either would make a kicking-off game look like a graded pick. Recorded
+rather than quietly ignored.
+
+**3. Typography.** Graduate is the display face — one weight, no faux bold, and
+tracking cut because it is much wider than the condensed face it replaced. Two
+things moved *off* the display face rather than onto it: `.scorebug`, which is
+numbers and therefore Plex Mono per §12 (Graduate has no tabular figures and a
+varsity ornament on the 1 that has no business in a live score; negative tracking
+claws back the width a mono costs in a dense row), and `.cover-word`, which is
+italic — Graduate has none, and a synthesised slant at 13px is mush. Barlow
+Condensed is gone entirely, so the app loads three faces, not four.
+
+Both share cards and the demo card move to the brand palette with the traced
+stamp. Verified by screenshot at 420px in both themes: the light theme is the
+same relationships inverted — chalk becomes the ground, field green the ink, and
+gold darkens until it clears contrast on it.
+
+**BRAND-2, BRAND-3, BRAND-5 and BRAND-6 close.** Still open: **BRAND-4** (install
+on real hardware — the row test needs a phone) and **BRAND-7** (a layered vector
+master; a trace is a silhouette and carries no bevel, grain or rim light).
+
 ### Aug 12 — The icon was supplied; I should have used it
 
 Correction to the entry below. The first pass rebuilt the Slate S as vector

@@ -312,7 +312,7 @@ These block nothing today but change what gets built. Recommendations are from
 | **Q7** | Delete the dead edge function? | **Delete `supabase/functions/jobs/`.** It has inverted CLV in all four branches and is 4+ versions behind `jobs-core.ts`. `05:C5` calls it a deliberate tombstone — but a tombstone with a live landmine in it is worse than none. Git preserves it. Say no and it gets a `DO NOT DEPLOY` banner instead. |
 | **Q6 / SEC-13** | TBD kickoffs (`start_ts` null) — policy before Aug 29 | **Keep as-is.** Un-pickable, un-removable, stays blind, no close and therefore no CLV, but still frozen. Every branch fails closed, which is right for a security boundary and a receipt. Cost: a TBD game is un-pickable until CFBD firms the time, which `sync-games` does daily. |
 | ~~**Q9**~~ | ~~Duplicate frozen predictions~~ | **Answered and done 2026-08-12** — cleared via migration 0028. DB-2 turned out not to be a defect at all. See §2.1b. |
-| **BRAND-1** | The brand palette shipped on the icon and launch surfaces; the app shell is still warm charcoal. Recolour before Aug 29 or after? | **After.** `docs/BRAND.md` §5 replaces every surface colour and §12 swaps the display face — that is every page, 17 days out, against DESIGN.md's "build one screen, get it approved, then propagate". Both near-blacks read as black on a phone, so nothing looks broken today; the visible tell is the two golds (`#E8B93D` vs `#f2b63c`) side by side. Queued as BRAND-2/BRAND-3. |
+| ~~**BRAND-1**~~ | ~~Recolour before Aug 29 or after?~~ | **Answered 2026-08-12: now.** Owner call, against the recommendation below; shipped the same day. Original note: **After.** `docs/BRAND.md` §5 replaces every surface colour and §12 swaps the display face — that is every page, 17 days out, against DESIGN.md's "build one screen, get it approved, then propagate". Both near-blacks read as black on a phone, so nothing looks broken today; the visible tell is the two golds (`#E8B93D` vs `#f2b63c`) side by side. Queued as BRAND-2/BRAND-3. |
 | **UX-33** | Does `/edges` keep a permanent bottom-nav slot now that edges are demoted to information? | Owner call. |
 | **09:§3** | Re-verify current Supabase free-tier limits against the pricing page | Human, 0.25 h. |
 | **OPS-1b** | Dispatch one deliberately-failing run and confirm who receives the email | Human, 0.25 h. Pairs with P1-8. |
@@ -323,29 +323,28 @@ These block nothing today but change what gets built. Recommendations are from
 
 Real work, deliberately not before Aug 29.
 
-**Brand rollout** — the icon, logo and install surfaces landed 2026-08-12
-(`docs/CHANGELOG.md`, "The Slate S"). What `docs/BRAND.md` asks for and did
-*not* ship:
-- [ ] **BRAND-2** Move the app's runtime palette to the brand tokens (§5, §6,
-      §41.4). One token block in `globals.css`, then a screen-by-screen pass —
-      `--accent` alone changes every chip, CTA and selected state. Blocked on
-      BRAND-1. · 4 h
-- [ ] **BRAND-3** Graduate as the display face (§12, §41.5). Currently Barlow
-      Condensed on every `.display` heading and on the nav wordmark. Graduate
-      is one weight and much wider — this is a layout change, not a swap, and
-      needs the mobile-width pass in §41.13. Blocked on BRAND-1. · 3 h
+**Brand rollout** — icon and install surfaces landed 2026-08-12, then the
+traced vector, the palette and the display face the same day (`docs/CHANGELOG.md`).
+Two items remain open; the closed ones are kept for the record.
+- [x] **BRAND-2** App palette on the brand tokens (§5, §6, §41.4). `--surface`
+      and `--elev` sit below the brand's printed raised green on purpose — see
+      the changelog; a value specified for one card turns a slate of them into
+      a green wash. `--live` stays red, also deliberately.
+- [x] **BRAND-3** Graduate as the display face (§12, §41.5). Barlow Condensed
+      removed. `.scorebug` moved to Plex Mono (numbers, §12) and `.cover-word`
+      to Archivo (Graduate has no italic).
 - [ ] **BRAND-4** Install the PWA on a real iPhone and a real Android and check
       the three things CI cannot: the home-screen tile beside DraftKings/ESPN
       (§22), the startup image matching on a device that is actually in the
       media-query table, and that no white band appears between tap and first
       paint (§41.15–17). The unit tests cover transparency, square corners and
       the maskable safe radius; they cannot cover any of these. · 0.5 h, human
-- [ ] **BRAND-5** Game cards, pick'em and the edge display as descendants of
-      the icon (§32–34). Follows BRAND-2 — doing it first means doing it twice.
-- [ ] **BRAND-6** An S in the nav lockup. The supplied mark is chalk on a dark
-      field; this header also renders on the light theme, where chalk vanishes.
-      Needs a light-mode variant of the mark, or an outline version that can
-      take `currentColor`. The wordmark alone ships until then. · 1 h
+- [x] **BRAND-5** Game cards, pick'em and the edge display as descendants of
+      the icon (§32–34) — carried by the token swap; verified by screenshot at
+      420px in both themes.
+- [x] **BRAND-6** An S in the nav lockup, from the traced outline
+      (`src/lib/brand-mark-outline.ts`). Letter takes `currentColor`, so it
+      inverts for the light theme; only the seam is pinned to the accent.
 - [ ] **BRAND-7** A true vector master (§20). The supplied artwork is a 1254²
       raster, so every export is a downscale and there is nothing to hand to a
       printer or recolour. No shipped surface needs it — the largest is a 512px

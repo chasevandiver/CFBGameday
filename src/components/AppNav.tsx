@@ -4,6 +4,7 @@ import { AuthButton } from "./AuthButton";
 import { BottomNav } from "./BottomNav";
 import { NavTabs } from "./NavTabs";
 import { ScoreTicker } from "./ScoreTicker";
+import { SlateMark } from "./SlateMark";
 import { ThemeToggle } from "./ThemeToggle";
 
 /** `demoTicker` swaps the live ticker for the sample slate's — see /demo. */
@@ -25,16 +26,17 @@ export function AppNav({ demoTicker }: { demoTicker?: TickerData } = {}) {
         }}
       >
         <div className="mx-auto flex h-12 max-w-7xl items-center gap-4 px-4">
-          {/* The wordmark is the desktop route home — the Home tab is
-              mobile-only, since a tenth tab does not fit this header.
-
-              No S beside it yet: the supplied mark is a chalk letter on a dark
-              field, and this header also renders on the light theme, where a
-              chalk S disappears. Putting it here needs either a light-mode
-              variant of the mark or an outline version that can take
-              currentColor. Tracked as BRAND-6. */}
-          <Link href="/" className="display shrink-0 text-xl leading-none text-accent">
-            The CFB Slate
+          {/* The lockup is the desktop route home — the Home tab is
+              mobile-only, since a tenth tab does not fit this header. The mark
+              carries the identity and the wordmark names the route, which is
+              the order the brand puts them in. */}
+          <Link
+            href="/"
+            aria-label="The CFB Slate — home"
+            className="flex shrink-0 items-center gap-2 leading-none"
+          >
+            <SlateMark size={21} className="text-chalk" />
+            <span className="display text-lg text-accent">The CFB Slate</span>
           </Link>
           <NavTabs />
           <div className="flex flex-1 items-center justify-end gap-4 md:flex-none">
