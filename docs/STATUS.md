@@ -458,6 +458,17 @@ Apple Developer account, no APNs certificate.
       this joins it to picks and bets and notifies only the people holding the
       side that moved. Send inside the scoreboard job, wrapped so a push
       failure can never fail a scoreboard poll. · 3 h
+- [ ] **PUSH-7 — the admin console.** A Notifications section on `/admin`,
+      beside Invites and Jobs. Three parts, and the third is the one that
+      matters: **compose and send** (title, body, link, audience — just me, one
+      group, or everyone) so an ad-hoc push never needs a deploy; the **send
+      log**, read straight off `notification_sends`, showing who was targeted,
+      what was delivered and what bounced; and **a switch per trigger** —
+      enabled, lead time, copy — stored in a `notification_settings` row rather
+      than hardcoded. Without that last part every timing tweak is a code
+      change, which is the difference between the owner running this and the
+      owner filing a ticket for it. Ships with PUSH-2: together they are the
+      point where the feature is self-serve. · 4 h
 - [ ] **PUSH-6 — guardrails.** Daily cap per user, quiet hours off
       `profiles.timezone` (already on the table, defaulted to CT), prune
       subscriptions on 404/410 from the push service, and a preference per kind
@@ -474,6 +485,16 @@ grading with your record and the crew leader. The reasoning against: the recap
 page already exists and Sunday is the one day nobody needs prompting to go look
 at it — a digest would have been the first notification anyone muted, and
 muting is per-app, so it would have taken the two that matter with it.
+
+**How you know it is working**, in three layers, none of which involve asking
+anyone: the test button in `/me` proves your own device end to end; the send log
+on `/admin` shows every scheduled push, who it went to and what bounced; and a
+notify job that goes silent past its cadence trips the existing `watchdog` the
+same way a missed `freeze` does, which is a red run and an email.
+
+**What still needs a code change after PUSH-7:** a genuinely new *kind* of
+trigger — some event nothing currently watches. Timing, copy, audience, turning
+a trigger off, and one-off sends are all table edits from `/admin`.
 
 Both open decisions are now settled; PUSH-1 is unblocked.
 
