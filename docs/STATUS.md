@@ -443,6 +443,92 @@ Two items remain open; the closed ones are kept for the record.
 - [ ] **04:DQ-11** Real `turnoverMargin` for the luck rule · S/M
 - [ ] **04:DQ-15** `cached()` shouldn't persist empty CFBD responses · S, local-dev only
 
+**Push notifications** — §23 #38, scoped 2026-08-12. iOS supports Web Push
+from 16.4, but **only for a web app installed to the Home Screen**; a PWA in a
+Safari tab cannot even ask. The install side of that landed with the brand work
+(manifest, `display: standalone`, real icons). Everything below is what is
+still missing — there is no service worker anywhere in the tree today.
+
+Sending is standard VAPID Web Push, the same code as Chrome and Firefox. No
+Apple Developer account, no APNs certificate.
+
+- [x] **PUSH-1 — the delivery path.** Migration 0031: `push_subscriptions`
+      (user, endpoint unique, keys, `last_seen_at`, failure count; RLS so a
+      user reads and deletes only their own, service role reads all) and
+      `notification_sends`, append-only, unique on (user, kind, subject) — the
+      dedupe key *and* the receipt, same idiom as `predictions` and
+      `cover_flips`. `public/sw.js` with `push`, `notificationclick` (deep-link
+      into the game or the board) and `pushsubscriptionchange` handlers; iOS
+      drops subscriptions on disuse, and without that last one delivery stops
+      silently. A server action in `src/app/actions/` to store and revoke, and
+      `web-push` in the job runner. Secrets: `VAPID_PUBLIC_KEY`,
+      `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, plus the public key as
+      `NEXT_PUBLIC_VAPID_PUBLIC_KEY`. `web-push` goes in **dependencies**, not
+      dev: PUSH-2 wants a "send me a test" button, and that runs on Vercel. It
+      is server-side only and never reaches the browser bundle. · 5 h
+- [x] **PUSH-2 — the opt-in.** A row in `/me`. Permission has to be requested
+      from a tap (iOS refuses on load), so it is a button, not an effect. When
+      the app is not installed the row explains Share → Add to Home Screen
+      instead of offering a switch — iOS has no `beforeinstallprompt`, so the
+      instruction is the only lever. · 2 h
+- [x] **PUSH-3 — picks due.** One nudge, ~90 min before the week's first
+      kickoff, only to members with unsubmitted picks. New `notify-picks-due`
+      task in `run-job.ts` and `jobs.yml`. Schedule it early: Actions cron lags
+      5–30 min, which is already budgeted for in the close passes. · 2 h
+- [x] **PUSH-4 — your bad beat.** `cover_flips` (0026) is written live by the
+      scoreboard job, so the moment already exists and is already detected;
+      this joins it to picks and bets and notifies only the people holding the
+      side that moved. Send inside the scoreboard job, wrapped so a push
+      failure can never fail a scoreboard poll. · 3 h
+- [x] **PUSH-7 — the admin console.** A Notifications section on `/admin`,
+      beside Invites and Jobs. Three parts, and the third is the one that
+      matters: **compose and send** (title, body, link, audience — just me, one
+      group, or everyone) so an ad-hoc push never needs a deploy; the **send
+      log**, read straight off `notification_sends`, showing who was targeted,
+      what was delivered and what bounced; and **a switch per trigger** —
+      enabled, lead time, copy — stored in a `notification_settings` row rather
+      than hardcoded. Without that last part every timing tweak is a code
+      change, which is the difference between the owner running this and the
+      owner filing a ticket for it. Ships with PUSH-2: together they are the
+      point where the feature is self-serve. · 4 h
+- [ ] **PUSH-6 — guardrails.** Daily cap per user, quiet hours off
+      `profiles.timezone` (already on the table, defaulted to CT), prune
+      subscriptions on 404/410 from the push service, and a preference per kind
+      rather than one global switch. · 2 h
+
+**Deliberately not notified:** line moves, edge alerts, "your game is starting".
+BRAND §16 and §38 — this is an intelligence tool, and a product that pings you
+about a two-point move is how people turn notifications off. PUSH-3 and PUSH-4
+are two interruptions a week at most.
+
+**PUSH-5, a Sunday results digest, was declined by the owner on 2026-08-12** and
+the ID is left vacant rather than reused. It would have been one push after
+grading with your record and the crew leader. The reasoning against: the recap
+page already exists and Sunday is the one day nobody needs prompting to go look
+at it — a digest would have been the first notification anyone muted, and
+muting is per-app, so it would have taken the two that matter with it.
+
+**How you know it is working**, in three layers, none of which involve asking
+anyone: the test button in `/me` proves your own device end to end; the send log
+on `/admin` shows every scheduled push, who it went to and what bounced; and a
+notify job that goes silent past its cadence trips the existing `watchdog` the
+same way a missed `freeze` does, which is a red run and an email.
+
+**What still needs a code change after PUSH-7:** a genuinely new *kind* of
+trigger — some event nothing currently watches. Timing, copy, audience, turning
+a trigger off, and one-off sends are all table edits from `/admin`.
+
+**Built 2026-08-12** — PUSH-1, 2, 3, 4 and 7. PUSH-6 (caps, quiet hours) is
+the only code left. Two operational steps are outstanding and cannot be done
+from a branch:
+
+- [ ] **PUSH-8** Apply migration `0031_push_notifications.sql` to production and
+      set `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` in Vercel
+      and in Actions secrets, plus `NEXT_PUBLIC_VAPID_PUBLIC_KEY`. Generate with
+      `node -e "console.log(require('web-push').generateVAPIDKeys())"`. Until
+      both are done `/admin` shows the "not configured" banner and every send
+      is a no-op — deliberately, rather than a stack trace. · owner, 15 min
+
 **Product / UX**
 - [ ] **G10-v1** Copy-digest ShareButton: Thursday (frozen slate / edges / "N
       haven't picked") + Sunday (results / movers / CLV) — best paired with the
@@ -488,7 +574,6 @@ Additive features, no defect behind any of them. Verified still open 2026-08-12.
 | §23 #40 / F7 | Futures tracker with weekly mark-to-market — `future` is a valid `bet_type` and BetForm accepts it; nothing marks it to market | · M, and nobody has logged one |
 | §23 #44 | Generated db types — `src/lib/db-types.ts` is still hand-written | Drift risk is real but slow; `next typegen` in CI covers the route layer only |
 | §23 #45 | ⌘K quick-switcher + keyboard navigation | Table stakes for a "command center", zero users blocked today |
-| §23 #38 | PWA **push** notifications — manifest and icons exist, the notification path does not | Phase 3 |
 | §23 #31 | BetForm game **search** — labels, validation and the −3d/+9d window shipped; the picker is a plain `<select>` | Fine at 60 games/week |
 | §23 #42 | **Route smoke tests** — 37 test files, 488 tests, none exercise a route | The one partial that touches correctness; named, not rounded up |
 
