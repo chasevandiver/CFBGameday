@@ -26,6 +26,8 @@ function stubDb(opts: {
   insertError?: { code: string; message: string };
   devices?: { id: number; endpoint: string; p256dh: string; auth: string }[];
   pref?: { enabled: boolean } | null;
+  /** What notification_settings says the kind defaults to. */
+  defaultEnabled?: boolean;
 }): { db: SupabaseClient; recorded: Recorded } {
   const recorded: Recorded = { inserted: 0, updates: [] };
 
@@ -43,8 +45,12 @@ function stubDb(opts: {
       recorded.updates.push(patch);
       return builder;
     };
-    builder.maybeSingle = () =>
-      Promise.resolve({ data: table === "notification_prefs" ? (opts.pref ?? null) : null });
+    builder.maybeSingle = () => {
+      if (table === "notification_prefs") return Promise.resolve({ data: opts.pref ?? null });
+      if (table === "notification_settings")
+        return Promise.resolve({ data: { default_enabled: opts.defaultEnabled ?? true } });
+      return Promise.resolve({ data: null });
+    };
     // The subscription lookup awaits the builder directly.
     builder.then = (resolve: (v: { data: unknown }) => unknown) =>
       resolve({ data: table === "push_subscriptions" ? (opts.devices ?? []) : [] });
@@ -110,9 +116,28 @@ describe("sendToUser", () => {
     expect(recorded.inserted).toBe(0);
   });
 
-  it("opts in when no preference row exists", async () => {
-    const { db, recorded } = stubDb({ pref: null, devices: [] });
+  it("falls back to the kind's default when there is no preference row", async () => {
+    const { db, recorded } = stubDb({ pref: null, defaultEnabled: true, devices: [] });
     await sendToUser(db, "user-1", "picks_due", "picks:g:1:3", { title: "t", body: "b" });
+    expect(recorded.inserted).toBe(1);
+  });
+
+  it("stays silent for a kind that defaults off, like bad beats", async () => {
+    // The whole reason default_enabled exists: one notification per late swing
+    // across a twelve-game Saturday is a firehose, and muting is per-app — it
+    // would take picks-due and log-bets down with it.
+    const { db, recorded } = stubDb({ pref: null, defaultEnabled: false, devices: [] });
+    const result = await sendToUser(db, "user-1", "bad_beat", "game:9:spread:home", {
+      title: "t",
+      body: "b",
+    });
+    expect(result.reason).toBe("opted out");
+    expect(recorded.inserted).toBe(0);
+  });
+
+  it("lets an explicit opt-in beat a default of off", async () => {
+    const { db, recorded } = stubDb({ pref: { enabled: true }, defaultEnabled: false, devices: [] });
+    await sendToUser(db, "user-1", "bad_beat", "game:10:total:over", { title: "t", body: "b" });
     expect(recorded.inserted).toBe(1);
   });
 });

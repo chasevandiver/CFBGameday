@@ -18,7 +18,7 @@ import {
   watchdogJob,
   weatherJob,
 } from "./lib/jobs-core";
-import { notifyPicksDueJob } from "./lib/notify-jobs";
+import { notifyLogBetsJob, notifyPicksDueJob } from "./lib/notify-jobs";
 
 async function main() {
   const task = process.argv[2];
@@ -37,6 +37,7 @@ async function main() {
     watchdog: watchdogJob,
     // Push. Sends live inside `scoreboard`; this is the scheduled half.
     "notify-picks-due": notifyPicksDueJob,
+    "notify-log-bets": notifyLogBetsJob,
   } as const;
   const job = jobs[task as keyof typeof jobs];
   if (!job) throw new Error(`unknown task "${task}" (${Object.keys(jobs).join("|")})`);

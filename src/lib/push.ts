@@ -15,7 +15,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * matter how many times the scoreboard loop re-observes the same cover flip.
  */
 
-export type NotificationKind = "picks_due" | "bad_beat" | "admin";
+export type NotificationKind = "picks_due" | "bad_beat" | "log_bets" | "admin";
 
 export interface PushPayload {
   title: string;
@@ -85,6 +85,23 @@ export async function activeSettings(
   return { lead_minutes: data.lead_minutes, title: data.title, body: data.body };
 }
 
+/**
+ * Whether a kind is on for someone who has never touched the switch.
+ *
+ * Read from `notification_settings.default_enabled` rather than assumed, so the
+ * answer is admin-editable. Bad beats default OFF: one per late swing across a
+ * twelve-game Saturday is a firehose nobody asked for, and the kinds people do
+ * want get muted along with it, because muting is per-app.
+ */
+export async function kindDefaults(db: SupabaseClient): Promise<Record<string, boolean>> {
+  const { data } = await db.from("notification_settings").select("kind, default_enabled");
+  const out: Record<string, boolean> = {};
+  for (const row of (data ?? []) as { kind: string; default_enabled: boolean }[]) {
+    out[row.kind] = row.default_enabled;
+  }
+  return out;
+}
+
 export interface SendResult {
   /** Devices the push service accepted. */
   sent: number;
@@ -111,14 +128,24 @@ export async function sendToUser(
   subject: string,
   payload: PushPayload,
 ): Promise<SendResult> {
-  // Per-user opt-out. Absent row means opted in.
+  // An explicit preference always wins. With no row, the kind's own default
+  // decides — which is how bad beats ship silent until someone asks for them.
   const { data: pref } = await db
     .from("notification_prefs")
     .select("enabled")
     .eq("user_id", userId)
     .eq("kind", kind)
     .maybeSingle();
-  if (pref && !pref.enabled) return { sent: 0, duplicate: false, pruned: 0, reason: "opted out" };
+  let wanted = pref?.enabled;
+  if (wanted === undefined || wanted === null) {
+    const { data: setting } = await db
+      .from("notification_settings")
+      .select("default_enabled")
+      .eq("kind", kind)
+      .maybeSingle();
+    wanted = setting?.default_enabled ?? true;
+  }
+  if (!wanted) return { sent: 0, duplicate: false, pruned: 0, reason: "opted out" };
 
   const { error: receiptErr } = await db.from("notification_sends").insert({
     user_id: userId,

@@ -30,7 +30,10 @@ import type { NotificationKind } from "../lib/push";
 
 const KINDS: { kind: NotificationKind; label: string; hint: string }[] = [
   { kind: "picks_due", label: "Picks closing", hint: "Once, before the week's first kickoff" },
-  { kind: "bad_beat", label: "Bad beats", hint: "When a game you have a side on flips late" },
+  { kind: "log_bets", label: "Log your bets", hint: "Betting groups, before each Saturday wave" },
+  // Off unless asked for: one per late swing across a twelve-game Saturday is a
+  // firehose, and muting is per-app — it would take the others down with it.
+  { kind: "bad_beat", label: "Bad beats", hint: "Every late flip on a side you hold. Off by default." },
 ];
 
 type Stage = "checking" | "unsupported" | "needs-install" | "off" | "on";
@@ -57,11 +60,25 @@ function urlBase64ToUint8Array(base64: string) {
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
 }
 
-export function PushSettings({ prefs }: { prefs: Record<string, boolean> }) {
+export function PushSettings({
+  prefs,
+  defaults,
+}: {
+  /** Explicit choices. A kind absent here has never been touched. */
+  prefs: Record<string, boolean>;
+  /** What an untouched kind resolves to, from notification_settings. */
+  defaults: Record<string, boolean>;
+}) {
   const [stage, setStage] = useState<Stage>("checking");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const [kindState, setKindState] = useState(prefs);
+  // Resolve once so the switches render the state a send would actually see,
+  // rather than defaulting every untouched kind to on.
+  const [kindState, setKindState] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(
+      KINDS.map(({ kind }) => [kind, prefs[kind] ?? defaults[kind] ?? true]),
+    ),
+  );
 
   const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 
@@ -191,7 +208,7 @@ export function PushSettings({ prefs }: { prefs: Record<string, boolean> }) {
           <p className="text-xs text-dim">
             {stage === "on"
               ? "On for this device. Each device is separate."
-              : "Off. Two a week at most — nothing about line moves."}
+              : "Off. A couple a week — nothing about line moves."}
           </p>
 
           <div className="mt-3 flex flex-wrap gap-2">
@@ -223,7 +240,7 @@ export function PushSettings({ prefs }: { prefs: Record<string, boolean> }) {
                   </span>
                   <input
                     type="checkbox"
-                    checked={kindState[kind] !== false}
+                    checked={kindState[kind] === true}
                     onChange={(e) => toggleKind(kind, e.target.checked)}
                     aria-label={label}
                     className="size-5 shrink-0 accent-[var(--accent)]"

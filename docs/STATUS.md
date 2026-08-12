@@ -518,7 +518,9 @@ same way a missed `freeze` does, which is a red run and an email.
 trigger — some event nothing currently watches. Timing, copy, audience, turning
 a trigger off, and one-off sends are all table edits from `/admin`.
 
-**Built and live 2026-08-12** — PUSH-1, 2, 3, 4, 7 and 8. **PUSH-6 is the only
+**Built and live 2026-08-12** — PUSH-1, 2, 3, 4, 7 and 8, plus a fourth kind
+(`log_bets`, betting groups before each Saturday wave) and per-kind defaults
+with bad beats shipping off. Migrations 0032/0033 applied. **PUSH-6 is the only
 item left, and it is the one that protects a Saturday:** nothing caps how many
 bad-beat notifications one chaotic afternoon can send, and nothing respects
 `profiles.timezone`, so a late Pac-after-dark flip will buzz at 2am. Neither has
