@@ -53,7 +53,7 @@ the code in `audit/KICKOFF_READINESS.md` §7.
 - [x] **09:P-4** `poll_rankings` latest-week view (same migration) · S
 - [x] **09:P-5** Game-page `profiles.select("*")` → `id, display_name` — `src/app/game/[id]/page.tsx` · S
 - [x] **09:P-15** In-module ~60s cache for the season/week pointer (`fetchCurrentSeasonWeek` feeds every route + ticker) — `src/lib/queries.ts`/`season.ts` · S
-- [ ] **09:P-16** Load rehearsal — **owner-run** (needs a live server; running it from CI would burn real Supabase egress). Harness: seed via `scripts/seed-fixtures.ts`, `autocannon -c 15/-c 30` against `next start`, record vs bars (p95 <1.5s, tick <300 KB) · S · **→ `docs/STATUS.md`**
+- ⟳ **09:P-16** Load rehearsal — **owner-run** (needs a live server; running it from CI would burn real Supabase egress). Harness: seed via `scripts/seed-fixtures.ts`, `autocannon -c 15/-c 30` against `next start`, record vs bars (p95 <1.5s, tick <300 KB) · S · **moved → `docs/STATUS.md`**
 - [x] **04:§2** Remaining `--check` gates: partial coach rows, empty portal feed, empty lines file · S
 - [x] **04:DQ-13** Reject NaN/empty `PRESEASON_TILT_CARRY` loudly — `scripts/build-preseason.ts` · S
 - [x] **04:DQ-14** Reconcile builder `SEASON = 2026` hardcode vs loader `CFB_SEASON` env guard — `scripts/build-preseason.ts` / `load-preseason.ts` · S
@@ -64,25 +64,25 @@ the code in `audit/KICKOFF_READINESS.md` §7.
 - [x] **UX-13** `apple-icon.tsx` via ImageResponse (iOS Add-to-Home-Screen tile) · S
 - [x] **G6** `/model` page rendering the changelog's Current-state + decisions tables, linked from Receipts · S
 - [x] **G12** Ledger CSV export route (own bets + picks; RLS scopes) + link on `/ledger` · S
-- [ ] **G10-v1** Copy-digest ShareButton mode: Thursday (frozen slate/edges/"N haven't picked") + Sunday (results/movers/CLV) — `src/lib/share-text.ts` pattern · S–M — **deferred**: S–M, best paired with the group board's real first Saturday · **→ `docs/STATUS.md`**
-- [ ] **UX-14** Groups first-run pointer on the slate ("picks: {group}" chip / link to /groups when none) · S — **deferred**: pairs with G10; needs a live active-group cookie flow to test · **→ `docs/STATUS.md`**
+- ⟳ **G10-v1** Copy-digest ShareButton mode: Thursday (frozen slate/edges/"N haven't picked") + Sunday (results/movers/CLV) — `src/lib/share-text.ts` pattern · S–M — **deferred**: S–M, best paired with the group board's real first Saturday · **moved → `docs/STATUS.md`**
+- ⟳ **UX-14** Groups first-run pointer on the slate ("picks: {group}" chip / link to /groups when none) · S — **deferred**: pairs with G10; needs a live active-group cookie flow to test · **moved → `docs/STATUS.md`**
 - [x] **UX-23** Human empty-state copy on the slate (drop "data ingestion" engineer-speak) — `SlateView.tsx:499-502` · S
 - [x] **UX-29** Team page says "verdict pending" instead of silently omitting the promised block — `team/[id]/page.tsx` · S
 - [x] **UX-17** One week range everywhere (settings strip reaches 16+post; align three validators) — `SlateView.tsx:621`, `groups/[slug]/page.tsx:58`, `settings/page.tsx:120` · S
 - [x] **UX-19** Login page gets nav / back-to-slate link — `LoginForm.tsx` · S
 - [x] **UX-18** Ratings rows link to team pages; `/teams` gets a name filter — `RatingsTable.tsx`, `TeamsGrid.tsx` · S
-- [ ] **F10** "Biggest line move" slate sort toggle — `SlateView.tsx` · S — **deferred**: needs real line-movement data to be meaningful · **→ `docs/STATUS.md`**
-- [ ] **F13** Returning-production % on team pages (lights up when data lands) — `team/[id]/page.tsx` · S — **deferred**: renders only once returning-production data lands · **→ `docs/STATUS.md`**
-- [ ] **UX-08** Remaining sub-44px targets: star, pin, BetSlip remove, void link, units input — `GameCard.tsx`, `BetSlip.tsx`, `VoidBetButton.tsx` · S–M — **deferred**: touch-target sweep, S–M, low Saturday-morning impact · **→ `docs/STATUS.md`**
+- ⟳ **F10** "Biggest line move" slate sort toggle — `SlateView.tsx` · S — **deferred**: needs real line-movement data to be meaningful · **moved → `docs/STATUS.md`**
+- ⟳ **F13** Returning-production % on team pages (lights up when data lands) — `team/[id]/page.tsx` · S — **deferred**: renders only once returning-production data lands · **moved → `docs/STATUS.md`**
+- ⟳ **UX-08** Remaining sub-44px targets: star, pin, BetSlip remove, void link, units input — `GameCard.tsx`, `BetSlip.tsx`, `VoidBetButton.tsx` · S–M — **deferred**: touch-target sweep, S–M, low Saturday-morning impact · **moved → `docs/STATUS.md`**
 - [x] **UX-26** Visible focus ring on form inputs/selects (not just a 1px 60%-alpha border tint) — `SlateView.tsx:437,694`, `BetForm.tsx:53`, `BetSlip.tsx:133` · S
-- [ ] **UX-22** MatchupCard push results get icon+colour (not sr-only text) — `MatchupCard.tsx:270-297` · S — **deferred**: MatchupCard push icon, cosmetic · **→ `docs/STATUS.md`**
+- ⟳ **UX-22** MatchupCard push results get icon+colour (not sr-only text) — `MatchupCard.tsx:270-297` · S — **deferred**: MatchupCard push icon, cosmetic · **moved → `docs/STATUS.md`**
 - [x] **UX-15** Replace 8 hardcoded `#5b6472` + 1 `#9aa1ad` fallbacks with `var(--push)` — `TeamMark.tsx`, `GameCard.tsx`, `WinProbBar.tsx`, `GameHeader.tsx` · S
 - [x] **UX-20** Receipts private `fmtLine` → shared `fmtSpread` · S
-- [ ] **05:N12** Pin one numeric-arrival convention in `records` (drop the false strings-from-PostgREST premise) — `records.test.ts` · S — **deferred**: records string-convention pin, no user-facing effect · **→ `docs/STATUS.md`**
+- ⟳ **05:N12** Pin one numeric-arrival convention in `records` (drop the false strings-from-PostgREST premise) — `records.test.ts` · S — **deferred**: records string-convention pin, no user-facing effect · **moved → `docs/STATUS.md`**
 - [x] **05:N13** ROI column on group standings; ROI denominator stated user-visibly; SPEC §4 rule amended to match code (units primary) · S
 - [x] **05:N7** Moneyline CLV in cents from the captured ml consensus (or documented "–" in /rules) · S
 - [x] **05:N8** `team_total`/`first_half` marked manual-grade in the ledger instead of open-forever; fix stale comment · S
-- [ ] **SEC-01** Join codes to 10-char base32 + per-user attempt throttle in `join_group` (migration 0026) · S — **deferred**: needs full-function migration to rewrite create_group/regenerate_join_code; ~0 real private groups pre-launch, so brute-force risk is negligible until after launch · **→ `docs/STATUS.md`**
+- ⟳ **SEC-01** Join codes to 10-char base32 + per-user attempt throttle in `join_group` (migration 0026) · S — **deferred**: needs full-function migration to rewrite create_group/regenerate_join_code; ~0 real private groups pre-launch, so brute-force risk is negligible until after launch · **moved → `docs/STATUS.md`**
 - [x] **SEC-09** Ledger short-circuits `if (!user)` instead of `.eq("user_id","")` — `ledger/page.tsx:41` · S
 - [x] **04:§4** SPEC §5.1 churn claim softened to the defensible version ("priced before the market finishes learning rosters") · S
 

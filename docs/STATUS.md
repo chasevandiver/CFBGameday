@@ -64,6 +64,18 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
       `pg_dump` has **never executed** — the append-only `predictions` / `picks`
       / `bets` have no copy beyond the 7-day PITR window. By elimination this is
       the largest open risk in the product. · 1 h
+      **Where:** Supabase dashboard → project `the-cfb-slate`
+      (ref `mjijyutmbtnwcjspozsx`, us-east-2) → Settings → Database →
+      Connection string → URI, **Session pooler (port 5432)** — `pg_dump` cannot
+      run through the transaction pooler on 6543, and the direct
+      `db.<ref>.supabase.co` host is IPv6-only, which Actions runners are not.
+      Then GitHub → Settings → Secrets and variables → Actions → `SUPABASE_DB_URL`.
+- [ ] **`backup` has no dispatch option.** `jobs.yml:169` maps it to the
+      `0 15 * * 0` cron only; it is absent from the `workflow_dispatch` task
+      list (`:8-45`). So the secret above cannot be verified on demand — the
+      next proof is Sun Aug 16, then Aug 23, then **Aug 30, which is after
+      launch**. Add `backup` to the dispatch list so the first backup can be
+      proved the day the secret lands. · 0.25 h
 - [ ] **P1-9b** Create a healthchecks.io project, set `HEALTHCHECK_PING_URL`
       (the ping step is already wired). · 0.5 h
 - [ ] **P1-9c / F2** Add `ANTHROPIC_API_KEY`, dispatch `verdicts` once, or team
@@ -371,6 +383,7 @@ here was decided by a commit message.
 | `docs/AUDIT-2026-08.md` Bug #9 | cites `actions/picks.ts:54,58` | The fix moved into the `remove_pick` RPC (`0021:255-257`) and got *stronger*. Citation queued for correction in §2.3. |
 | `docs/CHANGELOG.md` Aug 12 (portal) | — | Created a new open item (**Q8**, re-run `--tune-churn`) that no checklist carried. Now in §2.4. |
 | `docs/CHANGELOG.md` Aug 12 (observe) | — | Same: the `observe-scoreboard` dispatch and the stale `probe.ts:52` comment existed only in prose. Now in §2.4 and §2.3. |
+| `jobs.yml` | `07:OPS-9` backup job `[x]` | The job is right and inert-until-secret as designed, but it is **cron-only** — not dispatchable, so setting `SUPABASE_DB_URL` cannot be verified until a Sunday. New row in §2.1. |
 | `audit/KICKOFF_READINESS.md` P0-1/P0-2/P0-5, P1-7, P1-10 | open | All closed on 2026-08-12 (early-kickoff scenario doesn't fire; Tier 2 confirmed; all 11 endpoints reachable; portal fix shipped in `5c58fb3`). |
 
 **Verified open today by reading the code, not the docs:** P1-1
