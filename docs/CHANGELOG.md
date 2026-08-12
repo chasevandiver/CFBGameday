@@ -466,6 +466,122 @@ not in scope here; it is queued as **BRAND-2 / BRAND-3** in `docs/STATUS.md`.
 The in-app mark sidesteps the mismatch by taking `currentColor` for the letter
 and `var(--accent)` for the seam, so it is correct under whichever palette is
 live, in both themes.
+### Aug 12 — The receipts have a copy
+
+Run #110, `jobs · backup`, green:
+
+```
+conn: user="postgres.mjijyutmbtnwcjspozsx" host="aws-0-us-east-2.pooler.supabase.com" port=5432 db="postgres" password_len=20
+pg_dump (PostgreSQL) 17.10 (Ubuntu 17.10-1.pgdg24.04+1)
+wrote backup-20260812.sql.gz (16K, 11 tables)
+```
+
+Artifact `db-backup`, 14,261 bytes, 90-day retention. `predictions`, `picks` and
+`bets` are append-only and had no copy outside Supabase's 7-day PITR window;
+they do now. That was the largest open risk in the product by elimination, and
+it is closed.
+
+**A comment corrected on the strength of one run.** The PGDG fallback added in
+the previous entry was written as insurance for images where the repo is not
+configured, on the reasoning that GitHub's is — the stock client reports itself
+as `...pgdg24.04+1`. Wrong. The log shows `E: Unable to locate package
+postgresql-client-17`, the fallback firing, and 17.10 installing from the repo
+it added. The PGDG *build* is baked into the image; the apt *source* is not, so
+only the pinned-in major is installable. The comment now says what the log says.
+Had that fallback been left out as unnecessary — which the reasoning supported
+— this would have been a sixth red run.
+
+**Five red runs, five distinct defects**, worth listing once because the shape
+matters more than any of them: wrong task dispatched; the option unfindable in a
+20-long dropdown; an unqualified pooler username; a client major behind the
+server; and a package that is not installable from the stock image. Every one
+was a real defect, and every one would have exited **0** with a 20-byte artifact
+before this week's `pipefail` fix. A backup job that cannot fail is not a backup
+job — it is a weekly green tick over an empty file, and it would have held that
+posture until the first restore.
+
+### Aug 12 — The backup ran, and the client was a year behind the server
+
+`jobs.yml` backup step. No model change.
+
+With the connection string finally right — the preflight from the previous entry
+printing `user="postgres.mjijyutmbtnwcjspozsx" … password_len=20` and Postgres
+accepting it — the dump hit the next wall:
+
+```
+pg_dump: error: aborting because of server version mismatch
+pg_dump: detail: server version: 17.6; pg_dump version: 16.14
+```
+
+`pg_dump` refuses to dump a server newer than itself, `ubuntu-24.04` ships
+`postgresql-client-16`, and the project is on Postgres 17.6. The guard made it
+worse rather than better: `which pg_dump || install` found the v16 binary and
+installed nothing, so the mismatch was structural and would have recurred every
+Sunday. Now the client major is pinned to the server's and invoked by absolute
+path (`/usr/lib/postgresql/17/bin/pg_dump`) rather than trusting whatever
+`pg_dump` resolves to, with a PGDG fallback for images where the repo is not
+already configured. When Supabase upgrades the project, bump `PG_MAJOR` — the
+failure names both versions, so it diagnoses itself.
+
+**Verified by running the step, not by reading it.** The previous entry's
+process note was that validating the YAML is not validating the shell inside it;
+this time the `Run job` script was extracted from the workflow, `bash -n`'d, and
+then *executed* against a stubbed `pg_dump` at the pinned path in three
+scenarios: good string → `wrote backup-20260812.sql.gz (4.0K, 11 tables)`,
+exit 0; pinned binary absent → apt install attempted and a loud failure, never a
+silent fall-through to v16; bad username → the preflight fails first, exit 1,
+before apt or pg_dump are touched at all.
+
+Four red runs to get here, each on a genuinely different defect: the wrong task
+dispatched, then an option that could not be found in the dropdown, then an
+unqualified pooler username, then this. None of them would have been visible
+before this week — the step used to exit 0 with a 20-byte artifact no matter
+what happened.
+
+### Aug 12 — Two wrong things, one sentence: the backup learns to say which
+
+`scripts/lib/db-url.ts` (pure, 10 tests), `scripts/check-db-url.ts`, a preflight
+line in the backup job. No model change.
+
+Three backup runs failed on:
+
+```
+FATAL:  password authentication failed for user "postgres"
+```
+
+and the password was never the problem. Supabase's pooler routes by tenant, so
+it needs `postgres.<project-ref>`; handed a bare `postgres` it rejects the
+credential rather than reporting an unknown tenant. **A wrong username and a
+wrong password produce the identical sentence**, so each round of diagnosis was
+a guess, and the fix for one looks nothing like the fix for the other.
+
+The job now describes the secret before it dials: username, host, port,
+database, and the password's **length** — never the password, never the whole
+string. Length alone separates "empty" from "placeholder" from "real", which
+covers most of what goes wrong, and a length is not a secret.
+
+It fails fast on the three misconfigurations that cannot connect from a runner,
+each with the fix rather than the symptom: an unqualified username on a pooler
+host, port 6543 (the transaction pooler, which drops what `pg_dump` needs), and
+the `db.<ref>.supabase.co` direct host, which is IPv6-only while Actions runners
+are not. It warns, without failing, on a password carrying URI-significant
+characters — those end a component early and silently deliver a *different*
+password than the one typed.
+
+Pure and total, so all ten cases are tested without a network, a database or a
+secret — including that the password never appears in anything printable.
+
+Two process notes worth keeping. The first attempt at this put a Python heredoc
+inside the workflow's `case` block; `yaml.safe_load` passed and it would have
+failed on the runner, because an indented heredoc terminator never closes in
+bash and uniformly-indented Python is an `IndentationError`. **Validating the
+YAML is not validating the shell inside it** — which is the same class of error
+as the `pipefail` bug this job already had. And one of the ten tests was wrong,
+not the code: WHATWG's URL parser splits userinfo at the *last* `@`, so an
+unencoded `@` in a password parses fine and quietly yields a different password.
+That is exactly what the unsafe-character check is for, so the test now asserts
+the warning instead of a parse failure that does not happen.
+
 ### Aug 12 — The safest job goes first, because the first job is the default
 
 `jobs.yml` option order. Nothing else.
