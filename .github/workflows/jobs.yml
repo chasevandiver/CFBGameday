@@ -45,6 +45,9 @@ on:
           # are falling back, and fails when the data isn't complete enough to
           # build on. Read-only.
           - preseason-check
+          # Access gate: what the CFBD key's TIER grants, which is a different
+          # question from what CFBD has published. Read-only, 11 calls.
+          - cfbd-probe
           # Rebuild the preseason ratings and load them. Gated on
           # preseason-check passing, and skips the append-only tables — see
           # scripts/load-preseason.ts.
@@ -202,6 +205,9 @@ jobs:
             # Preview only — the JSON goes to a scratch dir and is discarded.
             preseason-preview) npx tsx scripts/build-preseason.ts --out "$RUNNER_TEMP/preseason" --top 40 ;;
             preseason-check) npx tsx scripts/build-preseason.ts --check --out "$RUNNER_TEMP/preseason-check" ;;
+            # Handled by its own step below, so that a preseason refresh which
+            # declines (and exits 0 on purpose) can never skip it.
+            cfbd-probe) echo "access probe runs in the CFBD access probe step" ;;
             # Build, then load. --check is the gate: it exits non-zero when an
             # input is still falling back, and we stop there rather than
             # shipping a rating built on last year's talent.
@@ -241,6 +247,21 @@ jobs:
               fi ;;
             *) echo "no task matched schedule '${{ github.event.schedule }}'" && exit 1 ;;
           esac
+      # What the CFBD key's TIER grants — a different question from what CFBD
+      # has published, and the one `build-preseason.ts --check` cannot answer,
+      # because the tier-gated endpoints are exactly the ones the preseason
+      # build never touches. `/scoreboard` in particular is never called in the
+      # offseason (scoreboard-loop exits via idleSkip), so without this its
+      # first real call would land ~2 days before the opener.
+      #
+      # Its own step, not chained into "Run job": a declined preseason refresh
+      # exits 0 deliberately, and an `&&` chain would let that silently skip
+      # the probe. Allowed to fail the run — a tier denial is not transient, so
+      # unlike the preseason decline it will not go red every morning for
+      # three weeks and train everyone to ignore it.
+      - name: CFBD access probe
+        if: ${{ always() && (steps.task.outputs.task == 'preseason-refresh' || steps.task.outputs.task == 'cfbd-probe') }}
+        run: npx tsx scripts/probe-cfbd.ts
       # Keep the weekly dump for a season; the retention outlives the free
       # tier's own 7-day PITR window, which is the point.
       - name: Upload backup

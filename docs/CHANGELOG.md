@@ -141,6 +141,84 @@ shipping it.
 
 ## Log
 
+### Aug 12 — The endpoint we bet the live layer on has never been called
+
+`audit/KICKOFF_READINESS.md`, then a probe for the one thing it couldn't
+settle.
+
+**The audit.** Read-only pass 18 days out from the openers. 472 tests, 118 DB
+assertions, tsc/lint/build all green, and — the result worth recording —
+**zero regressions**: every correctness fix from the August program landed once
+and was never overwritten, no migration re-grants anything a later one revoked,
+and there is still exactly one CFBD fetcher. 19 findings, none of them a defect
+in the model or the ledger.
+
+**Then the run logs moved three of them.** Reading `jobs.yml`'s 98 Actions runs
+resolved five of the six things the repo alone couldn't answer:
+
+| Was | Now |
+|---|---|
+| CFBD tier unverified vs a hardcoded 30k budget | Tier 2 / 30k against ~10k of use. `OPS-14b` closed. |
+| Has any scheduled job ever run? | 98 runs, 97 green. Secrets work, 2026 schedule ingested. |
+| Is the preseason blocked on several inputs? | **One**: 2026 talent. Returning production, portal, coaches, games, lines, SP+ all live. |
+| No Saturday line pass before 12:00 UTC ⇒ early kickoffs lose CLV | **Wrong.** `days_to_kickoff: 18.2` dates the first kick at ~Aug 29 14:48 UTC; the 12:00 pass is 2.8 h ahead of it, inside the 6 h stale-close guard. Downgraded P0→P2. |
+
+That last row is the lesson, and it is the same one the decisions table keeps
+teaching: **reason about a schedule, verify against the schedule.** The
+early-kickoff CLV loss was ranked the #1 launch blocker on a completely
+plausible reading of the cron table. One field in one job log disproved it.
+
+**What the logs could NOT see, and neither could `--check`.** `/scoreboard` is
+Tier 1+ and drives the whole live layer — scores, status transitions, the
+cover-flip detector. It has **never been called with this key**. Every
+scoreboard launch all summer exits through `idleSkip` before spending a call
+(the Aug 12 01:16 run's job step took *two seconds*), so on a season opening
+Aug 29 with `SCOREBOARD_IDLE_DAYS` at 2, its first real invocation lands Aug 27.
+Two days of runway to discover an entitlement problem.
+
+`build-preseason.ts --check` cannot cover this, and the reason is structural
+rather than an oversight: it probes preseason *inputs*, and the tier-gated
+endpoints are precisely the ones the preseason build never touches.
+
+**`scripts/probe-cfbd.ts`** (+ `scripts/lib/probe.ts`, 13 tests). 11 endpoints,
+all through `src/lib/cfbd.ts` — a diagnostic is not an exemption from SPEC §1's
+one-fetcher rule. The design decision is the four-way status:
+
+```
+DENIED  401/403  → buy a tier
+EMPTY   200, []  → wait for CFBD to publish
+ERROR   5xx/net  → CFBD is having a bad day
+OK
+```
+
+Collapsing DENIED and EMPTY into "no data" is how you spend $10 on the wrong
+problem, or wait three weeks for data that was never coming. Two supports for
+that split: historical probes run against `SEASON−1`, so EMPTY is unambiguous
+rather than "2026 hasn't happened yet"; and `/scoreboard` carries an
+`emptyIsHealthy` flag, because an empty board on a Wednesday is the correct
+answer and demanding rows from it in August would report a working key as
+broken.
+
+Exit code is non-zero only for a **required** endpoint — `/stats/game/advanced`
+is Tier 1+ but only feeds `--tune-epa`, which is rejected and sitting at
+`epaWeight` 0, so losing it must not turn a launch-week run red.
+
+Wired as the `cfbd-probe` dispatch task and as its own `always()` step beside
+the daily August `preseason-refresh` — deliberately not `&&`-chained onto it,
+because a declined refresh exits 0 on purpose and would have silently skipped
+the probe. Exactly the failure mode the probe exists to catch.
+
+**Also caught, from the env block printed in all 98 runs:** `ANTHROPIC_API_KEY`,
+`SUPABASE_DB_URL` and `HEALTHCHECK_PING_URL` are all empty. The first is the
+designated slip item. The second means **the append-only `predictions` / `picks`
+/ `bets` tables have no copy beyond a 7-day PITR window** — which is the exact
+thing the backup job was written to outlive. And the Aug 10 red run turns out to
+have been the watchdog working correctly against a cold `job_runs` table, which
+means `OPS-1b` (dispatch a deliberately-failing run, confirm who gets the email)
+already happened for free — the only open question is whether the email arrived.
+
+No model change; no decisions-table row. `DEFAULT_PARAMS` is untouched.
+
 ### Aug 11 — The demo stops offering exits that don't exist, and gets a link card
 
 No model change. `DEFAULT_PARAMS` untouched, no tuner run.
