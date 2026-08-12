@@ -217,6 +217,59 @@ have been the watchdog working correctly against a cold `job_runs` table, which
 means `OPS-1b` (dispatch a deliberately-failing run, confirm who gets the email)
 already happened for free — the only open question is whether the email arrived.
 
+**The probe ran, and the answer is boring in the best way.** All 11 endpoints
+reachable on Tier 2, including both Tier 1+ ones — `/scoreboard` 889 rows,
+`/games/media` 103. No purchase, no code change, and the Aug 27 cliff is gone
+for 11 calls.
+
+It did teach us one thing nobody knew: **`/scoreboard` returns the whole season
+(889 rows), not just live games**, and takes no week parameter. `scoreboardJob`
+is already correct — it filters to `in_progress | completed` first and returns
+early — but every live poll pulls ~889 games, 120×/hour on a Saturday. A
+payload question rather than a call-count one, with no narrowing available.
+Worth watching in the load rehearsal.
+
+**And the backtest was re-run against the live key, because the audit was
+quoting this file as evidence for itself.** Full cold 2023–25 plus
+`--diagnose-edges`. Every claim reproduces:
+
+| | recorded here | live run |
+|---|---|---|
+| model margin MAE | 13.25 / 13.27 | **13.25 / 13.26** |
+| market margin MAE | 11.98 | **11.98** |
+| signed bias | +0.03 | **+0.03 ± 0.33** |
+| totals: model vs constant-57 | 13.09 vs 13.72 | **13.09 vs 13.72** |
+| encompassing b₁ / b₂ | 0.035 (t 0.84) / 0.987 (t 22.81) | **0.035 (t 0.83) / 0.985 (t 22.87)** |
+| n | 2611 | **2611** |
+| five tier tests | all fail | **all fail** |
+
+**A methodology finding, and it belongs in that section above.** Every figure
+that drifted is computed *from the market line* (edge-flag n 1801→1825, the 6–10
+bucket 53.5→53.8%, opener CLV +0.27→+0.26); every figure computed from our own
+model was exact. The cause is that **the backtest is not bit-reproducible —
+CFBD backfills `/lines`**, so the multi-book consensus shifts between runs and
+reshuffles marginal games across edge buckets. Magnitudes are ~1% and no verdict
+moves. But it means a future run differing in the third significant figure is
+**not** a regression, and nothing said so until now. If it ever matters, commit
+a hash of `.backtest-cache/lines-*.json` beside a recorded result.
+
+Two things the summary tables hide, both relevant to opening weekend:
+
+- **Weeks 1–2 margin MAE is 14.27 against a pooled 13.25.** The model is a full
+  point worse on exactly the weekend we launch. Expected — in week 1 the rating
+  *is* the preseason prior — but it is the honest number to set expectations
+  against, not the season average.
+- **The `--tune-sigma` rejection is visible in the standard report.** Weeks 1–2
+  fit σ 18.08 against a pooled 16.67, which looks like an argument for widening
+  until you read the next column: weeks 1–2 NLL is **0.3526**, far better than
+  weeks 5–8 at 0.5677. Exactly the cupcake-blowout mechanism the decisions table
+  describes — huge residuals against near-certain winners. Flat sigma stays.
+- One caveat on framing: totals beat the constant-57 strawman (13.09 vs 13.72)
+  and that is what they shipped on, but against the **market** they lose,
+  12.51 to 13.09, in every week segment. "Beats a constant" and "is good" are
+  different claims and only the first is supported. Consistent with O/U leans
+  staying unflagged.
+
 No model change; no decisions-table row. `DEFAULT_PARAMS` is untouched.
 
 ### Aug 11 — The demo stops offering exits that don't exist, and gets a link card

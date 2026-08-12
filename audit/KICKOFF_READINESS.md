@@ -4,7 +4,11 @@
 **Scope:** read-only. Nothing in the repo was modified by this pass. Every finding is a work item, not a change.
 **Method:** verified against the code on this branch (`claude/cfb-slate-kickoff-audit-lawxb8`, identical tree to `main` at `765c63d`). Prior audit documents were treated as claims and re-checked, not as evidence.
 
-> **Revised 2026-08-12** against the GitHub Actions run history and job logs, which resolved five of the six things the first pass could only mark UNVERIFIED. Three findings moved: **P0-2 closed** (Tier 2 confirmed), **P0-4 mostly closed** (jobs are running), and **P0-1 downgraded to P2** — the schedule data says the first Week 0 kickoff is ~14:48 UTC, which the existing 12:00 UTC line pass covers, so the scenario I ranked #1 does not fire. Two new findings opened (**P0-5**, **P1-7**). Superseded text is struck through rather than deleted: what a pass got wrong is worth more than a clean document.
+> **Revised 2026-08-12 (rev 1)** against the GitHub Actions run history and job logs, which resolved five of the six things the first pass could only mark UNVERIFIED. **P0-2 closed** (Tier 2 confirmed), **P0-4 mostly closed** (jobs are running), **P0-1 downgraded to P2** — the schedule data says the first Week 0 kickoff is ~14:48 UTC, which the existing 12:00 UTC line pass covers, so the scenario I ranked #1 does not fire. Two new findings opened (**P0-5**, **P1-7**).
+>
+> **Revised again the same day (rev 2)** after running `scripts/probe-cfbd.ts` and the full backtest against the live key. **P0-5 closed** — all 11 endpoints reachable on Tier 2, including both Tier 1+ ones, so the Aug 27 cliff is gone. **P1-7 downgraded to P2-11.** And §6-Q5, the one section sourced entirely from `docs/CHANGELOG.md` rather than from a run I watched, is now first-hand: **every model claim reproduces.**
+>
+> Superseded text is struck through or folded into `<details>`, never deleted. What a pass got wrong is worth more than a clean document — this one ranked a non-issue first and missed the real one entirely, and both are visible above.
 
 **Classification key:** **BUG** (code does not do what it says) · **SPEC DIVERGENCE** (works, contradicts `docs/SPEC.md`) · **GAP** (specced, never built) · **WEAKNESS** (built, fragile/ugly/slow) · **UNVERIFIED** (cannot be decided from the repo).
 
@@ -14,7 +18,9 @@
 
 **Yes, this ships by August 29, and after the Aug 12 revision it is not close.** The codebase is in materially better shape than an 18-days-out product usually is: 472 unit tests pass, 118 database assertions pass against a real Postgres with all 26 migrations applied, `tsc` and `eslint` are clean, the production build succeeds, and every high-risk correctness fix I traced (CLV signs, the append-only grants, the security-definer pick path, the per-game freeze horizon) landed once and was never overwritten. **I found zero regressions.** The Actions history then closed most of the operational doubt: **98 scheduled runs, 97 green**, the CFBD key works, the 2026 schedule is ingested, and CFBD Tier 2's 30,000-call cap matches the hardcoded budget exactly against a ~10,000-call month.
 
-**What remains is a single external dependency and a single untested endpoint.** The dependency is 2026 talent, unpublished by CFBD, which is the only thing standing between production and the current model — and it has a self-healing daily job and an Aug 20 red alarm already wired. The untested endpoint is `/scoreboard`: Tier 1+, the entire live layer, and **never once called with this key**, because every offseason poll exits through `idleSkip` before spending a call. On the current schedule its first real invocation is **Aug 27, two days before kickoff**. That is now the single most likely cause of a bad Saturday, and it is the one thing here that was invisible from both the code and the run logs. `scripts/probe-cfbd.ts` (added 2026-08-12) exists to answer it today instead.
+**After rev 2, what remains is one external dependency and one unset secret.** The dependency is 2026 talent, unpublished by CFBD, the only thing standing between production and the current model — and it has a self-healing daily job and an Aug 20 red alarm already wired. The secret is `SUPABASE_DB_URL`: empty in all 98 runs, so the weekly `pg_dump` has never executed and the append-only `predictions` / `picks` / `bets` have no copy beyond a 7-day PITR window. That is a one-hour fix and it is now, by elimination, the largest open risk.
+
+The endpoint question that dominated rev 1 is **settled**: `scripts/probe-cfbd.ts` called all 11 endpoints against the live key and every one returned data, including both Tier 1+ ones. And the model, which rev 1 could only report secondhand from `docs/CHANGELOG.md`, has been re-run: **MAE 13.25, market 11.98, bias +0.03, b₁ 0.035 (t=0.83) against the market's 0.985 (t=22.87), n=2611, all five pre-registered tier tests failing.** The changelog was accurate to the third significant figure.
 
 The second-order risk is confidence: this repo's documentation is unusually good, and that is itself a hazard. `audit/CHECKLIST.md` and `docs/AUDIT-2026-08.md` are ~95% accurate, which is high enough to be trusted and not high enough to be trusted blindly. Three checklist items are checked that are not fully done (§7). **The same trap caught this audit**: I ranked an early-kickoff CLV loss as the #1 P0 on a plausible reading of the cron table, and one field in one job log — `days_to_kickoff: 18.2` — showed the scenario does not fire. Reason about a schedule, verify against the schedule.
 
@@ -22,9 +28,40 @@ The second-order risk is confidence: this repo's documentation is unusually good
 
 ## 2. P0 — blocks kickoff
 
-### P0-5. `/scoreboard` is Tier-gated and has never once been called with this key
+### ~~P0-5. `/scoreboard` is Tier-gated and has never once been called with this key~~ → **CLOSED**
+**Opened and closed 2026-08-12.** Probe run against the live key:
+
+```
+endpoint                      req?   status   http   rows   used for
+/scoreboard                   yes     ok        –    889   live scores, cover-flip detection
+/games/media                  yes     ok        –    103   TV network on every card
+/games                        yes     ok        –     96   schedule, scores, replay
+/lines                        yes     ok        –    177   spreads, totals, CLV — the whole betting layer
+/ratings/sp                   yes     ok        –    137   bootstrap prior, consensus flag
+/ratings/fpi                  yes     ok        –    136   consensus flag
+/ratings/elo                  yes     ok        –    136   consensus flag
+/rankings                     yes     ok        –      1   AP / Coaches / CFP chips
+/teams                        yes     ok        –    681   reference data, colours, logos
+/venues                       yes     ok        –    844   weather coordinates
+/stats/game/advanced          no      ok        –    382   --tune-epa only (epaWeight is 0 — rejected)
+
+11 CFBD calls spent.
+All required endpoints reachable — the tier covers this product.
+```
+
+**Tier 2 covers every endpoint the product uses, including both Tier 1+ ones.** No purchase, no code change, and the Aug 27 cliff is gone. **P1-7 closes with it** — `/games/media` returns 103 rows, so the swallowed-403 scenario is not live (narrowing the catch stays a P2 hygiene item).
+
+**One thing the probe taught us that nobody knew.** `/scoreboard` returned **889 rows** in mid-August with no game in progress — it serves the *whole season's* games with their current status, not just live ones. (889 matches the "888 rows of the 2026 season" in `cfbd.ts:318-322`.) Two consequences worth recording:
+
+- `scoreboardJob` is already correct: it filters to `in_progress | completed` first (`jobs-core.ts:358`) and returns early when that set is empty, so an idle poll costs one call and zero writes.
+- But **every live poll pulls all ~889 games**, 120×/hour on a Saturday. Not a call-count problem (that arithmetic is unchanged) — a payload one. Worth watching in the Aug 22 rehearsal; `/scoreboard` takes no week parameter (`cfbd.ts:375`), so there is no narrowing available if it bites.
+
+The `emptyIsHealthy` flag on `/scoreboard` turned out to be unnecessary — the endpoint never returns empty. It costs nothing and stays: it is correct for the behavior CFBD documents, and this run only proves what CFBD does *today*.
+
+<details>
+<summary>Original P0-5 text — why it was the top risk</summary>
+
 **Classification:** WEAKNESS · **Evidence:** `src/lib/cfbd.ts:374`, `scripts/scoreboard-loop.ts:85-93`, Actions run [31553087151](https://github.com/chasevandiver/CFBGameday/actions/runs/31553087151)
-**Opened 2026-08-12. This is now the top risk.**
 
 `/scoreboard` requires Tier 1+ (`cfbd.ts:374`) and drives the entire live layer: score updates, `status` transitions, the cover-flip detector, the ticker. Nothing else can produce them.
 
@@ -36,6 +73,8 @@ The second-order risk is confidence: this repo's documentation is unusually good
 
 **Fixed 2026-08-12.** `scripts/probe-cfbd.ts` + `scripts/lib/probe.ts` (13 tests). It calls all 11 endpoints the product depends on through `src/lib/cfbd.ts` — no second fetch path — and reports `OK` / `EMPTY` / `DENIED` / `ERROR` per endpoint, exiting non-zero only when a **required** one is denied. The classification is the point: `DENIED` (401/403) means buy a tier, `EMPTY` (200, no rows) means wait for CFBD to publish, and conflating them sends you after the wrong problem. Historical probes run against `SEASON−1` so `EMPTY` is unambiguous; `/scoreboard` is flagged `emptyIsHealthy` because an empty board on a Wednesday is the correct answer. Wired as the `cfbd-probe` dispatch task and as its own always-run step alongside the daily August `preseason-refresh` (`jobs.yml`), deliberately *not* `&&`-chained — a declined refresh exits 0 on purpose and would have silently skipped it.
 **Action: dispatch `cfbd-probe` now.** 11 calls, read-only, answers it today instead of Aug 27.
+
+</details>
 
 ### ~~P0-1. No line snapshot and no scoreboard poll before 12:00/15:00 UTC on a Saturday~~ → **downgraded to P2-10**
 **Superseded 2026-08-12.** I ranked this #1 on the assumption of an early Week 0 kickoff. The schedule says otherwise.
@@ -223,7 +262,7 @@ The `.catch(() => [])` is defensible for a *partial* media feed: TV assignments 
 
 Compounding it: `sync-games` is currently skipping entirely — `{"skipped":"next_game_gt_14d_and_not_monday","days_to_kickoff":18.2}` — because `SYNC_GAMES_IDLE_DAYS` defaults to 14 (`sync-games.ts:40`). It resumes daily **Aug 15**, so the media path has ~2 weeks of real exercise before launch.
 
-**Partly fixed 2026-08-12:** `/games/media` is a REQUIRED probe in `scripts/probe-cfbd.ts`, so a tier denial is now loud on demand and in the daily August run. **Remaining:** narrow the catch to log the status rather than discard it. **Estimate:** 0.5h.
+**Largely closed 2026-08-12.** The probe returns `/games/media` **ok, 103 rows** on Tier 2, so the swallowed-403 scenario is not live and `tv` will populate once `sync-games` leaves its idle guard on Aug 15. It is a REQUIRED probe now, so a future entitlement change is loud rather than silent. **Remaining, downgraded to P2:** narrow the catch to log the status instead of discarding it — the hazard is real, just not currently firing. **Estimate:** 0.5h.
 
 ### P1-8. A failure email was already sent on Aug 10 — did it arrive?
 **Classification:** UNVERIFIED — only you can answer · **Evidence:** Actions run [31374525661](https://github.com/chasevandiver/CFBGameday/actions/runs/31374525661) · **Opened 2026-08-12**
@@ -284,6 +323,7 @@ With zero ratings rows, `latestWeek` falls to `0`, `current` is empty, and `Rati
 | P2-7 | `README.md:10` and `SPEC.md:20` both claim the free tier *"won't survive the backtest backfill."* It would: a full cold 2023–25 backfill is **16 CFBD calls** (§6). The real reason for Tier 1+ is `/scoreboard`. A wrong reason for a right conclusion. | SPEC DIVERGENCE | `README.md:10` | 0.25h |
 | P2-8 | Cron comments name ET/CT clock times; the crons are UTC and do not shift for DST, so Nov–Mar every label reads an hour late. **Already documented in place** (`jobs.yml:75-78`) — listed so it is not rediscovered. | WEAKNESS | `jobs.yml:75-78` | — |
 | P2-9 | Everything still open in `audit/CHECKLIST.md` §Deferred (lines 77-126): 09:P-16 load rehearsal, SEC-01 join-code entropy, G10-v1, UX-08 touch targets, F10, F13, UX-22, 05:N12. All correctly deferred with reasons. | — | `audit/CHECKLIST.md:44,55,56,62,63,64,66,69,73` | — |
+| P2-11 | **Downgraded from P1-7 on 2026-08-12** once the probe showed `/games/media` returning 103 rows on Tier 2. `sync-games.ts:63` still discards the failure reason wholesale — narrow it to log the HTTP status so a future entitlement change is visible in the job log, not only in the probe. | WEAKNESS | `scripts/sync-games.ts:63` | 0.5h |
 | P2-10 | **Downgraded from P0-1 on 2026-08-12.** No Saturday line pass before 12:00 UTC and no scoreboard launch before 15:00 UTC. Harmless for Week 0 (first kick ~14:48 UTC, so the 12:00 pass is 2.8h ahead of it — inside the 6h stale-close guard). Worth adding `0 10 * * 6` → `refresh-lines` and `0 10-14 * * 6` → `scoreboard-loop` as insurance against a kickoff that moves earlier or an early game in a later week; both are near-free because `idleSkip` exits in seconds. | GAP | `jobs.yml:58,61,84,154,156` | 1h |
 
 ---
@@ -315,7 +355,7 @@ With zero ratings rows, `latestWeek` falls to `0`, `current` is empty, and `Rati
 ### Q1. Has a full backtest been run to completion over 2023–2025?
 **Yes — repeatedly, with recorded numbers.** This is verifiable from `docs/CHANGELOG.md`, which records **nine gated experiments each with a pre-registered decision rule and the number that decided it** (`CHANGELOG.md:72-82`), plus a market-encompassing edge gate. Three shipped, six were rejected. Fitted values are written back into source with their provenance (`src/model/ratings.ts:150-208`).
 
-**I could not reproduce the run in this environment.** `npm run backtest -- --cached` fails at `src/lib/cfbd.ts:42` — `Error: CFBD_API_KEY is not set` — and `.backtest-cache/` is gitignored (`.gitignore:44`), so no cache is present. **UNVERIFIED — need `CFBD_API_KEY`** to paste live numbers. The recorded numbers, from `docs/CHANGELOG.md`:
+**Reproduced first-hand 2026-08-12 — see Q5 for the raw output.** (On the first pass this was UNVERIFIED: `npm run backtest -- --cached` failed at `src/lib/cfbd.ts:42` with `CFBD_API_KEY is not set`, and `.backtest-cache/` is gitignored at `.gitignore:44`.) The recorded numbers, from `docs/CHANGELOG.md`, **all of which the live run confirms**:
 
 | Metric | Value | Source |
 |---|---|---|
@@ -375,8 +415,90 @@ Answered with arithmetic in **P0-2**. Summary: full 2023–25 cold backfill = **
 
 **Nothing is blocking a *report* run.** The backtest runs on CI today (`backtest.yml`) on any PR touching `src/model/**`.
 
-### Q5. Live backtest numbers
-**Not produced. UNVERIFIED — need `CFBD_API_KEY` in this environment, or a `backtest` workflow dispatch.** Dispatching `.github/workflows/backtest.yml` (no inputs) prints the full calibration table, MAE, σ and the edge-flag hit rates to the run log at a cost of ~16 CFBD calls. That is the fastest way to get the real numbers and I recommend doing it as the first item on Aug 12 — it is one click and it either confirms `docs/CHANGELOG.md` or exposes drift.
+### Q5. Live backtest numbers — **RUN 2026-08-12. Every changelog claim reproduces.**
+
+Full cold 2023–25 backtest (16 CFBD calls) plus `--diagnose-edges` from cache (0 calls). Raw output, not summarized:
+
+```
+== Win-probability calibration ==
+bucket        n     predicted   actual
+0.5–0.6       562   55.1%       57.7%
+0.6–0.7       487   65.0%       62.6%
+0.7–0.8       514   75.0%       73.3%
+0.8–0.9       473   85.0%       83.9%
+0.9–1.0       593   95.3%       95.4%
+
+== Margin error ==  MAE 13.25  σ 16.67 (param: 16.8)
+bias (actual − model) +0.03 ± 0.33 SE
+
+== Totals calibration ==
+model MAE 13.09   market MAE 12.51   constant-57 MAE 13.72   n=2610
+weeks 1–4: model 13.39   market 12.69   constant-57 13.54   n=920
+weeks 5+ : model 12.92   market 12.41   constant-57 13.83   n=1690
+O/U leans ≥2:  902-877  (50.7%)  n=1779   |  ≥4:  562-523  (51.8%)  n=1085
+
+== Uncertainty by week segment ==
+segment      n     MAE     fitted σ   NLL      implied slope
+weeks 1–2    536   14.27   18.08      0.3526   0.0940
+weeks 3–4    401   14.19   17.74      0.4541   0.0958
+weeks 5–8    654   12.56   15.90      0.5677   0.1069
+weeks 9+    1038   12.79   15.93      0.5497   0.1067
+pooled σ 16.67
+
+== Edge flags vs the CLOSING line (break-even 52.4%) ==
+bucket        W-L-P        win%     ±1SE     n
+|edge| 2–3    150-162-11   48.1%   2.8%    312
+|edge| 3–4    160-164-7    49.4%   2.8%    324
+|edge| 4–6    197-219-7    47.4%   2.5%    416
+|edge| 6–10   232-199-7    53.8%   2.4%    431
+|edge| 10+    166-176-10   48.5%   2.7%    342
+ALL ≥2        905-920-42   49.6%   1.2%   1825
+
+== --diagnose-edges: the gate ==
+model  MAE 13.26   RMSE 16.68
+market MAE 11.98   RMSE 15.16
+a  = 0.455 (se 0.333)
+b1 = 0.035 (se 0.042, t = 0.83)   [model]
+b2 = 0.985 (se 0.043, t = 22.87)  [market]
+n = 2611
+→ GATE FAILED: b1 is not significantly positive (t=0.83, need >2).
+
+five pre-registered tier tests, Bonferroni |t| > 2.5:
+totals −0.063 (t −0.81) · thin market 0.077 (1.00) · thick 0.021 (0.41)
+conference 0.070 (1.03) · non-conference 0.017 (0.31)   — all: no signal
+
+== vs the OPENING line ==  n=2510
+|edge| 2–4    303-326-9    48.2%   avg CLV 0.14   n=629
+|edge| 4+     566-531-14   51.6%   avg CLV 0.26   n=1097
+ALL ≥2        869-857-23   50.3%   avg CLV 0.22   n=1726
+```
+
+**Verification against `docs/CHANGELOG.md`:**
+
+| Claim | Changelog | This run | |
+|---|---|---|---|
+| Model margin MAE | 13.25 / 13.27 | **13.25 / 13.26** | ✅ |
+| Market margin MAE | 11.98 | **11.98** | ✅ exact |
+| Signed bias | +0.03 | **+0.03 ± 0.33** | ✅ exact |
+| Totals model vs constant | 13.09 vs 13.72 | **13.09 vs 13.72** | ✅ exact |
+| Encompassing b₁ / b₂ | 0.035 (t 0.84) / 0.987 (t 22.81) | **0.035 (t 0.83) / 0.985 (t 22.87)** | ✅ |
+| n | 2611 | **2611** | ✅ exact |
+| Edge flags vs close | 49.2%, n=1801 | **49.6%, n=1825** | ⚠️ small drift |
+| 6–10 bucket | 53.5%, n=428 | **53.8%, n=431** | ⚠️ small drift |
+| Opener 4+ bucket | 51.8%, CLV +0.27 | **51.6%, CLV +0.26** | ⚠️ small drift |
+| O/U leans ≥2 / ≥4 | 50.8% / 51.9% | **50.7% / 51.8%** | ⚠️ small drift |
+| All five tier tests fail | yes | **yes** | ✅ |
+
+**The report's model numbers were the one part sourced entirely secondhand. They hold.** The audit's own ground rules say not to trust a document as evidence for itself; `docs/CHANGELOG.md` now has a first-hand run behind it.
+
+**On the drift — worth recording, and new.** Every number that moved is one computed *from the market line*; every number computed from our own model is exact. The cause is that **the backtest is not perfectly reproducible: CFBD's `/lines` is live data that gets backfilled**, so the multi-book consensus shifts slightly between runs, which reshuffles marginal games across edge buckets. The magnitudes are tiny (n 1801→1825, ~1.3%) and no verdict changes. But it means a future run differing in the third significant figure is **not** evidence of a regression, and nobody had written that down. Cheap fix if it ever matters: commit a hash of the `.backtest-cache/lines-*.json` files alongside a recorded result.
+
+**Two findings relevant to Week 0 that the summary tables hide:**
+
+1. **Week 1–2 margin MAE is 14.27 against a pooled 13.25** — the model is a full point worse on exactly the weekend you are launching. Expected (the rating *is* the preseason prior in week 1), not a defect, but it is the honest expectation to set on the Receipts page rather than the season-average figure.
+2. **The `--tune-sigma` rejection is corroborated by this run.** Weeks 1–2 fit σ 18.08 against a pooled 16.67 — a real 1.4-point gap that looks like it argues for widening. But the NLL column shows why it doesn't: weeks 1–2 NLL is **0.3526**, far *better* than weeks 5–8 at 0.5677. That is precisely the cupcake-blowout mechanism `docs/CHANGELOG.md:77` describes — huge residuals against near-certain winners, which inflates σ without being directional uncertainty. Keeping flat sigma is right, and the evidence for it is visible in the standard report.
+
+**One caveat on the totals framing.** The changelog compares model totals to the constant-57 strawman (13.09 vs 13.72) and shipped on that. Against the *market* the model loses: **13.09 vs 12.51**, and it loses in every week segment. That is consistent with §2.6's honest framing and with O/U leans staying unflagged at `jobs-core.ts:1188` — but "our totals beat a constant" and "our totals are good" are different claims, and only the first is supported.
 
 ---
 
@@ -571,9 +693,10 @@ Ordered by dependency. Per `SPEC.md:253`, **the team-page LLM review backlog is 
 |---|---|---|---|
 | ~~Tue Aug 11~~ | ~~Answer §9 Q1–Q7. Dispatch `backtest.yml`. Dispatch `preseason-check`.~~ **Superseded** — `preseason-check`'s answer was already in the daily 11:00 UTC run; no dispatch needed. | — | ✅ |
 | ~~Wed Aug 12 am~~ | ~~Confirm the CFBD tier~~ → **done, Tier 2/30k, P0-2 closed.** ~~Set `CFBD_MONTHLY_BUDGET`~~ → unnecessary, the default is correct. | — | ✅ |
-| **Wed Aug 12 pm** | 🔴 **P0-5: dispatch `cfbd-probe`.** The one remaining CFBD unknown. Also closes P1-7. **P1-8:** check your inbox for the Aug 10 watchdog failure email. **P0-4:** three `select count(*)` on `ratings` (week 0, expect ~136), `team_hfa`, `line_snapshots`. | probe merged | 1 |
-| **Thu Aug 13** | **P1-9:** set `SUPABASE_DB_URL` (the receipts are unbacked), create a healthchecks.io project, set `HEALTHCHECK_PING_URL`. Dispatch `backtest.yml` → paste the real calibration table into the changelog. | Aug 12 | 2 |
-| **Fri Aug 14** | **P1-7:** narrow the `gameMedia` catch to log its status. **P2-10:** add the early-Saturday crons as insurance. Dispatch-test both. | — | 2 |
+| ~~Wed Aug 12 pm~~ | ~~P0-5: dispatch `cfbd-probe`~~ → **run, all 11 endpoints green, P0-5 and P1-7 closed.** ~~Dispatch `backtest.yml`~~ → **run; every changelog claim reproduces (§6-Q5).** | — | ✅ |
+| **Wed Aug 12 pm** | 🔑 **Rotate the CFBD key** — it was pasted into a chat transcript to run the above. `collegefootballdata.com/key`, then update the GitHub secret. **P1-8:** check your inbox for the Aug 10 watchdog failure email. **P0-4:** three `select count(*)` on `ratings` (week 0, expect ~136), `team_hfa`, `line_snapshots`. | — | 1 |
+| **Thu Aug 13** | **P1-9:** set `SUPABASE_DB_URL` (the receipts are unbacked — this is now the largest open risk), create a healthchecks.io project, set `HEALTHCHECK_PING_URL`. | — | 2 |
+| **Fri Aug 14** | **P2-10:** add the early-Saturday crons as insurance. **P2-11:** narrow the `gameMedia` catch. Dispatch-test both. Merge this audit branch to `main` so the probe runs in the daily August job. | — | 2 |
 | **Sat Aug 15** | **09:P-16 load rehearsal** (owner-run): seed fixtures, `autocannon -c 15/-c 30` against `next start`, record vs p95 <1.5s / tick <300 KB. | Aug 12 | 3 |
 | **Sun Aug 16** | **P1-1:** admin "void this game" control + the grading path that consumes it. Test. | — | 3 |
 | **Mon Aug 17** | **P1-3:** commit `.env.example` + `.gitignore` negation (now 17 keys — the three empty ones from P1-9 included). **P1-5:** `/ratings` empty state. **P2-1:** empty-string guard on `PRESEASON_TILT_CARRY`. | — | 1.5 |
@@ -615,48 +738,69 @@ THE CFB SLATE — WEEK 0 READINESS          audit 2026-08-11 · rev 2026-08-12
   DUPLICATE      0  ← one CFBD fetcher, SPEC §1 hard rule holds
   TODO/HACK      0  ·  @ts-ignore 0  ·  console.log in src/ 0
 
-  FINDINGS BY SEVERITY                        (rev 2026-08-12)
-    P0  blocks kickoff              3   was 4:  −P0-1 →P2, −P0-2 closed,
-                                                +P0-5 new       =  1.0 h
-    P1  ships broken, survives 1wk  9   was 6:  +P1-7, P1-8, P1-9
-                                                                =  6.25 h
-    P2  post-Week-1                10   was 9:  +P2-10 (ex-P0-1) =  4.25 h
-    ─────────────────────────────────────────────────────────────────────
-    Numbered fixes                 22                             11.5 h
-    Verification, rehearsal,
-      quality floor, watches                                      30.5 h
-    ────────────────────────────────────────────────────────────
-    REMAINING (Aug 12 pm → Aug 29)                                42.0 h
+  MODEL          Backtest re-run live 2026-08-12.  Every claim in
+                 docs/CHANGELOG.md reproduces: MAE 13.25, market 11.98,
+                 bias +0.03, b1 0.035 (t 0.83) vs market 0.985 (t 22.87),
+                 n=2611, all five tier tests fail.  Nothing secondhand left.
 
-  BY CLASS  WEAKNESS 9 · BUG 4 · SPEC DIVERGENCE 3 · GAP 3 · UNVERIFIED 2
+  FINDINGS BY SEVERITY                   (rev 2 — 2026-08-12, post-probe)
+    P0  blocks kickoff              2   was 4:  −P0-1 →P2, −P0-2 closed,
+                                        +P0-5 opened AND closed  =  0.5 h
+    P1  ships broken, survives 1wk  7   was 6:  +P1-8, P1-9,
+                                        −P1-7 →P2                =  5.75 h
+    P2  post-Week-1                11   +P2-10 (ex-P0-1), +P2-11 (ex-P1-7)
+                                                                 =  4.75 h
+    ─────────────────────────────────────────────────────────────────────
+    Numbered fixes                 20                              11.0 h
+    Verification, rehearsal,
+      quality floor, watches                                       28.0 h
+    ────────────────────────────────────────────────────────────
+    REMAINING (Aug 12 pm → Aug 29)                                 39.0 h
+
+  BY CLASS  WEAKNESS 8 · BUG 4 · SPEC DIVERGENCE 3 · GAP 3 · UNVERIFIED 2
             (+1 pointer row, P2-9, carrying the already-deferred backlog)
 
   TIME      17 days left.  13 weekdays × 3 h + 4 weekend days × 6 h
-            = 39 + 24 = ~63 focused hours available · 42 needed
-            67% utilisation — real slack, not a knife's edge
+            = 39 + 24 = ~63 focused hours available · 39 needed
+            62% utilisation — comfortable
 
   TWO HARD DATES                             (was three — Aug 25 closed)
     Aug 26   preseason checkpoint — green, or execute the Q1 call
     Aug 28   Thursday freeze fires 03:00 UTC — verify, ship nothing else
 
-  THE THREE THAT ACTUALLY MATTER                          (all changed)
-    1. /scoreboard — Tier 1+, drives the entire live layer, and has NEVER
-       been called with this key.  Every offseason poll exits via idleSkip
-       first; its first real invocation is Aug 27, two days out.
-       → dispatch `cfbd-probe` today.  11 calls.  NEW, and now #1.
+  THE THREE THAT ACTUALLY MATTER                        (all changed again)
+    1. SUPABASE_DB_URL is empty, so the weekly pg_dump has never run.  The
+       append-only predictions/picks/bets have no copy beyond a 7-day PITR
+       window — the exact thing that backup exists to outlive.  1 h.
+       Now the single largest open risk, by elimination.
     2. Production ratings at 2026.2.0 vs code at 2026.4.1 — a measured
        +0.74 pt home bias, and no totals at all, on every Week 0 receipt.
        Blocked only on CFBD publishing 2026 talent; the daily job
        self-heals and goes red Aug 20.  0 h of code; decision due Aug 26.
-    3. SUPABASE_DB_URL is empty, so the weekly pg_dump never runs.  The
-       append-only receipts have no copy but a 7-day PITR window.  1 h.
+    3. Rotate the CFBD key — pasted into a chat transcript to run the
+       probe and the backtest.  Free rotation, two places to update.
 
   CLOSED SINCE THE FIRST PASS
     ✓ CFBD tier — Tier 2 / 30k vs ~10k of use.  3× headroom, no upgrade.
+    ✓ /scoreboard + /games/media — probed live, ALL 11 endpoints ok.
+      The Aug 27 cliff is gone.  Cost: 11 calls.
+    ✓ Every model number — backtest re-run, changelog corroborated.
     ✓ Scheduler alive, secrets working, 2026 schedule ingested.
     ✓ Early-Saturday CLV hole — first kick is ~14:48 UTC, and the 12:00
       pass is 2.8 h ahead of it.  I ranked it #1 on a hypothesis; one
       field in one job log (days_to_kickoff: 18.2) disproved it.
+
+  WHAT THE PROBE TAUGHT US THAT NOBODY KNEW
+    /scoreboard returns the WHOLE season (889 rows), not just live games,
+    and takes no week parameter.  Harmless for call count — scoreboardJob
+    filters first — but every Saturday poll pulls ~889 games, 120×/hour.
+    A payload question for the Aug 22 rehearsal, with no narrowing available.
+
+  AND ONE HONEST CAVEAT
+    The backtest is NOT bit-reproducible: CFBD backfills /lines, so
+    market-derived figures drift ~1% between runs (edge-flag n 1801→1825).
+    Model-derived figures were exact.  A future third-decimal difference
+    is not a regression — that was undocumented until now.
 
   ────────────────────────────────────────────────────────────────
    GO — and more confidently than on Aug 11.  One endpoint to prove,
