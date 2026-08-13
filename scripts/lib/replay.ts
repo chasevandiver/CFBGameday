@@ -103,6 +103,20 @@ export async function cached<T>(
     }
   }
   const data = await fetcher();
+  // An empty list is never worth keeping (04:DQ-15). CFBD answers 200 with `[]`
+  // for a season it has not published yet — `cfbd.ts` only throws on `!res.ok`
+  // — and writing that caches the absence permanently: every later run reads
+  // the file, skips the fetch, and gets `[]` again long after the real data
+  // landed. The failure is silent and points the wrong way, because a build on
+  // an empty talent list looks like a modelling problem rather than a stale
+  // file. Costs one repeated request in exchange.
+  //
+  // Not local-dev-only, which is what the tracked row assumed: most call sites
+  // pass `useCache: true` literally rather than threading `--cached`, so
+  // `build-preseason` on a persistent working directory carries a poisoned
+  // entry across runs. On a fresh CI runner the file is absent anyway, so the
+  // damage there is confined to a single run.
+  if (Array.isArray(data) && data.length === 0) return data;
   await mkdir(CACHE_DIR, { recursive: true });
   await writeFile(file, JSON.stringify(data));
   return data;

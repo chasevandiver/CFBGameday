@@ -11,7 +11,6 @@ import {
   preseasonRating,
   priceGame,
   priorWeight,
-  suggestedStake,
   updateFromResult,
   type PricingInputs,
   type TeamRating,
@@ -305,14 +304,6 @@ describe("HFA blending", () => {
     expect(centeredBlendedHfa(3.0, null)).toBe(base);
     // an extreme low raw against a high mean floors at 0, not below
     expect(centeredBlendedHfa(0, 12)).toBe(0);
-  });
-});
-
-describe("bet sizing", () => {
-  it("suggests 0 units with no edge and caps at 2 units", () => {
-    expect(suggestedStake(0.5)).toBe(0); // losing proposition at -110
-    expect(suggestedStake(0.58)).toBeGreaterThan(0);
-    expect(suggestedStake(0.9)).toBe(2); // hard cap
   });
 });
 

@@ -31,7 +31,7 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { cfbd, type CfbdGame } from "../src/lib/cfbd";
+import { cfbd, cfbdCallCount, type CfbdGame } from "../src/lib/cfbd";
 import {
   DEFAULT_PARAMS,
   MODEL_VERSION,
@@ -46,7 +46,9 @@ import {
   splitInformative,
   type TeamRating,
 } from "../src/model/ratings";
+import { createServiceClient } from "../src/lib/supabase/service";
 import { buildCoachTransitions } from "./lib/coaching";
+import { logCfbdCalls } from "./lib/jobs-core";
 import { envNum } from "./lib/env-num";
 import { fcsMarginsVsFbs, fcsRatingOf, fcsTopIds } from "../src/model/fcs";
 import { portalPoints, portalScale } from "./lib/portal";
@@ -301,7 +303,8 @@ async function main() {
     overPerf: number | null;
     luckCorr: number;
     retOff: number | null;
-    retDef: number | null;
+    /** CFBD's `usage` — an offensive usage share. See 04:DQ-5 / migration 0041. */
+    retUsage: number | null;
   }
   const preseason: Preseason[] = [];
   const missingCoachData: string[] = [];
@@ -370,7 +373,7 @@ async function main() {
       overPerf: transition?.newHc ? transition.overPerf : null,
       luckCorr,
       retOff: retOverall,
-      retDef: ret?.usage ?? null,
+      retUsage: ret?.usage ?? null,
     });
   }
   // ---- 6½. Tier recentre — market-anchored (fitted rule: --tune-tier-recenter)
@@ -754,7 +757,7 @@ async function main() {
       coaching_adjustment: p.coaching,
       luck_correction: r2(p.luckCorr),
       returning_prod_off: p.retOff !== null ? r2(p.retOff) : null,
-      returning_prod_def: p.retDef !== null ? r2(p.retDef) : null,
+      returning_prod_usage: p.retUsage !== null ? r2(p.retUsage) : null,
       detail: {
         proxies: ["ol_share=0.5", "turnover_margin=0"],
         // Auditability: what the coaching number was derived from, even when
@@ -863,7 +866,38 @@ async function main() {
   console.log(`Week 1 games priced: ${predRows.length} (of ${week1.length} on the slate)`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+/**
+ * Meter this run's CFBD calls into `api_call_log` (07:OPS-14a).
+ *
+ * This script was the largest unmetered consumer left: `preseason-refresh`
+ * runs it daily through August (`jobs.yml:239`) and each firing is two
+ * invocations — a `--check` and, when that passes, a full build — so the
+ * budget the admin freshness card reports was structurally low all month, in
+ * exactly the weeks the number is worth reading.
+ *
+ * Best-effort, like the probe's (`probe-cfbd.ts:158`): the script's real job is
+ * to write JSON to disk and it must still do that on a machine that has a CFBD
+ * key and no Supabase service credentials. A meter that could fail the build it
+ * measures would be a worse trade than an occasional missing count.
+ *
+ * Runs from `finally` so the `--check` path — which returns early twice — and a
+ * thrown build are counted too. Calls already spent are spent; not recording
+ * them is what made the ledger wrong.
+ */
+async function meterCfbdCalls(): Promise<void> {
+  const calls = cfbdCallCount();
+  if (calls <= 0) return;
+  const task = process.argv.includes("--check") ? "preseason-check" : "build-preseason";
+  try {
+    await logCfbdCalls(createServiceClient(), task, calls);
+  } catch {
+    console.warn(`::warning::${calls} CFBD calls went unmetered (no Supabase credentials)`);
+  }
+}
+
+main()
+  .catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  })
+  .finally(meterCfbdCalls);

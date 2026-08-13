@@ -741,8 +741,17 @@ Two items remain open; the closed ones are kept for the record.
       the same fact. **What settles it:** one observation of what `/scoreboard`
       does during a live game — which is exactly what the `observe-scoreboard`
       dispatch in §2.4 is for. Decide with that in hand, not before. · S
-- [ ] **P2-6** `ratings/page.tsx` still does `teams.select("*")`; the
-      game-page equivalent was narrowed by `09:P-5`. · 0.25 h
+- [x] **P2-6** Narrowed 2026-08-13 to the six columns the row mapper reads
+      (`id, school, abbreviation, conference, color, logo_url`); `mascot`,
+      `classification` and `alt_color` were ~138 rows of payload nothing
+      rendered. Its two siblings in the same `Promise.all` were already narrow.
+      **The provenance in this row was wrong:** `09:P-5` narrowed
+      **`profiles`** on the game page, not `teams` — `game/[id]/page.tsx:121`
+      is still `select("*")` and was never touched. Left that way on purpose:
+      it fetches exactly two rows, so the win is nil and the audit of which team
+      fields that page reads is real work. Seven other `teams.select("*")` sites
+      remain (`teams/`, `team/[id]`, `rankings/`, `receipts/`, `ledger/`,
+      `standings/`, `queries.ts:156`) and are not part of this row.
 - [ ] **09:P-1b** Slim `/api/slate-live` heal endpoint — decide after P-16's
       numbers. · M
 - [ ] **09:P-11** Cacheable weekly-static pages · M
@@ -751,7 +760,22 @@ Two items remain open; the closed ones are kept for the record.
       collapse; ratings latest-in-Postgres; receipts pagination · S–M each
 - [ ] **07:OPS-6** Backfill mode for null-CLV rows (post-kickoff `captured_at`
       is excluded forever) — only matters after a missed close · S–M
-- [ ] **07:OPS-14a** Meter the unmetered CFBD calls (CI, backtest, preseason) · S
+- [x] **07:OPS-14a — preseason metered 2026-08-13; backtest deliberately not.**
+      **"CI" in this row was already stale**: `probe-cfbd.ts:158` has metered
+      itself for some time. The real gap was `build-preseason.ts`, and it was
+      the one that mattered — `preseason-refresh` runs daily through August
+      (`jobs.yml:239`) and each firing is *two* invocations, a `--check` and
+      then the build, so the monthly count on the admin freshness card was
+      structurally low in exactly the weeks it is worth reading. Now metered as
+      `preseason-check` / `build-preseason`, best-effort like the probe's, from
+      a `finally` so the two early returns in `--check` and a thrown build are
+      counted too.
+      **`backtest.ts` and `diagnose-tiers-2026.ts` stay unmetered**, which is a
+      decision rather than an omission: `backtest.yml` carries only
+      `CFBD_API_KEY`, so metering it means putting Supabase service credentials
+      into a workflow that fires on every model PR. That is a wider change than
+      an accurate count is worth. ~10 calls per backtest run, and the number is
+      knowable from the run log.
 - [ ] **07:OPS-18** App-token PRs trigger no CI — process fix · S
 - [ ] **07:OPS-8b** Scheduled Sunday calibration report — needs season data · M
 - [ ] **07:OPS-16** Snapshot coarsening job — 2027, explicitly not now
@@ -771,8 +795,31 @@ Two items remain open; the closed ones are kept for the record.
 - [ ] **02:M-07 / 03:M-9b** "incl. adj" beside adjusted spreads + an admin
       warning that the spec's magnitudes are unvalidated · S
 - [ ] **02:M-08** In-sample caveat on the Receipts explainer · S
-- [ ] **02:M-09/M-10/M-11/M-12** Dead code: fcs params (see Q4),
-      `updateFromResult`, `suggestedStake`, stale replay comment · S
+- [x] **02:M-10/M-11/M-12** Settled 2026-08-13, three different answers —
+      which is why the four were wrong to be one row.
+      **M-09 was already closed** and is struck: Q4 built the FCS buckets on
+      08-13, so the params are live at `fcs.ts:147` with four call sites and two
+      test files. Both ship at −30, which makes them *inert*, not dead — the
+      code path runs and the outputs coincide.
+      **M-11 `suggestedStake` deleted.** No caller in `src/` or `scripts/`, only
+      its own test, and the product deliberately does not size bets — edges are
+      information, not wagers — so SPEC §5.4's ¼-Kelly was a feature the spec had
+      moved away from. Took the now-unused `round1` with it.
+      **M-10 `updateFromResult` kept**, against the row. It has no production
+      caller but it is not dead weight: both live paths are specified *against*
+      it — `ratings.ts` requires the off+def halves to move by "the overall
+      update's K·marginError/2" and `replay.ts:249` says the same from the other
+      side — and two tests exercise it as that reference. Deleting it costs the
+      stated form of an invariant two other pieces of code are checked against
+      and saves seven lines. Relabelled a reference implementation instead.
+      **M-12 comment corrected, and it was hiding something.** It claimed tilt 0
+      "matches production… unless `PRESEASON_TILT_CARRY` has been set" — but the
+      default lives in the code, not the environment: `build-preseason.ts:91`
+      reads `envNum("PRESEASON_TILT_CARRY", 0.4, …)`. **Production ships 0.4 and
+      the headline calibration is computed at 0.** Left at 0 rather than
+      silently restating every number the honesty gate has ever produced;
+      re-decide with `--tune-preseason-tilts`. Now a §2.4-style open question
+      rather than a comment that read as settled.
 - [ ] **G5** Prediction attribution ("why this number") — freeze the
       decomposition and design the column set before the first retune · M
 
@@ -781,12 +828,36 @@ Two items remain open; the closed ones are kept for the record.
       entries) then production/snaps (M) + a decisions-table row. Today the
       term measures **headcount, not talent**: 91% of entries are 2–3 star, so a
       team shedding 20 backups scores like one losing 20 starters.
-- [ ] **04:DQ-5** Rename/drop `returning_prod_def`, which stores an offense
-      metric — schema churn during launch isn't worth it · S
+- [x] **04:DQ-5** Renamed to `returning_prod_usage` 2026-08-13, migration
+      **0041**. **Far cheaper than this row assumed** — "schema churn during
+      launch isn't worth it" priced a migration nobody had costed. The column
+      has *zero* readers: nothing in `src/` selects it, the model's churn term
+      comes from `percentPPA` rather than these columns, and `retDef` was
+      write-only in the builder. One rename, one line of TypeScript, no
+      backfill, no data movement; the stored numbers were always correct and are
+      untouched. Only the label was wrong.
+      The modelling consequence was found and fixed long before this —
+      `backtest.ts:1556` records that the "defense" input being a second offense
+      metric put ~10 of effective weight on one correlated quantity instead of
+      5+5 on two, saturating the ±6 clamp for four of the top 40. What was left
+      was the name, which is what would have sent the next reader down the same
+      path.
 - [ ] **04:DQ-6** `qbReturns` from roster facts instead of the passing-PPA
       proxy · M
 - [ ] **04:DQ-11** Real `turnoverMargin` for the luck rule · S/M
-- [ ] **04:DQ-15** `cached()` shouldn't persist empty CFBD responses · S, local-dev only
+- [x] **04:DQ-15** Fixed 2026-08-13 — and **"local-dev only" was wrong**.
+      `cached()` now declines to write an empty array. CFBD answers `200` with
+      `[]` for a season it has not published yet and `cfbd.ts:69` only throws on
+      `!res.ok`, so the old code cached the absence permanently: every later run
+      read the file, skipped the fetch, and got `[]` again long after the real
+      data landed — silent, and pointing the wrong way, because a build on an
+      empty talent list reads as a modelling problem rather than a stale file.
+      The scope was understated because roughly 25 call sites pass
+      `useCache: true` as a literal rather than threading `--cached`, so
+      `build-preseason` on a persistent working directory carries a poisoned
+      entry between runs. Only on a fresh CI runner is the damage confined to
+      one run. 4 tests, including that a non-array payload is still cached —
+      the emptiness test is Array-shaped on purpose.
 
 **Push notifications** — §23 #38, scoped and then built 2026-08-12. iOS
 supports Web Push from 16.4, but **only for a web app installed to the Home
