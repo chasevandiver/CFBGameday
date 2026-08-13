@@ -38,6 +38,7 @@ import {
   preseasonRating,
 } from "../src/model/ratings";
 import { buildCoachTransitions } from "./lib/coaching";
+import { envNum } from "./lib/env-num";
 import { portalPoints, portalScale } from "./lib/portal";
 import {
   FCS_RATING,
@@ -53,7 +54,7 @@ import {
 import { stat, type SliceStat } from "./lib/slices";
 import { tierOf, type Tier } from "./lib/tiers";
 
-const SEASON = Number(process.env.CFB_SEASON ?? 2026);
+const SEASON = envNum("CFB_SEASON", 2026, { min: 2000, max: 2100 });
 const REPLAY_SEASONS = [2023, 2024, 2025];
 
 const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;

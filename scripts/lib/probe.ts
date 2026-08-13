@@ -10,9 +10,11 @@
  *     exits through `idleSkip` while the next game is more than
  *     SCOREBOARD_IDLE_DAYS away, so on a season opening Aug 29 the first real
  *     call lands on Aug 27 — two days out, with no plan B.
- *   - `/games/media` is wrapped in `.catch(() => [])` by sync-games so a
- *     partial media feed never fails the sync. A tier rejection takes the same
- *     path: `tv` stays null on every card and nothing says why.
+ *   - `/games/media` is tolerated by sync-games so a partial media feed never
+ *     fails the sync — `tv` stays null and the card shows no network. Until
+ *     P2-11 a tier rejection took the same path silently; sync-games now logs
+ *     the status and records it in `job_runs.detail`, so the failure is visible
+ *     without running this probe. The probe still answers it in one call.
  *
  * Hence this probe. It is pure access testing — it deliberately does NOT
  * re-check data readiness, which is `--check`'s job and would double-count

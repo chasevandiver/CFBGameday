@@ -269,20 +269,49 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
       `scripts/seed-fixtures.ts`, `autocannon -c 15 / -c 30` against
       `next start`, record against the bars: p95 < 1.5 s, tick < 300 KB. The
       only zero-evidence area left before a 60-game Saturday. · 3 h
-- [ ] **P1-3** Commit `.env.example` (17 keys) + the `.gitignore` negation.
-      `README.md` step 1 tells you to copy a file that does not exist. · 0.5 h
+- [x] **P1-3** `.env.example` committed, 2026-08-13, plus the `!.env.example`
+      negation under `.gitignore`'s `.env*`. **20 keys, not 17** — the count in
+      this row was low; every `process.env` read in `src/`, `scripts/` and
+      `jobs.yml` is now in the file, verified name by name. Grouped by concern
+      with the two things that have already cost time written down: the Actions
+      secret is named `SUPABASE_URL` and is passed through as
+      `NEXT_PUBLIC_SUPABASE_URL`, and `SUPABASE_DB_URL` must be the session
+      pooler URI. `README.md` step 1 now refers to a file that exists.
 - [ ] **P1-5** `/ratings` has no empty state. · 0.25 h
-- [ ] **P2-1** `PRESEASON_TILT_CARRY=""` silently becomes `0`, not an error —
-      `Number("")` is `0`, so the `Number.isNaN` guard at
-      `build-preseason.ts:82-86` never fires and a fitted parameter disables
-      itself in silence. *(`04:DQ-13` claims empty is rejected; it is not.)* · 0.25 h
-- [ ] **P2-10** Add `0 10 * * 6` → `refresh-lines` and `0 10-14 * * 6` →
-      `scoreboard-loop` as insurance against a kickoff that moves earlier. Both
-      near-free — `idleSkip` exits in seconds. *(Verified 08-12: the existing
-      `0 10 * * 6` is the weather cron, not lines.)* · 1 h
-- [ ] **P2-11** Narrow `sync-games.ts:63`'s `gameMedia` catch to log the HTTP
-      status, so a future entitlement change shows up in the job log rather than
-      only in a probe. · 0.5 h
+- [x] **P2-1** Fixed 2026-08-13 with a shared `scripts/lib/env-num.ts`, because
+      the bug was never only `PRESEASON_TILT_CARRY`. `Number("")` is `0`, so
+      **every** numeric env guard in the repo read a blank variable as a
+      deliberate zero: the tilt carry disabled itself
+      (`build-preseason.ts:82-86`, the case `04:DQ-13` claims was fixed and
+      wasn't — it closed the NaN half only); `envDays` returned **0 instead of
+      the fallback**, so `LINES_IDLE_DAYS=""` would have collapsed the idle
+      horizon and made every lines run skip; `CFBD_MONTHLY_BUDGET=""` set the
+      scoreboard budget to zero, which throttles at 80% of nothing; and
+      `SCOREBOARD_INTERVAL_SECONDS=""` gave a zero-second poll interval. An
+      empty variable is what `FOO=` in a shell and an unfilled GitHub secret
+      both produce, so blank now means unset. Garbage still throws, except in
+      `envDays`, which keeps its tested fall-back-on-garbage contract on
+      purpose: taking a scheduled job down over a typo'd idle threshold is the
+      worse failure. 11 new tests.
+- [x] **P2-10** Added 2026-08-13, with one substitution: `0 10-14 * * 6` →
+      `scoreboard-loop` as specified, but the lines cron is **`5 10 * * 6`, not
+      `0 10 * * 6`**. This row asked for a string that is already the weather
+      cron, and the resolve case is first-match-wins, so adding it to the
+      refresh-lines pattern would not have given Saturday morning two jobs — it
+      would have shadowed line 214 and **silently retired weather**. GitHub also
+      dedupes identical `- cron:` entries, so the string cannot simply be listed
+      twice. Five minutes later costs nothing and keeps the two independent.
+      `jobs-yml.test.ts` now fails if any two tasks ever claim one cron string.
+- [x] **P2-11** Narrowed 2026-08-13. Both `gameMedia` calls now go through a
+      `media()` wrapper that rethrows anything that is not a `CfbdError` — a
+      missing `CFBD_API_KEY` raises a plain `Error`, and a config mistake should
+      go red rather than quietly ship a slate with no networks on it — and
+      otherwise logs the status with the 401/403-vs-rest split from
+      `probe.ts:66-72`, as an Actions `::warning::`. The outcome also lands in
+      the job's return value, so a denial is visible in `job_runs.detail` and on
+      `/admin` instead of only in a probe. `sync-games` now reports `tv` count
+      too. The stale "swallows this silently" notes in `probe-cfbd.ts:55` and
+      `probe.ts:13` were corrected in the same commit.
 - [ ] **P1-4** Schedule the burst poll, or say in the spec that it's
       dispatch-only. `refresh-lines --burst` exists and is in the dispatch list
       (`jobs.yml:28`), but no cron maps to it (`jobs.yml:163`). · 0.5 h

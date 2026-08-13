@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...and we do opt in for exactly one: the template README step 1 tells you to
+# copy. It holds names and comments, never values.
+!.env.example
 
 # vercel
 .vercel

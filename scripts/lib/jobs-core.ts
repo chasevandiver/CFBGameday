@@ -24,9 +24,10 @@ import {
   updateSubRatings,
   type TeamRating,
 } from "../../src/model/ratings";
+import { envNum } from "./env-num";
 import { DAY_MS, envDays, idleOverridden } from "./idle";
 
-export const SEASON = Number(process.env.CFB_SEASON ?? 2026);
+export const SEASON = envNum("CFB_SEASON", 2026, { min: 2000, max: 2100 });
 const FCS_RATING = -30;
 
 type Json = Record<string, unknown>;

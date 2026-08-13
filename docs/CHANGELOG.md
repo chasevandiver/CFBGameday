@@ -165,6 +165,49 @@ shipping it.
 
 ## Log
 
+### Aug 13 — An empty environment variable is not a zero
+
+`Number("")` is `0`. Every numeric env guard in this repo was written as
+`Number.isNaN(v)` or `Number.isFinite(v)`, and `0` passes both, so a variable
+that existed but held nothing was read as a deliberate zero in four places:
+
+- `PRESEASON_TILT_CARRY=""` disabled the fitted tilt and shipped withheld
+  totals — the exact failure `04:DQ-13` recorded as fixed, having closed only
+  the NaN half of it;
+- `envDays` returned **0 rather than the fallback**, so `LINES_IDLE_DAYS=""`
+  would set a zero-day idle horizon and every lines run would skip;
+- `CFBD_MONTHLY_BUDGET=""` set the scoreboard budget to zero, which throttles at
+  80% of nothing and refuses to poll at 95% of nothing;
+- `SCOREBOARD_INTERVAL_SECONDS=""` gave a zero-second poll interval.
+
+None has bitten, because none of the four is currently set to blank. What makes
+it worth fixing now rather than filing is how a blank one arrives: `FOO=` in a
+shell, a GitHub secret created but never filled in, a `.env` line with nothing
+after the `=`. All three are the shape of a half-finished setup, which is
+exactly what the next two weeks are full of — and `SUPABASE_DB_URL` spent 98
+runs empty already.
+
+`scripts/lib/env-num.ts` now owns the parse: blank and whitespace-only mean
+unset, `"0"` still means zero, and a value that is present but unparseable or
+out of range throws with the variable's name in the message. `envDays` keeps
+its tested fall-back-on-garbage contract — taking a scheduled job down over a
+typo'd idle threshold is the worse failure — and gains only the blank fix.
+
+**Also in this commit.** P2-11: the two `gameMedia` calls in `sync-games` were
+bare `.catch(() => [])`, swallowing a tier denial, a 500, a timeout and a parse
+error identically. They now rethrow anything that is not a `CfbdError` (a
+missing key raises a plain `Error`, and a config mistake should go red rather
+than quietly ship a slate with no networks) and otherwise log the status with
+the 401/403-vs-rest split, recording it in `job_runs.detail` so it is visible on
+`/admin`. P2-10: the early-Saturday insurance crons, with one substitution
+recorded in `docs/STATUS.md` — the lines cron is `5 10 * * 6`, because
+`0 10 * * 6` is already weather's and taking it would have retired weather
+rather than added lines. P1-3: `.env.example`, 20 keys, every one verified
+against a real reader.
+
+No model change. `DEFAULT_PARAMS` untouched, no tuner run. `PRESEASON_TILT_CARRY`
+still resolves to 0.4.
+
 ### Aug 13 — The push notifications were wired to nothing
 
 Every piece of the notification feature works and has been verified. The

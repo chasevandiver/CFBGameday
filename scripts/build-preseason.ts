@@ -47,6 +47,7 @@ import {
   type TeamRating,
 } from "../src/model/ratings";
 import { buildCoachTransitions } from "./lib/coaching";
+import { envNum } from "./lib/env-num";
 import { portalPoints, portalScale } from "./lib/portal";
 import {
   cached,
@@ -64,7 +65,7 @@ import { tierOf } from "./lib/tiers";
 // var): the loader validates its dir against CFB_SEASON, so a hardcode here
 // meant a 2027 build silently carried 2026 data past a loader guard checking
 // the wrong year (audit 04/DQ-14).
-const SEASON = Number(process.env.CFB_SEASON ?? 2026);
+const SEASON = envNum("CFB_SEASON", 2026, { min: 2000, max: 2100 });
 const REPLAY_SEASONS = [2023, 2024, 2025];
 const CHUNK = 250;
 
@@ -79,13 +80,14 @@ const CHUNK = 250;
  * 13.16. Every SP+-shape variant lost badly (up to 16.87) — the earlier sweep
  * that "ruled out tilts" only ever tested SP+ shape, never carryover.
  */
-// A typo'd or blank env var used to coerce to NaN and silently disable the
-// tilt (falsy), shipping withheld totals with no explanation (audit 04/DQ-13).
-const TILT_CARRY_RAW = process.env.PRESEASON_TILT_CARRY;
-const TILT_CARRY = TILT_CARRY_RAW === undefined ? 0.4 : Number(TILT_CARRY_RAW);
-if (Number.isNaN(TILT_CARRY)) {
-  throw new Error(`PRESEASON_TILT_CARRY="${TILT_CARRY_RAW}" is not a number`);
-}
+// A typo'd env var used to coerce to NaN and silently disable the tilt
+// (falsy), shipping withheld totals with no explanation (audit 04/DQ-13). That
+// fix caught NaN and missed the emptier case: `PRESEASON_TILT_CARRY=""` is not
+// `undefined`, `Number("")` is `0`, and `0` is not NaN — so a blank env var
+// took the "even split" branch and disabled the fitted parameter in exactly
+// the silence the guard was written to prevent (P2-1). `envNum` treats blank
+// as unset and still throws on garbage.
+const TILT_CARRY = envNum("PRESEASON_TILT_CARRY", 0.4, { min: 0, max: 1 });
 
 type Row = Record<string, string | number | boolean | null | object>;
 
