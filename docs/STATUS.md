@@ -228,6 +228,35 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
       the postseason ingestion path shipped in `§23 #35` has never run against
       real rows. Re-check in November. · watch
 
+### 2.1c Found in the scheduler, 2026-08-13
+
+- [x] **SCHED-1 — the notification crons had never been able to fire.**
+      `jobs.yml` declared six of them — `0 15 * * 6`, `0 18 * * 6`,
+      `0 22 * * 4,5` for `notify-picks-due` and `45 15 * * 6`, `15 19 * * 6`,
+      `15 23 * * 6` for `notify-log-bets` — and **none of the six appeared in
+      the `Resolve task from schedule` case.** Each resolved to
+      `task=unknown`, fell through the `Run job` case to
+      `*) … exit 1`, and went red. `workflow_dispatch` was broken the same
+      way: both tasks were offered in the dropdown but had no `Run job`
+      branch, so a manual run failed too. Net: **six red runs a week and not
+      one notification ever sent.**
+      PUSH-3 and PUSH-9 are ticked above and both are honest — the delivery
+      path really was verified end to end on a real iPhone, and
+      `run-job.ts:39-40` really does register both jobs. What was missing was
+      the wiring between the cron and the job, which is the one seam neither
+      the iPhone test nor any unit test crossed. **Week 0's picks-due nudge
+      would not have gone out.**
+      Fixed by adding both mappings to the resolve case and both task names to
+      the shared `run-job.ts` branch. **It was ~9 days from catching itself:**
+      `watchdogJob` began covering these two jobs on 08-12 (PUSH-10), gated on
+      a scheduled game inside the next week, so it would have gone red for the
+      first time around Aug 22 — the gate working exactly as designed, just
+      later than reading the file.
+      Guarded by `scripts/lib/jobs-yml.test.ts`, which parses the workflow the
+      way bash reads it and asserts every cron resolves to a task, every task
+      has a command, and no two tasks claim one cron string. Verified against
+      the pre-fix file: 6 orphan crons before, 0 after.
+
 ### 2.2 This week (Aug 14–18)
 
 - [ ] **P1-1** A postponed or canceled game can never be voided. The grader

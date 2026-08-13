@@ -165,6 +165,50 @@ shipping it.
 
 ## Log
 
+### Aug 13 — The push notifications were wired to nothing
+
+Every piece of the notification feature works and has been verified. The
+subscription is stored, the VAPID keys are set in both Vercel and Actions, a test
+push was delivered to a real iPhone on 08-12 and its receipt logged `sent`.
+`run-job.ts:39-40` registers `notify-picks-due` and `notify-log-bets` against
+`notifyPicksDueJob` and `notifyLogBetsJob`. `jobs.yml` declares six crons for
+them. **None of the six was ever routed.**
+
+The scheduler resolves a cron to a task with a bash `case` on the literal
+schedule string, and none of `0 15 * * 6`, `0 18 * * 6`, `0 22 * * 4,5`,
+`45 15 * * 6`, `15 19 * * 6` or `15 23 * * 6` appeared in it. Each fell to
+`task=unknown`, then to the `Run job` fallthrough's `exit 1`. Dispatch was broken
+by the same omission from the other direction: both tasks are options in the
+dropdown, neither had a branch in the second `case`. So the count is **six red
+runs a week and zero notifications**, since the feature shipped — and Week 0's
+picks-due nudge would not have gone out.
+
+**Why nothing caught it.** The parts were each tested at their own level and the
+seam between them was not testable by any of those tests: the job functions are
+unit-tested, the delivery path was proved on a device, and the workflow is YAML
+that nothing type-checks. The one instrument that would have caught it was added
+the day before — `watchdogJob` picked up both notify jobs on 08-12 (PUSH-10),
+gated on a scheduled game inside the next week — so it would have fired its first
+red around **Aug 22**, seven days before kickoff. That gate is correct and stays;
+it just reads the symptom nine days after reading the file would have.
+
+Fixed by adding the two mappings and extending the shared `run-job.ts` branch.
+`scripts/lib/jobs-yml.test.ts` now parses the workflow the way bash reads it —
+literal strings, first match wins — and asserts that every declared cron resolves
+to a task, every scheduled and dispatchable task has a command, and no two tasks
+claim the same cron string. That last one is not hypothetical: `0 10 * * 6` is
+the weather cron, and `docs/STATUS.md` P2-10 asks for it to be given to
+`refresh-lines`, which would have retired weather rather than adding lines.
+Verified by running the assertions against the pre-fix file: **6 orphan crons
+before, 0 after.**
+
+The lesson, and it is the same one the iPad splash taught in the entry below: a
+component verified in isolation says nothing about the wiring that reaches it.
+What proves a scheduled job works is a run, not a passing test of the function
+the run would have called.
+
+No model change. `DEFAULT_PARAMS` untouched, no tuner run.
+
 ### Aug 12 — Stop guessing at the iPad, and measure it
 
 The landscape fix did not fix it: the owner deleted the home-screen app, re-added
