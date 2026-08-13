@@ -12,6 +12,7 @@
  *   npx tsx scripts/backtest.ts --tune-epa                   # ratings from per-play efficiency vs the scoreboard
  *   npx tsx scripts/backtest.ts --tune-ensemble              # blend weekly Elo + prior SP+ into our margin
  *   npx tsx scripts/backtest.ts --tune-hfa                   # home-field alone, judged on bias + MAE + calibration
+ *   npx tsx scripts/backtest.ts --tune-fcs                   # is "top-tier FCS" a real category? (P1-2)
  *   npx tsx scripts/backtest.ts --tune-anchors               # week-1 Elo / preseason poll anchor weights
  *   npx tsx scripts/backtest.ts --tune-prior                 # preseason carryover weight
  *   npx tsx scripts/backtest.ts --tune-sp-blend              # prior-year baseline: replay finals vs final SP+
@@ -43,9 +44,9 @@ import {
   type ModelParams,
 } from "../src/model/ratings";
 import { buildCoachTransitions, type CoachTransition } from "./lib/coaching";
+import { fcsMarginsVsFbs, fcsTopIds } from "../src/model/fcs";
 import { sliceReport } from "./lib/slices";
 import {
-  FCS_RATING,
   chainPriors,
   chainTilts,
   consensusLine,
@@ -457,7 +458,11 @@ async function diagnoseTiers(seasons: SeasonData[], teamIdsByName: Map<string, n
       return next;
     };
 
-  const variants: Array<{ label: string; chain: ChainFn; fcs?: number }> = [
+  // The FCS arms used to pass a scalar override to replaySeason. That knob is
+  // gone — the anchor now lives in ModelParams as a two-bucket pair — so they
+  // set both buckets to the same value, which is the same experiment: a flat
+  // anchor at a different level, not a split.
+  const variants: Array<{ label: string; chain: ChainFn; params?: ModelParams }> = [
     { label: "bare 0.7×finals (tuner chain)", chain: (f) => chainPriors(f) },
     { label: "0.7×finals+0.3×talent", chain: talentChain(null) },
     { label: "SP+ α=0.75 +talent", chain: talentChain(0.75) },
@@ -465,8 +470,16 @@ async function diagnoseTiers(seasons: SeasonData[], teamIdsByName: Map<string, n
     { label: "SP+ α=0.25 +talent", chain: talentChain(0.25) },
     { label: "SP+ α=0.00 +talent", chain: talentChain(0) },
     { label: "α=0.50, talent 0.4", chain: talentChain(0.5, 0.4) },
-    { label: "bare chain, FCS −25", chain: (f) => chainPriors(f), fcs: -25 },
-    { label: "bare chain, FCS −35", chain: (f) => chainPriors(f), fcs: -35 },
+    {
+      label: "bare chain, FCS −25",
+      chain: (f) => chainPriors(f),
+      params: { ...DEFAULT_PARAMS, fcsTopRating: -25, fcsOtherRating: -25 },
+    },
+    {
+      label: "bare chain, FCS −35",
+      chain: (f) => chainPriors(f),
+      params: { ...DEFAULT_PARAMS, fcsTopRating: -35, fcsOtherRating: -35 },
+    },
   ];
 
   console.log("\n== --diagnose-tiers: prior chain vs cross-classification level ==");
@@ -490,9 +503,7 @@ async function diagnoseTiers(seasons: SeasonData[], teamIdsByName: Map<string, n
       const { predictions, finalRatings } = replaySeason(
         season,
         priors,
-        DEFAULT_PARAMS,
-        undefined,
-        v.fcs ?? FCS_RATING,
+        v.params ?? DEFAULT_PARAMS,
       );
       all.push(...predictions);
       if (SCORED.includes(season.season)) {
@@ -1029,6 +1040,174 @@ async function tuneCoaching(seasons: SeasonData[], teamIdsByName: Map<string, nu
       );
     }
   }
+}
+
+/**
+ * --tune-fcs: is "top-tier FCS" a real category, and what are the two numbers?
+ *
+ * SPEC §2.1 has always specified two FCS buckets (top ≈ −25, other ≈ −35) and
+ * the code has always run a flat −30 — `fcsTopRating`/`fcsOtherRating` were
+ * dead constants, and every other fitted parameter in the model was fitted
+ * against the flat number. This is the run that decides whether the split is
+ * worth having.
+ *
+ * PRE-REGISTERED, fixed before the first number is printed:
+ *
+ *   Gate 0 — does the split exist at all? At the flat −30, compare the
+ *   bucket-signed bias of the top half against the other half. If |t| < 2 the
+ *   two groups are not distinguishable in our own errors, and the answer to Q4
+ *   is "one bucket, on evidence" rather than "one bucket, by deferral". Record
+ *   the number and ship nothing.
+ *
+ *   Only if Gate 0 clears, grid (top, other) and ship a pair only if ALL of:
+ *     1. both per-bucket biases move toward zero, neither |t| > 2 after;
+ *     2. FBS-vs-FCS margin MAE improves by >= 0.25 points — a bar, not an
+ *        argmin. The claimed defect is a several-point misprice; anything
+ *        smaller is noise on blowouts;
+ *     3. no spillover: pooled MAE <= baseline + 0.02, pooled NLL <= baseline +
+ *        0.0005. The FCS rating feeds updateSubRatings for the FBS team that
+ *        played the buy game, so moving it moves FBS ratings;
+ *     4. it is a SPLIT, not a level shift: the population-weighted mean FCS
+ *        rating stays within +/-1.5 of −30. A level shift would re-open the
+ *        shipped --tune-tier-recenter fit, which is a different experiment.
+ *
+ * Whatever happens, it gets a decisions-table row with the numbers in it.
+ *
+ * The market is deliberately NOT the instrument here. Every other tuner
+ * prefers "vs MARKET" because it is lower variance, but books barely hang FCS
+ * buy games, so that slice collapses to a handful of rows. This scores vs
+ * ACTUAL.
+ *
+ * Lookahead: buckets for season S are built from seasons strictly before S,
+ * which with SEASONS = 2023–25 means 2024 sees one prior season and 2025 sees
+ * two. Production gets three. That window mismatch is real and is the first
+ * thing to check if a result looks too good — `cfbd.games(2021)`/`(2022)` into
+ * the cache would close it at the cost of two metered calls.
+ */
+async function tuneFcs(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
+  const { stat } = await import("./lib/slices");
+
+  console.log("\n== --tune-fcs ==  are there two kinds of FCS opponent?");
+  console.log(
+    "Pre-registered: Gate 0 is a two-sample |t| >= 2 between the buckets' vs-ACTUAL bias\n" +
+      "at the flat anchor. If that fails, ship nothing and record the number. If it passes,\n" +
+      "a pair ships only on: both biases toward zero (|t| < 2), FBS-vs-FCS MAE better by\n" +
+      ">= 0.25, pooled MAE within +0.02 and NLL within +0.0005, and mean FCS rating within\n" +
+      "+/-1.5 of -30 (a split, not a level shift).\n",
+  );
+
+  // FBS = anything that carries a prior from SP+ in the first season. The
+  // teams file is not loaded here, and "had an FBS rating" is the same
+  // definition replaySeason uses to decide who is an FCS opponent.
+  const fbsIds = new Set(priorsFromSp(seasons[0].prevSp, teamIdsByName).keys());
+  const allGames = seasons.flatMap((s) => s.games);
+
+  // Buckets per scored season, lookahead-clean.
+  const topBySeason = new Map<number, ReadonlySet<number>>();
+  for (const s of seasons) {
+    const margins = fcsMarginsVsFbs(allGames, fbsIds, { before: s.season });
+    topBySeason.set(s.season, fcsTopIds(margins));
+  }
+  for (const s of SCORED) {
+    const top = topBySeason.get(s);
+    const n = fcsMarginsVsFbs(allGames, fbsIds, { before: s }).size;
+    console.log(`  ${s}: ${top?.size ?? 0} top of ${n} rated FCS teams (from seasons < ${s})`);
+  }
+
+  const replayAll = (params: ModelParams) => {
+    let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
+    const all: ReplayPrediction[] = [];
+    for (const season of seasons) {
+      const { predictions, finalRatings } = replaySeason(
+        season,
+        priors,
+        params,
+        undefined,
+        topBySeason.get(season.season),
+      );
+      if (SCORED.includes(season.season)) all.push(...predictions);
+      priors = chainPriors(finalRatings);
+    }
+    return all;
+  };
+
+  /** Error signed from the FCS side: + means the FCS team beat our number. */
+  const fcsSigned = (p: ReplayPrediction) =>
+    p.homeFbs ? -(p.actualMargin - p.margin) : p.actualMargin - p.margin;
+  const isBuyGame = (p: ReplayPrediction) => p.homeFbs !== p.awayFbs;
+  const fcsIdOf = (p: ReplayPrediction) => (p.homeFbs ? p.awayId : p.homeId);
+  const inTop = (p: ReplayPrediction) =>
+    topBySeason.get(p.season)?.has(fcsIdOf(p)) ?? false;
+
+  const base = replayAll(DEFAULT_PARAMS);
+  const baseBuy = base.filter(isBuyGame);
+  const baseMae = maeOf(base.map((p) => p.actualMargin - p.margin));
+  const baseNll = nll(base);
+  const baseBuyMae = maeOf(baseBuy.map(fcsSigned));
+
+  const topArm = stat("top", baseBuy.filter(inTop).map(fcsSigned));
+  const otherArm = stat("other", baseBuy.filter((p) => !inTop(p)).map(fcsSigned));
+  console.log(
+    `\nGate 0 — at the flat ${DEFAULT_PARAMS.fcsOtherRating}, vs ACTUAL, FCS-signed:`,
+  );
+  for (const arm of [topArm, otherArm]) {
+    if (arm === null) continue;
+    console.log(
+      `  ${arm.label.padEnd(6)} n=${String(arm.n).padStart(4)}  ` +
+        `${arm.mean >= 0 ? "+" : ""}${arm.mean.toFixed(2)} +/-${arm.se.toFixed(2)}  t=${arm.t.toFixed(2)}`,
+    );
+  }
+  if (topArm === null || otherArm === null) {
+    console.log("\nNot enough buy games in one bucket to test. Nothing ships.");
+    return;
+  }
+  const diff = topArm.mean - otherArm.mean;
+  const diffSe = Math.sqrt(topArm.se ** 2 + otherArm.se ** 2);
+  const diffT = diffSe > 0 ? diff / diffSe : 0;
+  console.log(
+    `  difference  ${diff >= 0 ? "+" : ""}${diff.toFixed(2)} +/-${diffSe.toFixed(2)}  t=${diffT.toFixed(2)}`,
+  );
+  console.log(`  baseline: FBS-vs-FCS MAE ${baseBuyMae.toFixed(3)}, ` +
+    `pooled MAE ${baseMae.toFixed(3)}, NLL ${baseNll.toFixed(4)}`);
+
+  if (Math.abs(diffT) < 2) {
+    console.log(
+      "\nGATE 0 FAILS (|t| < 2). The two buckets are not distinguishable in our own\n" +
+        "errors, so a split has nothing to correct. Ship nothing, keep both params at\n" +
+        `${DEFAULT_PARAMS.fcsOtherRating}, and record this number in the decisions table —\n` +
+        "that is Q4 answered on evidence rather than deferred.",
+    );
+    return;
+  }
+
+  console.log("\nGate 0 clears. Grid:\n");
+  console.log("  top   other   buyMAE    bias(top)      bias(other)    pooled MAE / NLL   meanFCS");
+  for (const top of [-22, -24, -26, -28, -30]) {
+    for (const other of [-30, -32, -34, -36, -38]) {
+      if (top < other) continue;
+      const params: ModelParams = { ...DEFAULT_PARAMS, fcsTopRating: top, fcsOtherRating: other };
+      const preds = replayAll(params);
+      const buy = preds.filter(isBuyGame);
+      const t = stat("top", buy.filter(inTop).map(fcsSigned));
+      const o = stat("other", buy.filter((p) => !inTop(p)).map(fcsSigned));
+      const nTop = t?.n ?? 0;
+      const nOther = o?.n ?? 0;
+      const meanFcs = (top * nTop + other * nOther) / Math.max(1, nTop + nOther);
+      console.log(
+        `  ${String(top).padStart(3)}   ${String(other).padStart(4)}   ` +
+          `${maeOf(buy.map(fcsSigned)).toFixed(3)}   ` +
+          `${(t?.mean ?? 0).toFixed(2).padStart(6)} (t=${(t?.t ?? 0).toFixed(1).padStart(5)})  ` +
+          `${(o?.mean ?? 0).toFixed(2).padStart(6)} (t=${(o?.t ?? 0).toFixed(1).padStart(5)})  ` +
+          `${maeOf(preds.map((p) => p.actualMargin - p.margin)).toFixed(3)} / ${nll(preds).toFixed(4)}   ` +
+          `${meanFcs.toFixed(1)}`,
+      );
+    }
+  }
+  console.log(
+    "\nApply the four criteria above to this table. A cell that wins on buyMAE alone\n" +
+      "does not ship — criteria 3 and 4 are what stop an FCS fit from quietly re-leveling\n" +
+      "the whole pool and re-opening --tune-tier-recenter.",
+  );
 }
 
 /**
@@ -1894,6 +2073,7 @@ async function main() {
   const tuneEpaFlag = process.argv.includes("--tune-epa");
   const tuneEnsembleFlag = process.argv.includes("--tune-ensemble");
   const tuneHfaFlag = process.argv.includes("--tune-hfa");
+  const tuneFcsFlag = process.argv.includes("--tune-fcs");
 
   console.log(`Loading seasons ${SEASONS.join(", ")} ${useCache ? "(cache preferred)" : "(fetching)"}…`);
   const seasons: SeasonData[] = [];
@@ -1943,6 +2123,10 @@ async function main() {
   }
   if (tuneHfaFlag) {
     tuneHfa(seasons, teamIdsByName);
+    return;
+  }
+  if (tuneFcsFlag) {
+    await tuneFcs(seasons, teamIdsByName);
     return;
   }
 

@@ -195,3 +195,58 @@ describe("lookahead guard (audit 02/M-06)", () => {
     expect(wk3base.some((p) => byId.get(p.gameId)?.margin !== p.margin)).toBe(true);
   });
 });
+
+describe("FCS bucket identity (P1-2 / Q4)", () => {
+  // Team 50 has no prior, so it is priced as an FCS opponent. Two games so it
+  // shows up in both a week-1 pricing (straight off the priors) and a later
+  // one (after the Elo has moved), which are different code paths through
+  // `blended`.
+  const withFcs: SeasonData = {
+    ...season,
+    games: [...season.games, game(7, 1, 10, 50, 52, 3), game(8, 3, 50, 20, 7, 41)],
+  };
+
+  /**
+   * The guarantee that makes it safe to land the two-bucket machinery sixteen
+   * days before kickoff without a tuner run behind it.
+   *
+   * `fcsTopRating` and `fcsOtherRating` both ship at −30, so `fcsRatingOf`
+   * returns the same number whichever bucket a team is in — which means bucket
+   * membership is not merely inert, it is *unobservable*. A wrong bucket
+   * assignment cannot move a prediction. Asserted with `toBe`, not
+   * `toBeCloseTo`: this is bit-identity or it is nothing.
+   */
+  it("classifying a team changes no number while both buckets are equal", () => {
+    expect(DEFAULT_PARAMS.fcsTopRating).toBe(DEFAULT_PARAMS.fcsOtherRating);
+
+    const flat = replaySeason(withFcs, priors, DEFAULT_PARAMS);
+    const bucketed = replaySeason(withFcs, priors, DEFAULT_PARAMS, undefined, new Set([50]));
+
+    expect(bucketed.predictions.length).toBe(flat.predictions.length);
+    const byId = new Map(bucketed.predictions.map((p) => [p.gameId, p]));
+    for (const p of flat.predictions) {
+      const q = byId.get(p.gameId)!;
+      expect(q.margin).toBe(p.margin);
+      expect(q.homeWinProb).toBe(p.homeWinProb);
+      expect(q.projectedTotal).toBe(p.projectedTotal);
+      expect(q.favWinProb).toBe(p.favWinProb);
+    }
+    for (const [id, r] of flat.finalRatings) {
+      expect(bucketed.finalRatings.get(id)).toBe(r);
+    }
+  });
+
+  /**
+   * And the negative control, so the test above cannot pass vacuously: with the
+   * buckets genuinely separated the same classification DOES move the numbers.
+   * If this ever fails, `fcsTop` is not reaching the pricing path and the
+   * identity assertion above is proving nothing.
+   */
+  it("but does change them once the buckets differ", () => {
+    const split = { ...DEFAULT_PARAMS, fcsTopRating: -20, fcsOtherRating: -40 };
+    const asOther = replaySeason(withFcs, priors, split).predictions;
+    const asTop = replaySeason(withFcs, priors, split, undefined, new Set([50])).predictions;
+    const byId = new Map(asTop.map((p) => [p.gameId, p]));
+    expect(asOther.some((p) => byId.get(p.gameId)?.margin !== p.margin)).toBe(true);
+  });
+});

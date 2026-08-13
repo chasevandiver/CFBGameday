@@ -48,6 +48,7 @@ import {
 } from "../src/model/ratings";
 import { buildCoachTransitions } from "./lib/coaching";
 import { envNum } from "./lib/env-num";
+import { fcsMarginsVsFbs, fcsRatingOf, fcsTopIds } from "../src/model/fcs";
 import { portalPoints, portalScale } from "./lib/portal";
 import {
   cached,
@@ -174,6 +175,25 @@ async function main() {
 
   const fbs = teams.filter((t) => t.classification === "fbs");
   const teamByName = new Map(teams.map((t) => [t.school, t]));
+
+  // FCS buckets (SPEC §2.1, P1-2). Production cannot compute this at runtime —
+  // the database holds only the current season — so it is computed here, where
+  // 2023–25 is already in memory, and materialised on teams.fcs_avg_margin
+  // (0035) for freezeJob and ratingsUpdateJob to read back.
+  //
+  // `before: SEASON` is what keeps it honest: only seasons strictly before the
+  // one being built, the same rule the replay's lookahead guard enforces.
+  const fcsMargins = fcsMarginsVsFbs(
+    seasons.flatMap((s) => s.games),
+    new Set(fbs.map((t) => t.id)),
+    { before: SEASON },
+  );
+  const fcsTop = fcsTopIds(fcsMargins);
+  console.log(
+    `  FCS buckets: ${fcsTop.size} top / ${fcsMargins.size - fcsTop.size} other ` +
+      `of ${fcsMargins.size} rated, from ${REPLAY_SEASONS.join("–")} margins vs FBS ` +
+      `(inert: both params are ${DEFAULT_PARAMS.fcsTopRating})`,
+  );
 
   // ---- 3. Talent baseline (points scale) ------------------------------------
   const talentVals = talent.map((t) => t.talent);
@@ -596,6 +616,9 @@ async function main() {
       color: t.color,
       alt_color: t.alternateColor,
       logo_url: t.logos?.[0] ?? null,
+      // Null for every FBS team and for any FCS team with too few games —
+      // loadFcsTop reads only non-null rows, so absence is the safe default.
+      fcs_avg_margin: fcsMargins.get(t.id)?.avgMargin ?? null,
     }));
   for (const id of gameTeamIds) {
     if (!known.has(id)) {
@@ -784,7 +807,9 @@ async function main() {
     if (homeR === undefined && awayR === undefined) continue; // non-FBS matchup
     const rating = (teamId: number, overall: number | undefined): TeamRating => {
       if (overall === undefined) {
-        return { overall: -30, offense: -15, defense: -15, tempo: 70 };
+        // No FBS rating = an FCS opponent. Same bucket rule the jobs use.
+        const f = fcsRatingOf(teamId, fcsTop, DEFAULT_PARAMS);
+        return { overall: f, offense: f / 2, defense: f / 2, tempo: 70 };
       }
       const halves = halvesById.get(teamId);
       return {

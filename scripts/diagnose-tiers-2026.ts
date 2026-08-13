@@ -41,7 +41,6 @@ import { buildCoachTransitions } from "./lib/coaching";
 import { envNum } from "./lib/env-num";
 import { portalPoints, portalScale } from "./lib/portal";
 import {
-  FCS_RATING,
   cached,
   chainPriors,
   consensusLine,
@@ -307,9 +306,11 @@ async function main() {
       const { finalRatings } = replaySeason(
         season,
         priors,
-        DEFAULT_PARAMS,
-        undefined,
-        cand.fcs ?? FCS_RATING,
+        // Same substitution as backtest.ts: the scalar FCS knob became a
+        // two-bucket pair in ModelParams, so a flat override sets both.
+        cand.fcs === undefined
+          ? DEFAULT_PARAMS
+          : { ...DEFAULT_PARAMS, fcsTopRating: cand.fcs, fcsOtherRating: cand.fcs },
       );
       replayFinals = finalRatings;
       if (season.season < REPLAY_SEASONS[REPLAY_SEASONS.length - 1]) {

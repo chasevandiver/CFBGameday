@@ -53,7 +53,7 @@ run by hand. See Open items for what it is waiting on.
 | `marginSigma` | 16.8 | Fitted σ |
 | `winProbSlope` | 0.101 | 1.7/σ |
 | `edgeThreshold` / `bigEdgeThreshold` | 2 / 4 | Spec §2.4 — **information only**, not bets |
-| `fcsTopRating` / `fcsOtherRating` | −25 / −35 | Spec §2.1 |
+| `fcsTopRating` / `fcsOtherRating` | **−30 / −30** | **Identity** — machinery built, pending `--tune-fcs`. Equal values make the bucket unobservable, so this reproduces the flat −30 exactly. Were −25/−35 from Spec §2.1 and read by nothing. |
 | `returningProdWeight` | **6** | Fitted `--tune-churn`, interior point not argmin |
 | `talentReloadStrength` | **1** | Fitted `--tune-churn` |
 | `priorSigmaExtra` | 0 | **Identity** — tested, rejected |
@@ -69,8 +69,8 @@ model exactly. Each is documented in place so it isn't rediscovered.
 
 ## Decisions log
 
-Eleven experiments, each with a decision rule fixed **before** the run. Four
-shipped.
+Twelve experiments, each with a decision rule fixed **before** the run. Four
+shipped; one (`--tune-fcs`) has its rule registered and has not been run yet.
 
 | Experiment | Result | Verdict |
 |---|---|---|
@@ -84,6 +84,7 @@ shipped.
 | `--tune-ensemble` | Pure 50/50 with weekly Elo is **worse than our model alone (−0.069)**. Fitted weights: true holdout 0.138 vs bar 0.15. Prior-season SP+ t=0.43. | Rejected. The apparent gain was an intercept, not information — which is how the home bias was found. |
 | `--diagnose-edges` | b₁ = **0.035 (t=0.84)** for our model vs **0.987 (t=22.81)** for the market, n=2611. All five pre-registered tier tests failed (totals, thin/thick market, conference/non-). | Rejected → **edges demoted to information.** `stakeForPrediction` replaced by `modelSideOf`; ¼-Kelly stake removed from the UI. |
 | `--diagnose-tiers` (chain grid) | Cross-tier G5-signed edge, wks 1–4: bare chain **+7.08 (t=14.8)**; best variant (0.7·finals+0.3·talent) still **+4.81 (t=10.6)**. On the 2026 wk-1 market all six constructions land **+9.7…+10.4** — incl. α=0 (pure SP+ baseline) and FCS −25/−35. | Rejected as fixes: **no prior-chain construction moves the 2026 number.** `REPLAY_SHARE` stays 0.5 (re-tested, not re-litigated). Root cause isolated to pool-LEVEL regression, not the blend. |
+| `--tune-fcs` | **Not yet run** — the flag, the bucket rule and the pre-registered criteria landed 2026-08-13; the run is queued for after Week 0. Closest existing number: `--diagnose-tiers` scored FCS −25/−35 as two of its six constructions and **none of the six moved the 2026 cross-tier figure** (all landed +9.7…+10.4). That was a different question — pool level, not FBS-vs-FCS accuracy — so it does not settle this one, but it is the reason not to assume the spec's values are right. | Pending. Both params ship at −30 (identity), so nothing depends on the answer. Gate 0 is a two-sample \|t\| ≥ 2 between the buckets' vs-actual bias at the flat anchor; failing it ships nothing and answers Q4 **on evidence** rather than by deferral. |
 | `--tune-tier-recenter` | Market-anchored: wks 2–4 cross-tier edge (out-of-fit) **+5.41 → +0.78 (t=1.5)**; wks 1–4 bias vs actual **−6.31 (t −4.7) → −1.57 (t −1.2)**; P4vP4 +0.51 unmoved; pooled MAE **13.22 → 13.14**, NLL **0.4994 → 0.4956**; worst bucket 2.7. Static δ=4 matches on 2023–25 but under-corrects 2026 by ~6 (fits: +4.4 '24, +4.7 '25, **+10.4 '26**). | **Shipped (2026.5.0).** All four pre-registered criteria passed; market-anchored chosen over a constant because the offseason P4/G5 divergence is accelerating. |
 
 ### Why edges are not bets
@@ -164,6 +165,81 @@ shipping it.
 ---
 
 ## Log
+
+### Aug 13 — The FCS split, built so that it changes nothing
+
+Q4 asked whether to build the specced two FCS buckets or amend the spec down to
+the one the code actually runs. Owner said build. This is that, with the
+property that makes it safe sixteen days out: **it changes no number.**
+
+`fcsTopRating` and `fcsOtherRating` have been in `DEFAULT_PARAMS` since v1 at
+−25/−35, read by nothing, while a flat −30 was hardcoded in four separate
+files. Every fitted parameter in the model was fitted against the flat number.
+Both params now ship at **−30**, which is a stronger guarantee than an identity
+default usually gives: because the two are *equal*, `fcsRatingOf` returns the
+same value whichever bucket a team lands in, so bucket membership is not merely
+inert — it is unobservable. A wrong classification cannot move a prediction.
+`replay.test.ts` asserts bit-identity between a replay with a bucket set and one
+without, and a negative control proves the assertion is not vacuous: separate
+the buckets and the same classification does move the numbers.
+
+**What decides a bucket** is the FCS team's own average margin against FBS over
+prior seasons, split at the **median of the qualifying population**. The median
+rather than a tuned threshold on purpose — a free threshold would make
+`--tune-fcs` a three-dimensional grid and hand the search another degree of
+freedom to overfit with.
+
+**The lookahead trap, which nearly went in.** `replaySeason`'s one invariant is
+that week-N predictions see nothing from week N onward, and there is a test that
+perturbs week-2 scores to prove it. A bucket computed across 2023–25 and used to
+price a 2023 game breaks that quietly, in the direction that flatters the
+backtest. So `before` is a **required** parameter of `fcsMarginsVsFbs` and the
+season filter lives inside the function: a caller who forgets cannot compile.
+The residual is a window mismatch — with SEASONS 2023–25 the fit sees one prior
+season for 2024 and two for 2025, where production gets three. That is written
+into the tuner's docblock as the first thing to check if a result looks too
+good; closing it costs two metered calls for 2021–22.
+
+**Production genuinely cannot see this signal**, and saying so plainly matters
+more than working around it. Production prices from `ratings` rows and the
+database holds only the current season, so there is no prior-season margin
+history in it. The number is therefore computed where the history already is —
+`build-preseason` has 2023–25 in memory — and materialised on
+`teams.fcs_avg_margin` (migration 0035), which `freezeJob` and
+`ratingsUpdateJob` read back through the *same* `fcsTopIds` the backtest fits
+with, so the served rule and the fitted rule cannot drift. Nullable with no
+default: while it is empty every FCS opponent prices at `fcsOtherRating`, so if
+`preseason-refresh` never goes green before Aug 29 nothing changes at all.
+
+The rejected shortcut, recorded because it looks obviously right: writing FCS
+teams as week-0 `ratings` rows. `ratingsUpdateJob` builds its priors from every
+week-0 row and the replay Elo-updates anything in priors, so FCS teams would
+silently become rated, drifting entities. That is a different model, not a
+lookup.
+
+`--tune-fcs` carries its criteria in the docblock and prints them before the
+first number. Gate 0 comes first and is the point of the whole thing: at the
+flat anchor, is the top half's error even distinguishable from the other half's?
+If |t| < 2 the split has nothing to correct, and Q4 gets answered **"one bucket,
+on evidence"** rather than by deferral. Only past that gate does a grid run, and
+a pair ships only on all four criteria — both biases toward zero, FBS-vs-FCS MAE
+better by ≥ 0.25, pooled MAE and NLL not degraded, and the population-weighted
+mean FCS rating within ±1.5 of −30, because a level shift would re-open the
+already-shipped `--tune-tier-recenter` fit and is a different experiment.
+
+The run is **not** happening before Week 0 and the decisions table says so.
+
+Also here: the four hardcoded copies of −30 are gone, replaced by the one pair
+in `DEFAULT_PARAMS`. And `backtest.yml`'s experiment dropdown had drifted — four
+tuners that exist in `backtest.ts` were missing from it and could only be
+reached by editing the workflow. Added, with `tune-fcs`.
+
+637 tests.
+
+**Model change: none.** `DEFAULT_PARAMS` moves `fcsTopRating`/`fcsOtherRating`
+from −25/−35 to −30/−30, which changes no output because neither value was ever
+read — the code used a hardcoded −30, and the new pair reproduces it exactly.
+No tuner run. `MODEL_VERSION` stays 2026.5.0.
 
 ### Aug 13 — Seven places the docs described a product we do not have
 

@@ -373,12 +373,35 @@ One sitting, ~2 h. Each is a doc edit, not a code change.
       0.7–0.8 win-prob bucket from 1.6 points off to 6.2. §2.3 states
       `winProbSlope` 0.101 and, more usefully, that it is not independently
       fitted — it is 1.7/σ, so it moves whenever `marginSigma` does.
-- [ ] **Q4 / P1-2** FCS two-bucket rule: specced, never built —
-      `fcsTopRating`/`fcsOtherRating` are dead constants
-      (`ratings.ts:112,200`) and every fitted parameter was fit under the flat
-      −30 the replay actually runs. **Recommended: amend the spec to one bucket
-      at −30 and delete the constants**; revisit with `--tune-fcs` in the
-      offseason. Owner call — see §3.
+- [x] **Q4 / P1-2 — built, and it changes nothing.** Owner chose build over
+      amend, 2026-08-13. The bucket is an FCS team's average margin vs FBS over
+      **prior seasons only**, split at the median of the qualifying population
+      (`src/model/fcs.ts`) — a data-defined split, so `--tune-fcs`'s grid stays
+      two-dimensional instead of gaining a free threshold to overfit with.
+      **Both params ship at −30.** Because they are *equal*, the bucket is not
+      merely inert but **unobservable** — `fcsRatingOf` returns the same number
+      either way, so a wrong classification cannot move a prediction. Asserted
+      as bit-identity in `replay.test.ts`, with a negative control so the
+      assertion cannot pass vacuously.
+      **The lookahead trap this nearly walked into:** a bucket computed across
+      2023–25 and used to price a 2023 game breaks the replay's one invariant,
+      quietly and in the flattering direction. `before` is a required parameter
+      and the season filter is inside the function, so a caller who forgets
+      cannot compile. Residual, documented in the tuner: the fit window is 1–2
+      prior seasons where production gets 3; closing it costs two CFBD calls.
+      **Production could not see this signal and now can.** The database holds
+      only the current season, so there is no margin history to read at
+      runtime; `build-preseason` computes it from the replay corpus and writes
+      `teams.fcs_avg_margin` (**migration 0035**, nullable — empty means
+      everyone prices at −30, i.e. today). `freezeJob` and `ratingsUpdateJob`
+      read it back through the same `fcsTopIds` the backtest fits with, so the
+      served rule and the fitted rule cannot drift. Rejected shortcut, recorded
+      because it looks right: week-0 `ratings` rows for FCS teams would land
+      them in `priors` and the replay would Elo-update them into drifting
+      entities.
+      Also removed the four hardcoded copies of −30.
+      **The run has not happened and must not happen before Week 0** — see the
+      row in §2.4.
 - [x] **Q5** Amended 2026-08-13. §4 R3 now describes the per-group
       `picks_hidden_until_kickoff` (default false) and the `picks_revealed()`
       gate, including that a TBD kickoff stays hidden rather than open forever.
@@ -415,6 +438,16 @@ One sitting, ~2 h. Each is a doc edit, not a code change.
       here sits at an identity default. Either way it gets a decisions-table
       row. Caveat: `replaySeason` never calls `churnAdjustment`; read how
       `tuneChurn` builds its evaluation before trusting a number from it. · 1 h
+- [ ] **`--tune-fcs` — registered, deliberately not run.** The flag, the bucket
+      rule and the four pre-registered criteria landed 2026-08-13; both params
+      sit at −30 so nothing depends on the answer. **Dispatch after Week 0**,
+      not before: `backtest.yml` → experiment `tune-fcs`. Gate 0 is the one to
+      read first — if the two buckets' vs-actual bias differs by |t| < 2 the
+      split has nothing to correct, and the honest outcome is "one bucket, on
+      evidence", which is Q4 finally answered rather than deferred again.
+      Either way it gets a decisions-table row with the number. Caveat written
+      into the tuner: the fit window is 1–2 prior seasons where production gets
+      3, closable with two CFBD calls for 2021–22. · dispatch
 - [ ] **Dispatch `observe-scoreboard` over the Aug 29 openers.** The probe
       proved `/scoreboard` **answers**; nothing yet proves it **moves**. A feed
       that renames a status string produces zero writes, `{live_or_final: 0}`
@@ -461,7 +494,7 @@ These block nothing today but change what gets built. Recommendations are from
 | # | Question | Recommendation |
 |---|---|---|
 | **Q1** | If `preseason-check` is still red Aug 26, what ships? | **Stale-talent build on 2025 recruiting, loaded as 2026.5.0.** Wrong about incoming freshmen is a ±1–2 pt error at `talentWeight` 0.30; 2026.2.0 is wrong about home field by +0.74 on *every* game, renders no totals, and carries the ~10-pt tier mis-level. Say yes and the `--force` path plus a `/model` note get wired. |
-| **Q4** | FCS: build the two buckets, or amend the spec to one? | **Amend to one bucket at −30, delete the dead constants.** Changing the input distribution 17 days out with no tuner behind it is the bad trade. `--tune-fcs` in the offseason. |
+| ~~**Q4**~~ | ~~FCS: build the two buckets, or amend the spec to one?~~ | **Answered 2026-08-13: build them** — owner call, against the recommendation below, and delivered in a form that removes the objection: both buckets ship at −30, so the machinery exists and the output is unobservable until `--tune-fcs` earns a value. Original note: **Amend to one bucket at −30, delete the dead constants.** Changing the input distribution 17 days out with no tuner behind it is the bad trade. |
 | ~~**Q7**~~ | ~~Delete the dead edge function?~~ | **Answered and done 2026-08-13: deleted.** `supabase/functions/jobs/` had inverted CLV in all four branches and was 4+ versions behind `jobs-core.ts`. `05:C5` called it a deliberate tombstone; a tombstone with a live landmine in it is worse than none, and git preserves it. The only two live references were comments (`jobs.yml:3`, `jobs-core.ts:4`), both rewritten to say what happened and why. Closes P2-3 / 05:C5 / 07:OPS-11 / SEC-12. It also removed the fourth copy of the hardcoded `FCS_RATING = -30`. |
 | **Q6 / SEC-13** | TBD kickoffs (`start_ts` null) — policy before Aug 29 | **Keep as-is.** Un-pickable, un-removable, stays blind, no close and therefore no CLV, but still frozen. Every branch fails closed, which is right for a security boundary and a receipt. Cost: a TBD game is un-pickable until CFBD firms the time, which `sync-games` does daily. |
 | ~~**Q9**~~ | ~~Duplicate frozen predictions~~ | **Answered and done 2026-08-12** — cleared via migration 0028. DB-2 turned out not to be a defect at all. See §2.1b. |
