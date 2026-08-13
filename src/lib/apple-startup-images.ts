@@ -62,28 +62,88 @@ export const APPLE_STARTUP_IMAGES: ReadonlyArray<{ href: string; media: string }
     media:
       "(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)",
   },
-  // iPad mini, iPad 9.7
+  // iPad 9.7", iPad mini 4/5
   {
-    href: "/splash/ipad-mini.png",
+    href: "/splash/ipad-97.png",
     media:
       "(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
   },
-  // iPad Air 10.9
+  // iPad 9.7", iPad mini 4/5 (landscape)
   {
-    href: "/splash/ipad-air.png",
+    href: "/splash/ipad-97-landscape.png",
+    media:
+      "(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)",
+  },
+  // iPad mini 6, mini 7
+  {
+    href: "/splash/ipad-mini-6.png",
+    media:
+      "(device-width: 744px) and (device-height: 1133px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
+  },
+  // iPad mini 6, mini 7 (landscape)
+  {
+    href: "/splash/ipad-mini-6-landscape.png",
+    media:
+      "(device-width: 744px) and (device-height: 1133px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)",
+  },
+  // iPad Air 10.9", iPad 10th/11th gen
+  {
+    href: "/splash/ipad-109.png",
     media:
       "(device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
   },
-  // iPad Pro 11"
+  // iPad Air 10.9", iPad 10th/11th gen (landscape)
+  {
+    href: "/splash/ipad-109-landscape.png",
+    media:
+      "(device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)",
+  },
+  // iPad Pro 11" 1st–4th gen
   {
     href: "/splash/ipad-pro-11.png",
     media:
       "(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
   },
-  // iPad Pro 12.9"
+  // iPad Pro 11" 1st–4th gen (landscape)
   {
-    href: "/splash/ipad-pro-12.png",
+    href: "/splash/ipad-pro-11-landscape.png",
+    media:
+      "(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)",
+  },
+  // iPad Pro 11" M4, Air 11" M2
+  {
+    href: "/splash/ipad-pro-11-m4.png",
+    media:
+      "(device-width: 834px) and (device-height: 1210px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
+  },
+  // iPad Pro 11" M4, Air 11" M2 (landscape)
+  {
+    href: "/splash/ipad-pro-11-m4-landscape.png",
+    media:
+      "(device-width: 834px) and (device-height: 1210px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)",
+  },
+  // iPad Pro 12.9", Air 13" M2
+  {
+    href: "/splash/ipad-pro-129.png",
     media:
       "(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
+  },
+  // iPad Pro 12.9", Air 13" M2 (landscape)
+  {
+    href: "/splash/ipad-pro-129-landscape.png",
+    media:
+      "(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)",
+  },
+  // iPad Pro 13" M4
+  {
+    href: "/splash/ipad-pro-13-m4.png",
+    media:
+      "(device-width: 1032px) and (device-height: 1376px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
+  },
+  // iPad Pro 13" M4 (landscape)
+  {
+    href: "/splash/ipad-pro-13-m4-landscape.png",
+    media:
+      "(device-width: 1032px) and (device-height: 1376px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)",
   },
 ];

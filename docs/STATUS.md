@@ -367,7 +367,11 @@ Two items remain open; the closed ones are kept for the record.
       (§22), the startup image matching on a device that is actually in the
       media-query table, and that no white band appears between tap and first
       paint (§41.15–17). The unit tests cover transparency, square corners and
-      the maskable safe radius; they cannot cover any of these. **Partly done
+      the maskable safe radius; they cannot cover any of these. **Done
+      2026-08-12: iPhone passes** — tile, install and splash all confirmed by
+      the owner. The iPad found a real bug (stretched splash: portrait-only
+      queries plus three current iPads missing from the table entirely), fixed
+      the same day. Original note: **Partly done
       2026-08-12:** the PWA was installed on an iPhone (iOS 18.7) for the push
       work, so the install path and the home-screen tile are confirmed to
       render. The row test against DraftKings/ESPN and the white-band check

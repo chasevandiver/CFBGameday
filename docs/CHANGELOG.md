@@ -165,6 +165,38 @@ shipping it.
 
 ## Log
 
+### Aug 12 — The iPad splash was stretched, because nothing matched it
+
+Reported by the owner on an iPad. Two causes, both in the device table, both
+mine.
+
+**Portrait only.** Every one of the thirteen entries carried
+`(orientation: portrait)`. The comment above them said landscape was skipped
+because "on iPad the app is very rarely launched to a cold splash in landscape",
+which is a guess, and a bad one for a device most people hold sideways. The
+failure mode is not a missing splash — when nothing matches, iOS stretches
+whatever it has to fill the screen, which is exactly what was seen. iPads now
+get both orientations; iPhones stay portrait-only because iOS genuinely ignores
+landscape startup images on them.
+
+**Stale sizes.** A current iPad mini is 744×1133, not the 768×1024 of the 9.7"
+and the mini 5. The M4 Pros are 834×1210 and 1032×1376, not the 1194 and 1366 of
+their predecessors. Three current iPads matched nothing *in either orientation*.
+The old sizes are kept — those iPads still exist — and the new ones added
+alongside.
+
+`device-width` and `device-height` stay the portrait values in both queries,
+because iOS reports the natural size regardless of how the device is held; only
+`orientation` varies and the image dimensions swap. Getting that backwards
+produces a table that looks right and matches nothing.
+
+13 images to 24, 936 KB to 2.0 MB. Verified by rendering the case that was
+broken — a 2732×2048 landscape iPad — and confirming the mark keeps its aspect.
+
+The lesson for the device table: **an unmatched query is worse than an absent
+feature.** No startup image at all gives a plain dark frame; a table that misses
+a device gives a stretched one.
+
 ### Aug 12 — Closing out the brand and push queues
 
 Four owner decisions and two builds.
