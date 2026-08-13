@@ -165,6 +165,30 @@ shipping it.
 
 ## Log
 
+### Aug 12 — Stop guessing at the iPad, and measure it
+
+The landscape fix did not fix it: the owner deleted the home-screen app, re-added
+it, opened in landscape, still stretched. The generated images are correct —
+`ipad-pro-129-landscape.png` is genuinely 2732×2048 — so the failure is upstream
+of the artwork. Nothing is matching, and iOS stretches a fallback rather than
+showing a plain frame.
+
+Two more sizes were missing: the 10.2" iPad (810×1080, the cheap one, therefore
+the common one) and the iPad Pro 10.5"/Air 3 (834×1112). Added. 24 images to 27.
+
+But the sizes are a guess again, and this table has now been wrong twice. So the
+real change is `public/brand/splash-check.html`: open it on the device in the
+orientation that is broken and it evaluates every generated query with
+`matchMedia`, printing the device's own `screen.width`, `screen.height` and
+`devicePixelRatio` alongside a MATCH/— for each. If nothing matches, that is the
+bug, and the numbers at the top are exactly what the table is missing.
+
+The reason this needed a tool rather than another guess: `apple-touch-startup-image`
+fails silently and misleadingly. An unmatched query does not degrade to nothing;
+it degrades to something stretched, which looks like a bad image rather than a
+missing entry. There is no way to tell the two apart from the device — so build
+the way to tell.
+
 ### Aug 12 — The iPad splash was stretched, because nothing matched it
 
 Reported by the owner on an iPad. Two causes, both in the device table, both
