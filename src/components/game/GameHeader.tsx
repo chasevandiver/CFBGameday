@@ -20,6 +20,7 @@ import {
 } from "../../lib/slate";
 import { liveWinProb } from "../../model/live";
 import { useGamesRealtime } from "../../lib/use-games-realtime";
+import { isDeadStatus } from "../../lib/void";
 import { LiveBadge, LiveStatusChip } from "../slate/chips";
 import { Sparkline } from "../slate/Sparkline";
 import { TeamMark } from "../slate/TeamMark";
@@ -78,7 +79,7 @@ export function GameHeader({
 
   const live = g.status === "in_progress";
   const final = g.status === "final";
-  const dead = g.status === "postponed" || g.status === "canceled";
+  const dead = isDeadStatus(g.status);
   const showScore = live || final;
 
   // session history of the live win prob → tiny game-flow sparkline.

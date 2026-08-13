@@ -15,7 +15,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * matter how many times the scoreboard loop re-observes the same cover flip.
  */
 
-export type NotificationKind = "picks_due" | "bad_beat" | "log_bets" | "admin";
+export type NotificationKind = "picks_due" | "bad_beat" | "log_bets" | "admin" | "watchdog";
 
 export interface PushPayload {
   title: string;

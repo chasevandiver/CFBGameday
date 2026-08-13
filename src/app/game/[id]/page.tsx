@@ -398,7 +398,12 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                   <span className="stat text-sm text-chalk">
                     {pickText(p, home.abbr, away.abbr)}
                   </span>
-                  {p.result && p.result !== "void" && (
+                  {/* "void" renders too, through the same neutral branch as a
+                      push. It used to be excluded, so a pick voided by Rule #4
+                      simply disappeared from the member's own screen with no
+                      explanation — which was survivable only while nothing
+                      could write the statuses that cause it (P1-1). */}
+                  {p.result && (
                     <span
                       className={`chip ${
                         p.result === "win"

@@ -17,6 +17,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { envNum } from "./env-num";
 
 export const DAY_MS = 24 * 3600 * 1000;
 
@@ -31,10 +32,25 @@ export function idleOverridden(argv: string[] = process.argv): boolean {
   return argv.includes("--force") || process.env.IDLE_OVERRIDE === "1";
 }
 
-/** Env-tunable threshold in days, so cadence can change without a deploy. */
+/**
+ * Env-tunable threshold in days, so cadence can change without a deploy.
+ *
+ * Deliberately more forgiving than `envNum`: a garbage value falls back to the
+ * default rather than throwing, because these knobs only widen or narrow an
+ * idle window and taking a scheduled job down over a typo'd threshold is the
+ * worse failure. That contract is tested and stays.
+ *
+ * What changed (P2-1) is the empty string. `Number("")` is `0`, which is finite
+ * and `>= 0`, so `LINES_IDLE_DAYS=""` used to return **0** instead of the
+ * fallback — collapsing the horizon and idle-skipping every run. An unset
+ * secret and an empty one now mean the same thing.
+ */
 export function envDays(name: string, fallback: number): number {
-  const v = Number(process.env[name]);
-  return Number.isFinite(v) && v >= 0 ? v : fallback;
+  try {
+    return envNum(name, fallback, { min: 0 });
+  } catch {
+    return fallback;
+  }
 }
 
 /**

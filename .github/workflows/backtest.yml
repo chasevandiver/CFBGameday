@@ -18,6 +18,11 @@ on:
         type: choice
         default: none
         options:
+          # The step below runs `--$EXPERIMENT` verbatim, so this list is
+          # purely discoverability — and it had drifted: four tuners that exist
+          # in backtest.ts were missing from it and could only be reached by
+          # editing the workflow. Added 2026-08-13 along with tune-fcs. Keep it
+          # in sync with the flags in backtest.ts's usage header.
           - none
           - tune-sigma
           - tune-preseason-tilts
@@ -25,6 +30,11 @@ on:
           - tune-anchors
           - tune-sp-blend
           - tune-prior
+          - tune-churn
+          - tune-epa
+          - tune-ensemble
+          - tune-hfa
+          - tune-fcs
           - diagnose-tiers
           - tune-tier-recenter
   pull_request:

@@ -1,6 +1,10 @@
 # The CFB Slate — scheduled jobs (docs/SPEC.md §8).
-# GitHub Actions is the v1 scheduler; the pg_cron + edge-function path lives in
-# supabase/functions/jobs/ for when it can be deployed. Actions schedules can
+# GitHub Actions is the scheduler, and the only one. A parallel pg_cron +
+# edge-function implementation lived in supabase/functions/jobs/ until
+# 2026-08-13; it was never deployed, drifted four model versions behind
+# scripts/lib/jobs-core.ts, and had inverted CLV in all four of its branches,
+# so it was deleted rather than left as a tombstone with a live bug in it. Git
+# has it if the pg_cron path is ever revived. Actions schedules can
 # lag 5–30 min, which the close passes budget for: each is scheduled ~40 min
 # before its kickoff wave, so a worst-case-late run still lands pre-kickoff
 # and a post-kickoff snapshot is never selected as the close.
@@ -17,7 +21,7 @@
 name: jobs
 
 # Every run of this workflow used to be titled "jobs" in the Actions list, for
-# all 19 tasks and 25 crons. That made a mis-dispatch invisible: `task` is a
+# all 22 tasks and 30 crons. That made a mis-dispatch invisible: `task` is a
 # required choice with no default, so GitHub pre-selects the FIRST option
 # (refresh-lines) and a "Run workflow" click that never touched the dropdown
 # runs the wrong job and goes green — indistinguishable, from the list, from
@@ -34,7 +38,7 @@ on:
         options:
           # FIRST ON PURPOSE, for two reasons.
           #
-          # Visibility: this list is 20 long and GitHub's dispatch form does not
+          # Visibility: this list is 22 long and GitHub's dispatch form does not
           # reliably show all of it — `backup` sat at position 14 and was not
           # findable in the dropdown at all, which is how the secret went
           # unverified for a day.
@@ -149,8 +153,20 @@ on:
     - cron: "0 0-3 * * 1,2"
     # Tue/Wed-night MACtion (November) — same near-free idle exit off-season.
     - cron: "0 0-4 * * 3,4"
+    # P2-10 insurance against a kickoff that moves earlier than any wave we
+    # planned for. The Saturday board starts at 15:00 UTC above, which assumes
+    # nothing kicks before ~10am ET; a rescheduled or weather-moved opener that
+    # kicks at 11:00 UTC would currently go unpolled until 15:00. Near-free:
+    # idleSkip exits in seconds on every Saturday with no early game.
+    - cron: "0 10-14 * * 6"
     # Weather Saturday mornings
     - cron: "0 10 * * 6"
+    # Lines, five minutes after the weather run — the same insurance for the
+    # display line and the close. NOT "0 10 * * 6": that string already belongs
+    # to weather above, the resolve case is first-match-wins, and GitHub dedupes
+    # identical cron entries, so reusing it would retire weather rather than add
+    # lines. jobs-yml.test.ts asserts no two tasks claim one string.
+    - cron: "5 10 * * 6"
     # Sunday ratings update + grading (8am ET)
     - cron: "0 13 * * 0"
     # Watchdog: absence check on the data jobs, a few times a day and once
@@ -208,9 +224,11 @@ jobs:
         id: task
         run: |
           case "${{ github.event.schedule }}" in
-            "0 12,22 * * *"|"20 15 * * 6"|"50 18 * * 6"|"20 22 * * 6"|"50 1 * * 0"|"50 22 * * 4,5") echo "task=refresh-lines" >> "$GITHUB_OUTPUT" ;;
+            "0 12,22 * * *"|"20 15 * * 6"|"50 18 * * 6"|"20 22 * * 6"|"50 1 * * 0"|"50 22 * * 4,5"|"5 10 * * 6") echo "task=refresh-lines" >> "$GITHUB_OUTPUT" ;;
             "0 9 * * *") echo "task=sync-games" >> "$GITHUB_OUTPUT" ;;
-            "0 15-23 * * 6"|"0 0-5 * * 0"|"0 0-3 * * 5,6"|"0 16-23 * * 0,1"|"0 0-3 * * 1,2"|"0 0-4 * * 3,4") echo "task=scoreboard-loop" >> "$GITHUB_OUTPUT" ;;
+            "0 15 * * 6"|"0 18 * * 6"|"0 22 * * 4,5") echo "task=notify-picks-due" >> "$GITHUB_OUTPUT" ;;
+            "45 15 * * 6"|"15 19 * * 6"|"15 23 * * 6") echo "task=notify-log-bets" >> "$GITHUB_OUTPUT" ;;
+            "0 15-23 * * 6"|"0 0-5 * * 0"|"0 0-3 * * 5,6"|"0 16-23 * * 0,1"|"0 0-3 * * 1,2"|"0 0-4 * * 3,4"|"0 10-14 * * 6") echo "task=scoreboard-loop" >> "$GITHUB_OUTPUT" ;;
             "0 10 * * 6") echo "task=weather" >> "$GITHUB_OUTPUT" ;;
             "0 13 * * 0") echo "task=ratings-update" >> "$GITHUB_OUTPUT" ;;
             "0 8,14,20 * * *"|"30 21 * * 6") echo "task=watchdog" >> "$GITHUB_OUTPUT" ;;
@@ -235,7 +253,7 @@ jobs:
             # daily slot also refreshes poll rankings (AP Sun, CFP Tue — 1 call/day)
             sync-games) npx tsx scripts/sync-games.ts && npx tsx scripts/run-job.ts sync-rankings && npx tsx scripts/run-job.ts sync-systems ;;
             scoreboard-loop) npx tsx scripts/scoreboard-loop.ts --minutes 63 ;;
-            sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze|freeze-groups|watchdog) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
+            sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze|freeze-groups|watchdog|notify-picks-due|notify-log-bets) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
             # Keep-alive: touch nothing, just make the run green so GitHub's
             # 60-day inactivity timer resets. No DB, no CFBD.
             keepalive) echo "keep-alive tick $(date -u +%Y-%m-%d) — resets the Actions inactivity clock" ;;

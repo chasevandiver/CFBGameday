@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdjustmentsPanel, type AdjustmentView } from "../../components/AdjustmentsPanel";
 import { AppNav } from "../../components/AppNav";
+import { GameStatusPanel, type AdminGameView } from "../../components/GameStatusPanel";
 import { InviteForm } from "../../components/InviteForm";
 import {
   NotificationsPanel,
@@ -9,10 +10,12 @@ import {
   type SendRow,
   type TriggerSetting,
 } from "../../components/NotificationsPanel";
-import { fetchCfbdCallsThisMonth, fetchCurrentSeasonWeek } from "../../lib/queries";
+import { fetchAdminGames, fetchCfbdCallsThisMonth, fetchCurrentSeasonWeek } from "../../lib/queries";
 import { createClient } from "../../lib/supabase/server";
 import { pushConfigured } from "../../lib/push";
 import { createServiceClient } from "../../lib/supabase/service";
+import { DEFAULT_TZ, kickHeading } from "../../lib/kick";
+import { partitionAdminGames } from "../../lib/void";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +58,7 @@ export default async function AdminPage() {
     { data: notifySettings },
     { data: notifySends },
     { data: groupRows },
+    adminGames,
   ] = await Promise.all([
       service.from("invite_allowlist").select("email").order("created_at"),
       service.auth.admin.listUsers({ perPage: 100 }),
@@ -81,6 +85,9 @@ export default async function AdminPage() {
         .order("sent_at", { ascending: false })
         .limit(20),
       service.from("groups").select("id, name").order("name"),
+      // Unfiltered by status on purpose: dead games have to be listed so they
+      // can be restored (P1-1).
+      fetchAdminGames(supabase, seasonId),
     ]);
 
   // Flatten the send log for the panel; the joined profile is one name.
@@ -151,6 +158,30 @@ export default async function AdminPage() {
     .order("school");
   const ratedTeams = (teamRows ?? []) as Array<{ id: number; school: string }>;
   const schoolById = new Map(ratedTeams.map((t) => [t.id, t.school]));
+
+  // Labels for the void control. Its own lookup rather than reusing
+  // `schoolById`, which only covers rated teams — an FCS buy game's visitor
+  // has no rating row and would render as "#2579".
+  const gameTeamIds = [
+    ...new Set(adminGames.flatMap((g) => [g.home_team_id, g.away_team_id])),
+  ];
+  const { data: gameTeamRows } = await supabase
+    .from("teams")
+    .select("id, abbreviation, school")
+    .in("id", gameTeamIds);
+  const abbrById = new Map(
+    ((gameTeamRows ?? []) as Array<{ id: number; abbreviation: string | null; school: string }>).map(
+      (t) => [t.id, t.abbreviation ?? t.school],
+    ),
+  );
+  const { open: openGames, dead: deadGames } = partitionAdminGames(adminGames);
+  const toGameView = (g: (typeof adminGames)[number]): AdminGameView => ({
+    id: g.id,
+    label: `${abbrById.get(g.away_team_id) ?? `#${g.away_team_id}`} @ ${abbrById.get(g.home_team_id) ?? `#${g.home_team_id}`}`,
+    kickoff: g.start_ts ? kickHeading(g.start_ts, DEFAULT_TZ) : "TBD",
+    kickedOff: g.start_ts !== null && Date.parse(g.start_ts) <= renderedAt,
+    status: g.status,
+  });
   const adjustments: AdjustmentView[] = (adjRows ?? []).map(
     (a: {
       id: number;
@@ -239,6 +270,17 @@ export default async function AdminPage() {
           audiences={audiences}
           configured={pushConfigured()}
         />
+
+        <section className="card mb-4 p-4">
+          <h2 className="mb-1 text-sm text-accent">Game status</h2>
+          <p className="mb-3 text-xs text-chalk/60">
+            League Rule #4: a postponed or canceled game voids every open pick and bet on it,
+            immediately. CFBD publishes no cancellation signal, so this is the only thing that
+            writes those statuses. Restoring puts the game back on the slate but does not
+            un-void — the line has moved, so members re-pick.
+          </p>
+          <GameStatusPanel open={openGames.map(toGameView)} dead={deadGames.map(toGameView)} />
+        </section>
 
         <section className="card mb-4 p-4">
           <h2 className="mb-1 text-sm text-accent">Jobs</h2>

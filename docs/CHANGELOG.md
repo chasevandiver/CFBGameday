@@ -53,7 +53,7 @@ run by hand. See Open items for what it is waiting on.
 | `marginSigma` | 16.8 | Fitted σ |
 | `winProbSlope` | 0.101 | 1.7/σ |
 | `edgeThreshold` / `bigEdgeThreshold` | 2 / 4 | Spec §2.4 — **information only**, not bets |
-| `fcsTopRating` / `fcsOtherRating` | −25 / −35 | Spec §2.1 |
+| `fcsTopRating` / `fcsOtherRating` | **−30 / −30** | **Identity** — machinery built, pending `--tune-fcs`. Equal values make the bucket unobservable, so this reproduces the flat −30 exactly. Were −25/−35 from Spec §2.1 and read by nothing. |
 | `returningProdWeight` | **6** | Fitted `--tune-churn`, interior point not argmin |
 | `talentReloadStrength` | **1** | Fitted `--tune-churn` |
 | `priorSigmaExtra` | 0 | **Identity** — tested, rejected |
@@ -69,8 +69,8 @@ model exactly. Each is documented in place so it isn't rediscovered.
 
 ## Decisions log
 
-Eleven experiments, each with a decision rule fixed **before** the run. Four
-shipped.
+Twelve experiments, each with a decision rule fixed **before** the run. Four
+shipped; one (`--tune-fcs`) has its rule registered and has not been run yet.
 
 | Experiment | Result | Verdict |
 |---|---|---|
@@ -84,6 +84,7 @@ shipped.
 | `--tune-ensemble` | Pure 50/50 with weekly Elo is **worse than our model alone (−0.069)**. Fitted weights: true holdout 0.138 vs bar 0.15. Prior-season SP+ t=0.43. | Rejected. The apparent gain was an intercept, not information — which is how the home bias was found. |
 | `--diagnose-edges` | b₁ = **0.035 (t=0.84)** for our model vs **0.987 (t=22.81)** for the market, n=2611. All five pre-registered tier tests failed (totals, thin/thick market, conference/non-). | Rejected → **edges demoted to information.** `stakeForPrediction` replaced by `modelSideOf`; ¼-Kelly stake removed from the UI. |
 | `--diagnose-tiers` (chain grid) | Cross-tier G5-signed edge, wks 1–4: bare chain **+7.08 (t=14.8)**; best variant (0.7·finals+0.3·talent) still **+4.81 (t=10.6)**. On the 2026 wk-1 market all six constructions land **+9.7…+10.4** — incl. α=0 (pure SP+ baseline) and FCS −25/−35. | Rejected as fixes: **no prior-chain construction moves the 2026 number.** `REPLAY_SHARE` stays 0.5 (re-tested, not re-litigated). Root cause isolated to pool-LEVEL regression, not the blend. |
+| `--tune-fcs` | **Not yet run** — the flag, the bucket rule and the pre-registered criteria landed 2026-08-13; the run is queued for after Week 0. Closest existing number: `--diagnose-tiers` scored FCS −25/−35 as two of its six constructions and **none of the six moved the 2026 cross-tier figure** (all landed +9.7…+10.4). That was a different question — pool level, not FBS-vs-FCS accuracy — so it does not settle this one, but it is the reason not to assume the spec's values are right. | Pending. Both params ship at −30 (identity), so nothing depends on the answer. Gate 0 is a two-sample \|t\| ≥ 2 between the buckets' vs-actual bias at the flat anchor; failing it ships nothing and answers Q4 **on evidence** rather than by deferral. |
 | `--tune-tier-recenter` | Market-anchored: wks 2–4 cross-tier edge (out-of-fit) **+5.41 → +0.78 (t=1.5)**; wks 1–4 bias vs actual **−6.31 (t −4.7) → −1.57 (t −1.2)**; P4vP4 +0.51 unmoved; pooled MAE **13.22 → 13.14**, NLL **0.4994 → 0.4956**; worst bucket 2.7. Static δ=4 matches on 2023–25 but under-corrects 2026 by ~6 (fits: +4.4 '24, +4.7 '25, **+10.4 '26**). | **Shipped (2026.5.0).** All four pre-registered criteria passed; market-anchored chosen over a constant because the offseason P4/G5 divergence is accelerating. |
 
 ### Why edges are not bets
@@ -164,6 +165,394 @@ shipping it.
 ---
 
 ## Log
+
+### Aug 13 — CI confirmed the FCS change is inert
+
+The identity claim was asserted locally in `replay.test.ts`. PR #54's
+auto-triggered backtest checked it on a second machine against live CFBD data,
+and the report is **character-identical** to run `31563098426` — the Aug 12 run
+that shipped 2026.5.0 — line for line: `totals -0.063/-0.81/0.865`, `thin 428
+0.077/1.00/0.990`, `thick 2183 0.021/0.41/0.986`, `conference 1635
+0.070/1.03/0.921`, `non-conference 976 0.017/0.31/1.019`, the three opener
+buckets to the unit, and `b1 0.035 (t 0.83)` vs `b2 0.985 (t 22.87)` at n=2611.
+
+Both buckets sit at −30, so bucket membership is unobservable and a wrong
+classification cannot move a number. That is what makes the machinery safe to
+land now and the values safe to defer to `--tune-fcs`.
+
+It proves inertness, not correctness — nothing here says the split is right, and
+Gate 0 may yet return "one bucket, on evidence."
+
+### Aug 13 — Nine alerts arrived and nobody read one
+
+P1-8 asked a yes/no question: did the Aug 10 watchdog failure email arrive? It
+did — `Run failed: jobs - main (de8e7f2)`, 09:26 UTC, in the inbox, "Failed in
+19 seconds", which is the watchdog tripping on a cold `job_runs` table exactly
+as the tracker described. The channel works.
+
+Reading the same inbox answered a better question. That email is **still
+unread**, and so are the eight other failure emails from Aug 10–12 — including
+all three `jobs · backup` failures, the sequence that found five real defects.
+Nine delivered alerts, zero opened. They arrive among a few hundred GitHub
+notifications and are visually identical to the Vercel build comment sitting
+above them.
+
+So "does the email arrive" was the wrong question, and ticking the box on a yes
+would have been technically true and practically wrong. **OPS-2:** `watchdogJob`
+now also sends a push, to the one channel proven to reach a person — the stack
+shipped in 0031 and verified on a real iPhone the day before. Fifth notification
+kind, admin audience, enabled by default (unlike bad beats: this one only fires
+when something is already broken, so the firehose argument does not apply).
+
+Three details that are the actual work:
+
+**Deduped on the UTC date, not the problem.** The watchdog runs on
+`0 8,14,20 * * *` plus a Saturday afternoon pass. Keying the receipt on the
+failing job alone would re-send on every run until it recovered — four buzzes a
+day about the same dead cron, which is how someone learns to swipe the app away.
+Keyed on the day, a persistent fault is a daily reminder; a *new* job going
+silent is different subject text and notifies immediately, because that is news.
+
+**It swallows everything.** The push happens on the line before the throw. If a
+push failure propagated, the red run would say "push service down" instead of
+naming the job that went quiet — the alerting layer would have eaten the signal
+it exists to carry. There is a test for exactly that.
+
+**It is not a replacement for healthchecks.io, and the code says so in three
+places.** A push sent by a job that has itself stopped running cannot fire; a
+scheduler that dies entirely takes `watchdogJob` and its push down together.
+That is the hole the external dead-man covers and this does not. What this
+closes is the commoner case — one job goes silent while the scheduler lives —
+with something that vibrates in a pocket.
+
+Migrations 0036/0037, split for the same reason 0032/0033 were: Postgres refuses
+to use a new enum value in the transaction that adds it.
+
+Also this session, applied to the live project: **0034 and 0035**. Verified by
+query rather than by assumption — 34 rows in `supabase_migrations`, the
+constraint present and `NOT VALID` as intended, `make_pick` containing
+`result = null`, and `fcs_avg_margin` null across all 266 team rows, which is
+the inert state. The constraint was probed behaviourally inside a block that
+force-rolls back: `postponed` and `canceled` accepted, `cancelled` and
+`weather_delay` refused, and all 888 games still `scheduled` afterwards. Worth
+recording that **zero existing rows violate the constraint**, so the `NOT VALID`
+could be validated whenever someone wants to.
+
+645 tests, 129 DB assertions.
+
+No model change. `DEFAULT_PARAMS` untouched, no tuner run.
+
+### Aug 13 — The FCS split, built so that it changes nothing
+
+Q4 asked whether to build the specced two FCS buckets or amend the spec down to
+the one the code actually runs. Owner said build. This is that, with the
+property that makes it safe sixteen days out: **it changes no number.**
+
+`fcsTopRating` and `fcsOtherRating` have been in `DEFAULT_PARAMS` since v1 at
+−25/−35, read by nothing, while a flat −30 was hardcoded in four separate
+files. Every fitted parameter in the model was fitted against the flat number.
+Both params now ship at **−30**, which is a stronger guarantee than an identity
+default usually gives: because the two are *equal*, `fcsRatingOf` returns the
+same value whichever bucket a team lands in, so bucket membership is not merely
+inert — it is unobservable. A wrong classification cannot move a prediction.
+`replay.test.ts` asserts bit-identity between a replay with a bucket set and one
+without, and a negative control proves the assertion is not vacuous: separate
+the buckets and the same classification does move the numbers.
+
+**What decides a bucket** is the FCS team's own average margin against FBS over
+prior seasons, split at the **median of the qualifying population**. The median
+rather than a tuned threshold on purpose — a free threshold would make
+`--tune-fcs` a three-dimensional grid and hand the search another degree of
+freedom to overfit with.
+
+**The lookahead trap, which nearly went in.** `replaySeason`'s one invariant is
+that week-N predictions see nothing from week N onward, and there is a test that
+perturbs week-2 scores to prove it. A bucket computed across 2023–25 and used to
+price a 2023 game breaks that quietly, in the direction that flatters the
+backtest. So `before` is a **required** parameter of `fcsMarginsVsFbs` and the
+season filter lives inside the function: a caller who forgets cannot compile.
+The residual is a window mismatch — with SEASONS 2023–25 the fit sees one prior
+season for 2024 and two for 2025, where production gets three. That is written
+into the tuner's docblock as the first thing to check if a result looks too
+good; closing it costs two metered calls for 2021–22.
+
+**Production genuinely cannot see this signal**, and saying so plainly matters
+more than working around it. Production prices from `ratings` rows and the
+database holds only the current season, so there is no prior-season margin
+history in it. The number is therefore computed where the history already is —
+`build-preseason` has 2023–25 in memory — and materialised on
+`teams.fcs_avg_margin` (migration 0035), which `freezeJob` and
+`ratingsUpdateJob` read back through the *same* `fcsTopIds` the backtest fits
+with, so the served rule and the fitted rule cannot drift. Nullable with no
+default: while it is empty every FCS opponent prices at `fcsOtherRating`, so if
+`preseason-refresh` never goes green before Aug 29 nothing changes at all.
+
+The rejected shortcut, recorded because it looks obviously right: writing FCS
+teams as week-0 `ratings` rows. `ratingsUpdateJob` builds its priors from every
+week-0 row and the replay Elo-updates anything in priors, so FCS teams would
+silently become rated, drifting entities. That is a different model, not a
+lookup.
+
+`--tune-fcs` carries its criteria in the docblock and prints them before the
+first number. Gate 0 comes first and is the point of the whole thing: at the
+flat anchor, is the top half's error even distinguishable from the other half's?
+If |t| < 2 the split has nothing to correct, and Q4 gets answered **"one bucket,
+on evidence"** rather than by deferral. Only past that gate does a grid run, and
+a pair ships only on all four criteria — both biases toward zero, FBS-vs-FCS MAE
+better by ≥ 0.25, pooled MAE and NLL not degraded, and the population-weighted
+mean FCS rating within ±1.5 of −30, because a level shift would re-open the
+already-shipped `--tune-tier-recenter` fit and is a different experiment.
+
+The run is **not** happening before Week 0 and the decisions table says so.
+
+Also here: the four hardcoded copies of −30 are gone, replaced by the one pair
+in `DEFAULT_PARAMS`. And `backtest.yml`'s experiment dropdown had drifted — four
+tuners that exist in `backtest.ts` were missing from it and could only be
+reached by editing the workflow. Added, with `tune-fcs`.
+
+637 tests.
+
+**Model change: none.** `DEFAULT_PARAMS` moves `fcsTopRating`/`fcsOtherRating`
+from −25/−35 to −30/−30, which changes no output because neither value was ever
+read — the code used a hardcoded −30, and the new pair reproduces it exactly.
+No tuner run. `MODEL_VERSION` stays 2026.5.0.
+
+### Aug 13 — Seven places the docs described a product we do not have
+
+`docs/STATUS.md` §2.3 collected the doc-vs-code contradictions found by reading
+both. All of them are now amended, each with the code cited rather than the
+memory of it. The two that were load-bearing:
+
+**§8 said all jobs run on Supabase pg_cron → Edge Functions.** They never did in
+production, and as of this morning they cannot — that code is deleted. A reader
+following the spec would have gone looking for a scheduler that does not exist.
+The Stack line repeated it. Both now name GitHub Actions and, more usefully,
+state the constraint every schedule in the file is shaped around: Actions cron
+lags 5–30 minutes, which is why each close pass sits ~40 min ahead of its wave.
+
+**§2.2's K-factor still said "start ~0.15–0.20, tune via backtest".** The tuning
+happened months ago and landed on 0.3. The amendment carries the part that keeps
+it from being re-opened: the joint K/HFA refit preferred K=0.4, which is *the
+edge of the grid*, and that config bought no margin MAE while moving the 0.7–0.8
+win-prob bucket from 1.6 points off to 6.2. §2.3's win-prob slope is now 0.101,
+with the fact that matters more than the number — it is not independently
+fitted, it is 1.7/σ, so it moves whenever `marginSigma` does.
+
+The rest: §4 R3 described migration 0010's crew-wide picks when 0023 made
+visibility a per-group setting (and §8's Accounts paragraph repeated the old
+claim); §7 listed `/crew` in the nav, which is a redirect; the burst poll was
+specced as a 5–10 minute cron when it is deliberately dispatch-only; both
+`README` and §1 said the CFBD free tier "won't survive the backtest backfill",
+which is false by a factor of sixty — the backfill is 16 calls, and Tier 1+ is
+an entitlement question, not a quota one. Bug #9's evidence in the Aug 6 audit
+was stale in two places, not the one the tracker recorded.
+
+**`probe.ts`'s `emptyIsHealthy` comment was corrected and the flag deliberately
+left on.** The comment claimed `/scoreboard` "returns `[]` all week and only
+fills on a Saturday"; the Aug 12 probe pulled 889 rows on a Wednesday. So the
+flag's entire stated justification was false, and what it does in practice is
+mask a genuinely empty board — the one symptom that would reveal a dead live
+layer. Removing it is still the wrong move today: two documents disagree on the
+remedy, and tightening a health check sixteen days out on an endpoint whose
+first real in-season call has not yet happened is not a trade worth taking. The
+comment now records the truth and the disagreement; the decision waits for the
+`observe-scoreboard` dispatch over the openers, which is the one observation
+that settles it.
+
+Also fixed: `docs/STATUS.md` §4 asserted PUSH-6 was "worth closing before Week
+0" three paragraphs after marking it declined. The owner's decision stands and
+the prose now agrees with it.
+
+Line-number citations survived: §8 grew by two lines, and every `SPEC.md:NN`
+reference in the live docs points above it — except the slip-order line, which
+moved 253 → 255 and is now cited by section instead. The audit files keep their
+original citations; they are history and are not edited to look better in
+hindsight.
+
+No model change. `DEFAULT_PARAMS` untouched, no tuner run.
+
+### Aug 13 — Deleting the second scheduler, and a table that said "all 0"
+
+**Q7, answered: the edge function is gone.** `supabase/functions/jobs/` was 710
+lines of a parallel pg_cron implementation that was never deployed, sat four
+model versions behind `scripts/lib/jobs-core.ts`, and had inverted CLV in all
+four of its branches. `05:C5` described it as a deliberate tombstone. A
+tombstone is a reasonable thing to keep; a tombstone containing a live sign
+error is not, because the next person to revive it inherits the bug along with
+the head start. Git has it. The only two live references were comments, both
+rewritten to say what was removed and why rather than to point at a path that no
+longer exists. This also deleted the fourth copy of the hardcoded
+`FCS_RATING = -30`, which matters for the FCS work.
+
+**P1-5: `/ratings` had no empty state.** With zero rows it rendered a sortable
+table header over an empty body, a scale explainer that ended "…is where that
+team sits among all 0", and a footnote explaining why a column that wasn't there
+was hidden. It now uses the same empty state `/rankings`, `/standings` and
+`/edges` already carry. The subtitle was its own small lie: `latestWeek === 0`
+rendered "preseason", and an empty table also has `latestWeek === 0`, so the
+page announced a state it was not in.
+
+Neither page was seen rendered — both need a live Supabase — so the empty state
+is the shipped markup from `rankings/page.tsx` reused rather than written fresh.
+
+No model change. `DEFAULT_PARAMS` untouched, no tuner run.
+
+### Aug 13 — A rule that had never once run, and the re-pick that could not work
+
+League Rule #4 — a postponed or canceled game voids every wager on it — has been
+implemented correctly in the grader since 0013 and had never executed. Nothing
+in the system writes those statuses: `sync-games` only ever asserts `final`, the
+scoreboard patch is a closed map to `in_progress`/`final`, and CFBD's game feed
+carries a bare `completed` boolean with no cancellation signal anywhere in it. A
+human is the only available source of truth, so P1-1 is a **Game status**
+section on `/admin`.
+
+The display layer turned out to be finished already — `GameCard` and
+`GameHeader` print the status, `isDead` sinks the card, suppresses the aura,
+hides the odds and disables all three bet-slip cells. Every bit of it had been
+unreachable.
+
+**The void runs inline, not on Sunday.** A game postponed at noon would
+otherwise show open picks on a game that will never be played until
+`ratings-update` fires, which is the job with the longest overdue horizon on the
+admin card. Both callers share `voidWagersForGames` and both filter on the
+result still being null, so running twice is a no-op.
+
+**The state machine refuses more than it allows**, which is the substance of the
+work rather than a detail of it. Voiding is destructive to other people's picks
+and nothing gives them back, so: a `final` game cannot be voided, because
+grading has already written results, CLV and units against it and flipping it
+would void nothing while making the card read POSTPONED over a final score; a
+live game cannot be *postponed*, because the scoreboard loop rewrites
+`in_progress` every 30 seconds and the postponement would vanish within a tick
+while the picks it voided stayed voided — but it can be *canceled*, which is the
+honest word for an abandoned game; and an unrecognised status is refused rather
+than defaulted.
+
+**Two things surfaced while building it.**
+
+*The "member re-picks" path did not work.* `jobs-core.ts` has carried a comment
+since 0013 saying voided picks stay voided and the member re-picks on the
+revived game. They could not have. `make_pick`'s `on conflict do update` set
+`side`, `line_at_pick` and `locked_at` — not `result` — so re-picking updated
+the row that already held `result='void'`, and the grader reads
+`.is("result", null)`. That pick would never have been graded, in any season.
+Migration 0034 clears `result` and `clv` on replace, which also closes the
+general case: any pick replaced after grading kept its old result. The DB
+assertion for it fails against the old function and passes against the new one,
+which is the only reason to believe the fix.
+
+*A voided pick rendered as nothing.* Five sites guarded their result chip with
+`result !== "void"`, so a member whose pick was voided by Rule #4 would watch it
+silently disappear from their own screen. Four of them fall through to the same
+neutral styling a push uses and just needed the exclusion dropped. The home hub
+needed more: it labels chips in words, and "Push" on a canceled game is not a
+softer way of saying void, it is wrong — a push means the number landed exactly,
+a void means nothing happened. Its verdict now carries a label beside the tone.
+
+0034 also gives `games.status` a check constraint, `not valid` so it cannot fail
+on a legacy row. The five states had lived in a trailing SQL comment since 0001.
+That was survivable while only sync jobs wrote the column and stops being
+survivable the moment an admin can — and the constraint rejects `cancelled`,
+which matters, because `isDeadStatus` deliberately does not recognise the
+British spelling and a stored `cancelled` would read as alive.
+
+Deferred with the reasoning written down (`docs/STATUS.md` §4, P1-1b): frozen
+`predictions` on a dead game are never settled, so they re-read as ungraded
+every Sunday forever. It is invisible to users, costs a few rows, and settling
+it banks a "no close" reading indistinguishable from a genuinely missing
+snapshot — a decision, not a bug fix, and not one to take sixteen days out.
+
+622 tests, 129 DB assertions.
+
+No model change. `DEFAULT_PARAMS` untouched, no tuner run.
+
+### Aug 13 — An empty environment variable is not a zero
+
+`Number("")` is `0`. Every numeric env guard in this repo was written as
+`Number.isNaN(v)` or `Number.isFinite(v)`, and `0` passes both, so a variable
+that existed but held nothing was read as a deliberate zero in four places:
+
+- `PRESEASON_TILT_CARRY=""` disabled the fitted tilt and shipped withheld
+  totals — the exact failure `04:DQ-13` recorded as fixed, having closed only
+  the NaN half of it;
+- `envDays` returned **0 rather than the fallback**, so `LINES_IDLE_DAYS=""`
+  would set a zero-day idle horizon and every lines run would skip;
+- `CFBD_MONTHLY_BUDGET=""` set the scoreboard budget to zero, which throttles at
+  80% of nothing and refuses to poll at 95% of nothing;
+- `SCOREBOARD_INTERVAL_SECONDS=""` gave a zero-second poll interval.
+
+None has bitten, because none of the four is currently set to blank. What makes
+it worth fixing now rather than filing is how a blank one arrives: `FOO=` in a
+shell, a GitHub secret created but never filled in, a `.env` line with nothing
+after the `=`. All three are the shape of a half-finished setup, which is
+exactly what the next two weeks are full of — and `SUPABASE_DB_URL` spent 98
+runs empty already.
+
+`scripts/lib/env-num.ts` now owns the parse: blank and whitespace-only mean
+unset, `"0"` still means zero, and a value that is present but unparseable or
+out of range throws with the variable's name in the message. `envDays` keeps
+its tested fall-back-on-garbage contract — taking a scheduled job down over a
+typo'd idle threshold is the worse failure — and gains only the blank fix.
+
+**Also in this commit.** P2-11: the two `gameMedia` calls in `sync-games` were
+bare `.catch(() => [])`, swallowing a tier denial, a 500, a timeout and a parse
+error identically. They now rethrow anything that is not a `CfbdError` (a
+missing key raises a plain `Error`, and a config mistake should go red rather
+than quietly ship a slate with no networks) and otherwise log the status with
+the 401/403-vs-rest split, recording it in `job_runs.detail` so it is visible on
+`/admin`. P2-10: the early-Saturday insurance crons, with one substitution
+recorded in `docs/STATUS.md` — the lines cron is `5 10 * * 6`, because
+`0 10 * * 6` is already weather's and taking it would have retired weather
+rather than added lines. P1-3: `.env.example`, 20 keys, every one verified
+against a real reader.
+
+No model change. `DEFAULT_PARAMS` untouched, no tuner run. `PRESEASON_TILT_CARRY`
+still resolves to 0.4.
+
+### Aug 13 — The push notifications were wired to nothing
+
+Every piece of the notification feature works and has been verified. The
+subscription is stored, the VAPID keys are set in both Vercel and Actions, a test
+push was delivered to a real iPhone on 08-12 and its receipt logged `sent`.
+`run-job.ts:39-40` registers `notify-picks-due` and `notify-log-bets` against
+`notifyPicksDueJob` and `notifyLogBetsJob`. `jobs.yml` declares six crons for
+them. **None of the six was ever routed.**
+
+The scheduler resolves a cron to a task with a bash `case` on the literal
+schedule string, and none of `0 15 * * 6`, `0 18 * * 6`, `0 22 * * 4,5`,
+`45 15 * * 6`, `15 19 * * 6` or `15 23 * * 6` appeared in it. Each fell to
+`task=unknown`, then to the `Run job` fallthrough's `exit 1`. Dispatch was broken
+by the same omission from the other direction: both tasks are options in the
+dropdown, neither had a branch in the second `case`. So the count is **six red
+runs a week and zero notifications**, since the feature shipped — and Week 0's
+picks-due nudge would not have gone out.
+
+**Why nothing caught it.** The parts were each tested at their own level and the
+seam between them was not testable by any of those tests: the job functions are
+unit-tested, the delivery path was proved on a device, and the workflow is YAML
+that nothing type-checks. The one instrument that would have caught it was added
+the day before — `watchdogJob` picked up both notify jobs on 08-12 (PUSH-10),
+gated on a scheduled game inside the next week — so it would have fired its first
+red around **Aug 22**, seven days before kickoff. That gate is correct and stays;
+it just reads the symptom nine days after reading the file would have.
+
+Fixed by adding the two mappings and extending the shared `run-job.ts` branch.
+`scripts/lib/jobs-yml.test.ts` now parses the workflow the way bash reads it —
+literal strings, first match wins — and asserts that every declared cron resolves
+to a task, every scheduled and dispatchable task has a command, and no two tasks
+claim the same cron string. That last one is not hypothetical: `0 10 * * 6` is
+the weather cron, and `docs/STATUS.md` P2-10 asks for it to be given to
+`refresh-lines`, which would have retired weather rather than adding lines.
+Verified by running the assertions against the pre-fix file: **6 orphan crons
+before, 0 after.**
+
+The lesson, and it is the same one the iPad splash taught in the entry below: a
+component verified in isolation says nothing about the wiring that reaches it.
+What proves a scheduled job works is a run, not a passing test of the function
+the run would have called.
+
+No model change. `DEFAULT_PARAMS` untouched, no tuner run.
 
 ### Aug 12 — Stop guessing at the iPad, and measure it
 

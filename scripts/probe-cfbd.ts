@@ -52,7 +52,7 @@ const PROBES: ProbeSpec[] = [
     endpoint: "/games/media",
     required: true,
     usedFor: "TV network on every card",
-    note: "sync-games swallows this with .catch(() => []), so a denial is silent — tv just stays null forever.",
+    note: "Optional by design: a failure leaves tv null rather than failing the sync. Since P2-11 sync-games logs the HTTP status and records it in job_runs.detail, so a denial is visible on /admin — but this probe still answers it faster.",
     run: () => cfbd.gameMedia(PAST, { week: 1 }),
   },
 

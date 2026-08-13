@@ -22,10 +22,15 @@
 
 import { cfbdCallCount } from "../src/lib/cfbd";
 import { createServiceClient } from "../src/lib/supabase/service";
+import { envNum } from "./lib/env-num";
 import { idleSkip, envDays } from "./lib/idle";
 import { SEASON, logCfbdCalls, recordJobRun, scoreboardJob } from "./lib/jobs-core";
 
-const MONTHLY_BUDGET = Number(process.env.CFBD_MONTHLY_BUDGET ?? 30_000);
+// `??` only catches undefined, so this used to read `CFBD_MONTHLY_BUDGET=""` as
+// a budget of zero — which throttles at 80% of nothing and refuses to poll at
+// 95% of nothing, i.e. a Saturday with no live scores. envNum treats blank as
+// unset (P2-1).
+const MONTHLY_BUDGET = envNum("CFBD_MONTHLY_BUDGET", 30_000, { min: 1 });
 
 function argNum(flag: string, fallback: number): number {
   const i = process.argv.indexOf(flag);
@@ -73,10 +78,9 @@ async function callsThisMonth(db: ReturnType<typeof createServiceClient>): Promi
 
 async function main() {
   const minutes = argNum("--minutes", 63);
-  const liveInterval = argNum(
-    "--interval",
-    Number(process.env.SCOREBOARD_INTERVAL_SECONDS ?? 30),
-  );
+  // argNum validates the FLAG but not the fallback it is handed, so a blank
+  // SCOREBOARD_INTERVAL_SECONDS used to arrive as 0 and spin the poll loop.
+  const liveInterval = argNum("--interval", envNum("SCOREBOARD_INTERVAL_SECONDS", 30, { min: 1 }));
   const db = createServiceClient();
 
   // Nothing within two days: don't hold a runner for an hour to re-ask our own

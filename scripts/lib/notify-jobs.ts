@@ -334,3 +334,68 @@ export async function notifyBadBeats(
   }
   return { notified, errors };
 }
+
+/**
+ * Tell the admins a job has gone silent (OPS-2).
+ *
+ * `watchdogJob` has always thrown, which reddens the Actions run and sends
+ * GitHub's failure email. That email demonstrably arrives — the Aug 10 watchdog
+ * failure was found in the inbox on 08-13 — and demonstrably is not read: it
+ * and eight other failure emails from Aug 10–12 were all still unread, because
+ * they arrive in a stream of a few hundred GitHub notifications and look like
+ * every Vercel build comment. So the alert also goes to the one channel proven
+ * to reach a person, which is the phone.
+ *
+ * This does NOT replace the external dead-man ping (P1-9b). A push sent by a
+ * job that has itself stopped running cannot fire; a scheduler that dies
+ * entirely takes the watchdog with it, and that is the case healthchecks.io
+ * covers and this cannot. What this covers is one job going quiet while the
+ * scheduler keeps running — the commoner failure, and the one that would
+ * otherwise be a red run nobody opened.
+ *
+ * Deduped on the UTC date, not on the run. The watchdog runs three or four
+ * times a day, so keying the receipt on the problem alone would buzz on every
+ * run until the job recovers; keying it on the day means one push per distinct
+ * problem per day, which is a reminder rather than a nag.
+ *
+ * Swallows everything, like the rest of this module: the caller throws
+ * immediately after calling this, and a push failure must not be able to
+ * replace the real fault with its own.
+ */
+export async function notifyWatchdog(
+  db: SupabaseClient,
+  problems: string[],
+  today: string = new Date().toISOString().slice(0, 10),
+): Promise<{ notified: number; errors: number }> {
+  if (problems.length === 0 || !pushConfigured()) return { notified: 0, errors: 0 };
+
+  let notified = 0;
+  let errors = 0;
+  try {
+    const settings = await activeSettings(db, "watchdog");
+    if (!settings) return { notified: 0, errors: 0 };
+
+    // Audience is admins, which no other kind needs: every other notification
+    // derives its recipients from the event itself. There is no such thing as
+    // "your" silent cron.
+    const { data: admins } = await db.from("profiles").select("id").eq("is_admin", true);
+    if (!admins || admins.length === 0) return { notified: 0, errors: 0 };
+
+    const jobs = problems.join("; ");
+    for (const admin of admins as { id: string }[]) {
+      try {
+        const result = await sendToUser(db, admin.id, "watchdog", `watchdog:${today}:${jobs}`, {
+          title: fill(settings.title, { jobs }),
+          body: fill(settings.body, { jobs }),
+          url: "/admin",
+        });
+        if (result.sent > 0) notified++;
+      } catch {
+        errors++;
+      }
+    }
+  } catch {
+    errors++;
+  }
+  return { notified, errors };
+}

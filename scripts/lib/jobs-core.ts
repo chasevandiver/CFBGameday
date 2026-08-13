@@ -1,7 +1,12 @@
 /**
  * Shared job implementations (docs/SPEC.md §8), used by the thin CLI wrappers
- * in scripts/ (scheduled via GitHub Actions) and mirrored by the edge function
- * in supabase/functions/jobs/ (the future pg_cron path).
+ * in scripts/ and scheduled via GitHub Actions.
+ *
+ * This is the only implementation. A second copy lived in
+ * supabase/functions/jobs/ as the future pg_cron path and was deleted on
+ * 2026-08-13 — never deployed, four model versions behind this file, and
+ * carrying inverted CLV in all four of its branches. A tombstone with a live
+ * bug in it is worse than no tombstone; git has it if it is ever wanted.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -10,9 +15,11 @@ import { modelClv, roundClv, spreadClv, totalClv } from "../../src/lib/clv";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
 import { clockToSeconds, coverMargin, spreadCoverSide, totalCoverSide } from "../../src/lib/cover";
 import { gradePick, type PickMarket } from "../../src/lib/grade";
-import { notifyBadBeats, type FlipNotice } from "./notify-jobs";
+import { notifyBadBeats, notifyWatchdog, type FlipNotice } from "./notify-jobs";
 import { buildTeamNameIndex } from "../../src/lib/rankings";
 import { fetchCurrentSlate } from "../../src/lib/season";
+import { fcsRatingOf, fcsTopIds } from "../../src/model/fcs";
+import { isDeadStatus, voidWagersForGames } from "../../src/lib/void";
 import {
   DEFAULT_PARAMS,
   MODEL_VERSION,
@@ -24,10 +31,34 @@ import {
   updateSubRatings,
   type TeamRating,
 } from "../../src/model/ratings";
+import { envNum } from "./env-num";
 import { DAY_MS, envDays, idleOverridden } from "./idle";
 
-export const SEASON = Number(process.env.CFB_SEASON ?? 2026);
-const FCS_RATING = -30;
+export const SEASON = envNum("CFB_SEASON", 2026, { min: 2000, max: 2100 });
+/**
+ * The FCS bucket set, read back from `teams.fcs_avg_margin` (0035) and split at
+ * the median by the same `fcsTopIds` the backtest fits with, so the served rule
+ * and the fitted rule cannot diverge.
+ *
+ * Empty until `build-preseason` has written the column, and empty means every
+ * FCS opponent prices at `fcsOtherRating` — which, while both buckets sit at
+ * −30, is exactly the flat anchor every prior version used.
+ */
+async function loadFcsTop(db: SupabaseClient): Promise<ReadonlySet<number>> {
+  const { data } = await db
+    .from("teams")
+    .select("id, fcs_avg_margin")
+    .not("fcs_avg_margin", "is", null);
+  const margins = new Map(
+    ((data ?? []) as Array<{ id: number; fcs_avg_margin: number }>).map((t) => [
+      t.id,
+      // n is not stored: build-preseason already applied the minimum-games
+      // filter before writing, so a row here is by definition qualified.
+      { avgMargin: Number(t.fcs_avg_margin), n: Number.POSITIVE_INFINITY },
+    ]),
+  );
+  return fcsTopIds(margins);
+}
 
 type Json = Record<string, unknown>;
 
@@ -228,7 +259,16 @@ export async function watchdogJob(db: SupabaseClient): Promise<Json> {
     (live ?? []).length > 0,
     (upcoming ?? []).length > 0,
   );
-  if (problems.length > 0) throw new Error(`watchdog: ${problems.join("; ")}`);
+  if (problems.length > 0) {
+    // Buzz a phone before going red (OPS-2). The throw below is still what
+    // makes the run fail and sends GitHub's email — this is an additional
+    // channel, added because that email arrives and does not get read: on
+    // 2026-08-13 the Aug 10 watchdog failure was found in the inbox unread,
+    // along with eight others. `notifyWatchdog` swallows its own errors, so a
+    // push failure can never replace the real fault with its own.
+    await notifyWatchdog(db, problems);
+    throw new Error(`watchdog: ${problems.join("; ")}`);
+  }
   return {
     checked: [
       "refresh-lines",
@@ -769,7 +809,9 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
   const gradableFinals = allGames.filter(
     (g) => g.status === "final" && g.home_points !== null && g.away_points !== null,
   );
-  const deadGames = allGames.filter((g) => g.status === "postponed" || g.status === "canceled");
+  const deadGames = allGames.filter((g) => isDeadStatus(g.status));
+
+  const fcsTop = await loadFcsTop(db);
 
   const { data: hfaRows } = await db.from("team_hfa").select("team_id, blended_hfa");
   const hfa = new Map<number, number>(
@@ -791,8 +833,10 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
     for (const g of finals.filter((x) => x.week === week)) {
       const blended = (teamId: number): TeamRating => {
         const prior = priors.get(teamId);
-        if (prior === undefined)
-          return { overall: FCS_RATING, offense: FCS_RATING / 2, defense: FCS_RATING / 2, tempo: 70 };
+        if (prior === undefined) {
+          const f = fcsRatingOf(teamId, fcsTop, DEFAULT_PARAMS);
+          return { overall: f, offense: f / 2, defense: f / 2, tempo: 70 };
+        }
         const pOff = priorOff.get(teamId) ?? prior / 2;
         const pDef = priorDef.get(teamId) ?? prior / 2;
         const off = blendWithPrior(pOff, offense.get(teamId) ?? pOff, week, DEFAULT_PARAMS);
@@ -1018,30 +1062,25 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
     }
   }
 
-  // League Rule #4: postponed/canceled = void, for picks and bets alike. A
-  // postponed-then-rescheduled game flips back to `scheduled` on the next
-  // sync, so this only ever voids wagers on games that are dead RIGHT NOW —
-  // and a game that later revives simply grades normally when it goes final,
-  // because voided rows are excluded from the grading queries above... for
-  // bets. Voided picks stay voided; the member re-picks on the revived game.
+  // League Rule #4: postponed/canceled = void, for picks and bets alike. This
+  // only ever voids wagers on games that are dead RIGHT NOW, and a game that
+  // later revives grades normally when it goes final: voided BETS are excluded
+  // from the grading queries above, and since 0034 a re-picked game clears its
+  // `result` in `make_pick`'s upsert, so the member's new pick is gradable.
+  // (Before 0034 the upsert set only side/line/locked_at, so a re-pick
+  // inherited `result='void'` and the grader's `.is("result", null)` filter
+  // skipped it forever — the "member re-picks" path was documented here but
+  // did not work.)
+  //
+  // Since P1-1 the same write also runs inline from the /admin control, so a
+  // Saturday postponement voids immediately rather than waiting for Sunday.
+  // Both callers share `voidWagersForGames` and both are idempotent.
   if (deadGames.length > 0) {
-    const deadIds = deadGames.map((g) => g.id);
-    const { data: vp, error: vpErr } = await db
-      .from("picks")
-      .update({ result: "void" })
-      .in("game_id", deadIds)
-      .is("result", null)
-      .select("id");
-    if (vpErr) throw new Error(`grading: voiding picks failed: ${vpErr.message}`);
-    const { data: vb, error: vbErr } = await db
-      .from("bets")
-      .update({ result: "void", voided_at: new Date().toISOString() })
-      .in("game_id", deadIds)
-      .is("result", null)
-      .is("voided_at", null)
-      .select("id");
-    if (vbErr) throw new Error(`grading: voiding bets failed: ${vbErr.message}`);
-    voided = (vp?.length ?? 0) + (vb?.length ?? 0);
+    const counts = await voidWagersForGames(
+      db,
+      deadGames.map((g) => g.id),
+    );
+    voided = counts.picks + counts.bets;
   }
 
   return {
@@ -1128,6 +1167,8 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
     };
   }
 
+  const fcsTop = await loadFcsTop(db);
+
   const { data: ratingRows } = await db
     .from("ratings")
     .select("team_id, week, overall, offense, defense")
@@ -1213,12 +1254,17 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
     const homeR = latest.get(g.home_team_id);
     const awayR = latest.get(g.away_team_id);
     if (homeR === undefined && awayR === undefined) continue;
-    const rating = (r: { overall: number; offense: number; defense: number } | undefined): TeamRating => ({
-      overall: r?.overall ?? FCS_RATING,
-      offense: r?.offense ?? FCS_RATING / 2,
-      defense: r?.defense ?? FCS_RATING / 2,
-      tempo: 70,
-    });
+    // No rating row means no FBS prior — an FCS buy game. Which bucket it
+    // lands in is decided by fcsTopIds; while both params are −30 the answer
+    // is the same either way.
+    const rating = (
+      teamId: number,
+      r: { overall: number; offense: number; defense: number } | undefined,
+    ): TeamRating => {
+      if (r !== undefined) return { ...r, tempo: 70 };
+      const f = fcsRatingOf(teamId, fcsTop, DEFAULT_PARAMS);
+      return { overall: f, offense: f / 2, defense: f / 2, tempo: 70 };
+    };
     const situational = adjFor(g.home_team_id, g.id) - adjFor(g.away_team_id, g.id);
     const vegas = consensus(snapsByGame.get(g.id) ?? []);
     // The consensus flag compares each system to an HFA-inclusive market
@@ -1229,8 +1275,8 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
     const withHfa = (m: number | null) => (m === null ? null : m + sysHfa);
     const price = priceGame(
       {
-        home: rating(homeR),
-        away: rating(awayR),
+        home: rating(g.home_team_id, homeR),
+        away: rating(g.away_team_id, awayR),
         homeTeamHfa: hfa.get(g.home_team_id) ?? DEFAULT_PARAMS.baseHfa,
         neutralSite: g.neutral_site,
         situationalPoints: situational,

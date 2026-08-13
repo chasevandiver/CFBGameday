@@ -329,8 +329,9 @@ function ViewTab({
 
 function ResultText({ p }: { p: PickRow }) {
   // Nothing, not a dot: an ungraded pick has no result, and a stray glyph in
-  // the result column reads as one.
-  if (!p.result || p.result === "void") return null;
+  // the result column reads as one. A VOID does get shown — it is a decided
+  // outcome, and hiding it made a pick voided by Rule #4 look ungraded.
+  if (!p.result) return null;
   const tone =
     p.result === "win" ? "text-win" : p.result === "loss" ? "text-loss" : "text-push";
   return <span className={`stat text-xs font-semibold uppercase ${tone}`}>{p.result}</span>;

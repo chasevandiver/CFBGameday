@@ -109,5 +109,23 @@ describe("overrides and thresholds", () => {
     expect(envDays("LINES_IDLE_DAYS", 7)).toBe(7);
     process.env.LINES_IDLE_DAYS = "0";
     expect(envDays("LINES_IDLE_DAYS", 7)).toBe(0);
+    delete process.env.LINES_IDLE_DAYS;
+  });
+
+  it("treats a blank threshold as unset, not as zero (P2-1)", () => {
+    // `Number("")` is 0, which is finite and >= 0, so the old guard returned
+    // **0** here — collapsing the horizon so every run idle-skipped. An empty
+    // GitHub secret and an absent one now mean the same thing.
+    process.env.LINES_IDLE_DAYS = "";
+    expect(envDays("LINES_IDLE_DAYS", 7)).toBe(7);
+    process.env.LINES_IDLE_DAYS = "   ";
+    expect(envDays("LINES_IDLE_DAYS", 7)).toBe(7);
+    delete process.env.LINES_IDLE_DAYS;
+  });
+
+  it("still rejects a negative threshold", () => {
+    process.env.LINES_IDLE_DAYS = "-1";
+    expect(envDays("LINES_IDLE_DAYS", 7)).toBe(7);
+    delete process.env.LINES_IDLE_DAYS;
   });
 });

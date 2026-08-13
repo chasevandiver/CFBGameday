@@ -10,9 +10,11 @@
  *     exits through `idleSkip` while the next game is more than
  *     SCOREBOARD_IDLE_DAYS away, so on a season opening Aug 29 the first real
  *     call lands on Aug 27 — two days out, with no plan B.
- *   - `/games/media` is wrapped in `.catch(() => [])` by sync-games so a
- *     partial media feed never fails the sync. A tier rejection takes the same
- *     path: `tv` stays null on every card and nothing says why.
+ *   - `/games/media` is tolerated by sync-games so a partial media feed never
+ *     fails the sync — `tv` stays null and the card shows no network. Until
+ *     P2-11 a tier rejection took the same path silently; sync-games now logs
+ *     the status and records it in `job_runs.detail`, so the failure is visible
+ *     without running this probe. The probe still answers it in one call.
  *
  * Hence this probe. It is pure access testing — it deliberately does NOT
  * re-check data readiness, which is `--check`'s job and would double-count
@@ -48,9 +50,21 @@ export interface ProbeResult {
  * Turn one probe outcome into a status.
  *
  * `emptyIsHealthy` covers the endpoints whose empty response is the correct
- * answer rather than a symptom — /scoreboard returns `[]` all week and only
- * fills on a Saturday, so demanding rows from it in August would report a
- * working key as broken.
+ * answer rather than a symptom.
+ *
+ * **Corrected 2026-08-13.** This used to justify the flag by saying
+ * `/scoreboard` "returns `[]` all week and only fills on a Saturday". That is
+ * false: the Aug 12 probe pulled the whole season, 889 rows, on a Wednesday in
+ * August. So the flag's stated reason never held, and what it actually does
+ * today is mask a genuinely empty board — the one symptom that would tell you
+ * the live layer is dead on a Saturday.
+ *
+ * It is left ON deliberately, for now. `audit/KICKOFF_READINESS.md:69` reaches
+ * the opposite conclusion from the same fact ("costs nothing and stays"), and
+ * turning a health check stricter sixteen days before kickoff, on an endpoint
+ * whose first real in-season call has not happened yet, is the wrong week for
+ * it. Revisit after Week 0, when there is one observation of what
+ * `/scoreboard` does during a live game. Tracked in `docs/STATUS.md` §4.
  *
  * Pure, so the classification is testable without a network or a key — the
  * same split `watchdogVerdict` and `scoreboardPatch` use.

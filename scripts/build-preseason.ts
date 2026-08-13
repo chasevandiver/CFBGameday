@@ -47,6 +47,8 @@ import {
   type TeamRating,
 } from "../src/model/ratings";
 import { buildCoachTransitions } from "./lib/coaching";
+import { envNum } from "./lib/env-num";
+import { fcsMarginsVsFbs, fcsRatingOf, fcsTopIds } from "../src/model/fcs";
 import { portalPoints, portalScale } from "./lib/portal";
 import {
   cached,
@@ -64,7 +66,7 @@ import { tierOf } from "./lib/tiers";
 // var): the loader validates its dir against CFB_SEASON, so a hardcode here
 // meant a 2027 build silently carried 2026 data past a loader guard checking
 // the wrong year (audit 04/DQ-14).
-const SEASON = Number(process.env.CFB_SEASON ?? 2026);
+const SEASON = envNum("CFB_SEASON", 2026, { min: 2000, max: 2100 });
 const REPLAY_SEASONS = [2023, 2024, 2025];
 const CHUNK = 250;
 
@@ -79,13 +81,14 @@ const CHUNK = 250;
  * 13.16. Every SP+-shape variant lost badly (up to 16.87) — the earlier sweep
  * that "ruled out tilts" only ever tested SP+ shape, never carryover.
  */
-// A typo'd or blank env var used to coerce to NaN and silently disable the
-// tilt (falsy), shipping withheld totals with no explanation (audit 04/DQ-13).
-const TILT_CARRY_RAW = process.env.PRESEASON_TILT_CARRY;
-const TILT_CARRY = TILT_CARRY_RAW === undefined ? 0.4 : Number(TILT_CARRY_RAW);
-if (Number.isNaN(TILT_CARRY)) {
-  throw new Error(`PRESEASON_TILT_CARRY="${TILT_CARRY_RAW}" is not a number`);
-}
+// A typo'd env var used to coerce to NaN and silently disable the tilt
+// (falsy), shipping withheld totals with no explanation (audit 04/DQ-13). That
+// fix caught NaN and missed the emptier case: `PRESEASON_TILT_CARRY=""` is not
+// `undefined`, `Number("")` is `0`, and `0` is not NaN — so a blank env var
+// took the "even split" branch and disabled the fitted parameter in exactly
+// the silence the guard was written to prevent (P2-1). `envNum` treats blank
+// as unset and still throws on garbage.
+const TILT_CARRY = envNum("PRESEASON_TILT_CARRY", 0.4, { min: 0, max: 1 });
 
 type Row = Record<string, string | number | boolean | null | object>;
 
@@ -172,6 +175,25 @@ async function main() {
 
   const fbs = teams.filter((t) => t.classification === "fbs");
   const teamByName = new Map(teams.map((t) => [t.school, t]));
+
+  // FCS buckets (SPEC §2.1, P1-2). Production cannot compute this at runtime —
+  // the database holds only the current season — so it is computed here, where
+  // 2023–25 is already in memory, and materialised on teams.fcs_avg_margin
+  // (0035) for freezeJob and ratingsUpdateJob to read back.
+  //
+  // `before: SEASON` is what keeps it honest: only seasons strictly before the
+  // one being built, the same rule the replay's lookahead guard enforces.
+  const fcsMargins = fcsMarginsVsFbs(
+    seasons.flatMap((s) => s.games),
+    new Set(fbs.map((t) => t.id)),
+    { before: SEASON },
+  );
+  const fcsTop = fcsTopIds(fcsMargins);
+  console.log(
+    `  FCS buckets: ${fcsTop.size} top / ${fcsMargins.size - fcsTop.size} other ` +
+      `of ${fcsMargins.size} rated, from ${REPLAY_SEASONS.join("–")} margins vs FBS ` +
+      `(inert: both params are ${DEFAULT_PARAMS.fcsTopRating})`,
+  );
 
   // ---- 3. Talent baseline (points scale) ------------------------------------
   const talentVals = talent.map((t) => t.talent);
@@ -594,6 +616,9 @@ async function main() {
       color: t.color,
       alt_color: t.alternateColor,
       logo_url: t.logos?.[0] ?? null,
+      // Null for every FBS team and for any FCS team with too few games —
+      // loadFcsTop reads only non-null rows, so absence is the safe default.
+      fcs_avg_margin: fcsMargins.get(t.id)?.avgMargin ?? null,
     }));
   for (const id of gameTeamIds) {
     if (!known.has(id)) {
@@ -782,7 +807,9 @@ async function main() {
     if (homeR === undefined && awayR === undefined) continue; // non-FBS matchup
     const rating = (teamId: number, overall: number | undefined): TeamRating => {
       if (overall === undefined) {
-        return { overall: -30, offense: -15, defense: -15, tempo: 70 };
+        // No FBS rating = an FCS opponent. Same bucket rule the jobs use.
+        const f = fcsRatingOf(teamId, fcsTop, DEFAULT_PARAMS);
+        return { overall: f, offense: f / 2, defense: f / 2, tempo: 70 };
       }
       const halves = halvesById.get(teamId);
       return {

@@ -712,6 +712,39 @@ export async function fetchBetFormGames(
 }
 
 /**
+ * Games for the /admin void control (P1-1). Same rolling window as the bet
+ * form and for the same reason — a game postponed on Saturday night still
+ * needs to be reachable on Sunday, after the week pointer has rolled.
+ *
+ * Deliberately unfiltered by status: already-dead games have to appear so they
+ * can be restored, which is the only route back for a rescheduled game (CFBD
+ * publishes no cancellation signal, so it will not fix itself until the game
+ * is played and the feed reports it complete).
+ */
+export async function fetchAdminGames(
+  supabase: SupabaseClient,
+  seasonId: number,
+): Promise<
+  Array<{
+    id: number;
+    start_ts: string | null;
+    status: string;
+    home_team_id: number;
+    away_team_id: number;
+  }>
+> {
+  const now = Date.now();
+  const { data } = await supabase
+    .from("games")
+    .select("id, start_ts, status, home_team_id, away_team_id")
+    .eq("season_id", seasonId)
+    .gte("start_ts", new Date(now - 3 * 24 * 3600 * 1000).toISOString())
+    .lte("start_ts", new Date(now + 9 * 24 * 3600 * 1000).toISOString())
+    .order("start_ts", { ascending: true });
+  return data ?? [];
+}
+
+/**
  * CFBD calls metered so far this calendar month (UTC), from api_call_log.
  * Service-role only — the table is deny-all under RLS.
  */

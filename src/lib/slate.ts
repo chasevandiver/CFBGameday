@@ -10,6 +10,7 @@ import { liveWinProb } from "../model/live";
 import type { GroupBetView } from "./tailing";
 import { spreadCoverSide, totalCoverSide } from "./cover";
 import type { PickMarket } from "./grade";
+import { isDeadStatus } from "./void";
 
 export interface TeamView {
   id: number;
@@ -275,7 +276,7 @@ export interface SlateData {
 
 export const isLive = (g: GameView) => g.status === "in_progress";
 export const isFinal = (g: GameView) => g.status === "final";
-export const isDead = (g: GameView) => g.status === "postponed" || g.status === "canceled";
+export const isDead = (g: GameView) => isDeadStatus(g.status);
 
 /* ---- live situation ---------------------------------------------------- */
 

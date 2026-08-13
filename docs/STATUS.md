@@ -1,7 +1,13 @@
 # The CFB Slate — Status
 
-**The one file that answers "what's left."** Reconciled 2026-08-12 against the
-code on `main` at `cc1a9d8`. Week 0 is **Sat Aug 29** — 17 days.
+**The one file that answers "what's left."** Reconciled 2026-08-13 against the
+code on `claude/games-launch-checklist-b7pzab`. Week 0 is **Sat Aug 29** — 16
+days.
+
+**As of 2026-08-13, §2 has no code or docs work left in it.** Everything still
+unchecked below is either owner-run (P1-9b, P1-8, 09:P-16), a dispatch
+(`--tune-fcs`, `observe-scoreboard`, Q8), or a dated watch. That is the whole
+remaining blocking list.
 
 §1's numbers are point-in-time and go stale between reconciliations; the boxes
 do not, because they are checked in the commit that lands the fix. If §1
@@ -36,12 +42,12 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **592 tests across 41 files**, `tsc` and lint clean — run in-session 2026-08-12 after the notify-job watchdog. 118 DB assertions carried from CI. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
+| **Build** | **637 tests across 45 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13. **129 DB assertions**, run in-session against a real Postgres 16 cluster rather than carried from CI. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
 | **Scheduler** | 111 completed runs. Reds to date: one watchdog firing correctly on a cold `job_runs` table, and runs #107–109 — the backup verification sequence, each a real defect, all closed. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
 | **Model in code** | `2026.5.0` — tilt carry, `baseHfa` 3.0, centered team-HFA, portal fix, market-anchored tier recentre |
-| **Database** | Verified live 2026-08-12: **32** migrations applied and 32 recorded — the `0017` ledger gap (DB-3) was repaired the same day. 0031–0033 add the push tables. `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
+| **Database** | 0034 (game-status constraint + the `make_pick` re-pick fix) and 0035 (`teams.fcs_avg_margin`) added 2026-08-13 and **not yet applied to the live project** — both are inert until applied, and 0035 is inert after it too. Verified live 2026-08-12: **32** migrations applied and 32 recorded — the `0017` ledger gap (DB-3) was repaired the same day. 0031–0033 add the push tables. `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
 | **Model in production** | ⚠️ `2026.2.0`. **Four versions behind**, pricing every cross-classification opener ~10 points toward the G5. Waiting on CFBD to publish 2026 talent; `preseason-refresh` retries daily and loads itself the first morning `--check` is green. |
 | **The edge verdict** | b₁ = 0.035 (t = 0.84) for the model vs 0.987 (t = 22.81) for the market, n = 2611; flagged edges 49.2% ATS vs the close. Edges are **information, not bets** — and no model-accuracy work belongs in the next 17 days. |
 
@@ -59,7 +65,9 @@ other 8% plus the deliberate deferrals.
 
 ## 2. Blocking Week 0 — do these first
 
-Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
+Dated per `KICKOFF_READINESS` §10. **The code and docs in this section are
+done as of 2026-08-13** — what remains is the owner-run items and the dated
+watches, plus two migrations to apply.
 
 ### 2.1 Now (Aug 12–14)
 
@@ -127,11 +135,30 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
       three reds would have been *visible* a week ago — the step exited 0 with a
       20-byte artifact regardless.
 - [ ] **P1-9b** Create a healthchecks.io project, set `HEALTHCHECK_PING_URL`
-      (the ping step is already wired; free tier covers this). **Now load-bearing
-      rather than nice-to-have:** with the LLM tier off and no other channel
-      added, GitHub's failure email is the *only* thing that tells you a job
-      died, and it only fires when a run ERRORS — a scheduler that silently
-      stops firing alerts nobody. That is exactly the hole this closes. · 0.5 h
+      (the ping step is already wired; free tier covers this). **Still the only
+      thing that catches the scheduler dying entirely** — `watchdogJob` cannot
+      report its own death, and OPS-2's push is sent by that job, so a total
+      stop takes both down. Needs a third-party account and a GitHub Actions
+      secret, neither of which is reachable from a session. **Owner-only.** · 0.5 h
+- [x] **P1-8 — answered 2026-08-13, and the answer changes P1-9b's shape.** The
+      Aug 10 email **arrived**: `Run failed: jobs - main (de8e7f2)`, 09:26 UTC,
+      inbox, "Failed in 19 seconds" — the watchdog on a cold `job_runs` table,
+      exactly as described. So the channel works.
+      **It is also still unread, and so are eight others** from Aug 10–12,
+      including all three `jobs · backup` failures. Nine delivered alerts, zero
+      opened. They arrive in a stream of a few hundred GitHub notifications and
+      look identical to a Vercel build comment. An alert channel that delivers
+      into a place nobody reads is not much better than one that does not fire,
+      which is why OPS-2 below was built rather than just ticking this row.
+- [x] **OPS-2 — the watchdog buzzes a phone**, 2026-08-13. A fifth notification
+      kind (`watchdog`, migrations 0036/0037 — split for the enum reason
+      0032/0033 were), sent to admins from inside `watchdogJob` immediately
+      before it throws. Deduped on the **UTC date**, not the run: the watchdog
+      fires 3–4× daily, so keying on the problem alone would nag until the job
+      recovered. Swallows its own errors, so a push failure can never replace
+      the fault it is reporting — asserted in a test, along with the admin
+      audience and the no-admins/no-keys/switched-off paths. 8 tests.
+      **Explicitly not a replacement for P1-9b**, and the code says so.
 - [ ] **P1-8** Check the inbox: a watchdog failure email fired Aug 10 — did it
       arrive? **The single highest-value 2 minutes left on this list.** It is
       now the primary alerting channel, and an unverified failure channel is no
@@ -228,64 +255,210 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
       the postseason ingestion path shipped in `§23 #35` has never run against
       real rows. Re-check in November. · watch
 
+### 2.1c Found in the scheduler, 2026-08-13
+
+- [x] **SCHED-1 — the notification crons had never been able to fire.**
+      `jobs.yml` declared six of them — `0 15 * * 6`, `0 18 * * 6`,
+      `0 22 * * 4,5` for `notify-picks-due` and `45 15 * * 6`, `15 19 * * 6`,
+      `15 23 * * 6` for `notify-log-bets` — and **none of the six appeared in
+      the `Resolve task from schedule` case.** Each resolved to
+      `task=unknown`, fell through the `Run job` case to
+      `*) … exit 1`, and went red. `workflow_dispatch` was broken the same
+      way: both tasks were offered in the dropdown but had no `Run job`
+      branch, so a manual run failed too. Net: **six red runs a week and not
+      one notification ever sent.**
+      PUSH-3 and PUSH-9 are ticked above and both are honest — the delivery
+      path really was verified end to end on a real iPhone, and
+      `run-job.ts:39-40` really does register both jobs. What was missing was
+      the wiring between the cron and the job, which is the one seam neither
+      the iPhone test nor any unit test crossed. **Week 0's picks-due nudge
+      would not have gone out.**
+      Fixed by adding both mappings to the resolve case and both task names to
+      the shared `run-job.ts` branch. **It was ~9 days from catching itself:**
+      `watchdogJob` began covering these two jobs on 08-12 (PUSH-10), gated on
+      a scheduled game inside the next week, so it would have gone red for the
+      first time around Aug 22 — the gate working exactly as designed, just
+      later than reading the file.
+      Guarded by `scripts/lib/jobs-yml.test.ts`, which parses the workflow the
+      way bash reads it and asserts every cron resolves to a task, every task
+      has a command, and no two tasks claim one cron string. Verified against
+      the pre-fix file: 6 orphan crons before, 0 after.
+
 ### 2.2 This week (Aug 14–18)
 
-- [ ] **P1-1** A postponed or canceled game can never be voided. The grader
-      implements Rule #4 correctly (`jobs-core.ts:953-977`) but **nothing writes
-      those statuses** — `sync-games.ts:93` only ever asserts `final`. Needs an
-      admin "void this game" control plus the grading path that consumes it.
-      *(This is why `05:N9` is a `[x]` in `audit/CHECKLIST.md` that is really a
-      partial — see §7.)* · 3 h
+- [x] **P1-1** Shipped 2026-08-13. A **Game status** section on `/admin`
+      postpones, cancels or restores a game, and voids its open picks and bets
+      **inline** rather than waiting for Sunday's `ratings-update` — a game
+      postponed at noon on a Saturday would otherwise show open picks on a game
+      that will never be played for up to a week. Both callers share
+      `voidWagersForGames` in the new `src/lib/void.ts` and both are idempotent,
+      so the Sunday pass stays as the backstop.
+      Service-role write, deliberately: `games` is SELECT-only under RLS with no
+      update policy, so a cookie-client write would affect zero rows and report
+      success (audit 06/SEC-11's exact shape). Opening an update policy on the
+      one table every anonymous visitor reads was the worse trade.
+      **`nextGameStatus` refuses more than it allows**, because voiding is
+      destructive to other people's picks with no undo: a `final` game cannot be
+      voided (grading has already written results, CLV and units), a live game
+      cannot be *postponed* (the scoreboard loop overwrites it within a tick
+      while the voids persist) though it can be canceled, and an unrecognised
+      status is refused rather than defaulted. The two destructive buttons arm
+      before they fire. 14 unit tests.
+      **Two things found while building it, both fixed here:**
+      **(a) "the member re-picks" did not work.** `jobs-core.ts` has carried
+      that comment since 0013, but `make_pick`'s `on conflict do update` set
+      only `side`, `line_at_pick` and `locked_at` — so a re-pick on a revived
+      game kept `result='void'`, and the grader selects on `result is null`. It
+      would never have been graded. Migration **0034** clears `result` and `clv`
+      on replace, which also fixes the general case of any pick replaced after
+      grading. Proved by DB assertion: the test fails without the change.
+      **(b) a voided pick rendered as nothing** at five sites, so a member whose
+      pick was voided watched the chip silently disappear. It now shows, through
+      the same neutral styling as a push — except on the home hub, which labels
+      its chips in words and would have said "Push" on a canceled game.
+      0034 also makes `games.status` a real check constraint (`not valid`, so it
+      cannot fail on a legacy row): the five states had lived only in a comment
+      since 0001, which was survivable while only the sync jobs wrote the column
+      and stops being once an admin can. 11 new DB assertions, 129 total.
+      *(`05:N9` in `audit/CHECKLIST.md` is now genuinely done rather than the
+      partial §7 records.)*
+      **Not verified from here:** the end-to-end run needs the live database —
+      void a scratch game from `/admin`, confirm the card reads POSTPONED,
+      confirm `job_runs.detail` on the next `ratings-update`.
 - [ ] **09:P-16** Load rehearsal — **owner-run**, needs a live server. Seed via
       `scripts/seed-fixtures.ts`, `autocannon -c 15 / -c 30` against
       `next start`, record against the bars: p95 < 1.5 s, tick < 300 KB. The
       only zero-evidence area left before a 60-game Saturday. · 3 h
-- [ ] **P1-3** Commit `.env.example` (17 keys) + the `.gitignore` negation.
-      `README.md` step 1 tells you to copy a file that does not exist. · 0.5 h
-- [ ] **P1-5** `/ratings` has no empty state. · 0.25 h
-- [ ] **P2-1** `PRESEASON_TILT_CARRY=""` silently becomes `0`, not an error —
-      `Number("")` is `0`, so the `Number.isNaN` guard at
-      `build-preseason.ts:82-86` never fires and a fitted parameter disables
-      itself in silence. *(`04:DQ-13` claims empty is rejected; it is not.)* · 0.25 h
-- [ ] **P2-10** Add `0 10 * * 6` → `refresh-lines` and `0 10-14 * * 6` →
-      `scoreboard-loop` as insurance against a kickoff that moves earlier. Both
-      near-free — `idleSkip` exits in seconds. *(Verified 08-12: the existing
-      `0 10 * * 6` is the weather cron, not lines.)* · 1 h
-- [ ] **P2-11** Narrow `sync-games.ts:63`'s `gameMedia` catch to log the HTTP
-      status, so a future entitlement change shows up in the job log rather than
-      only in a probe. · 0.5 h
-- [ ] **P1-4** Schedule the burst poll, or say in the spec that it's
-      dispatch-only. `refresh-lines --burst` exists and is in the dispatch list
-      (`jobs.yml:28`), but no cron maps to it (`jobs.yml:163`). · 0.5 h
+- [x] **P1-3** `.env.example` committed, 2026-08-13, plus the `!.env.example`
+      negation under `.gitignore`'s `.env*`. **20 keys, not 17** — the count in
+      this row was low; every `process.env` read in `src/`, `scripts/` and
+      `jobs.yml` is now in the file, verified name by name. Grouped by concern
+      with the two things that have already cost time written down: the Actions
+      secret is named `SUPABASE_URL` and is passed through as
+      `NEXT_PUBLIC_SUPABASE_URL`, and `SUPABASE_DB_URL` must be the session
+      pooler URI. `README.md` step 1 now refers to a file that exists.
+- [x] **P1-5** `/ratings` empty state, 2026-08-13. With no rows the page used to
+      render sortable column headers over an empty `<tbody>`, a scale explainer
+      ending "…is where that team sits among all 0", and a footnote explaining
+      why a column that isn't there is hidden. It now early-returns the same
+      house empty state `/rankings`, `/standings` and `/edges` already use, and
+      the subtitle no longer claims "preseason" when the real state is "nothing
+      has loaded" — those were the same string before.
+      **Not seen rendered:** the page needs a live Supabase to load. The markup
+      is the shipped pattern from `rankings/page.tsx:41-53` reused verbatim
+      rather than new markup, which is the basis for believing it looks right.
+- [x] **P2-1** Fixed 2026-08-13 with a shared `scripts/lib/env-num.ts`, because
+      the bug was never only `PRESEASON_TILT_CARRY`. `Number("")` is `0`, so
+      **every** numeric env guard in the repo read a blank variable as a
+      deliberate zero: the tilt carry disabled itself
+      (`build-preseason.ts:82-86`, the case `04:DQ-13` claims was fixed and
+      wasn't — it closed the NaN half only); `envDays` returned **0 instead of
+      the fallback**, so `LINES_IDLE_DAYS=""` would have collapsed the idle
+      horizon and made every lines run skip; `CFBD_MONTHLY_BUDGET=""` set the
+      scoreboard budget to zero, which throttles at 80% of nothing; and
+      `SCOREBOARD_INTERVAL_SECONDS=""` gave a zero-second poll interval. An
+      empty variable is what `FOO=` in a shell and an unfilled GitHub secret
+      both produce, so blank now means unset. Garbage still throws, except in
+      `envDays`, which keeps its tested fall-back-on-garbage contract on
+      purpose: taking a scheduled job down over a typo'd idle threshold is the
+      worse failure. 11 new tests.
+- [x] **P2-10** Added 2026-08-13, with one substitution: `0 10-14 * * 6` →
+      `scoreboard-loop` as specified, but the lines cron is **`5 10 * * 6`, not
+      `0 10 * * 6`**. This row asked for a string that is already the weather
+      cron, and the resolve case is first-match-wins, so adding it to the
+      refresh-lines pattern would not have given Saturday morning two jobs — it
+      would have shadowed line 214 and **silently retired weather**. GitHub also
+      dedupes identical `- cron:` entries, so the string cannot simply be listed
+      twice. Five minutes later costs nothing and keeps the two independent.
+      `jobs-yml.test.ts` now fails if any two tasks ever claim one cron string.
+- [x] **P2-11** Narrowed 2026-08-13. Both `gameMedia` calls now go through a
+      `media()` wrapper that rethrows anything that is not a `CfbdError` — a
+      missing `CFBD_API_KEY` raises a plain `Error`, and a config mistake should
+      go red rather than quietly ship a slate with no networks on it — and
+      otherwise logs the status with the 401/403-vs-rest split from
+      `probe.ts:66-72`, as an Actions `::warning::`. The outcome also lands in
+      the job's return value, so a denial is visible in `job_runs.detail` and on
+      `/admin` instead of only in a probe. `sync-games` now reports `tv` count
+      too. The stale "swallows this silently" notes in `probe-cfbd.ts:55` and
+      `probe.ts:13` were corrected in the same commit.
+- [x] **P1-4** Spec amended 2026-08-13 rather than a cron added: the code is
+      right and §8 was stale. `refresh-lines-burst` is deliberately
+      dispatch-only per the owner decision recorded at `jobs.yml:8-12` — lines
+      barely move intraday, nobody here bets the moves, and the only number that
+      matters is the close. §8 now says so. While in there, two larger §8 lies
+      were fixed: it claimed **all jobs run on Supabase pg_cron → Edge
+      Functions**, which was never true in production and is now not even
+      possible (Q7 deleted that code), and the Stack line said the same.
 
 ### 2.3 Docs that contradict the code (Aug 18)
 
 One sitting, ~2 h. Each is a doc edit, not a code change.
 
-- [ ] **Q3** `SPEC.md` §2.2/§2.3 still say K = 0.15–0.20 and slope ≈ 0.145; the
-      code ships the fitted 0.3 and 0.101. Amend with the run cited, and record
-      that K's joint refit hit a grid boundary at 0.4 so nobody re-litigates it.
-- [ ] **Q4 / P1-2** FCS two-bucket rule: specced, never built —
-      `fcsTopRating`/`fcsOtherRating` are dead constants
-      (`ratings.ts:112,200`) and every fitted parameter was fit under the flat
-      −30 the replay actually runs. **Recommended: amend the spec to one bucket
-      at −30 and delete the constants**; revisit with `--tune-fcs` in the
-      offseason. Owner call — see §3.
-- [ ] **Q5** `SPEC.md` §4 R3 describes migration 0010's crew-wide picks; 0023
-      made it a per-group setting (`picks_hidden_until_kickoff`, default false).
-      Behavior is right, the spec is one step behind.
-- [ ] **P1-6** `SPEC.md` §7 lists `/crew` as primary nav; `/crew` is a redirect
-      to `/groups`.
-- [ ] **P2-7** `README.md:10` and `SPEC.md:20` claim the CFBD free tier "won't
-      survive the backtest backfill." It would — a full cold 2023–25 backfill is
-      16 calls. The real reason for Tier 1+ is `/scoreboard`.
-- [ ] **Bug #9 evidence** `docs/AUDIT-2026-08.md` cites `actions/picks.ts:54,58`
-      for a fix that now lives in the `remove_pick` RPC (`0021:255-257`) —
-      stronger than what's documented, but the citation is stale.
-- [ ] **probe.ts:52** still says `/scoreboard` "returns `[]` all week and only
-      fills on a Saturday." The Aug 12 probe disproved it (whole season, 889
-      rows) — and that sentence is the stated justification for
-      `emptyIsHealthy`, which today would mask a genuinely empty board.
+- [x] **Q3** Amended 2026-08-13. §2.2 now states the fitted `kFactor` 0.3 and
+      carries the reason nobody should re-open it: the joint K/HFA refit picked
+      K=0.4 at the **edge of the grid**, bought no margin MAE, and moved the
+      0.7–0.8 win-prob bucket from 1.6 points off to 6.2. §2.3 states
+      `winProbSlope` 0.101 and, more usefully, that it is not independently
+      fitted — it is 1.7/σ, so it moves whenever `marginSigma` does.
+- [x] **Q4 / P1-2 — built, and it changes nothing.** Owner chose build over
+      amend, 2026-08-13. The bucket is an FCS team's average margin vs FBS over
+      **prior seasons only**, split at the median of the qualifying population
+      (`src/model/fcs.ts`) — a data-defined split, so `--tune-fcs`'s grid stays
+      two-dimensional instead of gaining a free threshold to overfit with.
+      **Both params ship at −30.** Because they are *equal*, the bucket is not
+      merely inert but **unobservable** — `fcsRatingOf` returns the same number
+      either way, so a wrong classification cannot move a prediction. Asserted
+      as bit-identity in `replay.test.ts`, with a negative control so the
+      assertion cannot pass vacuously.
+      **The lookahead trap this nearly walked into:** a bucket computed across
+      2023–25 and used to price a 2023 game breaks the replay's one invariant,
+      quietly and in the flattering direction. `before` is a required parameter
+      and the season filter is inside the function, so a caller who forgets
+      cannot compile. Residual, documented in the tuner: the fit window is 1–2
+      prior seasons where production gets 3; closing it costs two CFBD calls.
+      **Production could not see this signal and now can.** The database holds
+      only the current season, so there is no margin history to read at
+      runtime; `build-preseason` computes it from the replay corpus and writes
+      `teams.fcs_avg_margin` (**migration 0035**, nullable — empty means
+      everyone prices at −30, i.e. today). `freezeJob` and `ratingsUpdateJob`
+      read it back through the same `fcsTopIds` the backtest fits with, so the
+      served rule and the fitted rule cannot drift. Rejected shortcut, recorded
+      because it looks right: week-0 `ratings` rows for FCS teams would land
+      them in `priors` and the replay would Elo-update them into drifting
+      entities.
+      Also removed the four hardcoded copies of −30.
+      **Identity confirmed by CI, not just locally**: PR #54's auto-triggered
+      backtest report is character-identical to run `31563098426`, the Aug 12
+      run that shipped 2026.5.0 — every slice row, every opener bucket, and
+      `b1 0.035 (t 0.83)` / `b2 0.985 (t 22.87)` at n=2611. A second machine,
+      live CFBD data.
+      **The tuner run has not happened and must not happen before Week 0** —
+      see the row in §2.4.
+- [x] **Q5** Amended 2026-08-13. §4 R3 now describes the per-group
+      `picks_hidden_until_kickoff` (default false) and the `picks_revealed()`
+      gate, including that a TBD kickoff stays hidden rather than open forever.
+      The §8 Accounts paragraph repeated the old crew-wide claim and was fixed
+      in the same pass.
+- [x] **P1-6** Amended 2026-08-13 — §7's nav list reads `Groups`, with a note
+      that `/crew` survives as a redirect because the old URL is in people's
+      history and in the ledger's footer copy.
+- [x] **P2-7** Corrected 2026-08-13 in both files. Tier 1+ is required because
+      scoreboard and weather are **entitlements**, not because of quota — a full
+      cold 2023–25 backfill is 16 calls against the free tier's 1,000.
+- [x] **Bug #9 evidence** Corrected 2026-08-13. Two stale spots, not one: the
+      fix table said `.select("id")` + zero-row check, which is gone, and the
+      finding's own line range predates the move into the RPC. Both now point at
+      `remove_pick` (`0021:255-257`). The finding itself was always right.
+- [x] **probe.ts:52** Comment corrected 2026-08-13; **the flag stays on, for
+      now.** The sentence was false — the Aug 12 probe pulled 889 rows on a
+      Wednesday — and it was the whole stated justification for
+      `emptyIsHealthy`, which therefore masks the one symptom that would reveal
+      a dead live layer on a Saturday. Two documents disagree on the remedy:
+      this file said it should go, `audit/KICKOFF_READINESS.md:69` says it
+      "costs nothing and stays". Tightening a health check sixteen days out, on
+      an endpoint whose first real in-season call has not yet happened, is the
+      wrong trade — so the comment now states the truth and the disagreement,
+      and the decision moves to §4 for after Week 0.
 
 ### 2.4 Model work that is not accuracy work (Aug 18–20)
 
@@ -297,6 +470,16 @@ One sitting, ~2 h. Each is a doc edit, not a code change.
       here sits at an identity default. Either way it gets a decisions-table
       row. Caveat: `replaySeason` never calls `churnAdjustment`; read how
       `tuneChurn` builds its evaluation before trusting a number from it. · 1 h
+- [ ] **`--tune-fcs` — registered, deliberately not run.** The flag, the bucket
+      rule and the four pre-registered criteria landed 2026-08-13; both params
+      sit at −30 so nothing depends on the answer. **Dispatch after Week 0**,
+      not before: `backtest.yml` → experiment `tune-fcs`. Gate 0 is the one to
+      read first — if the two buckets' vs-actual bias differs by |t| < 2 the
+      split has nothing to correct, and the honest outcome is "one bucket, on
+      evidence", which is Q4 finally answered rather than deferred again.
+      Either way it gets a decisions-table row with the number. Caveat written
+      into the tuner: the fit window is 1–2 prior seasons where production gets
+      3, closable with two CFBD calls for 2021–22. · dispatch
 - [ ] **Dispatch `observe-scoreboard` over the Aug 29 openers.** The probe
       proved `/scoreboard` **answers**; nothing yet proves it **moves**. A feed
       that renames a status string produces zero writes, `{live_or_final: 0}`
@@ -343,8 +526,8 @@ These block nothing today but change what gets built. Recommendations are from
 | # | Question | Recommendation |
 |---|---|---|
 | **Q1** | If `preseason-check` is still red Aug 26, what ships? | **Stale-talent build on 2025 recruiting, loaded as 2026.5.0.** Wrong about incoming freshmen is a ±1–2 pt error at `talentWeight` 0.30; 2026.2.0 is wrong about home field by +0.74 on *every* game, renders no totals, and carries the ~10-pt tier mis-level. Say yes and the `--force` path plus a `/model` note get wired. |
-| **Q4** | FCS: build the two buckets, or amend the spec to one? | **Amend to one bucket at −30, delete the dead constants.** Changing the input distribution 17 days out with no tuner behind it is the bad trade. `--tune-fcs` in the offseason. |
-| **Q7** | Delete the dead edge function? | **Delete `supabase/functions/jobs/`.** It has inverted CLV in all four branches and is 4+ versions behind `jobs-core.ts`. `05:C5` calls it a deliberate tombstone — but a tombstone with a live landmine in it is worse than none. Git preserves it. Say no and it gets a `DO NOT DEPLOY` banner instead. |
+| ~~**Q4**~~ | ~~FCS: build the two buckets, or amend the spec to one?~~ | **Answered 2026-08-13: build them** — owner call, against the recommendation below, and delivered in a form that removes the objection: both buckets ship at −30, so the machinery exists and the output is unobservable until `--tune-fcs` earns a value. Original note: **Amend to one bucket at −30, delete the dead constants.** Changing the input distribution 17 days out with no tuner behind it is the bad trade. |
+| ~~**Q7**~~ | ~~Delete the dead edge function?~~ | **Answered and done 2026-08-13: deleted.** `supabase/functions/jobs/` had inverted CLV in all four branches and was 4+ versions behind `jobs-core.ts`. `05:C5` called it a deliberate tombstone; a tombstone with a live landmine in it is worse than none, and git preserves it. The only two live references were comments (`jobs.yml:3`, `jobs-core.ts:4`), both rewritten to say what happened and why. Closes P2-3 / 05:C5 / 07:OPS-11 / SEC-12. It also removed the fourth copy of the hardcoded `FCS_RATING = -30`. |
 | **Q6 / SEC-13** | TBD kickoffs (`start_ts` null) — policy before Aug 29 | **Keep as-is.** Un-pickable, un-removable, stays blind, no close and therefore no CLV, but still frozen. Every branch fails closed, which is right for a security boundary and a receipt. Cost: a TBD game is un-pickable until CFBD firms the time, which `sync-games` does daily. |
 | ~~**Q9**~~ | ~~Duplicate frozen predictions~~ | **Answered and done 2026-08-12** — cleared via migration 0028. DB-2 turned out not to be a defect at all. See §2.1b. |
 | ~~**BRAND-1**~~ | ~~Recolour before Aug 29 or after?~~ | **Answered 2026-08-12: now.** Owner call, against the recommendation below; shipped the same day. Original note: **After.** `docs/BRAND.md` §5 replaces every surface colour and §12 swaps the display face — that is every page, 17 days out, against DESIGN.md's "build one screen, get it approved, then propagate". Both near-blacks read as black on a phone, so nothing looks broken today; the visible tell is the two golds (`#E8B93D` vs `#f2b63c`) side by side. Queued as BRAND-2/BRAND-3. |
@@ -407,7 +590,18 @@ Two items remain open; the closed ones are kept for the record.
       needed, has to come from whatever produced the artwork.
 
 **Correctness / security**
-- [ ] **P2-4 / SEC-10** Drop the dead `picks` policies 0018 recreated — the
+- [ ] **P1-1b — frozen `predictions` on a dead game are never settled.** Found
+      while building P1-1 and deliberately left out of it. The model-CLV pass
+      keys only on `finalIds` (`jobs-core.ts:890-925`), so a frozen row on a
+      game that never played keeps `close_spread` null and is re-read as
+      ungraded every Sunday forever. Invisible to users — `close_spread` is
+      read nowhere in `src/` — and the cost is a few wasted rows per week, so it
+      is a decision rather than a bug fix, and not one to take under launch
+      pressure. **The decision:** either settle the row (which banks a "no
+      close" reading indistinguishable from a genuinely missing snapshot) or
+      exclude dead games from the ungraded set (which needs a second predicate
+      and leaves the receipt permanently open). Worth noting `receipts` shows
+      "graded after kickoff" on such a row, which is wrong either way. · S — the
       table grants were revoked in `0013:92` and `0021:268`, so they can never
       fire. Verified *not* a hole, but misleading. Migration 0028. · 0.5 h
 - [ ] **P2-5** `remove_pick` never checks group membership and returns `ok:true`
@@ -422,9 +616,16 @@ Two items remain open; the closed ones are kept for the record.
       after. · S
 
 **Ops / perf**
-- [ ] **P2-3 / 05:C5 / 07:OPS-11 / SEC-12** Delete the dead edge function
-      (pending Q7). · 0.5 h
-- [ ] **P2-6** `ratings/page.tsx:56` still does `teams.select("*")`; the
+- [x] **P2-3 / 05:C5 / 07:OPS-11 / SEC-12** Dead edge function deleted
+      2026-08-13 — see Q7 in §3.
+- [ ] **`emptyIsHealthy` on `/scoreboard`** — decide after Week 0. The flag's
+      stated justification was disproved on 08-12 and `probe.ts` now says so,
+      but the flag is still on, so a genuinely empty board reads as green. This
+      file and `audit/KICKOFF_READINESS.md:69` reach opposite conclusions from
+      the same fact. **What settles it:** one observation of what `/scoreboard`
+      does during a live game — which is exactly what the `observe-scoreboard`
+      dispatch in §2.4 is for. Decide with that in hand, not before. · S
+- [ ] **P2-6** `ratings/page.tsx` still does `teams.select("*")`; the
       game-page equivalent was narrowed by `09:P-5`. · 0.25 h
 - [ ] **09:P-1b** Slim `/api/slate-live` heal endpoint — decide after P-16's
       numbers. · M
@@ -563,12 +764,20 @@ a trigger off, and one-off sends are all table edits from `/admin`.
 
 **Built and live 2026-08-12** — PUSH-1, 2, 3, 4, 7 and 8, plus a fourth kind
 (`log_bets`, betting groups before each Saturday wave) and per-kind defaults
-with bad beats shipping off. Migrations 0032/0033 applied. **PUSH-6 is the only
-item left, and it is the one that protects a Saturday:** nothing caps how many
-bad-beat notifications one chaotic afternoon can send, and nothing respects
-`profiles.timezone`, so a late Pac-after-dark flip will buzz at 2am. Neither has
-bitten yet because no game has gone live since the feature shipped. Worth
-closing before Week 0.
+with bad beats shipping off. Migrations 0032/0033 applied.
+
+**PUSH-6 is the only item left, and it stays declined** — owner call,
+reaffirmed 2026-08-13. *(This paragraph used to end "Worth closing before Week
+0", contradicting the `[~]` declined row above it. One or the other had to go,
+and the owner's decision is the one that counts. The exposure is real and
+recorded in that row; the mitigating fact is that bad beats default OFF, so it
+only reaches someone who deliberately switched them on and can switch them back
+off.)*
+
+**What was wrong with this section, found 2026-08-13:** PUSH-3 and PUSH-9 were
+ticked as shipped and were — but their crons were never routed, so neither job
+had ever run. See SCHED-1 in §2.1c. The ticks were honest about the code and
+silent about the wiring, which is the gap that let it sit for a day.
 
 - [x] **PUSH-8** Migration 0031 applied and VAPID keys set in Vercel and
       Actions, 2026-08-12. **Verified end to end on a real iPhone (iOS 18.7):**
@@ -636,7 +845,9 @@ Additive features, no defect behind any of them. Verified still open 2026-08-12.
 | §23 #31 | BetForm game **search** — labels, validation and the −3d/+9d window shipped; the picker is a plain `<select>` | Fine at 60 games/week |
 | §23 #42 | **Route smoke tests** — 41 test files, 585 tests, none exercise a route | The one partial that touches correctness; named, not rounded up |
 
-**Explicit slip order** if time runs out (`SPEC.md:253`): team-page LLM verdicts
+**Explicit slip order** if time runs out (`SPEC.md` §10, Buffer — cited by
+section rather than by line, because the 08-13 §8 amendments moved it from 253
+to 255 and it will move again): team-page LLM verdicts
 and the admin review queue first, then F13/F9/F16, then P1-2 FCS buckets, then
 P2-2/P2-5. **Never slipped:** the slate, pick'em, the ledger, the freeze, the
 close passes.

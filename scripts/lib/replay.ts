@@ -13,6 +13,7 @@ import {
   type CfbdSpRating,
 } from "../../src/lib/cfbd";
 import { snapToHalf } from "../../src/lib/consensus";
+import { fcsRatingOf } from "../../src/model/fcs";
 import {
   blendWithPrior,
   priceGame,
@@ -22,7 +23,6 @@ import {
 } from "../../src/model/ratings";
 
 export const CACHE_DIR = path.join(process.cwd(), ".backtest-cache");
-export const FCS_RATING = -30;
 
 export interface SeasonData {
   season: number;
@@ -160,7 +160,8 @@ export interface ReplayPrediction {
    * is the season's alignment as /games reports it; null when the cached
    * season file predates the field (those games slice as "unknown", never
    * silently as G5). `homeFbs`/`awayFbs` mean "had an FBS rating in this
-   * replay" — false is an FCS opponent priced at the flat FCS_RATING.
+   * replay" — false is an FCS opponent, priced from `fcsTopRating` /
+   * `fcsOtherRating` (src/model/fcs.ts), which are equal as shipped.
    */
   homeTeam: string;
   awayTeam: string;
@@ -231,10 +232,13 @@ export function replaySeason(
    *  Leaves margins untouched (off+def ≡ prior) but makes preseason totals
    *  informative from week 1. Seed from SP+ via subTiltsFromSp. */
   tilts?: Map<number, number>,
-  /** Rating assigned to opponents with no FBS prior (FCS buy games).
-   *  Diagnostic knob for --diagnose-tiers; every production path leaves it at
-   *  the flat FCS_RATING default. */
-  fcsRating: number = FCS_RATING,
+  /** The FCS teams in the top bucket (`src/model/fcs.ts`). Opponents with no
+   *  FBS prior are priced at `params.fcsTopRating` when they are in this set
+   *  and `params.fcsOtherRating` otherwise. Omit for one flat bucket — which
+   *  is also what passing it does while the two params are equal, as they ship.
+   *  Must be built from seasons strictly before the one being replayed; the
+   *  lookahead guard above is not optional. */
+  fcsTop?: ReadonlySet<number>,
 ): {
   predictions: ReplayPrediction[];
   finalRatings: Map<number, number>;
@@ -269,8 +273,10 @@ export function replaySeason(
     for (const g of weekGames) {
       const blended = (teamId: number): TeamRating => {
         const prior = priors.get(teamId);
-        if (prior === undefined)
-          return { overall: fcsRating, offense: fcsRating / 2, defense: fcsRating / 2, tempo: 70 };
+        if (prior === undefined) {
+          const r = fcsRatingOf(teamId, fcsTop, params);
+          return { overall: r, offense: r / 2, defense: r / 2, tempo: 70 };
+        }
         const pOff = prior / 2 + tiltOf(teamId);
         const pDef = prior / 2 - tiltOf(teamId);
         const off = blendWithPrior(pOff, offense.get(teamId) ?? pOff, week, params);

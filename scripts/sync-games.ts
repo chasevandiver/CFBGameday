@@ -11,13 +11,47 @@
  * Usage: npx tsx scripts/sync-games.ts [--dry-run] [--week N] [--force]
  */
 
-import { cfbd, cfbdCallCount } from "../src/lib/cfbd";
+import { CfbdError, cfbd, cfbdCallCount } from "../src/lib/cfbd";
 import { logCfbdCalls, recordJobRun } from "./lib/jobs-core";
 import { DAY_MS, envDays, idleOverridden, msUntilNextGame } from "./lib/idle";
 import { SEASON, chunk, createSink } from "./lib/ingest";
 import { resolvedWeek, weekZeroIds } from "./lib/weeks";
 
 const MONDAY = 1;
+
+/**
+ * Broadcast assignments are optional — tv just stays null and the card shows no
+ * network — so a failure here must not fail the whole sync. It used to be a
+ * bare `.catch(() => [])`, which swallowed a tier denial, a 500, a timeout and a
+ * parse error identically and logged none of them (P2-11). `probe-cfbd.ts`
+ * carried a note saying so, which meant the only way to learn that /games/media
+ * had been revoked was to run the probe and read it.
+ *
+ * Now the outcome is recorded: 401/403 is "the key or the tier cannot have
+ * this", which is actionable and permanent, and anything else is CFBD having a
+ * bad day. Both land in the job's return value and therefore in
+ * `job_runs.detail` and on /admin. A non-CfbdError still throws — a missing
+ * CFBD_API_KEY raises a plain Error (`cfbd.ts:42`), and a config mistake should
+ * go red rather than degrade to a slate with no networks on it.
+ */
+async function media<T>(
+  label: string,
+  fetch: () => Promise<T[]>,
+  failures: string[],
+): Promise<T[]> {
+  try {
+    return await fetch();
+  } catch (err) {
+    if (!(err instanceof CfbdError)) throw err;
+    const denied = err.status === 401 || err.status === 403;
+    failures.push(`${label}:${err.status}`);
+    console.warn(
+      `  ::warning::gameMedia ${label} failed: ${err.status} — ` +
+        `${denied ? "tier or key denied, tv stays null until it is fixed" : "transient, retried once already"}`,
+    );
+    return [];
+  }
+}
 
 async function main() {
   const { sink, db } = createSink();
@@ -56,14 +90,19 @@ async function run(
   console.log(`Games ${SEASON}${week ? ` week ${week}` : ""}…`);
   // Regular season AND postseason — championship week, bowls, and the CFP were
   // never ingested before (audit #1: "the season ends in November").
+  const mediaFailures: string[] = [];
   const [regular, postseason, mediaReg, mediaPost] = await Promise.all([
     cfbd.games(SEASON, { week }),
     week === undefined ? cfbd.games(SEASON, { seasonType: "postseason" }) : Promise.resolve([]),
     // Broadcast assignments, so a pregame card can say what channel it's on.
     // The scoreboard feed also carries tv, but only once a game is current.
-    cfbd.gameMedia(SEASON, { week }).catch(() => []),
+    media("regular", () => cfbd.gameMedia(SEASON, { week }), mediaFailures),
     week === undefined
-      ? cfbd.gameMedia(SEASON, { seasonType: "postseason" }).catch(() => [])
+      ? media(
+          "postseason",
+          () => cfbd.gameMedia(SEASON, { seasonType: "postseason" }),
+          mediaFailures,
+        )
       : Promise.resolve([]),
   ]);
   const games = [...regular, ...postseason];
@@ -120,7 +159,13 @@ async function run(
     for (const batch of chunk(group, 500)) await sink.upsert("games", batch);
   if (db) await logCfbdCalls(db, "sync-games", cfbdCallCount());
   console.log(`  ${rows.length} games upserted`);
-  return { games: rows.length };
+  return {
+    games: rows.length,
+    tv: tvByGame.size,
+    // Only present when something went wrong, so a healthy run's detail stays
+    // as short as it is today.
+    ...(mediaFailures.length > 0 ? { media_failed: mediaFailures } : {}),
+  };
 }
 
 main().catch((err) => {

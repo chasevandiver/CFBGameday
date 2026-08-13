@@ -108,7 +108,16 @@ export interface ModelParams {
   /** Edge flag thresholds, points */
   edgeThreshold: number;
   bigEdgeThreshold: number;
-  /** Generic FCS opponent ratings vs average FBS */
+  /**
+   * Generic FCS opponent ratings vs average FBS, by bucket (SPEC §2.1).
+   * The bucket is an FCS team's own average margin against FBS over prior
+   * seasons, split at the median — see `src/model/fcs.ts`.
+   *
+   * Both −30 = one flat bucket, the behaviour every version through 2026.5.0
+   * shipped, and with the two equal the bucket is *unobservable* rather than
+   * merely inert. Fit by `backtest.ts --tune-fcs`; until that run says
+   * otherwise the split exists as machinery and changes no number.
+   */
   fcsTopRating: number;
   fcsOtherRating: number;
   /**
@@ -197,8 +206,13 @@ export const DEFAULT_PARAMS: ModelParams = {
   winProbSlope: 0.101,
   edgeThreshold: 2,
   bigEdgeThreshold: 4,
-  fcsTopRating: -25,
-  fcsOtherRating: -35,
+  // Identity: equal values make the bucket unobservable, so this reproduces
+  // the flat −30 every prior version ran. The spec's −25/−35 were never in the
+  // code path — they were dead constants read nowhere, and every other
+  // parameter here was fitted against the flat number. Moving them is
+  // `--tune-fcs`'s job, not a spec transcription's.
+  fcsTopRating: -30,
+  fcsOtherRating: -30,
   // Identity defaults: each of these reproduces the 2026.3.0 math exactly.
   // They stay 0 until the corresponding backtest tuner earns a value under
   // its pre-registered decision rule (docs/SPEC.md §2.5).
