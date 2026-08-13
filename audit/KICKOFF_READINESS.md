@@ -1,5 +1,33 @@
 # Week 0 Kickoff Readiness Audit — The CFB Slate
 
+> **Historical document. For what is still open, read `docs/STATUS.md`.**
+>
+> This is the Aug 11–12 point-in-time audit, and it is the last of the three to
+> get this banner — `docs/AUDIT-2026-08.md` and `audit/CHECKLIST.md` have
+> carried one since 08-12, which made this file the only audit that still read
+> as a live worklist. Added 2026-08-13.
+>
+> **Most of what follows is closed.** Every P0 was closed on 08-12. On 08-13 the
+> code and docs half of the P1/P2 list went with it: **P1-1** (admin void
+> control), **P1-3** (`.env.example`), **P1-4** (burst poll — spec amended, no
+> cron added), **P1-5** (`/ratings` empty state), **P1-8** (the email arrived —
+> and was unread, which is why `OPS-2` was built), **P2-1** (blank env vars read
+> as zero), **P2-3**/**Q7** (dead edge function deleted), **P2-10** (insurance
+> crons, with `5 10 * * 6` substituted for a string already owned by weather),
+> **P2-11** (`gameMedia` failures no longer silent), and **Q4** (FCS buckets,
+> built at identity). The day-by-day plan in §10 is spent.
+>
+> **What this file is still good for** is the reasoning: why each finding was
+> ranked where it was, the evidence behind it, and — read §1's revision notes —
+> where the first pass got it wrong. It ranked a non-issue first and missed the
+> real one entirely, and both are visible above rather than quietly corrected.
+> Nothing here is edited to look better in hindsight.
+>
+> It also does not know about three defects found on 08-13 that no audit
+> caught: the notification crons were declared and never routed, `make_pick`
+> never cleared `result` so a re-picked game could not be graded, and nine
+> failure emails had arrived unread.
+
 **Audit date:** 2026-08-11 · **Week 0 kickoff:** Sat 2026-08-29 (18 days) · **Week 1:** Sat 2026-09-05 (25 days)
 **Scope:** read-only. Nothing in the repo was modified by this pass. Every finding is a work item, not a change.
 **Method:** verified against the code on this branch (`claude/cfb-slate-kickoff-audit-lawxb8`, identical tree to `main` at `765c63d`). Prior audit documents were treated as claims and re-checked, not as evidence.

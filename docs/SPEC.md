@@ -220,13 +220,18 @@ Weights tuned by feel; displayed as a 0–100 score.
 | Job | Schedule |
 |---|---|
 | Refresh betting lines | 2× daily for display, plus one close pass ~40 min before each kickoff wave. **[Amended 2026-08-13]** The **burst poll is dispatch-only** — `refresh-lines-burst` exists and is in the dispatch list, and deliberately has no cron (owner decision, Aug 2026: lines barely move intraday, nobody here bets the moves, and the only number that matters is the close, because that is what CLV is graded against). Running it every 5–10 min through every wave would multiply call volume for a number nothing reads. |
-| Update ratings from results | Sunday 8am ET |
-| Weather pull | Saturday 6am local per stadium |
-| Injury/news LLM scan | Daily 7am, scoped to teams playing that week; admin confirms |
-| Live scoreboard poll | **[v2]** Every 2–5 min on game days (client polls our DB — no websockets project) |
+| Update ratings from results | Sunday 13:00 UTC, chained with grading and the Rule #4 void pass |
+| Weather pull | Saturday 10:00 UTC — **one run, not per-stadium-local** *(amended 2026-08-13; the spec's "6am local per stadium" was never built and would need a cron per timezone)* |
+| Live scores | **[Amended 2026-08-13]** A polling loop, launched hourly, that polls CFBD every **30s** while games are live and 120s around kickoffs. Browsers are updated by **Supabase realtime** (`postgres_changes`), not by polling our DB — the v2 text said "client polls our DB — no websockets project" and had it exactly backwards. Zero CFBD calls when idle. |
 | Snapshot opening lines | When lines first post |
-| Freeze weekly predictions | Thursday night (receipts) |
-| Calibration report | Sunday after rating update |
+| Freeze weekly predictions | Thursday 03:00 UTC (= 10pm CT Thu) — the receipts |
+| Push notifications | Picks-due before each kickoff wave; log-your-bets for betting groups; bad beats live from the scoreboard job; watchdog alerts to admins. Timing and copy live in `notification_settings`, editable from `/admin` |
+| Backup | Sunday 15:00 UTC — `pg_dump` of the append-only tables |
+| Watchdog | 3×/day plus mid-Saturday — absence check on the data jobs |
+| ~~Injury/news LLM scan~~ | **Not built.** Tracked as `F3` in `docs/STATUS.md` §4. |
+| ~~Calibration report~~ | **Not built.** Tracked as `07:OPS-8b` in `docs/STATUS.md` §4 — it needs a season of graded data before it can say anything. |
+
+**The cron expressions themselves are not reproduced here.** `.github/workflows/jobs.yml` is the only place they live, with the reasoning for each beside it. This table restating them is what let three rows in it go stale for months — a document that copies a fact the code already states will drift away from it, and the copy is the one people read.
 
 **[v2] Pick locking is NOT a cron job** — enforced in the data layer: mutations rejected and visibility granted by `now() vs kickoff_ts` checks (RLS + server).
 

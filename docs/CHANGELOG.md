@@ -166,6 +166,43 @@ shipping it.
 
 ## Log
 
+### Aug 13 — The last audit that read as a live worklist, and a table that copied the code
+
+Two doc fixes found by asking whether the five documents actually agree.
+
+**`audit/KICKOFF_READINESS.md` was the only audit without a history banner.**
+`AUDIT-2026-08.md` and `audit/CHECKLIST.md` have carried one since 08-12; this
+one still opened as a live audit with P0/P1/P2 findings and a day-by-day plan.
+It is also the file most affected by today's work — it discusses P2-1 ten times,
+P1-1 seven times, P2-10 and Q4 five times each, all now closed. Someone opening
+it cold would have concluded eleven items were open that are not. Banner added,
+listing what closed, and pointing at what the file is still worth reading for:
+the reasoning, and §1's record of where its own first pass was wrong.
+
+**`SPEC.md` §8's schedule table had three rows that were never true and one that
+stopped being true.** This morning's pass fixed the seven contradictions the
+tracker listed; these were not on it, which is the point — nobody had checked
+the table against the code, only against the tracker.
+
+- "Live scoreboard poll: every 2–5 min on game days (**client polls our DB — no
+  websockets project**)" was inverted. Browsers are updated by Supabase realtime
+  over `postgres_changes`, and the loop polls CFBD every **30 seconds**.
+- "Injury/news LLM scan | Daily 7am" and "Calibration report | Sunday after
+  rating update" describe jobs that do not exist. They are `F3` and `07:OPS-8b`,
+  open in `docs/STATUS.md` §4, and the table listed them beside real schedules
+  with nothing to distinguish them.
+- "Weather pull | Saturday 6am local per stadium" — one run at 10:00 UTC. Per
+  stadium would need a cron per timezone and was never built.
+
+The table also gained the rows it was missing entirely — push, backup, watchdog
+— and lost the thing that caused the drift: **it no longer reproduces cron
+expressions.** `jobs.yml` is the only place those live. A document that copies a
+fact the code already states will drift from it, and the copy is the one people
+read. That is the same failure as the notify crons, one layer up: the schedule
+existed in two places and only one of them was true.
+
+No model change. `DEFAULT_PARAMS` untouched, no tuner run.
+
 ### Aug 13 — CI confirmed the FCS change is inert
 
 The identity claim was asserted locally in `replay.test.ts`. PR #54's
