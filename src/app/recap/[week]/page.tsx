@@ -9,11 +9,15 @@ import type {
   PredictionRow,
   TeamRow,
 } from "../../../lib/db-types";
+import { required } from "../../../lib/db-result";
 import { fetchCurrentSeasonWeek, fetchProfiles } from "../../../lib/queries";
 import { formatRecord, tallyBy } from "../../../lib/records";
 import { fmtPct } from "../../../lib/slate";
 import { createClient } from "../../../lib/supabase/server";
 import { isValidWeek } from "../../../lib/week-range";
+
+/** What this page actually selects from `teams`. */
+type RecapTeam = Pick<TeamRow, "id" | "school" | "abbreviation" | "logo_url">;
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +26,7 @@ export async function generateMetadata({ params }: { params: Promise<{ week: str
   return { title: `Week ${week} recap` };
 }
 
-const abbrOf = (t: TeamRow | undefined): string =>
+const abbrOf = (t: Pick<TeamRow, "school" | "abbreviation"> | undefined): string =>
   t?.abbreviation ?? t?.school.replace(/[^A-Za-z]/g, "").slice(0, 4).toUpperCase() ?? "?";
 
 /**
@@ -37,13 +41,15 @@ export default async function RecapPage({ params }: { params: Promise<{ week: st
   const supabase = await createClient();
   const { seasonId } = await fetchCurrentSeasonWeek(supabase);
 
-  const { data: gameRows } = await supabase
+  const gamesRes = await supabase
     .from("games")
     .select("*")
     .eq("season_id", seasonId)
     .eq("week", week)
     .eq("season_type", "regular");
-  const games = ((gameRows ?? []) as GameRow[]).filter(
+  // The recap IS these games and the picks on them; a failed read must not
+  // render as "no games that week" (db-result.ts).
+  const games = required<GameRow>(gamesRes, "games").filter(
     (g) => g.status === "final" && g.home_points !== null && g.away_points !== null,
   );
   const gameIds = games.map((g) => g.id);
@@ -84,9 +90,12 @@ export default async function RecapPage({ params }: { params: Promise<{ week: st
       : Promise.resolve({ data: [] }),
   ]);
 
-  const teams = new Map(((teamsRes.data ?? []) as TeamRow[]).map((t) => [t.id, t]));
+  // Four columns, not a whole TeamRow — the old `as TeamRow[]` cast said
+  // otherwise and TypeScript believed it. Everything downstream reads `school`
+  // and `abbreviation`, so the honest type costs nothing.
+  const teams = new Map(required<RecapTeam>(teamsRes, "teams").map((t) => [t.id, t]));
   const predByGame = new Map<number, PredictionRow>();
-  for (const p of (predsRes.data ?? []) as PredictionRow[]) {
+  for (const p of required<PredictionRow>(predsRes, "predictions")) {
     if (!predByGame.has(p.game_id)) predByGame.set(p.game_id, p);
   }
 
@@ -156,15 +165,15 @@ export default async function RecapPage({ params }: { params: Promise<{ week: st
     .slice(0, 8);
   const moverTeamIds = movers.map((m) => m.teamId).filter((id) => !teams.has(id));
   if (moverTeamIds.length > 0) {
-    const { data: extraTeams } = await supabase
+    const extraTeamsRes = await supabase
       .from("teams")
       .select("id, school, abbreviation, logo_url")
       .in("id", moverTeamIds);
-    for (const t of (extraTeams ?? []) as TeamRow[]) teams.set(t.id, t);
+    for (const t of required<RecapTeam>(extraTeamsRes, "mover teams")) teams.set(t.id, t);
   }
 
   // ---- crew: CLV leaders + records for the week ----
-  const picks = (picksRes.data ?? []) as PickRow[];
+  const picks = required<PickRow>(picksRes, "picks");
   const nameById = new Map(profiles.map((p) => [p.id, p.display_name]));
   const crew = [...tallyBy(picks, (p) => p.user_id).entries()]
     .filter(([, t]) => t.decided > 0)

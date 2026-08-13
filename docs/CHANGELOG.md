@@ -166,6 +166,58 @@ shipping it.
 
 ## Log
 
+### Aug 13 (later) — Making silence stop looking like success
+
+Three fixes, one theme: a failure that produced the same observation as health.
+This repo keeps finding that shape — the backup step that exited 0 with a
+20-byte artifact, the dead-man ping discarded by `|| true`, the six notification
+crons that resolved to `task=unknown`. Two more of them, plus a box that was
+ticked on work that fixed nothing measurable.
+
+**Query errors were dropped at every call site**, so a dead data layer rendered
+as an empty season. `const { data } = await supabase…` discards `error`, and
+nothing downstream could tell "no rows" from "no database".
+
+**My first measurement of this was wrong, and the correction is the useful
+part.** I reported that a build pointed at a non-resolving database served 200
+on every route. That experiment was invalid: Next inlines `NEXT_PUBLIC_*` at
+build time *including in server components*, so overriding the URL at
+`next start` did nothing — the server was talking to the live project
+throughout. Confirmed by finding the real project ref baked into
+`.next/server` chunks. Rebuilt with the bad URL actually baked in, the defect
+reproduced cleanly: `/standings`, `/ratings`, `/receipts`, `/recap`, `/slate`,
+`/rankings`, `/teams` and `/ledger` all rendered an empty season in silence.
+After the fix, all eight render the error boundary.
+
+`src/lib/db-result.ts` — `required()` throws on a failed read, never on an
+empty one, because empty is a real state here. Applied to the rows each page
+**is**, not to enrichment: a missing dome flag should not blank a slate. That
+line is the whole design, and it is written down rather than left to taste.
+Fixing it also exposed an unsound `as TeamRow[]` on `/recap`, where the query
+selects four columns and the cast claimed nine.
+
+**`emptyIsHealthy` is gone**, and the argument it caused turned out to be about
+nothing. This file's tracker wanted it removed; `KICKOFF_READINESS.md:69` said
+it "costs nothing and stays". Both were arguing a red/green trade that never
+existed — `probeFailures` has only ever counted DENIED and ERROR, so EMPTY
+never failed a run. Removing the flag changes what the probe *says*, not what it
+*does*. Zero rows now reports EMPTY everywhere, and a required endpoint
+returning nothing raises a warning naming it. Going red on empty still needs one
+observation of a live game, which is still `observe-scoreboard`.
+
+**UX-28 was reopened.** It shipped `min-w-0` plus a `title` on the standings
+team cell, and the box was ticked. Measured against the live database, the
+symptom does not reproduce: nothing clips at 375px or 320px, and column widths
+are identical with and without the change — `[172, 43, 64, 66]` both ways —
+including a forced worst case of the longest FBS name beside full
+end-of-season records. Shipping a defensive change is not fixing a defect, and
+a checked box in `docs/STATUS.md` means the latter. The Aug 21 device pass
+settles it; if nobody can make a name truncate, it closes as "not a defect"
+rather than as done.
+
+659 tests across 47 files, 155 DB assertions, `tsc`, lint and `next build`
+clean. No decisions-table row: nothing here touches `DEFAULT_PARAMS`.
+
 ### Aug 13 — The post-launch queue, opened early, and nine rows that lied about themselves
 
 §2 had nothing buildable left — every unchecked row in the blocking list is

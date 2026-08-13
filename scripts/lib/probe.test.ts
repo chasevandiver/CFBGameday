@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { CfbdError } from "../../src/lib/cfbd";
-import { classifyProbe, formatProbe, probeFailures, type ProbeResult } from "./probe";
+import {
+  classifyProbe,
+  formatProbe,
+  probeEmpties,
+  probeFailures,
+  type ProbeResult,
+} from "./probe";
 
 // The one distinction this module exists to make. A 403 and an empty array
 // both mean "no data came back", and they call for opposite responses: one is
@@ -8,28 +14,28 @@ import { classifyProbe, formatProbe, probeFailures, type ProbeResult } from "./p
 // them is how you spend three weeks waiting for data that was never coming.
 describe("classifyProbe", () => {
   it("reads a 403 as DENIED — the tier, not the data", () => {
-    const c = classifyProbe({ error: new CfbdError("nope", 403, "/scoreboard") }, false);
+    const c = classifyProbe({ error: new CfbdError("nope", 403, "/scoreboard") });
     expect(c).toEqual({ status: "DENIED", httpStatus: 403, rows: null });
   });
 
   it("reads a 401 as DENIED too — a wrong key is still 'you cannot have this'", () => {
-    expect(classifyProbe({ error: new CfbdError("nope", 401, "/lines") }, false).status).toBe(
+    expect(classifyProbe({ error: new CfbdError("nope", 401, "/lines") }).status).toBe(
       "DENIED",
     );
   });
 
   it("reads a 500 as ERROR, not DENIED — CFBD having a bad day is not a tier problem", () => {
-    const c = classifyProbe({ error: new CfbdError("boom", 500, "/games") }, false);
+    const c = classifyProbe({ error: new CfbdError("boom", 500, "/games") });
     expect(c).toEqual({ status: "ERROR", httpStatus: 500, rows: null });
   });
 
   it("reads a non-HTTP failure as ERROR with no status", () => {
-    const c = classifyProbe({ error: new Error("getaddrinfo ENOTFOUND") }, false);
+    const c = classifyProbe({ error: new Error("getaddrinfo ENOTFOUND") });
     expect(c).toEqual({ status: "ERROR", httpStatus: null, rows: null });
   });
 
   it("reads rows as OK", () => {
-    expect(classifyProbe({ rows: 136 }, false)).toEqual({
+    expect(classifyProbe({ rows: 136 })).toEqual({
       status: "OK",
       httpStatus: null,
       rows: 136,
@@ -37,14 +43,18 @@ describe("classifyProbe", () => {
   });
 
   it("reads zero rows as EMPTY — access is fine, the data is not published", () => {
-    expect(classifyProbe({ rows: 0 }, false).status).toBe("EMPTY");
+    expect(classifyProbe({ rows: 0 }).status).toBe("EMPTY");
   });
 
-  it("reads zero rows as OK where empty is the correct answer", () => {
-    // /scoreboard returns [] every day that isn't a Saturday. Demanding rows
-    // from it in August would report a working key as broken — which is the
-    // exact false alarm that would send someone chasing a tier upgrade.
-    expect(classifyProbe({ rows: 0 }, true).status).toBe("OK");
+  it("has no exemption left — zero rows is EMPTY for every endpoint", () => {
+    // This test used to assert the opposite for /scoreboard, on the premise
+    // that it "returns [] every day that isn't a Saturday". The Aug 12 probe
+    // pulled 889 rows on a Wednesday, so the premise was false and the
+    // exemption printed `ok` over the one symptom that says the live layer is
+    // dead. EMPTY still never fails the run (see probeFailures) — the change
+    // is that the table stops claiming everything is fine.
+    expect(classifyProbe({ rows: 0 }).status).toBe("EMPTY");
+    expect(classifyProbe({ rows: 1 }).status).toBe("OK");
   });
 });
 
@@ -57,6 +67,23 @@ const result = (over: Partial<ProbeResult>): ProbeResult => ({
   note: "",
   usedFor: "something",
   ...over,
+});
+
+describe("probeEmpties", () => {
+  it("surfaces a required endpoint that answered with nothing", () => {
+    const rs = [
+      result({ endpoint: "/scoreboard", required: true, status: "EMPTY" }),
+      result({ endpoint: "/optional", required: false, status: "EMPTY" }),
+      result({ endpoint: "/games", required: true, status: "OK" }),
+    ];
+    expect(probeEmpties(rs).map((r) => r.endpoint)).toEqual(["/scoreboard"]);
+  });
+
+  it("is not a failure — the run stays green on an empty offseason board", () => {
+    const rs = [result({ endpoint: "/scoreboard", required: true, status: "EMPTY" })];
+    expect(probeEmpties(rs)).toHaveLength(1);
+    expect(probeFailures(rs)).toHaveLength(0);
+  });
 });
 
 describe("probeFailures", () => {

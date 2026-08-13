@@ -11,6 +11,7 @@ import type {
 } from "./db-types";
 import { hasCalibratedTotals } from "../model/ratings";
 import { pickPollRanks, pollShortName } from "./rankings";
+import { required } from "./db-result";
 import { tallyBy } from "./records";
 import { toSheetBet } from "./betting-groups";
 import { classifyBets, recentForm, statsByMember, type GroupBetView } from "./tailing";
@@ -234,14 +235,18 @@ export async function fetchSlateView(
         : Promise.resolve({ data: [], error: null }),
     ]);
 
-  const teams = new Map(((teamsRes.data ?? []) as TeamRow[]).map((t) => [t.id, t]));
+  // teams, the consensus lines and the frozen predictions are what a slate card
+  // IS. The enrichment below (weather, venues, rivalries, polls, other systems)
+  // stays quiet on failure — a missing dome flag should not blank the slate.
+  // See db-result.ts for the rule.
+  const teams = new Map(required<TeamRow>(teamsRes, "teams").map((t) => [t.id, t]));
 
   const consensusByGame = new Map(
-    ((consensusRes.data ?? []) as LineConsensusRow[]).map((c) => [c.game_id, c]),
+    required<LineConsensusRow>(consensusRes, "line consensus").map((c) => [c.game_id, c]),
   );
   // newest prediction wins; prefer frozen (Thursday receipts) rows
   const predByGame = new Map<number, PredictionRow>();
-  for (const p of (predsRes.data ?? []) as PredictionRow[]) {
+  for (const p of required<PredictionRow>(predsRes, "predictions")) {
     const existing = predByGame.get(p.game_id);
     if (!existing || (p.frozen && !existing.frozen)) predByGame.set(p.game_id, p);
   }
@@ -250,7 +255,7 @@ export async function fetchSlateView(
   // them (it highlights the cell you took in each) and picks one to lead with
   // where it can only show one — see headlinePick.
   const picksByGame = new Map<number, PickRow[]>();
-  for (const p of (picksRes.data ?? []) as PickRow[]) {
+  for (const p of required<PickRow>(picksRes, "picks")) {
     picksByGame.set(p.game_id, [...(picksByGame.get(p.game_id) ?? []), p]);
   }
 

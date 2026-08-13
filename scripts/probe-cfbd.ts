@@ -21,7 +21,13 @@ import { cfbd, cfbdCallCount } from "../src/lib/cfbd";
 import { createServiceClient } from "../src/lib/supabase/service";
 import { SEASON } from "./lib/ingest";
 import { logCfbdCalls } from "./lib/jobs-core";
-import { classifyProbe, formatProbe, probeFailures, type ProbeResult } from "./lib/probe";
+import {
+  classifyProbe,
+  formatProbe,
+  probeEmpties,
+  probeFailures,
+  type ProbeResult,
+} from "./lib/probe";
 
 /** Completed season, so "no rows" is a real signal rather than "not yet". */
 const PAST = SEASON - 1;
@@ -30,8 +36,6 @@ interface ProbeSpec {
   endpoint: string;
   required: boolean;
   usedFor: string;
-  /** True when an empty array is the correct answer, not a symptom. */
-  emptyIsHealthy?: boolean;
   note?: string;
   run: () => Promise<unknown[]>;
 }
@@ -42,9 +46,11 @@ const PROBES: ProbeSpec[] = [
     endpoint: "/scoreboard",
     required: true,
     usedFor: "live scores, cover-flip detection",
-    // Out of season the board is empty and that is correct — what this probe
-    // is asking is whether the call returns 200 at all.
-    emptyIsHealthy: true,
+    // Empty used to be scored `ok` here on the stated grounds that the board
+    // "returns [] all week". It does not — the Aug 12 probe pulled 889 rows on
+    // a Wednesday — so zero rows now reports EMPTY like every other endpoint
+    // and raises a warning below. It still does not fail the run: going red on
+    // empty needs one observation of a live game (observe-scoreboard).
     note: "Tier 1+. Never exercised in the offseason: scoreboard-loop exits via idleSkip until ~2 days before the opener.",
     run: () => cfbd.scoreboard(),
   },
@@ -131,7 +137,7 @@ async function main() {
     } catch (error) {
       outcome = { error };
     }
-    const { status, httpStatus, rows } = classifyProbe(outcome, p.emptyIsHealthy ?? false);
+    const { status, httpStatus, rows } = classifyProbe(outcome);
     // The standing note explains why the endpoint is worth probing; the error
     // explains what just happened. On the two rows that carry both, the second
     // is the one you need — so append, never replace.
@@ -163,6 +169,16 @@ async function main() {
     await logCfbdCalls(createServiceClient(), "cfbd-probe", cfbdCallCount());
   } catch {
     // Runs fine with only a CFBD key; the meter is a bonus, not a dependency.
+  }
+
+  // A required endpoint answering with nothing is not a failure — it can be the
+  // truth in the offseason — but it must not pass silently either, which is
+  // exactly what `emptyIsHealthy` used to do for /scoreboard. Warn, don't red.
+  for (const e of probeEmpties(results)) {
+    console.log(
+      `::warning::${e.endpoint} returned 0 rows — ${e.usedFor}. ` +
+        `Correct in the offseason; on a game day it means the live layer is not answering.`,
+    );
   }
 
   const failures = probeFailures(results);
