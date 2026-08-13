@@ -44,7 +44,7 @@ images. The one ship-critical risk is not a feature at all: **production serves
 | F15 | P3 | spec-div (deliberate) | FIXED-verified | §8 scheduler is GitHub Actions, not pg_cron; `supabase/functions/jobs/index.ts` is dead, undeployed, and knowingly retains the inverted-CLV formula | `jobs.yml:1-6`; changelog Aug 7 CLV entry |
 | F16 | P3 | spec-div | NEW | §2.4 "all four systems side by side **on every game card**" — implemented on the game detail page, not on slate cards; the freeze does pass real SP+/FPI/Elo margins into the consensus flag | `src/app/game/[id]/page.tsx:145-151,248-258`; `jobs-core.ts:713-761` |
 | F17 | P2 | design | NEW | Receipts, Edges, and the group leaderboards are all **BUILT but data-empty until the first freeze (Thu Aug 27/Sep 3) and first grading (Sun)** — the launch-day product shows several correctly-explained empty states; unavoidable, but worth knowing before demoing | `src/app/receipts/page.tsx:178-181`; `src/app/edges/page.tsx:69-76`; changelog "CLV has no data yet" |
-| F18 | P3 | bug (latent) | STILL OPEN (documented) | `build-preseason.ts` still hardcodes `SEASON = 2026` (checklist #36 partial) — a 2027 problem, not an Aug 29 one | `docs/AUDIT-2026-08.md` #36; `scripts/build-preseason.ts:60` |
+| F18 | P3 | bug (latent) | STILL OPEN (documented) | `build-preseason.ts` still hardcodes `SEASON = 2026` (checklist #36 partial) — a 2027 problem, not an Aug 29 one | `audit/AUDIT-2026-08.md` #36; `scripts/build-preseason.ts:60` |
 | F19 | P3 | spec-div | STILL OPEN (Phase 2/3, correctly deferred) | Derivative pricing (§5.2), Odds API splits (§5.5), PWA push (§ Phase 3), bowl opt-outs/portal mode (§9) — all SPEC-ONLY by phase | spec §10 |
 
 Stale-prompt hypotheses resolved: Teams/Receipts "stub tabs" — **NEVER TRUE

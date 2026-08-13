@@ -26,10 +26,7 @@ lands the fix, so the file is truthful at every commit.
 | `docs/SPEC.md` | What we're building and why | ✅ |
 | `docs/DESIGN.md` | Design rules; read before UI work | ✅ |
 | `docs/BRAND.md` | Brand System v1.0 — the mark, the palette, the launch surfaces | ✅ identity spec |
-| `audit/CHECKLIST.md` | The Aug 10 Package A–C program — **completed record** | 📕 history |
-| `audit/KICKOFF_READINESS.md` | Aug 11–12 readiness audit (P0/P1/P2 analysis, backtest re-run, day plan) | 📕 history — findings tracked here |
-| `audit/00`–`10` | Aug 9 workstream reports; source of the `NN:XX-N` IDs | 📕 history |
-| `docs/AUDIT-2026-08.md` | Aug 6 product audit: 18 bugs, 46-item checklist, score card | 📕 history |
+| **`audit/`** (14 files) | Four point-in-time passes, Aug 6 → Aug 12. **`audit/README.md` is the index** — it says which pass is which and, more usefully, how to resolve an ID: the number in `04:DQ-13` is the file. | 📕 all history, nothing open |
 
 Historical documents are kept intact and are not edited to look better in
 hindsight. When one of them contradicts this file, **this file is right** — its
@@ -898,8 +895,8 @@ here was decided by a commit message.
 | `audit/CHECKLIST.md` `05:N9` | `[x]` postponed/canceled grade void | **Partial.** The grader is right; nothing writes those statuses. Re-opened as **P1-1** in §2.2. |
 | `audit/CHECKLIST.md` `04:DQ-13` | `[x]` rejects NaN/empty `PRESEASON_TILT_CARRY` | **Partial.** NaN is caught, empty string silently becomes `0`. Re-opened as **P2-1**. |
 | `audit/CHECKLIST.md` `SEC-01` | "migration 0026" | Stale — 0026 and 0027 are taken; next free is **0028**. |
-| `docs/AUDIT-2026-08.md` §23 | 46 raw `[ ]` boxes, all unchecked, below a table saying 38 are done | The boxes now carry their verified status. The table was right; the boxes were three months of drift. |
-| `docs/AUDIT-2026-08.md` Bug #9 | cites `actions/picks.ts:54,58` | The fix moved into the `remove_pick` RPC (`0021:255-257`) and got *stronger*. Citation queued for correction in §2.3. |
+| `audit/AUDIT-2026-08.md` §23 | 46 raw `[ ]` boxes, all unchecked, below a table saying 38 are done | The boxes now carry their verified status. The table was right; the boxes were three months of drift. |
+| `audit/AUDIT-2026-08.md` Bug #9 | cites `actions/picks.ts:54,58` | The fix moved into the `remove_pick` RPC (`0021:255-257`) and got *stronger*. Citation queued for correction in §2.3. |
 | `docs/CHANGELOG.md` Aug 12 (portal) | — | Created a new open item (**Q8**, re-run `--tune-churn`) that no checklist carried. Now in §2.4. |
 | `docs/CHANGELOG.md` Aug 12 (observe) | — | Same: the `observe-scoreboard` dispatch and the stale `probe.ts:52` comment existed only in prose. Now in §2.4 and §2.3. |
 | `jobs.yml` | `07:OPS-9` backup job `[x]` | The job is right and inert-until-secret as designed, but it is **cron-only** — not dispatchable, so setting `SUPABASE_DB_URL` cannot be verified until a Sunday. New row in §2.1. |

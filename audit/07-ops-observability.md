@@ -34,7 +34,7 @@
 
 ## 1. Job inventory: spec §8 vs what is actually scheduled
 
-Spec §8 (`docs/SPEC.md:214-235`) says "**All jobs run on Supabase pg_cron → Edge Functions**." Reality: the live scheduler is `.github/workflows/jobs.yml`, and the edge function was never deployed (`docs/AUDIT-2026-08.md:28-29`, `docs/CHANGELOG.md` Open items). Inventory against the spec's table, quoting the actual cron (all UTC):
+Spec §8 (`docs/SPEC.md:214-235`) says "**All jobs run on Supabase pg_cron → Edge Functions**." Reality: the live scheduler is `.github/workflows/jobs.yml`, and the edge function was never deployed (`audit/AUDIT-2026-08.md:28-29`, `docs/CHANGELOG.md` Open items). Inventory against the spec's table, quoting the actual cron (all UTC):
 
 | Spec §8 job | Spec schedule | Actual | Cron (`jobs.yml`) | Verdict |
 |---|---|---|---|---|
@@ -57,7 +57,7 @@ Spec §8 (`docs/SPEC.md:214-235`) says "**All jobs run on Supabase pg_cron → E
 
 ## 2. GitHub Actions as scheduler — honest reliability assessment (OPS-7)
 
-Labeled **spec divergence, deliberate and documented** (`jobs.yml:1-6` acknowledges it; the prior audit accepted it, `docs/AUDIT-2026-08.md:476`). The specific risks for *this* repo:
+Labeled **spec divergence, deliberate and documented** (`jobs.yml:1-6` acknowledges it; the prior audit accepted it, `audit/AUDIT-2026-08.md:476`). The specific risks for *this* repo:
 
 1. **Schedule drift/skips.** Actions cron is best-effort: delays of 5–30+ min are routine at peak, and runs can be dropped entirely; the top of the hour is the worst time — and **every cron here except the burst fires at minute 0** (`jobs.yml:52-90`). Consequences by job: refresh-lines/sync-games/weather — harmless. Scoreboard — the 63-minute loop with ~3-min overlap (`jobs.yml:60-65`) absorbs a delayed start but a **dropped** hourly launch leaves up to an hour of dead score coverage mid-Saturday. Burst — a skipped 10-min tick just makes the closing proxy 10–20 min staler (documented, `jobs.yml:4-6`). Acceptable, but note the coverage seam: the Sat (`0 15-23 * * 6`) and Sun (`0 0-4 * * 0`) scoreboard schedules are *different concurrency groups* (`jobs.yml:92-95` keys on the schedule string), so the advertised cancel-handoff doesn't apply at the 23:00→00:00 boundary — you get a 3-min double-poll instead of a handoff. Harmless, just not what the comment says.
 2. **No minute precision.** Only matters for the closing proxy; already documented as approximate (spec §5.3 proxy note in `jobs.yml:4-6`).
@@ -185,7 +185,7 @@ No dump job exists (grep of workflows: none). The emitted preseason JSON (`load-
 ## 13. Secrets (OPS-11, OPS-18)
 
 - Actions secrets: `CFBD_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, optional `ANTHROPIC_API_KEY` (`jobs.yml:8-9,101-105`). Standard and fine for a solo project. Known properties, not findings: anyone with repo write can exfiltrate via a workflow edit; fork PRs don't receive secrets (so `backtest.yml`'s CFBD-dependent run fails on fork PRs — moot for a solo repo); `ci.yml` correctly builds with placeholders (`ci.yml:31-33`).
-- `JOBS_SECRET` exists **only** in the dead edge function as a `__JOBS_SECRET__` deploy-time string-replace (`index.ts:19-20`) — the pattern the prior audit already called brittle (`docs/AUDIT-2026-08.md:476-477`). Since the function is undeployed there is no live exposure; it's one more reason to delete the file (OPS-11).
+- `JOBS_SECRET` exists **only** in the dead edge function as a `__JOBS_SECRET__` deploy-time string-replace (`index.ts:19-20`) — the pattern the prior audit already called brittle (`audit/AUDIT-2026-08.md:476-477`). Since the function is undeployed there is no live exposure; it's one more reason to delete the file (OPS-11).
 - Rotation: nothing automated anywhere; rotating the service key = update one Actions secret. Acceptable.
 - Process hole worth restating (OPS-18): **PRs opened by an app token trigger no workflows** (`docs/CHANGELOG.md`, "Note on workflow runs") — so the backtest gate and CI both silently don't run on the repo's primary development mode until a human closes/reopens. The gate exists; the trigger path has a manual step that will eventually be forgotten.
 

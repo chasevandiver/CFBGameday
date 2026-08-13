@@ -1,7 +1,7 @@
 # The CFB Slate — Change & Decision Log
 
 Running record of what shipped, what was tested and rejected, and why. Companion
-to `docs/SPEC.md` (what we're building) and `docs/AUDIT-2026-08.md` (a
+to `docs/SPEC.md` (what we're building) and `audit/AUDIT-2026-08.md` (a
 point-in-time review).
 
 **The rejections are the point.** Git already records what changed. What git
@@ -165,6 +165,40 @@ shipping it.
 ---
 
 ## Log
+
+### Aug 13 — Fourteen history files, one door
+
+`docs/` held five live documents and one frozen one; `audit/` held the other
+thirteen frozen ones. So `AUDIT-2026-08.md` sat apart from its three siblings
+for no reason except the order things were written in, and a newcomer had to
+open several files to learn which of them was still true.
+
+Moved to `audit/`, and `audit/README.md` is now the single door. `docs/` is
+exactly the five live documents.
+
+The index earns its place on one thing more than the filing. `docs/STATUS.md`
+cites findings as `04:DQ-13`, `09:P-16`, `05:N9`, `07:OPS-11` — and nothing
+anywhere said that **the leading number is the file**. The mapping was
+tribal knowledge; it is now a table, verified rather than assumed (the first
+draft had `F-NN` in `10-gap-analysis.md`; it is in `01-feature-inventory.md`,
+and `10` owns `G-NN`). It also warns about the two collisions: `09`'s `P-NN` is
+not `KICKOFF_READINESS`'s `P0/P1/P2-N`, and `M-N` appears in both `02` and `03`.
+
+The README closes with what four audit passes did not catch — the unrouted
+notification crons, `make_pick` never clearing `result`, and nine unread failure
+emails — because the pattern connecting them is worth more than the list. Each
+component was verified at its own level and the seam between them was not
+testable by any of those verifications: a push proved on a real iPhone, a cron
+proved by reading YAML, and nothing proving the cron reached the push.
+
+Path references were rewritten across the frozen files. That is not a revision
+of a finding, which the freeze rule forbids — it is a moved file, and the
+alternative was knowingly leaving twelve broken links in the history.
+
+`docs/STATUS.md`'s document table and `AGENTS.md` both collapse four rows into
+one pointer at the index.
+
+No model change. `DEFAULT_PARAMS` untouched, no tuner run.
 
 ### Aug 13 — The last audit that read as a live worklist, and a table that copied the code
 
@@ -1025,7 +1059,7 @@ and `var(--accent)` for the seam, so it is correct under whichever palette is
 live, in both themes.
 ### Aug 12 — Reconciling the tracker against a day it did not keep up with
 
-`docs/STATUS.md`, `docs/AUDIT-2026-08.md`. No code.
+`docs/STATUS.md`, `audit/AUDIT-2026-08.md`. No code.
 
 The point of a single tracker is that it is true; a day of parallel work is
 exactly when that stops being free. Re-checked §1's numbers against the repo and
@@ -1395,7 +1429,7 @@ edited to stop competing with it.
 
 **The problem was arithmetic, not prose.** "What's left?" had six answers:
 `audit/CHECKLIST.md`'s Packages A–C plus its deferred and calendar sections;
-`docs/AUDIT-2026-08.md`'s §16 bug table, its §23 status table, *and* its 46 raw
+`audit/AUDIT-2026-08.md`'s §16 bug table, its §23 status table, *and* its 46 raw
 checkboxes; `audit/KICKOFF_READINESS.md`'s P0/P1/P2 findings, §9 decisions and
 §10 day plan; and this file's Open items. Three ID schemes — `04:DQ-13`,
 `P2-1`, `§23 #40` — with no map between them, and at least one item appearing
@@ -2507,7 +2541,7 @@ edited, not taken from the previous doc:
   (shipped as `UX-12/F8`), and still said the code was at `2026.4.0` when this
   same file's Current-state header says `2026.4.1`. Self-contradictory, twenty
   lines apart.
-- `docs/AUDIT-2026-08.md` §23 carried its 08-07 reconciliation into 08-10
+- `audit/AUDIT-2026-08.md` §23 carried its 08-07 reconciliation into 08-10
   unchanged: row 36 still flagged the `build-preseason.ts` `SEASON` hardcode
   (closed by `04:DQ-14`) and row 46 still said "no `opengraph-image` route
   anywhere". **38 done, 5 partial, 3 open** now, and the three re-checked rows
@@ -3089,7 +3123,7 @@ and OG share images (#46) stay open. They are additive features, not defects.
 
 ### Aug 7 — the audit, reconciled
 
-`docs/AUDIT-2026-08.md` had 18 numbered bugs and a 46-item checklist, all showing
+`audit/AUDIT-2026-08.md` had 18 numbered bugs and a 46-item checklist, all showing
 `[ ]` months after most of the work shipped. Each was re-decided by reading the
 code on `main` at `b500309` — not the commit message that claimed to fix it.
 
@@ -3251,7 +3285,7 @@ and signed-error reporting; nine backtest tuners.
 
 *Reconstructed from git; not done first-hand.*
 
-- `3ce9253` — full product audit (`docs/AUDIT-2026-08.md`, 739 lines, 18 numbered
+- `3ce9253` — full product audit (`audit/AUDIT-2026-08.md`, 739 lines, 18 numbered
   bugs, 46-item master checklist).
 - `19c9d83` — trust & correctness: RLS lockdown, week clock, anon access.
 - `87df5a3` `bfe36a8` — quick wins (a11y, metadata, error boundaries, PWA shell);

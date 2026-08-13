@@ -4,7 +4,7 @@
 20-day clock (today 2026-08-09, Week 0 Aug 29). Sources read in full: `docs/CHANGELOG.md`
 (decisions table), `scripts/backtest.ts` (all twelve `--tune-*` flags plus `--diagnose-edges`),
 `scripts/lib/replay.ts`, `src/model/ratings.ts`, `scripts/build-preseason.ts`,
-`scripts/lib/jobs-core.ts`, `docs/SPEC.md`, `docs/AUDIT-2026-08.md`. I could not run the
+`scripts/lib/jobs-core.ts`, `docs/SPEC.md`, `audit/AUDIT-2026-08.md`. I could not run the
 backtest here (no `CFBD_API_KEY`); every number quoted below is from the changelog/code
 comments, and every proposal names the tuner command and a pre-registered decision rule per
 the `AGENTS.md` gate.
@@ -194,7 +194,7 @@ Seed #5's "what's still crude" answer: the sub-ratings are real (M-10) but **tem
 70 in every path** — `replay.ts:256,261`, `jobs-core.ts:745` (freeze), `jobs-core.ts` rating rows,
 `build-preseason.ts:544` — so `tempoFactor = (70+70)/140 ≡ 1` in `priceGame`
 (`src/model/ratings.ts:564`) and the `TeamRating.tempo` field does nothing. Totals model MAE
-13.09 trails the market by ~0.5 (`docs/AUDIT-2026-08.md:36`); pace is the most obvious missing
+13.09 trails the market by ~0.5 (`audit/AUDIT-2026-08.md:36`); pace is the most obvious missing
 term, and the per-game plays data is *already cached* by the backtest
 (`advanced-{season}` via `offense.plays`, `replay.ts:85-90,119`).
 

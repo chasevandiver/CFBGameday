@@ -7,7 +7,7 @@ sign, probability, and money claim is worked numerically in its report. Where th
 audit brief's hypotheses were written against the early-August snapshot, each
 was re-verified against current code — a large fraction were real, and were
 already found and fixed by the Aug 6–9 remediation work (the prior audit's
-status tables in `docs/AUDIT-2026-08.md` held up under re-verification). What
+status tables in `audit/AUDIT-2026-08.md` held up under re-verification). What
 follows is what is true **today**.
 
 **Verdict up front: this ships on Aug 29.** Phase 1 is ~92% built
