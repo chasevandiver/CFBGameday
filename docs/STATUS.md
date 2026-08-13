@@ -5,7 +5,8 @@ code on `claude/games-launch-checklist-b7pzab`. Week 0 is **Sat Aug 29** — 16
 days.
 
 **As of 2026-08-13, §2 has no code or docs work left in it.** Everything still
-unchecked below is either owner-run (P1-9b, P1-8, 09:P-16), a dispatch
+unchecked below is either owner-run (P1-8, 09:P-16 — P1-9b closed the same
+day), a dispatch
 (`--tune-fcs`, `observe-scoreboard`, Q8), or a dated watch. That is the whole
 remaining blocking list.
 
@@ -131,14 +132,31 @@ watches, plus two migrations to apply.
       image, which the PGDG fallback caught on its first real run. None of the
       three reds would have been *visible* a week ago — the step exited 0 with a
       20-byte artifact regardless.
-- [ ] **P1-9b** Create a healthchecks.io project, set `HEALTHCHECK_PING_URL`
-      (the ping step is already wired; free tier covers this). **Still the only
-      thing that catches the scheduler dying entirely** — `watchdogJob` cannot
-      report its own death, and OPS-2's push is sent by that job, so a total
-      stop takes both down. Needs a third-party account and a GitHub Actions
-      secret, neither of which is reachable from a session. **Owner-only.** · 0.5 h
-      **The recipe, worked out 2026-08-13, so the half hour is clicking rather
-      than deciding.** `jobs.yml` pings `"$HEALTHCHECK_PING_URL/<task>"` —
+- [x] **P1-9b — the scheduler now has a witness outside itself, 2026-08-13.**
+      Proved on run #122, `jobs · backup`: `dead-man ping ok — backup
+      (HTTP 200)`. **This was the only thing that catches the scheduler dying
+      entirely** — `watchdogJob` cannot report its own death, and OPS-2's push
+      is sent by that job, so a total stop takes both down. It is now the one
+      alert that does not depend on this repo running at all.
+      **Proven for `backup` only.** The other five slugs are configured but
+      unobserved until their first cron fires — `watchdog` at 20:00 UTC,
+      `refresh-lines` at 22:00, `sync-games` 09:00, `ratings-update` and
+      `backup` Sunday, `keepalive` Sep 1. A slug that does not match its check
+      now says so in the run log rather than passing silently, so the next
+      firing of each is its own proof. **Watch that `watchdog` goes green
+      tonight**; it is the one carrying the load.
+      **Two wrong values first, and the failure mode is the point.** Run #120
+      was green with the secret set and pinged nothing: `curl: (3) URL
+      rejected: No host part in the URL` — malformed, never sent. Run #121,
+      `(22) 404` — well-formed, delivered, but the value was an API key rather
+      than the project ping key, which healthchecks answers identically to a
+      missing check. Both runs were green, because `curl -fsS … > /dev/null ||
+      true` discarded the outcome. **A dead-man switch that did not exist was
+      indistinguishable from one that did**, which is exactly the defect the
+      backup step above was fixed for. The step now reports (below), so #122
+      is the first run whose green means anything.
+      **The recipe, for when this is rebuilt.** `jobs.yml` pings
+      `"$HEALTHCHECK_PING_URL/<task>"` —
       that is healthchecks' *slug* form, so the secret is the project's **ping
       key** URL, `https://hc-ping.com/<ping-key>` (Project Settings → Ping
       key), and **not** a check's UUID URL: a UUID with a task name appended
@@ -158,18 +176,19 @@ watches, plus two migrations to apply.
       Those slugs only, and **do not append `?create=1`.** All 24 task names
       ping, so auto-provisioning would create a check for each — 24 against
       the free tier's 20, at a default period nobody chose. An unmatched slug
-      404s and `|| true` swallows it, which is the designed behaviour, not a
-      gap.
+      404s and is reported as a `::notice::`, which is the designed behaviour,
+      not a gap.
       Route the alerts **anywhere but email**: P1-8 below is the evidence —
       nine delivered failure emails, zero opened. Everything but SMS, voice
       and WhatsApp is on the free tier (ntfy, Telegram, Pushover, Discord,
       Slack all qualify); the requirement is a channel that is not the GitHub
       notification stream, the same reasoning that produced OPS-2.
       **Verify without waiting on a cron:** `backup` is dispatchable and
-      read-only, so dispatch `jobs · backup` and watch the `backup` check go
-      green. The Actions log will not tell you either way — the curl is
-      `-fsS … > /dev/null || true` on purpose, so the ping is only observable
-      from the healthchecks side.
+      read-only, so dispatch `jobs · backup` and read the Dead-man ping step —
+      `dead-man ping ok — <task> (HTTP 200)` on success, and a `::warning::`
+      naming the URL's required shape when the request never lands. That
+      reporting is what made #120 and #121 diagnosable in one run each; before
+      it, all three runs looked the same from the outside.
 - [x] **P1-8 — answered 2026-08-13, and the answer changes P1-9b's shape.** The
       Aug 10 email **arrived**: `Run failed: jobs - main (de8e7f2)`, 09:26 UTC,
       inbox, "Failed in 19 seconds" — the watchdog on a cold `job_runs` table,
