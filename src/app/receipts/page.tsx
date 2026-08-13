@@ -6,6 +6,7 @@ import { DEFAULT_TZ, kickDateLong, kickParts, tzLabel } from "../../lib/kick";
 import { fetchCurrentSeasonWeek } from "../../lib/queries";
 import { fmtSpread } from "../../lib/slate";
 import { createClient } from "../../lib/supabase/server";
+import { isDeadStatus } from "../../lib/void";
 
 /** Edge is a disagreement, not a line — it never reads "PK". */
 const fmtEdge = (n: number | null): string =>
@@ -243,6 +244,16 @@ function ReceiptRow({ r }: { r: Receipt }) {
   const edge = pred.edge === null ? null : Number(pred.edge);
   const clv = pred.clv === null ? null : Number(pred.clv);
   const final = g.status === "final" && g.home_points !== null && g.away_points !== null;
+  // A postponed or canceled game has no kickoff left to be graded after, so the
+  // pending wording below was a promise that never comes due. The frozen row
+  // itself is deliberately left open — see P1-1b in docs/STATUS.md; this only
+  // stops the receipt describing it wrongly.
+  const dead = isDeadStatus(g.status);
+  const clvNote = final
+    ? "no closing snapshot near kickoff"
+    : dead
+      ? "never played — no closing line"
+      : "graded after kickoff";
   return (
     <tr className="border-t border-chalk/5">
       <td className="py-2 pl-4 pr-3">
@@ -273,7 +284,7 @@ function ReceiptRow({ r }: { r: Receipt }) {
         {clv === null ? (
           <span
             className="text-dim"
-            title={final ? "no closing snapshot near kickoff" : "graded after kickoff"}
+            title={clvNote}
           >
             –
           </span>

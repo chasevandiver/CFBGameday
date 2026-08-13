@@ -45,7 +45,7 @@ rows were decided by reading code, not by reading commit messages.
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
 | **Model in code** | `2026.5.0` — tilt carry, `baseHfa` 3.0, centered team-HFA, portal fix, market-anchored tier recentre |
-| **Database** | 0034 (game-status constraint + the `make_pick` re-pick fix) and 0035 (`teams.fcs_avg_margin`) added 2026-08-13 and **not yet applied to the live project** — both are inert until applied, and 0035 is inert after it too. Verified live 2026-08-12: **32** migrations applied and 32 recorded — the `0017` ledger gap (DB-3) was repaired the same day. 0031–0033 add the push tables. `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
+| **Database** | Verified live 2026-08-13 against the project ledger: **36 migration files, 36 recorded rows**, in sync. 0034–0037 **are applied** — an earlier version of this row said 0034 and 0035 were "not yet applied to the live project" and gave the count as 32/32, and both were stale by the time they were written. It matters because two ticked rows depend on them: P1-1's re-pick fix *is* 0034 (`make_pick` confirmed carrying it live), and OPS-2's watchdog push needs 0036's enum value and 0037's `notification_settings` row — `notifyWatchdog` returns `{notified: 0, errors: 0}` when that row is missing (`notify-jobs.ts:375`), so it would have been a silent no-op. Both confirmed live, along with 2 admin push subscriptions for it to reach. The `0017` ledger gap (DB-3) was repaired 08-12. 0031–0033 add the push tables. `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
 | **Model in production** | ⚠️ `2026.2.0`. **Four versions behind**, pricing every cross-classification opener ~10 points toward the G5. Waiting on CFBD to publish 2026 talent; `preseason-refresh` retries daily and loads itself the first morning `--check` is green. |
 | **The edge verdict** | b₁ = 0.035 (t = 0.84) for the model vs 0.987 (t = 22.81) for the market, n = 2611; flagged edges 49.2% ATS vs the close. Edges are **information, not bets** — and no model-accuracy work belongs in the next 17 days. |
 
@@ -641,28 +641,95 @@ Two items remain open; the closed ones are kept for the record.
 **Correctness / security**
 - [ ] **P1-1b — frozen `predictions` on a dead game are never settled.** Found
       while building P1-1 and deliberately left out of it. The model-CLV pass
-      keys only on `finalIds` (`jobs-core.ts:890-925`), so a frozen row on a
-      game that never played keeps `close_spread` null and is re-read as
-      ungraded every Sunday forever. Invisible to users — `close_spread` is
-      read nowhere in `src/` — and the cost is a few wasted rows per week, so it
-      is a decision rather than a bug fix, and not one to take under launch
-      pressure. **The decision:** either settle the row (which banks a "no
-      close" reading indistinguishable from a genuinely missing snapshot) or
-      exclude dead games from the ungraded set (which needs a second predicate
-      and leaves the receipt permanently open). Worth noting `receipts` shows
-      "graded after kickoff" on such a row, which is wrong either way. · S — the
-      table grants were revoked in `0013:92` and `0021:268`, so they can never
-      fire. Verified *not* a hole, but misleading. Migration 0028. · 0.5 h
-- [ ] **P2-5** `remove_pick` never checks group membership and returns `ok:true`
-      on a zero-row delete. Safe (scoped to `user_id = auth.uid()`), untidy. · 0.5 h
-- [ ] **P2-2 / SEC-08** `profiles` is world-readable **including `is_admin`**,
-      signed out. Fine for 15 friends, wrong in principle. · 1 h
-- [ ] **SEC-02** A removed admin rejoins as admin — removal isn't durable. · S
-- [ ] **SEC-01** Join codes → 10-char base32 + per-user attempt throttle in
-      `join_group`. Needs a full-function migration rewriting
-      `create_group`/`regenerate_join_code` (next free number is **0028**).
-      ~0 real private groups pre-launch, so brute force is negligible until
-      after. · S
+      keys only on `finalIds` (`jobs-core.ts:934-942`), so a frozen row on a
+      game that never played keeps `close_spread` null forever.
+      **Mechanism corrected 2026-08-13** — an earlier version of this row said
+      the row "is re-read as ungraded every Sunday forever" and cost "a few
+      wasted rows per week". It is not re-read at all: the query filters
+      `.in("game_id", finalIds)`, and `isDeadStatus` games are never in
+      `finalIds` (`jobs-core.ts:809-812`), so the pass does not see the row and
+      there is no recurring cost. `close_spread` is written and read in that one
+      block and nowhere else in `src/`. That also kills one of the two options
+      this row offered: "exclude dead games from the ungraded set" is already
+      true, so the live decision is only whether to *settle* the row — which
+      banks a "no close" reading indistinguishable from a genuinely missing
+      snapshot, and a canceled game has no close to record either way.
+      **The one user-visible half is fixed** (2026-08-13): `receipts` said
+      "graded after kickoff" on a game with no kickoff left to come, and now
+      says "never played — no closing line" via `isDeadStatus`
+      (`receipts/page.tsx`). The settle-or-not decision stays open. · S
+- [x] **P2-5** Fixed 2026-08-13, migration **0038**. `remove_pick` now opens
+      with the same `is_group_member` guard `make_pick` has carried since
+      `0021:162`, so being removed from a group stops your writes in both
+      directions rather than one, and it returns the number of rows it deleted
+      instead of `void`. **The `ok:true` was never the RPC's** — it is
+      `actions/picks.ts:79`, which this row mis-attributed; corrected in place.
+      Zero rows deliberately stays a success: removal is idempotent and the
+      second tap of a double-tap asks for a state the pick is already in, so
+      raising would put an error toast on a pick that is correctly gone. The
+      audit's complaint was that the caller could not *tell*, and a count
+      answers that without inventing a failure. 3 DB assertions.
+- [x] **P2-2 / SEC-08** Closed for signed-out callers 2026-08-13, migration
+      **0040**. Both SELECT policies on `profiles` are `using (true)`
+      (`0001:307`, `0011:21`) and RLS restricts rows, not columns — so the fix
+      is a column grant, the read-side twin of 0013's UPDATE narrowing. `anon`
+      now reads `id, display_name` and nothing else; `/recap` and `/game` render
+      names signed-out and need exactly those. `queries.ts`'s `fetchProfiles`
+      was `select("*")` and is narrowed to match, so the migration cannot break
+      it. **Scope, stated rather than implied:** this closes the signed-out half
+      only. `is_admin` is still readable by any *signed-in* user, because
+      hiding it needs a security-definer `is_current_user_admin()` and six call
+      sites moved onto it (`AuthButton.tsx:30`, `admin/page.tsx:41`, four server
+      actions) — worth doing, larger than this row, still queued below. 5 DB
+      assertions.
+- [x] **SEC-02** Fixed 2026-08-13, migration **0038**. `join_group`'s
+      `on conflict … do update set removed_at = null` discarded the `'member'`
+      in its VALUES list, so the role survived untouched and an admin removed by
+      another admin walked back in through the join code still an admin. The
+      0020 comment described it as a feature ("Rejoining restores the old row,
+      and with it the role you left holding"), which is why it sat.
+      **Always rejoining as `member` would have been wrong**, and the test suite
+      says so: `leave_group` deliberately lets the last member out of a group
+      with no successor (`0020:413`, "An empty group needs no admin"), so a sole
+      owner who left their own group would come back a member of a group with no
+      admin and the deferred `group_members_keep_admin` trigger would refuse the
+      insert — the creator locked out of their own group. So the two exits stop
+      being interchangeable: a new `group_members.removed_by` is null when you
+      left and set when an admin removed you, and only the second demotes on
+      rejoin. That is what "removal isn't durable" was actually about. 4 DB
+      assertions, including the sole-owner case.
+- [x] **SEC-01** Done 2026-08-13, migration **0039**. Codes were **six upper
+      hex characters** — a 16-symbol alphabet, 16^6 ≈ 16.7M, not the 36^6 this
+      row implied — minted by the same loop copy-pasted into three places
+      (`0020:370`, `0020:536`, `0027:112`). Now one `new_join_code()` generator
+      at ten Crockford base32 characters (32^10 ≈ 1.1e15, ~67M× the old space;
+      no I/L/O/U, so nothing to misread off a phone), plus
+      `normalize_join_code` folding case, spaces, hyphens and the dropped
+      letters onto what a person actually typed. Randomness comes from
+      `gen_random_uuid()`'s v4 payload, not `random()` and not pgcrypto — which
+      lives in the `extensions` schema on Supabase and is absent from the bare
+      Postgres `npm run db:test` uses.
+      Throttle: ten failures per user per fifteen minutes, in a deny-all
+      `group_join_attempts` table. **The failure path had to stop raising for
+      the throttle to work at all** — `raise` aborts the transaction, which
+      would roll back the very attempt row being counted, so a bad code returns
+      null and `actions/groups.ts` words it. That is the whole reason for the
+      shape, recorded because it looks like a downgrade.
+      **Two adjacent holes fixed in the same migration.** `anon` could read
+      `join_code` for any public group: `0020:302` grants every column and the
+      app-side guard at `groups/[slug]/page.tsx:89` is a page component, not a
+      boundary. Live exposure was zero — `visibility` defaults to private and
+      the project has no public groups — so this is latent, not urgent. And
+      `create_group` lost its `revoke … from public, anon` in the 0027 rename
+      (`0020:685` had it; `0027:127` only re-granted), leaving Postgres's
+      default EXECUTE-to-PUBLIC standing on a function that raises on a null
+      `auth.uid()` anyway. 14 DB assertions.
+      **Existing six-character codes were left alone**, deliberately:
+      regenerating invalidates codes already sent to the crew, and any admin can
+      mint a ten-character one from group settings. Worth doing before inviting
+      anyone new.
+      *(Both this row and §7 said "next free number is **0028**". 0028–0037 were
+      taken; the next free number is now **0041**.)*
 
 **Ops / perf**
 - [x] **P2-3 / 05:C5 / 07:OPS-11 / SEC-12** Dead edge function deleted
@@ -946,7 +1013,7 @@ here was decided by a commit message.
 |---|---|---|
 | `audit/CHECKLIST.md` `05:N9` | `[x]` postponed/canceled grade void | **Partial.** The grader is right; nothing writes those statuses. Re-opened as **P1-1** in §2.2. |
 | `audit/CHECKLIST.md` `04:DQ-13` | `[x]` rejects NaN/empty `PRESEASON_TILT_CARRY` | **Partial.** NaN is caught, empty string silently becomes `0`. Re-opened as **P2-1**. |
-| `audit/CHECKLIST.md` `SEC-01` | "migration 0026" | Stale — 0026 and 0027 are taken; next free is **0028**. |
+| `audit/CHECKLIST.md` `SEC-01` | "migration 0026" | Stale — 0026 and 0027 are taken; next free was **0028**. *(And that correction went stale in its turn: SEC-01 shipped as **0039** on 08-13. Next free is **0041**.)* |
 | `audit/AUDIT-2026-08.md` §23 | 46 raw `[ ]` boxes, all unchecked, below a table saying 38 are done | The boxes now carry their verified status. The table was right; the boxes were three months of drift. |
 | `audit/AUDIT-2026-08.md` Bug #9 | cites `actions/picks.ts:54,58` | The fix moved into the `remove_pick` RPC (`0021:255-257`) and got *stronger*. Citation queued for correction in §2.3. |
 | `docs/CHANGELOG.md` Aug 12 (portal) | — | Created a new open item (**Q8**, re-run `--tune-churn`) that no checklist carried. Now in §2.4. |

@@ -759,7 +759,19 @@ export async function fetchCfbdCallsThisMonth(service: SupabaseClient): Promise<
   return count ?? 0;
 }
 
-export async function fetchProfiles(supabase: SupabaseClient): Promise<ProfileRow[]> {
-  const { data } = await supabase.from("profiles").select("*").order("display_name");
-  return (data ?? []) as ProfileRow[];
+/**
+ * Names only — its one caller (recap) builds a name-by-id map and reads nothing
+ * else. It used to `select("*")`, which pulled `is_admin` and
+ * `favorite_team_ids` across every profile on a signed-out page; 0040 revokes
+ * `is_admin` from anon, so the old form would now fail rather than over-fetch
+ * (P2-2 / SEC-08, same narrowing as 09:P-5 on the game page).
+ */
+export async function fetchProfiles(
+  supabase: SupabaseClient,
+): Promise<Pick<ProfileRow, "id" | "display_name">[]> {
+  const { data } = await supabase
+    .from("profiles")
+    .select("id, display_name")
+    .order("display_name");
+  return (data ?? []) as Pick<ProfileRow, "id" | "display_name">[];
 }

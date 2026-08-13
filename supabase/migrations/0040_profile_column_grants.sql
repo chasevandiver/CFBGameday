@@ -1,0 +1,31 @@
+-- `profiles.is_admin` was readable signed-out (P2-2 / SEC-08).
+--
+-- Two SELECT policies stack on this table and both are unconditional:
+--
+--   0001:307  create policy "read profiles"      … to authenticated using (true);
+--   0011:21   create policy "anon read profiles" … to anon          using (true);
+--
+-- RLS restricts rows, not columns, so `using (true)` means every column of
+-- every profile — including who the admins are — was answerable to a
+-- signed-out PostgREST call. 0013 already learned the row-vs-column lesson
+-- from the other direction: it revoked UPDATE on this table and re-granted
+-- three specific columns, because a row policy could not stop a member setting
+-- their own `is_admin`. This is the read side of the same thing.
+--
+-- Scope, deliberately: this closes the signed-out half only. Hiding `is_admin`
+-- from other *signed-in* users is a larger change — `AuthButton.tsx:30` reads
+-- it from the browser client and four server actions read it off the cookie
+-- client, so it would need a security-definer `is_current_user_admin()` and six
+-- call sites moved onto it. That is worth doing and is not what the tracked row
+-- asks for; it stays queued rather than being smuggled in here.
+--
+-- What a signed-out visitor still needs is names: the recap and game pages
+-- render `display_name` for people who picked, and both are public.
+--
+-- The revoke has to drop the table grant before the column grants can bite —
+-- a column-level revoke against a live table-level SELECT is a no-op. Same
+-- shape as 0013:26, and as 0039's join_code revoke one migration ago.
+revoke select on public.profiles from anon;
+grant  select (id, display_name) on public.profiles to anon;
+
+-- `authenticated` is untouched on purpose; see the scope note above.

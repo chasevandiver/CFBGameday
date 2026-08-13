@@ -354,3 +354,139 @@ select pg_temp.chk('rejoining reactivates the same row',
                     where group_id = :'grp'::uuid and user_id = :ann::uuid) = 1
                    and (select removed_at is null from group_members
                         where group_id = :'grp'::uuid and user_id = :ann::uuid));
+
+\echo '# removal is durable, leaving is not (0038, SEC-02)'
+-- Before 0038, join_group's `on conflict … do update set removed_at = null`
+-- discarded the 'member' in its VALUES list, so an admin removed by another
+-- admin walked back in through the join code still holding admin. The two
+-- exits are now distinguished by `removed_by`: an admin removed you (role does
+-- not survive) or you left on your own (it does). Leaving has to keep the role,
+-- or a sole owner who leaves their own group could not rejoin it — the
+-- deferred group_members_keep_admin trigger would refuse a members-but-no-admin
+-- state.
+--
+-- Standing state here: bob is admin, ann is a member who was removed and
+-- rejoined above. Promote her so there is an admin to remove.
+\o /dev/null
+begin;
+  select test_as(:bob::uuid);
+  select set_group_role(:'grp'::uuid, :ann::uuid, 'admin');
+commit;
+begin;
+  select test_as(:bob::uuid);
+  select remove_group_member(:'grp'::uuid, :ann::uuid);
+commit;
+\o
+select pg_temp.chk('the removal recorded who did it',
+                   (select removed_by from group_members
+                    where group_id = :'grp'::uuid and user_id = :ann::uuid) = :bob::uuid);
+\o /dev/null
+begin;
+  select test_as(:ann::uuid);
+  select join_group(:'code');
+commit;
+\o
+select pg_temp.chk('a removed admin comes back a member',
+                   (select role from group_members
+                    where group_id = :'grp'::uuid and user_id = :ann::uuid) = 'member');
+select pg_temp.chk('and the removal is cleared, not carried forward',
+                   (select removed_by is null and removed_at is null from group_members
+                    where group_id = :'grp'::uuid and user_id = :ann::uuid));
+
+-- Leaving voluntarily is the other branch: cal creates his own group, leaves
+-- it as its only member, and rejoins. He has to come back an admin — nobody
+-- outranked him, and an empty group has no one to promote him.
+\o /dev/null
+begin;
+  select test_as(:cal::uuid);
+  select create_group('Cal''s Den', 'private', 'pickem') as g \gset
+commit;
+select join_code as calcode from groups where id = :'g'::uuid \gset
+begin;
+  select test_as(:cal::uuid);
+  select leave_group(:'g'::uuid);
+commit;
+begin;
+  select test_as(:cal::uuid);
+  select join_group(:'calcode');
+commit;
+\o
+select pg_temp.chk('someone who left on their own keeps their role',
+                   (select role from group_members
+                    where group_id = :'g'::uuid and user_id = :cal::uuid) = 'admin');
+
+\echo '# join codes are a boundary now (0039, SEC-01)'
+-- Old codes were six hex characters — a 16-symbol alphabet, 16^6 ≈ 16.7M — and
+-- join_group had no throttle at all, so the space was walkable. New codes are
+-- ten Crockford base32 characters and failures cost.
+select pg_temp.chk('a fresh code is ten characters',
+                   (select length(join_code) = 10 from groups where id = :'grp'::uuid));
+select pg_temp.chk('drawn only from the Crockford alphabet',
+                   (select join_code ~ '^[0-9A-HJKMNP-TV-Z]{10}$'
+                    from groups where id = :'grp'::uuid));
+-- bob is the admin here; ann was demoted by the SEC-02 block above.
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.chk('an admin mints another valid one',
+                     (select regenerate_join_code(:'grp'::uuid)) ~ '^[0-9A-HJKMNP-TV-Z]{10}$');
+commit;
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.raises('a plain member cannot',
+    format($$select regenerate_join_code(%L)$$, :'grp'));
+rollback;
+
+-- Crockford folds the letters it dropped onto the digits they look like, so a
+-- code read off a phone survives the obvious transcription slips.
+select pg_temp.chk('I and L read as 1, O reads as 0',
+                   normalize_join_code('il o-1') = '1101');
+select pg_temp.chk('case, spaces and hyphens are noise',
+                   normalize_join_code('  ab-cd ef ') = 'ABCDEF');
+
+\o /dev/null
+select join_code as freshcode from groups where id = :'grp'::uuid \gset
+\o
+begin;
+  select test_as(:cal::uuid);
+  select pg_temp.chk('a wrong code returns null rather than raising',
+                     (select join_group('ZZZZZZZZZZ')) is null);
+  select pg_temp.chk('a right code still returns the group',
+                     (select join_group(:'freshcode')) = :'grp'::uuid);
+rollback;
+
+-- The throttle counts failures, which is why the miss above returns instead of
+-- raising: a raise would roll back the very row being counted.
+\o /dev/null
+begin;
+  select test_as(:cal::uuid);
+  select join_group('ZZZZZZZZZ' || i) from generate_series(0, 9) as i;
+commit;
+\o
+select pg_temp.chk('ten misses were recorded',
+                   (select count(*) from group_join_attempts where user_id = :cal::uuid) = 10);
+begin;
+  select test_as(:cal::uuid);
+  select pg_temp.raises('the eleventh attempt is refused',
+    $$select join_group('ZZZZZZZZZZ')$$);
+  select pg_temp.raises('and a correct code is refused too, while throttled',
+    format($$select join_group(%L)$$, :'freshcode'));
+rollback;
+
+begin;
+  select test_as_anon();
+  select pg_temp.chk('anon cannot read a join code',
+                     (select count(*) from information_schema.column_privileges
+                      where table_name = 'groups' and column_name = 'join_code'
+                        and grantee = 'anon' and privilege_type = 'SELECT') = 0);
+  select pg_temp.raises('and cannot select the column',
+    $$select join_code from groups$$);
+  -- The revoke had to drop the whole table grant to bite, so the columns a
+  -- signed-out visitor legitimately reads are re-granted. This is the exact
+  -- set src/lib/groups.ts:98 asks for on the public-group-by-slug path; if it
+  -- ever needs another column, this fails before the page 500s.
+  select pg_temp.chk('but still reads a public group the app way',
+                     (select count(*) from (
+                        select id, name, slug, visibility, kind,
+                               picks_hidden_until_kickoff, archived_at
+                        from groups) q) >= 0);
+rollback;

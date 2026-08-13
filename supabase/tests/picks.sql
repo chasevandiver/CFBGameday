@@ -278,3 +278,31 @@ begin;
   select pg_temp.chk('anon sees no picks from private groups',
                      (select count(*) from picks) = 0);
 rollback;
+
+-- ---------------------------------------------------------------------------
+\echo '# remove_pick checks membership and reports what it did (0038, P2-5)'
+-- ---------------------------------------------------------------------------
+-- Before 0038 this function checked auth and kickoff but never membership, and
+-- returned `void` whether it removed a pick or matched nothing. The DELETE is
+-- scoped to auth.uid() so a stranger never removed anyone else's row — but a
+-- caller could not tell a successful removal from a no-op, which is the exact
+-- complaint audit bug #9 made about the pre-0021 implementation.
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.raises('a non-member removing a pick',
+    format($$select remove_pick(%L, 201, 'spread')$$, :'pool'));
+rollback;
+
+\o /dev/null
+begin;
+  select test_as(:ann::uuid);
+  select make_pick(:'pool'::uuid, 201, 'spread', 'home');
+commit;
+\o
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.chk('removing a live pick reports one row',
+                     (select remove_pick(:'pool'::uuid, 201, 'spread')) = 1);
+  select pg_temp.chk('removing it again reports zero rather than raising',
+                     (select remove_pick(:'pool'::uuid, 201, 'spread')) = 0);
+rollback;
