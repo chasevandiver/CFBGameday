@@ -40,7 +40,7 @@ async function run(
 ): Promise<Record<string, unknown>> {
   const weekArg = process.argv.indexOf("--week");
   let week = weekArg > -1 ? Number(process.argv[weekArg + 1]) : undefined;
-  let seasonType: "regular" | "postseason" = "regular";
+  let seasonType: "preseason" | "regular" | "postseason" = "regular";
 
   if (db && (await idleSkip(db, { job, season: NFL_SEASON, horizonDays: envDays("LINES_IDLE_DAYS", 7) }))) {
     return { skipped: "idle" };
@@ -65,26 +65,32 @@ async function run(
   }
 
   if (week === undefined && db) {
+    // The next slate is whichever week kicks off soonest — start_ts, not a
+    // season-type ordering, because preseason → regular → postseason has no
+    // usable lexical order.
     const { data } = await db
       .from("games")
       .select("week, season_type")
       .eq("season_id", NFL_SEASON)
       .eq("status", "scheduled")
-      // 'regular' sorts after 'postseason', so descending drains the regular
-      // season before the bracket
-      .order("season_type", { ascending: false })
-      .order("week")
+      .order("start_ts", { ascending: true, nullsFirst: false })
       .limit(1)
       .maybeSingle();
     week = data?.week;
-    if (data?.season_type === "postseason") seasonType = "postseason";
+    if (data?.season_type === "postseason" || data?.season_type === "preseason")
+      seasonType = data.season_type;
   }
   if (week === undefined) return { snapshots: 0, skipped: "no_scheduled_week" };
 
   console.log(`NFL lines ${SEASON} ${seasonType} week ${week}${burst ? " (burst)" : ""}…`);
   const board = await espn.scoreboard({
     year: SEASON,
-    seasonType: seasonType === "postseason" ? ESPN_SEASON_TYPE.postseason : ESPN_SEASON_TYPE.regular,
+    seasonType:
+      seasonType === "postseason"
+        ? ESPN_SEASON_TYPE.postseason
+        : seasonType === "preseason"
+          ? ESPN_SEASON_TYPE.preseason
+          : ESPN_SEASON_TYPE.regular,
     // stored postseason week 4 (Super Bowl) is ESPN week 5 — the Pro Bowl gap
     week: seasonType === "postseason" && week === 4 ? 5 : week,
   });

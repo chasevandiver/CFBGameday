@@ -188,7 +188,8 @@ describe("nflStoredWeek", () => {
     expect(nflStoredWeek(3, 4, "Pro Bowl Games")).toBeNull();
     expect(nflStoredWeek(3, 5, "Super Bowl LXI")).toEqual({ seasonType: "postseason", week: 4 });
   });
-  it("never stores preseason", () => {
-    expect(nflStoredWeek(1, 2, "Lions at Bengals")).toBeNull();
+  it("stores preseason 1:1 — August games are real games", () => {
+    expect(nflStoredWeek(1, 1, "Hall of Fame Game")).toEqual({ seasonType: "preseason", week: 1 });
+    expect(nflStoredWeek(1, 2, "Lions at Bengals")).toEqual({ seasonType: "preseason", week: 2 });
   });
 });

@@ -20,6 +20,7 @@ import { logEspnCalls, recordJobRun } from "./lib/jobs-core";
 import { NFL_SEASON, assertNoCfbCollision, isDivisionGame } from "./lib/nfl";
 
 const MONDAY = 1;
+const PRESEASON_WEEKS = 4; // week 1 is the Hall of Fame game
 const REGULAR_WEEKS = 18;
 const ESPN_POSTSEASON_WEEKS = [1, 2, 3, 5]; // Wild Card…Conference, Super Bowl (4 is the Pro Bowl)
 
@@ -61,6 +62,10 @@ async function run(
     week !== undefined
       ? [{ seasonType: ESPN_SEASON_TYPE.regular, week }]
       : [
+          ...Array.from({ length: PRESEASON_WEEKS }, (_, i) => ({
+            seasonType: ESPN_SEASON_TYPE.preseason,
+            week: i + 1,
+          })),
           ...Array.from({ length: REGULAR_WEEKS }, (_, i) => ({
             seasonType: ESPN_SEASON_TYPE.regular,
             week: i + 1,

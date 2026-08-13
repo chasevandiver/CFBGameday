@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   const hasWeek = isValidWeek(weekParam);
   const week = hasWeek ? weekParam : currentWeek;
   const st =
-    stParam === "postseason" || stParam === "regular"
+    stParam === "postseason" || stParam === "regular" || stParam === "preseason"
       ? stParam
       : hasWeek
         ? "regular"

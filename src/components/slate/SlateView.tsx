@@ -204,7 +204,9 @@ export function SlateView({
     });
   }, [data.games, data.fetchedAt]);
   const { connected } = useGamesRealtime({
-    enabled: !demo && (seasonType === "postseason" || week === currentWeek) && anyImminent,
+    // "regular week that isn't current" is the one browsing state with nothing
+    // live to push; pre- and postseason views ride the pointer's own calendar.
+    enabled: !demo && (seasonType !== "regular" || week === currentWeek) && anyImminent,
     week,
     seasonId: data.seasonId,
     onGameUpdate: handleGameUpdate,
@@ -232,13 +234,14 @@ export function SlateView({
     [refresh, seasonType],
   );
 
-  const changeWeek = (sel: number | "post") => {
+  const changeWeek = (sel: number | "post" | `pre-${number}`) => {
     // Every other week is a fetch, and the demo has nothing to fetch — changing
     // week would empty the grid and leave it that way.
     if (demo) return;
+    const pre = typeof sel === "string" && sel.startsWith("pre-");
     const post = sel === "post";
-    const w = post ? 1 : sel;
-    const st = post ? "postseason" : "regular";
+    const w = post ? 1 : pre ? Number((sel as string).slice(4)) : (sel as number);
+    const st = post ? "postseason" : pre ? "preseason" : "regular";
     if (w === week && st === seasonType) return;
     weekRef.current = w;
     setData((d) => ({ ...d, week: w, seasonType: st, games: [] }));
@@ -253,7 +256,10 @@ export function SlateView({
     const sp = new URLSearchParams();
     if (sport === "nfl") sp.set("sport", "nfl");
     if (seasonType === "postseason") sp.set("st", "post");
-    else if (week !== currentWeek) sp.set("week", String(week));
+    else if (seasonType === "preseason") {
+      sp.set("st", "pre");
+      sp.set("week", String(week));
+    } else if (week !== currentWeek) sp.set("week", String(week));
     if (conference !== "all") sp.set("conf", conference);
     if (network !== "all") sp.set("tv", network);
     if (spreadRange !== "any") sp.set("spread", spreadRange);
@@ -712,12 +718,12 @@ function WeekSelect({
   disabled = false,
 }: {
   week: number;
-  seasonType: "regular" | "postseason";
+  seasonType: "preseason" | "regular" | "postseason";
   sport: "cfb" | "nfl";
   currentWeek: number;
   /** 0 when the season has a Week 0 — the last Saturday of August. */
   minWeek?: number;
-  onChange: (w: number | "post") => void;
+  onChange: (w: number | "post" | `pre-${number}`) => void;
   /** The demo holds one week. A control that changes nothing is worse than none. */
   disabled?: boolean;
 }) {
@@ -726,13 +732,27 @@ function WeekSelect({
     <label className="relative shrink-0">
       <span className="sr-only">Week</span>
       <select
-        value={seasonType === "postseason" ? "post" : week}
+        value={seasonType === "postseason" ? "post" : seasonType === "preseason" ? `pre-${week}` : week}
         disabled={disabled}
         onChange={(e) =>
-          onChange(e.target.value === "post" ? "post" : Number(e.target.value))
+          onChange(
+            e.target.value === "post"
+              ? "post"
+              : e.target.value.startsWith("pre-")
+                ? (e.target.value as `pre-${number}`)
+                : Number(e.target.value),
+          )
         }
         className="display h-8 appearance-none rounded-lg border border-chalk/12 bg-surface pl-3 pr-8 text-base text-chalk focus:border-accent/60 focus:outline-none disabled:opacity-60"
       >
+        {/* August is real on the NFL side: week 1 is the Hall of Fame game */}
+        {sport === "nfl" &&
+          [1, 2, 3, 4].map((w) => (
+            <option key={`pre-${w}`} value={`pre-${w}`}>
+              Pre {w}
+              {w === currentWeek && seasonType === "preseason" ? " ·" : ""}
+            </option>
+          ))}
         {Array.from({ length: maxWeek + (1 - minWeek) }, (_, i) => i + minWeek).map((w) => (
           <option key={w} value={w}>
             Week {w}
