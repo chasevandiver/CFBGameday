@@ -35,6 +35,7 @@ export function WeekHero({
   isAdmin,
   signedIn,
   share,
+  league = "cfb",
 }: {
   slug: string;
   week: number;
@@ -49,11 +50,15 @@ export function WeekHero({
   isAdmin: boolean;
   signedIn: boolean;
   share: Parameters<typeof ShareButton>[0]["context"] | null;
+  /** Which league's board this hero fronts — carried through every link so a
+   *  both-league group's NFL week never silently reverts to the CFB one. */
+  league?: "cfb" | "nfl";
 }) {
   const target = minPicks > 0 ? minPicks : pickSlots;
   const done = target > 0 && myPickCount >= target;
   const pct = target > 0 ? Math.min(100, Math.round((myPickCount / target) * 100)) : 0;
   const kick = firstKick === null ? null : kickParts(firstKick, DEFAULT_TZ);
+  const lq = league === "nfl" ? "&league=nfl" : "";
 
   return (
     <div className="glass-wrap" data-tint="position" style={{ "--aura-strength": 0.3 } as React.CSSProperties}>
@@ -66,7 +71,7 @@ export function WeekHero({
           <span className="flex items-center gap-1.5">
             {week > 1 && (
               <Link
-                href={`/groups/${slug}?week=${week - 1}`}
+                href={`/groups/${slug}?week=${week - 1}${lq}`}
                 aria-label={`Week ${week - 1}`}
                 className="stat inline-flex min-h-11 min-w-8 items-center justify-center text-sm text-dim hover:text-chalk"
               >
@@ -76,7 +81,7 @@ export function WeekHero({
             <h2 className="text-lg leading-none">Week {week}</h2>
             {week < 20 && (
               <Link
-                href={`/groups/${slug}?week=${week + 1}`}
+                href={`/groups/${slug}?week=${week + 1}${lq}`}
                 aria-label={`Week ${week + 1}`}
                 className="stat inline-flex min-h-11 min-w-8 items-center justify-center text-sm text-dim hover:text-chalk"
               >
@@ -85,7 +90,7 @@ export function WeekHero({
             )}
             {week !== currentWeek && (
               <Link
-                href={`/groups/${slug}`}
+                href={league === "nfl" ? `/groups/${slug}?league=nfl` : `/groups/${slug}`}
                 className="stat text-[10.5px] uppercase tracking-wider text-accent hover:underline"
               >
                 back to now
@@ -106,7 +111,7 @@ export function WeekHero({
             <p className="mt-1 text-sm text-dim">
               {isAdmin ? (
                 <Link
-                  href={`/groups/${slug}/settings?week=${week}`}
+                  href={`/groups/${slug}/settings?week=${week}${lq}`}
                   className="font-medium text-accent underline-offset-2 hover:underline"
                 >
                   Choose the games and bet types →
@@ -163,7 +168,7 @@ export function WeekHero({
         <div className="mt-3.5 flex flex-wrap items-center gap-2">
           {groupWeek !== null && gameCount > 0 && (
             <Link
-              href={`/groups/${slug}/picks?week=${week}`}
+              href={`/groups/${slug}/picks?week=${week}${lq}`}
               className="stat inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink sm:flex-none"
             >
               {signedIn ? (myPickCount > 0 ? "Review picks" : "Make picks") : "See the board"}
@@ -171,7 +176,7 @@ export function WeekHero({
             </Link>
           )}
           <Link
-            href={`/groups/${slug}/week/${week}?view=pick`}
+            href={`/groups/${slug}/week/${week}?view=pick${lq}`}
             className="stat inline-flex min-h-11 items-center rounded-lg border border-chalk/20 px-3.5 text-sm text-chalk hover:border-chalk/50"
           >
             Who picked what
@@ -194,6 +199,7 @@ export function MemberCard({
   isMe,
   tally,
   priced,
+  split = null,
 }: {
   place: number;
   name: string;
@@ -201,7 +207,18 @@ export function MemberCard({
   isMe: boolean;
   tally: Tally;
   priced: boolean;
+  /** Per-league records for a both-league group — who's doing better where. */
+  split?: { cfb: Tally; nfl: Tally } | null;
 }) {
+  const splitLine =
+    split && (split.cfb.decided > 0 || split.nfl.decided > 0)
+      ? [
+          split.cfb.decided > 0 ? `CFB ${formatRecord(split.cfb)}` : null,
+          split.nfl.decided > 0 ? `NFL ${formatRecord(split.nfl)}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : null;
   return (
     <li
       className={`card flex items-center gap-3 px-3.5 py-2.5 ${
@@ -229,11 +246,12 @@ export function MemberCard({
         <span className="stat block text-[10.5px] leading-tight text-chalk/45">
           {tally.decided === 0
             ? "nothing graded yet"
-            : priced
-              ? `${tally.avgClv === null ? "no CLV yet" : `CLV ${tally.avgClv > 0 ? "+" : ""}${tally.avgClv.toFixed(2)}`}${
-                  tally.roi === null ? "" : ` · ${(tally.roi * 100).toFixed(0)}% ROI`
-                }`
-              : `${tally.decided} graded`}
+            : (splitLine ??
+              (priced
+                ? `${tally.avgClv === null ? "no CLV yet" : `CLV ${tally.avgClv > 0 ? "+" : ""}${tally.avgClv.toFixed(2)}`}${
+                    tally.roi === null ? "" : ` · ${(tally.roi * 100).toFixed(0)}% ROI`
+                  }`
+                : `${tally.decided} graded`))}
         </span>
       </span>
       <span className="shrink-0 text-right">

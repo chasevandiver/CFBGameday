@@ -13,6 +13,7 @@ let nextId = 1;
 const bet = (over: Partial<SheetBet> = {}): SheetBet => ({
   id: nextId++,
   userId: "jeff",
+  seasonId: 2026,
   gameId: 1,
   betType: "spread",
   side: "home",

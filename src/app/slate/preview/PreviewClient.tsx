@@ -89,6 +89,7 @@ const SAMPLE_SOURCE: SheetMember = {
     22,
   ),
   form: { results: ["win", "win", "loss", "win", "win"], wins: 7, losses: 3, units: 2.9, label: "hot" },
+  leagueSplit: { cfb: sampleTally(31, 22, 1, 6.4, 0.31), nfl: EMPTY_TALLY },
 };
 
 const SAMPLE_SOURCE_2: SheetMember = {
@@ -104,6 +105,7 @@ const SAMPLE_SOURCE_2: SheetMember = {
     23,
   ),
   form: { results: ["loss", "loss", "win", "loss", "loss"], wins: 3, losses: 7, units: -4.1, label: "cold" },
+  leagueSplit: { cfb: sampleTally(19, 26, 0, -8.1, -0.12), nfl: EMPTY_TALLY },
 };
 
 /* ---- the card states ----------------------------------------------------- */

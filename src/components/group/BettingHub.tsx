@@ -18,6 +18,11 @@ import { TeamLine } from "../slate/TeamLine";
  */
 
 /** Units, signed and coloured. The only number this product really keeps. */
+/** "+3.2u" / "-0.5u" for the per-league caption line. */
+function fmtUnits(u: number): string {
+  return `${u >= 0 ? "+" : ""}${u.toFixed(1)}u`;
+}
+
 export function Units({ t, className = "" }: { t: Tally; className?: string }) {
   if (t.decided === 0) return <span className={`stat text-chalk/35 ${className}`}>—</span>;
   return (
@@ -95,13 +100,16 @@ export function SourceCard({
           <span className="stat block text-[10.5px] leading-tight text-chalk/45">
             {s.overall.decided === 0
               ? "nothing graded yet"
-              : `${s.overall.decided} graded · ${
-                  s.overall.roi === null ? "no priced action" : `${(s.overall.roi * 100).toFixed(0)}% ROI`
-                }${
-                  s.overall.avgClv === null
-                    ? ""
-                    : ` · CLV ${s.overall.avgClv > 0 ? "+" : ""}${s.overall.avgClv.toFixed(2)}`
-                }`}
+              : member.leagueSplit.cfb.decided > 0 && member.leagueSplit.nfl.decided > 0
+                ? // both leagues in play: the split is the more useful caption
+                  `CFB ${formatRecord(member.leagueSplit.cfb)} ${fmtUnits(member.leagueSplit.cfb.units)} · NFL ${formatRecord(member.leagueSplit.nfl)} ${fmtUnits(member.leagueSplit.nfl.units)}`
+                : `${s.overall.decided} graded · ${
+                    s.overall.roi === null ? "no priced action" : `${(s.overall.roi * 100).toFixed(0)}% ROI`
+                  }${
+                    s.overall.avgClv === null
+                      ? ""
+                      : ` · CLV ${s.overall.avgClv > 0 ? "+" : ""}${s.overall.avgClv.toFixed(2)}`
+                  }`}
           </span>
         </span>
         <span className="shrink-0 text-right">

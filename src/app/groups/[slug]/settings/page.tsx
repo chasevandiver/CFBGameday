@@ -5,7 +5,7 @@ import { GroupAdmin } from "../../../../components/group/GroupAdmin";
 import { RosterAdmin } from "../../../../components/group/RosterAdmin";
 import { WeekConfigForm, type ConfigGame } from "../../../../components/group/WeekConfigForm";
 import type { PickRow } from "../../../../lib/db-types";
-import { fetchGroupMembers, fetchGroupWeek, resolveActiveGroup } from "../../../../lib/groups";
+import { fetchGroupMembers, fetchGroupWeek, groupLeague, resolveActiveGroup } from "../../../../lib/groups";
 import { DEFAULT_TZ, kickParts, tzLabel } from "../../../../lib/kick";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../../lib/queries";
 import { createClient } from "../../../../lib/supabase/server";
@@ -24,10 +24,10 @@ export default async function GroupSettingsPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ week?: string }>;
+  searchParams: Promise<{ week?: string; league?: string }>;
 }) {
   const { slug } = await params;
-  const { week: weekParam } = await searchParams;
+  const { week: weekParam, league: leagueParam } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -41,7 +41,13 @@ export default async function GroupSettingsPage({
   // rather than rendering an empty week.
   if (active.kind === "betting") redirect(`/groups/${slug}`);
 
-  const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(supabase);
+  // Each league runs its own week calendar; ?league= picks which board is
+  // being configured, and only leagues the group plays are reachable.
+  const league = groupLeague(leagueParam, active.leagues);
+  const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(
+    supabase,
+    league,
+  );
   const parsed = Number(weekParam);
   const week = isValidWeek(parsed) ? parsed : currentWeek;
 
@@ -104,15 +110,41 @@ export default async function GroupSettingsPage({
 
         {active.role === "admin" && (
           <section className="card mb-4 px-4 py-4">
+            {active.leagues.length > 1 && (
+              <nav aria-label="League" className="mb-3 flex items-center gap-1">
+                {active.leagues.includes("cfb") && (
+                  <Link
+                    href={`/groups/${slug}/settings`}
+                    aria-current={league === "cfb" ? "page" : undefined}
+                    className={`stat flex min-h-11 items-center rounded-lg px-3 text-xs font-semibold ${
+                      league === "cfb" ? "bg-accent/15 text-accent" : "text-dim hover:text-chalk"
+                    }`}
+                  >
+                    CFB
+                  </Link>
+                )}
+                {active.leagues.includes("nfl") && (
+                  <Link
+                    href={`/groups/${slug}/settings?league=nfl`}
+                    aria-current={league === "nfl" ? "page" : undefined}
+                    className={`stat flex min-h-11 items-center rounded-lg px-3 text-xs font-semibold ${
+                      league === "nfl" ? "bg-accent/15 text-accent" : "text-dim hover:text-chalk"
+                    }`}
+                  >
+                    NFL
+                  </Link>
+                )}
+              </nav>
+            )}
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
               <h2 className="text-sm text-accent">Week {week}</h2>
               <nav className="scroll-thin -mx-1 flex max-w-full gap-1 overflow-x-auto px-1">
-                {/* 16 to match the slate's regular-season range — week 16 was
-                    unreachable from the admin UI (audit 08/UX-17). */}
-                {Array.from({ length: 16 }, (_, i) => i + 1).map((w) => (
+                {/* Each league's own regular-season range — CFB stops at 16
+                    (audit 08/UX-17), the NFL runs to 18. */}
+                {Array.from({ length: league === "nfl" ? 18 : 16 }, (_, i) => i + 1).map((w) => (
                   <Link
                     key={w}
-                    href={`/groups/${slug}/settings?week=${w}`}
+                    href={`/groups/${slug}/settings?week=${w}${league === "nfl" ? "&league=nfl" : ""}`}
                     aria-current={w === week ? "page" : undefined}
                     className={`stat flex min-h-11 w-9 shrink-0 items-center justify-center rounded-md text-xs ${
                       w === week ? "bg-accent/15 text-accent" : "text-dim hover:text-chalk"
@@ -164,6 +196,7 @@ export default async function GroupSettingsPage({
               name={active.name}
               visibility={active.visibility}
               hidePicks={active.picksHiddenUntilKickoff}
+              leagues={active.leagues}
               joinCode={joinCode}
             />
           </section>

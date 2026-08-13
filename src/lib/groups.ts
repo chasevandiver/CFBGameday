@@ -40,6 +40,8 @@ export interface GroupSummary {
   kind: GroupKind;
   /** Others' picks stay unreadable until each game kicks off (migration 0023). */
   picksHiddenUntilKickoff: boolean;
+  /** Pick'em league scope (0042). Betting groups always read both leagues. */
+  leagues: Array<"cfb" | "nfl">;
   /** The viewer's role, or null when they are only looking at a public group. */
   role: "admin" | "member" | null;
 }
@@ -52,6 +54,8 @@ const toSummary = (g: GroupRow, role: GroupSummary["role"]): GroupSummary => ({
   // Rows written before 0027 have no kind; they are all pick'em by history.
   kind: g.kind ?? "pickem",
   picksHiddenUntilKickoff: g.picks_hidden_until_kickoff ?? false,
+  // Rows written before 0042 have no leagues; they are all CFB by history.
+  leagues: g.leagues ?? ["cfb"],
   role,
 });
 
@@ -64,7 +68,7 @@ export async function fetchMyGroups(
   const { data } = await supabase
     .from("group_members")
     .select(
-      "role, joined_at, groups!inner(id, name, slug, visibility, kind, picks_hidden_until_kickoff, archived_at)",
+      "role, joined_at, groups!inner(id, name, slug, visibility, kind, picks_hidden_until_kickoff, leagues, archived_at)",
     )
     .eq("user_id", userId)
     .is("removed_at", null)
@@ -96,7 +100,7 @@ export async function resolveActiveGroup(
     // doubles as the visibility check.
     const { data } = await supabase
       .from("groups")
-      .select("id, name, slug, visibility, kind, picks_hidden_until_kickoff, archived_at")
+      .select("id, name, slug, visibility, kind, picks_hidden_until_kickoff, leagues, archived_at")
       .eq("slug", slug)
       .is("archived_at", null)
       .maybeSingle();
@@ -104,6 +108,19 @@ export async function resolveActiveGroup(
   }
 
   return { active: mine[0] ?? null, mine };
+}
+
+/**
+ * Which league board a group page is showing: the `?league=` param when it
+ * names a league the group actually plays, else the group's first league.
+ * CFB wins the tie for a both-league group — it is the product's spine.
+ */
+export function groupLeague(
+  param: string | undefined | null,
+  leagues: Array<"cfb" | "nfl">,
+): "cfb" | "nfl" {
+  if (param === "nfl" && leagues.includes("nfl")) return "nfl";
+  return leagues.includes("cfb") ? "cfb" : "nfl";
 }
 
 /**

@@ -9,10 +9,12 @@ import type { PickRow } from "../../../lib/db-types";
 import { buildGroupShareContext } from "../../../lib/group-share";
 import {
   fetchGroupMembers,
+  groupLeague,
   hasPricedMarket,
   fetchGroupWeek,
   resolveActiveGroup,
 } from "../../../lib/groups";
+import { seasonIdsForYear, seasonYearOf, sportOfSeasonId } from "../../../lib/league";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../lib/queries";
 import { byLeagueRules, EMPTY_TALLY, tallyBy } from "../../../lib/records";
 import { pickableSlots } from "../../../lib/slate";
@@ -43,10 +45,10 @@ export default async function GroupHomePage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ week?: string }>;
+  searchParams: Promise<{ week?: string; league?: string }>;
 }) {
   const { slug } = await params;
-  const { week: weekParam } = await searchParams;
+  const { week: weekParam, league: leagueParam } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -57,7 +59,14 @@ export default async function GroupHomePage({
   // are deliberately the same answer.
   if (!active || active.slug !== slug) notFound();
 
-  const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(supabase);
+  // A both-league group holds one board per league per week (they are separate
+  // group_week_config rows under separate season ids); ?league= says which is
+  // in view. Betting groups always resolve CFB here — their home reads both.
+  const league = groupLeague(leagueParam, active.kind === "betting" ? ["cfb"] : active.leagues);
+  const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(
+    supabase,
+    league,
+  );
   const parsed = Number(weekParam);
   const week = isValidWeek(parsed) ? parsed : currentWeek;
 
@@ -90,9 +99,11 @@ export default async function GroupHomePage({
       : Promise.resolve({ data: null }),
     supabase
       .from("picks")
-      .select("user_id, result, units, clv")
+      // Standings span the group's leagues: this year's CFB and NFL picks
+      // both count, and the split below says who is doing better where.
+      .select("user_id, season_id, result, units, clv")
       .eq("group_id", active.id)
-      .eq("season_id", seasonId),
+      .in("season_id", seasonIdsForYear(seasonYearOf(seasonId))),
     // Lifetime spans seasons — a group has no season_id precisely so this
     // question stays answerable across them.
     user
@@ -127,12 +138,26 @@ export default async function GroupHomePage({
       })
     : null;
 
-  const tallies = tallyBy(
-    (seasonPicksRes.data ?? []) as Array<Pick<PickRow, "user_id" | "result" | "units" | "clv">>,
-    (p) => p.user_id,
-  );
+  const seasonPicks = (seasonPicksRes.data ?? []) as Array<
+    Pick<PickRow, "user_id" | "season_id" | "result" | "units" | "clv">
+  >;
+  const tallies = tallyBy(seasonPicks, (p) => p.user_id);
+  // Who's doing better where — only computed for a group that plays both.
+  const splitTallies =
+    active.leagues.length > 1
+      ? tallyBy(seasonPicks, (p) => `${p.user_id}|${sportOfSeasonId(p.season_id)}`)
+      : null;
   const standings = members
-    .map((m) => ({ ...m, ...(tallies.get(m.userId) ?? EMPTY_TALLY) }))
+    .map((m) => ({
+      ...m,
+      ...(tallies.get(m.userId) ?? EMPTY_TALLY),
+      split: splitTallies
+        ? {
+            cfb: splitTallies.get(`${m.userId}|cfb`) ?? EMPTY_TALLY,
+            nfl: splitTallies.get(`${m.userId}|nfl`) ?? EMPTY_TALLY,
+          }
+        : null,
+    }))
     .sort(byLeagueRules);
 
   const joinCode = (joinRes.data as { join_code: string } | null)?.join_code ?? null;
@@ -165,6 +190,28 @@ export default async function GroupHomePage({
           </p>
         </div>
 
+        {active.leagues.length > 1 && (
+          <nav aria-label="League" className="mb-3 flex items-center gap-1">
+            {(
+              [
+                ["cfb", `/groups/${slug}`],
+                ["nfl", `/groups/${slug}?league=nfl`],
+              ] as const
+            ).map(([l, href]) => (
+              <Link
+                key={l}
+                href={href}
+                aria-current={league === l ? "page" : undefined}
+                className={`stat flex min-h-11 items-center rounded-lg px-3 text-xs font-semibold ${
+                  league === l ? "bg-accent/15 text-accent" : "text-dim hover:text-chalk"
+                }`}
+              >
+                {l.toUpperCase()}
+              </Link>
+            ))}
+          </nav>
+        )}
+
         <WeekHero
           slug={slug}
           week={week}
@@ -178,6 +225,7 @@ export default async function GroupHomePage({
           isAdmin={active.role === "admin"}
           signedIn={!!user}
           share={shareContext}
+          league={league}
         />
 
         {/* ---- standings ---- */}
@@ -204,6 +252,7 @@ export default async function GroupHomePage({
                 isMe={r.userId === user?.id}
                 tally={r}
                 priced={priced}
+                split={r.split}
               />
             ))}
           </ul>

@@ -4,7 +4,7 @@ import { AppNav } from "../../../../components/AppNav";
 import { PickBoard, type BoardEntry } from "../../../../components/group/PickBoard";
 import type { PickRow } from "../../../../lib/db-types";
 import { buildGroupShareContext } from "../../../../lib/group-share";
-import { fetchGroupMembers, fetchGroupWeek, resolveActiveGroup } from "../../../../lib/groups";
+import { fetchGroupMembers, fetchGroupWeek, groupLeague, resolveActiveGroup } from "../../../../lib/groups";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../../lib/queries";
 import { createClient } from "../../../../lib/supabase/server";
 import { isValidWeek } from "../../../../lib/week-range";
@@ -30,10 +30,10 @@ export default async function GroupPicksPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ week?: string }>;
+  searchParams: Promise<{ week?: string; league?: string }>;
 }) {
   const { slug } = await params;
-  const { week: weekParam } = await searchParams;
+  const { week: weekParam, league: leagueParam } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -46,7 +46,11 @@ export default async function GroupPicksPage({
   // rather than rendering an empty week.
   if (active.kind === "betting") redirect(`/groups/${slug}`);
 
-  const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(supabase);
+  const league = groupLeague(leagueParam, active.leagues);
+  const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(
+    supabase,
+    league,
+  );
   const parsed = Number(weekParam);
   const week = isValidWeek(parsed) ? parsed : currentWeek;
 

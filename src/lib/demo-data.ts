@@ -564,6 +564,7 @@ const group = (
   role,
   visibility: "private",
   picksHiddenUntilKickoff: false,
+  leagues: ["cfb"],
 });
 
 const SATURDAY_BOYS = group("g1", "Saturday Boys", "saturday-boys", "pickem", "admin");
