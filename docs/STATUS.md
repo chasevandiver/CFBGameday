@@ -50,7 +50,7 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **649 tests across 46 files**, `tsc` and lint clean — all run in-session 2026-08-13 after the §4 pull-forward below. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
+| **Build** | **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
 | **Scheduler** | 111 completed runs. Reds to date: one watchdog firing correctly on a cold `job_runs` table, and runs #107–109 — the backup verification sequence, each a real defect, all closed. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
@@ -1270,6 +1270,17 @@ remembered API — which `AGENTS.md` asks for — was the difference between a f
 and a regression. Likewise `scripts/db-test.sh`: a suite that aborts mid-way
 prints "0 failed", which reads like a silent pass, but `set -euo pipefail` is
 set and the run does exit 1. Verified with a deliberately-aborting probe suite.
+
+**A measurement of my own that was wrong, recorded because the method matters
+more than the finding.** The error-surfacing row was first justified by "a build
+pointed at a non-resolving database still served 200 on every route". That
+experiment proved nothing: **Next inlines `NEXT_PUBLIC_*` at build time,
+including in server components**, so overriding the URL at `next start` left the
+server talking to the live project the whole time — confirmed by finding the
+real project ref baked into `.next/server` chunks. The defect was real, but the
+evidence for it was not, and it took a rebuild with the bad URL actually baked
+in to measure honestly. Anything testing behaviour against a *substituted*
+Supabase URL has to rebuild, not restart.
 
 **Left deliberately undone, with the reason in the row:** the three remaining
 UX-08 targets (star, pin, bet-chip `X` — they sit in ~30px stacked rows, so a
