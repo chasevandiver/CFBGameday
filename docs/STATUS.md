@@ -1,7 +1,13 @@
 # The CFB Slate — Status
 
-**The one file that answers "what's left."** Reconciled 2026-08-12 against the
-code on `main` at `cc1a9d8`. Week 0 is **Sat Aug 29** — 17 days.
+**The one file that answers "what's left."** Reconciled 2026-08-13 against the
+code on `claude/games-launch-checklist-b7pzab`. Week 0 is **Sat Aug 29** — 16
+days.
+
+**As of 2026-08-13, §2 has no code or docs work left in it.** Everything still
+unchecked below is either owner-run (P1-9b, P1-8, 09:P-16), a dispatch
+(`--tune-fcs`, `observe-scoreboard`, Q8), or a dated watch. That is the whole
+remaining blocking list.
 
 §1's numbers are point-in-time and go stale between reconciliations; the boxes
 do not, because they are checked in the commit that lands the fix. If §1
@@ -36,12 +42,12 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **592 tests across 41 files**, `tsc` and lint clean — run in-session 2026-08-12 after the notify-job watchdog. 118 DB assertions carried from CI. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
+| **Build** | **637 tests across 45 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13. **129 DB assertions**, run in-session against a real Postgres 16 cluster rather than carried from CI. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
 | **Scheduler** | 111 completed runs. Reds to date: one watchdog firing correctly on a cold `job_runs` table, and runs #107–109 — the backup verification sequence, each a real defect, all closed. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
 | **Model in code** | `2026.5.0` — tilt carry, `baseHfa` 3.0, centered team-HFA, portal fix, market-anchored tier recentre |
-| **Database** | Verified live 2026-08-12: **32** migrations applied and 32 recorded — the `0017` ledger gap (DB-3) was repaired the same day. 0031–0033 add the push tables. `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
+| **Database** | 0034 (game-status constraint + the `make_pick` re-pick fix) and 0035 (`teams.fcs_avg_margin`) added 2026-08-13 and **not yet applied to the live project** — both are inert until applied, and 0035 is inert after it too. Verified live 2026-08-12: **32** migrations applied and 32 recorded — the `0017` ledger gap (DB-3) was repaired the same day. 0031–0033 add the push tables. `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
 | **Model in production** | ⚠️ `2026.2.0`. **Four versions behind**, pricing every cross-classification opener ~10 points toward the G5. Waiting on CFBD to publish 2026 talent; `preseason-refresh` retries daily and loads itself the first morning `--check` is green. |
 | **The edge verdict** | b₁ = 0.035 (t = 0.84) for the model vs 0.987 (t = 22.81) for the market, n = 2611; flagged edges 49.2% ATS vs the close. Edges are **information, not bets** — and no model-accuracy work belongs in the next 17 days. |
 
@@ -59,7 +65,9 @@ other 8% plus the deliberate deferrals.
 
 ## 2. Blocking Week 0 — do these first
 
-Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
+Dated per `KICKOFF_READINESS` §10. **The code and docs in this section are
+done as of 2026-08-13** — what remains is the owner-run items and the dated
+watches, plus two migrations to apply.
 
 ### 2.1 Now (Aug 12–14)
 
