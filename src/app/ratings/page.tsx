@@ -97,17 +97,40 @@ export default async function RatingsPage() {
     ];
   });
 
+  // With no rows the table still renders: sortable column headers over an
+  // empty tbody, a scale explainer ending "...among all 0", and a footnote
+  // explaining why a column that isn't there is hidden (P1-5). None of that is
+  // an error state — it is a first run, before `preseason-refresh` has loaded
+  // anything — so it gets the same treatment as /rankings and /standings: say
+  // what is missing and when it arrives.
+  const empty = rows.length === 0;
+
   return (
     <>
       <AppNav />
       <main id="main" className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">
         <div className="mb-6 flex items-baseline justify-between">
           <h1 className="text-2xl">Ratings</h1>
+          {/* "preseason" is only honest once there are ratings to describe.
+              Empty, it claimed a state the page was not in. */}
           <p className="stat text-xs text-chalk/50">
-            {latestWeek === 0 ? "preseason" : `through week ${latestWeek}`} · model {MODEL_VERSION}
+            {empty
+              ? `model ${MODEL_VERSION}`
+              : `${latestWeek === 0 ? "preseason" : `through week ${latestWeek}`} · model ${MODEL_VERSION}`}
           </p>
         </div>
-        <RatingsTable rows={rows} showSplit={showSplit} />
+        {empty ? (
+          <div className="card px-6 py-12 text-center">
+            <p className="display text-lg text-chalk/80">No ratings yet</p>
+            <p className="mt-1 text-sm text-dim">
+              The preseason build lands here once CFBD publishes this season&rsquo;s talent and
+              returning production — the refresh job retries every morning through August. In-season
+              numbers update every Sunday after grading.
+            </p>
+          </div>
+        ) : (
+          <RatingsTable rows={rows} showSplit={showSplit} />
+        )}
       </main>
     </>
   );

@@ -310,7 +310,16 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
       secret is named `SUPABASE_URL` and is passed through as
       `NEXT_PUBLIC_SUPABASE_URL`, and `SUPABASE_DB_URL` must be the session
       pooler URI. `README.md` step 1 now refers to a file that exists.
-- [ ] **P1-5** `/ratings` has no empty state. · 0.25 h
+- [x] **P1-5** `/ratings` empty state, 2026-08-13. With no rows the page used to
+      render sortable column headers over an empty `<tbody>`, a scale explainer
+      ending "…is where that team sits among all 0", and a footnote explaining
+      why a column that isn't there is hidden. It now early-returns the same
+      house empty state `/rankings`, `/standings` and `/edges` already use, and
+      the subtitle no longer claims "preseason" when the real state is "nothing
+      has loaded" — those were the same string before.
+      **Not seen rendered:** the page needs a live Supabase to load. The markup
+      is the shipped pattern from `rankings/page.tsx:41-53` reused verbatim
+      rather than new markup, which is the basis for believing it looks right.
 - [x] **P2-1** Fixed 2026-08-13 with a shared `scripts/lib/env-num.ts`, because
       the bug was never only `PRESEASON_TILT_CARRY`. `Number("")` is `0`, so
       **every** numeric env guard in the repo read a blank variable as a
@@ -435,7 +444,7 @@ These block nothing today but change what gets built. Recommendations are from
 |---|---|---|
 | **Q1** | If `preseason-check` is still red Aug 26, what ships? | **Stale-talent build on 2025 recruiting, loaded as 2026.5.0.** Wrong about incoming freshmen is a ±1–2 pt error at `talentWeight` 0.30; 2026.2.0 is wrong about home field by +0.74 on *every* game, renders no totals, and carries the ~10-pt tier mis-level. Say yes and the `--force` path plus a `/model` note get wired. |
 | **Q4** | FCS: build the two buckets, or amend the spec to one? | **Amend to one bucket at −30, delete the dead constants.** Changing the input distribution 17 days out with no tuner behind it is the bad trade. `--tune-fcs` in the offseason. |
-| **Q7** | Delete the dead edge function? | **Delete `supabase/functions/jobs/`.** It has inverted CLV in all four branches and is 4+ versions behind `jobs-core.ts`. `05:C5` calls it a deliberate tombstone — but a tombstone with a live landmine in it is worse than none. Git preserves it. Say no and it gets a `DO NOT DEPLOY` banner instead. |
+| ~~**Q7**~~ | ~~Delete the dead edge function?~~ | **Answered and done 2026-08-13: deleted.** `supabase/functions/jobs/` had inverted CLV in all four branches and was 4+ versions behind `jobs-core.ts`. `05:C5` called it a deliberate tombstone; a tombstone with a live landmine in it is worse than none, and git preserves it. The only two live references were comments (`jobs.yml:3`, `jobs-core.ts:4`), both rewritten to say what happened and why. Closes P2-3 / 05:C5 / 07:OPS-11 / SEC-12. It also removed the fourth copy of the hardcoded `FCS_RATING = -30`. |
 | **Q6 / SEC-13** | TBD kickoffs (`start_ts` null) — policy before Aug 29 | **Keep as-is.** Un-pickable, un-removable, stays blind, no close and therefore no CLV, but still frozen. Every branch fails closed, which is right for a security boundary and a receipt. Cost: a TBD game is un-pickable until CFBD firms the time, which `sync-games` does daily. |
 | ~~**Q9**~~ | ~~Duplicate frozen predictions~~ | **Answered and done 2026-08-12** — cleared via migration 0028. DB-2 turned out not to be a defect at all. See §2.1b. |
 | ~~**BRAND-1**~~ | ~~Recolour before Aug 29 or after?~~ | **Answered 2026-08-12: now.** Owner call, against the recommendation below; shipped the same day. Original note: **After.** `docs/BRAND.md` §5 replaces every surface colour and §12 swaps the display face — that is every page, 17 days out, against DESIGN.md's "build one screen, get it approved, then propagate". Both near-blacks read as black on a phone, so nothing looks broken today; the visible tell is the two golds (`#E8B93D` vs `#f2b63c`) side by side. Queued as BRAND-2/BRAND-3. |
@@ -524,8 +533,8 @@ Two items remain open; the closed ones are kept for the record.
       after. · S
 
 **Ops / perf**
-- [ ] **P2-3 / 05:C5 / 07:OPS-11 / SEC-12** Delete the dead edge function
-      (pending Q7). · 0.5 h
+- [x] **P2-3 / 05:C5 / 07:OPS-11 / SEC-12** Dead edge function deleted
+      2026-08-13 — see Q7 in §3.
 - [ ] **P2-6** `ratings/page.tsx:56` still does `teams.select("*")`; the
       game-page equivalent was narrowed by `09:P-5`. · 0.25 h
 - [ ] **09:P-1b** Slim `/api/slate-live` heal endpoint — decide after P-16's

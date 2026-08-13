@@ -165,6 +165,32 @@ shipping it.
 
 ## Log
 
+### Aug 13 — Deleting the second scheduler, and a table that said "all 0"
+
+**Q7, answered: the edge function is gone.** `supabase/functions/jobs/` was 710
+lines of a parallel pg_cron implementation that was never deployed, sat four
+model versions behind `scripts/lib/jobs-core.ts`, and had inverted CLV in all
+four of its branches. `05:C5` described it as a deliberate tombstone. A
+tombstone is a reasonable thing to keep; a tombstone containing a live sign
+error is not, because the next person to revive it inherits the bug along with
+the head start. Git has it. The only two live references were comments, both
+rewritten to say what was removed and why rather than to point at a path that no
+longer exists. This also deleted the fourth copy of the hardcoded
+`FCS_RATING = -30`, which matters for the FCS work.
+
+**P1-5: `/ratings` had no empty state.** With zero rows it rendered a sortable
+table header over an empty body, a scale explainer that ended "…is where that
+team sits among all 0", and a footnote explaining why a column that wasn't there
+was hidden. It now uses the same empty state `/rankings`, `/standings` and
+`/edges` already carry. The subtitle was its own small lie: `latestWeek === 0`
+rendered "preseason", and an empty table also has `latestWeek === 0`, so the
+page announced a state it was not in.
+
+Neither page was seen rendered — both need a live Supabase — so the empty state
+is the shipped markup from `rankings/page.tsx` reused rather than written fresh.
+
+No model change. `DEFAULT_PARAMS` untouched, no tuner run.
+
 ### Aug 13 — A rule that had never once run, and the re-pick that could not work
 
 League Rule #4 — a postponed or canceled game voids every wager on it — has been

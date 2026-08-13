@@ -1,6 +1,10 @@
 # The CFB Slate — scheduled jobs (docs/SPEC.md §8).
-# GitHub Actions is the v1 scheduler; the pg_cron + edge-function path lives in
-# supabase/functions/jobs/ for when it can be deployed. Actions schedules can
+# GitHub Actions is the scheduler, and the only one. A parallel pg_cron +
+# edge-function implementation lived in supabase/functions/jobs/ until
+# 2026-08-13; it was never deployed, drifted four model versions behind
+# scripts/lib/jobs-core.ts, and had inverted CLV in all four of its branches,
+# so it was deleted rather than left as a tombstone with a live bug in it. Git
+# has it if the pg_cron path is ever revived. Actions schedules can
 # lag 5–30 min, which the close passes budget for: each is scheduled ~40 min
 # before its kickoff wave, so a worst-case-late run still lands pre-kickoff
 # and a post-kickoff snapshot is never selected as the close.

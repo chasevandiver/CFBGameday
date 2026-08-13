@@ -1,7 +1,12 @@
 /**
  * Shared job implementations (docs/SPEC.md §8), used by the thin CLI wrappers
- * in scripts/ (scheduled via GitHub Actions) and mirrored by the edge function
- * in supabase/functions/jobs/ (the future pg_cron path).
+ * in scripts/ and scheduled via GitHub Actions.
+ *
+ * This is the only implementation. A second copy lived in
+ * supabase/functions/jobs/ as the future pg_cron path and was deleted on
+ * 2026-08-13 — never deployed, four model versions behind this file, and
+ * carrying inverted CLV in all four of its branches. A tombstone with a live
+ * bug in it is worse than no tombstone; git has it if it is ever wanted.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
