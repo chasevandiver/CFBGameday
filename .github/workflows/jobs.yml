@@ -425,11 +425,39 @@ jobs:
       # successful run flips that: the alert fires when the ping STOPS.
       # Inert until the HEALTHCHECK_PING_URL secret exists; the task name is
       # appended so one project can hold a check per job (slug-mode URLs).
+      # A ping that never leaves the runner used to look exactly like one that
+      # landed: `curl -fsS … > /dev/null || true` discarded the outcome and the
+      # run went green with the dead-man switch silently absent. Proved on run
+      # #120 — the secret was set, and curl said `(3) URL rejected: No host
+      # part in the URL`. Nothing reached healthchecks; the run was green.
+      # That is the same defect the backup step was fixed for one row above,
+      # in the step immediately below it.
+      #
+      # Still never fails the run — observability must not break the thing it
+      # observes (scripts/lib/jobs-core.ts) — so a bad ping is a WARNING, which
+      # is visible on the run summary without turning a good job red.
       - name: Dead-man ping
         if: ${{ success() }}
         env:
           HEALTHCHECK_PING_URL: ${{ secrets.HEALTHCHECK_PING_URL }}
         run: |
-          if [ -n "$HEALTHCHECK_PING_URL" ]; then
-            curl -fsS -m 10 --retry 3 "$HEALTHCHECK_PING_URL/${{ steps.task.outputs.task }}" > /dev/null || true
+          if [ -z "$HEALTHCHECK_PING_URL" ]; then
+            echo "::notice::HEALTHCHECK_PING_URL not set — dead-man ping skipped"
+            exit 0
           fi
+          # No -f: we want the status code, not an exit code that hides it.
+          # A `||` branch here means curl never got an answer at all.
+          code=$(curl -sS -m 10 --retry 3 -o /dev/null -w '%{http_code}' \
+            "$HEALTHCHECK_PING_URL/${{ steps.task.outputs.task }}") || code=""
+          case "$code" in
+            200|201)
+              echo "dead-man ping ok — ${{ steps.task.outputs.task }} (HTTP $code)" ;;
+            404)
+              # Expected for the 18 tasks with no check: healthchecks 404s an
+              # unknown slug, and that is the designed way to monitor a subset.
+              echo "::notice::No healthchecks check with slug '${{ steps.task.outputs.task }}' (HTTP 404) — expected unless this task is meant to be monitored" ;;
+            "")
+              echo "::warning::Dead-man ping never reached healthchecks — see the curl error above. HEALTHCHECK_PING_URL must be https://hc-ping.com/<ping-key>, with a scheme and no trailing slash." ;;
+            *)
+              echo "::warning::Dead-man ping returned HTTP $code for slug '${{ steps.task.outputs.task }}'" ;;
+          esac
