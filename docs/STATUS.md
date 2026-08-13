@@ -1185,18 +1185,16 @@ Built on `claude/nfl-scores-lines-l4bhio`; the design and its evidence are in
       at 23:45 UTC Thu (`nfl-lines-close`), `nfl-grade` Fri 13:30 UTC; check a
       logged bet grades with CLV against the captured close. A finaled
       preseason game on a Supabase branch works sooner. · 0.5 h
-- [ ] **NFL-5** The live-situation shape against a real in-progress game.
-      **Partly done 2026-08-13, against GB@PIT live:** status/period/clock,
-      `shortDownDistanceText` ("1st & 10"), `lastPlay.text` and both scores
-      all parse as written. What was NOT observed is a non-null
-      `situation.possession` — at the kickoff snapshot ESPN sent only
-      `possessionText` ("GB 35", the spot, not the team), and the board was
-      still serving that snapshot minutes in. The parser reads absence as
-      null, so the card shows the situation without the possession football —
-      degraded, not wrong. Still owed: one look mid-drive (any live game,
-      `espn.scoreboard()`) to see whether the team-id `possession` field ever
-      populates on this endpoint; if it never does, note it here and the
-      football stays a CFB-only affordance. · 0.25 h
+- [x] **NFL-5** The live-situation shape against a real in-progress game.
+      **Done 2026-08-13, against GB@PIT live (preseason week 2):**
+      status/period/clock, `shortDownDistanceText` ("1st & 10"),
+      `lastPlay.text` and both scores all parse as `parseEvent` reads them.
+      `situation.possession` is null at the kickoff snapshot (only
+      `possessionText` — the spot, not the team) and populates mid-drive as
+      the team id string: observed `possession='9'` with GB (away, id 9) on
+      the ball at 2nd & 5, which is exactly the synthesized fixture's mapping
+      to `"away"`. The kickoff gap renders as situation-without-football —
+      degraded, not wrong — and needs nothing.
 - [ ] **NFL-6** Deferred, recorded: playoff-round labels + postseason week
       browsing (January; stored weeks 1–4 exist now), NFL venues + weather
       (existing `weatherJob` machinery, needs offset venue rows + coords),
