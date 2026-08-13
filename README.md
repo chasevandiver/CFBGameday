@@ -7,7 +7,7 @@ A college football ratings, edges, pick'em, and bet-tracking site for the crew. 
 ## Setup
 
 1. Copy `.env.example` to `.env.local` and fill in keys:
-   - **CFBD**: register at [collegefootballdata.com/key](https://collegefootballdata.com/key). Tier 2–3 ($5–10/mo) recommended — the free tier's 1,000 calls/mo won't survive the backtest backfill, and scoreboard/weather need Tier 1+.
+   - **CFBD**: register at [collegefootballdata.com/key](https://collegefootballdata.com/key). **Tier 1+ is required**, because the scoreboard and weather endpoints are entitlements the free tier does not grant. It is not about call volume — a full cold 2023–25 backtest backfill is 16 calls. We run Tier 2 (30,000/mo) against ~10,000 of expected use.
    - **Supabase**: create a project, then apply every file in `supabase/migrations/` in order (via `supabase db push` or the SQL editor). Applying only `0001` leaves the integrity lockdown, groups and per-group picks out — the app will not work.
    - **Anthropic**: for the LLM layer (team verdicts, three questions, scoped news scan).
 2. `npm install`

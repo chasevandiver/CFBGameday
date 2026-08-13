@@ -17,7 +17,7 @@
 
 | Source | What it provides | Notes |
 |---|---|---|
-| **CollegeFootballData.com (CFBD) API** | Schedules, scores, rosters, returning production, recruiting rankings, team talent composite, betting lines (multiple books), SP+/Elo/FPI ratings, drive/play data, venue info, live scoreboard | **The backbone.** **[v2] Budget Tier 2–3 ($5–10/mo)** — the free tier's 1,000 calls/mo won't survive the backtest backfill month, and live scoreboard + weather endpoints require Tier 1+. |
+| **CollegeFootballData.com (CFBD) API** | Schedules, scores, rosters, returning production, recruiting rankings, team talent composite, betting lines (multiple books), SP+/Elo/FPI ratings, drive/play data, venue info, live scoreboard | **The backbone.** **[v2] Budget Tier 2–3 ($5–10/mo)** — required because **live scoreboard and weather need Tier 1+**, which is an entitlement, not a quota. *(Amended 2026-08-13: this used to say the free tier's 1,000 calls/mo "won't survive the backtest backfill". It would — a full cold 2023–25 backfill is **16 calls**. Volume was never the constraint; we run Tier 2's 30,000/mo against ~10,000 of expected use.)* |
 | **LLM layer (Anthropic API + web search)** | Written team notes, injury/news intel, portal moves, weekly narratives, "three questions" per game | Sits on top of CFBD data. Structured JSON outputs. **[v2]** Use `claude-sonnet-5` via the Batch API (50% off; nothing here is latency-sensitive). Scope the news scan to teams playing that week (~30/day), not all 136 daily — that's the difference between ~$20 and ~$250/season. Total LLM budget: $50–150/season. |
 | **Weather API** (Open-Meteo, free, no key) | Game-time forecast: wind, precip, temp per stadium coords | Wind >15mph flags totals. Pull Sat 6am local. **[v2]** CFBD venue lat/long is nullable — keep a manual fallback coordinates table. |
 | **The Odds API** (optional upgrade) | Real-time line movement, betting % vs money % splits | **[v2]** Free tier (500 credits/mo) is enough for a dedicated *closing-snapshot* job (~360 credits/season). $30/mo buys real movement history in Phase 2. Requires a team-name mapping table (Odds API names ↔ CFBD school names). |
@@ -68,7 +68,7 @@ rating_change = K × error        # split between the two teams
 ```
 
 - **Margin cap:** ±28 points (blowout style points don't triple-count).
-- **K-factor:** start ~0.15–0.20. Tune via backtest.
+- **K-factor:** **0.3**, fitted on a 2023–25 grid. *(This said "start ~0.15–0.20, tune via backtest" until 2026-08-13; the tuning happened long ago and the spec never caught up. Recorded here so it is not re-litigated: the JOINT K/HFA refit preferred K=0.4, which is the **edge of the grid**, and that config bought no margin MAE while degrading win-prob calibration badly — the 0.7–0.8 bucket went from 1.6 points off to 6.2 — and worsened totals MAE 13.09 → 13.19. NLL is one scalar and the product's claims are calibration, totals and margin together. K stays 0.3 with HFA fitted separately. See `src/model/ratings.ts:170-183`.)*
 - **Prior decay:** blend preseason prior with results-to-date. Prior weight: 100% week 0 → ~50% week 4 → ~15% week 8 → ~5% by week 12.
 - Update offense/defense sub-ratings from points scored/allowed vs opponent-adjusted expectation.
 
@@ -84,7 +84,7 @@ spread = home_rating − away_rating + team_HFA + situational_adjustments
   - Rest disparity (bye vs short week): ±1–2
   - Long travel / body-clock kickoff: −1
   - Weather: wind >15mph reduces total 3–6 pts; heavy precip similar; affects pass-heavy teams more
-- **Win probability:** logistic curve fit to historical margin data, roughly `P(home) = 1 / (1 + e^(−0.145 × spread))`. Validate in backtest.
+- **Win probability:** logistic curve, `P(home) = 1 / (1 + e^(−0.101 × spread))`. *(Specced as ≈0.145 and amended 2026-08-13 to the shipped value. The slope is not fitted independently — it is `1.7/σ` at the fitted `marginSigma` of 16.8, so it moves when σ does. `winProbSlope` in `DEFAULT_PARAMS`.)*
 - **Projected score:** from offense/defense sub-ratings + combined tempo.
 - **Cover probability** vs the actual Vegas line. **[v2]** σ for the margin distribution is *fit during the backtest*, not assumed (expect ≈15–16 for CFB, but let the data say).
 
@@ -147,8 +147,8 @@ Ambiguity here is the #1 source of arguments in betting groups, so the rules are
 
 1. **A pick locks with the line snapshot at the moment it's made** (`line_at_pick`). Line-shopping timing is part of the skill, and it makes per-pick CLV meaningful. Users may hold different numbers on the same game.
 2. Picks are editable until kickoff, but **editing re-snapshots the line** to the current number.
-3. All pick mutation is enforced at the database layer: no writes where `now() ≥ kickoff_ts`. **[Changed Aug 2026, owner decision]** Picks are visible to the whole crew at all times — the pre-kickoff blind was removed (migration 0010).
-4. **Push = no action** (doesn't count in record or units). Postponed/canceled = void.
+3. All pick mutation is enforced at the database layer: no writes where `now() ≥ kickoff_ts`. **[Changed Aug 2026, owner decision]** The crew-wide pre-kickoff blind was removed in migration 0010 — and then, with multiple pools, became **a per-group setting** in 0023: `groups.picks_hidden_until_kickoff`, **default false**, so no existing group changed behaviour. One pool wanting to sweat each other's cards before kickoff is a preference, not a rule. Enforced by the `picks_revealed()` gate in the RLS read policy, which also keeps a TBD kickoff hidden rather than open forever.
+4. **Push = no action** (doesn't count in record or units). Postponed/canceled = void. *(Since 2026-08-13 an admin sets those statuses from `/admin`; CFBD publishes no cancellation signal, so nothing else can. The void applies immediately and again on the Sunday grading pass. Restoring a game does not un-void — the line has moved — so members re-pick.)*
 5. Season leaderboard: record, units, ROI, CLV. **Tiebreaker: ROI, then average CLV.**
 6. Minimum picks per week and units conventions are league settings (defaults: 3 picks/week minimum to stay on the leaderboard, 1 unit per pick unless specified).
 
@@ -193,7 +193,7 @@ Price from sub-ratings + tempo: team totals, first-half lines, alternate lines. 
 
 **Identity:** stadium-scoreboard-meets-ledger. Deep field green (#08251C / #0E3B2C), chalk white (#F4EFE2), goalpost gold (#E8B93D), penalty-flag orange (#E4572E) for edges. Display type: varsity block (Graduate). Body: Archivo. All numbers in IBM Plex Mono. Dense stat tables.
 
-**Navigation:** Week selector as primary nav; score ticker strip; tabs: Slate · Ratings · Teams · Game Cards · Ledger · Crew · Receipts.
+**Navigation:** Week selector as primary nav; score ticker strip; tabs: Slate · Ratings · Teams · Game Cards · Ledger · Groups · Receipts. *(`Crew` until 2026-08-13. One crew became many pools, so `/crew` is a redirect into `/groups` — kept rather than 404'd because the old URL is in people's history and in the ledger's footer copy.)*
 
 **Slate UX:** default sort kickoff time; toggles for watchability / biggest edge / biggest line move; Noon–Afternoon–Primetime–Late groupings; live/final card states; "my picks" filter; local-timezone kickoffs.
 
@@ -213,11 +213,13 @@ Weights tuned by feel; displayed as a 0–100 score.
 
 # 8. Operations & Automation
 
-**[v2] Infrastructure correction:** Vercel cron on the Hobby plan is limited to once daily (Jan 2026 change) — it cannot run this table. **All jobs run on Supabase pg_cron → Edge Functions** (free, minute precision, jobs live next to the data). Vercel hosts the app only.
+**[v2] Infrastructure correction:** Vercel cron on the Hobby plan is limited to once daily (Jan 2026 change) — it cannot run this table. Vercel hosts the app only.
+
+**[Amended 2026-08-13] All jobs run on GitHub Actions**, not on Supabase pg_cron → Edge Functions. The pg_cron path was written and never deployed; it drifted four model versions behind `scripts/lib/jobs-core.ts` and was deleted, so `scripts/` + `.github/workflows/jobs.yml` is the whole scheduler. The tradeoff Actions brings, and which every schedule below is built around: **cron can lag 5–30 minutes**, so each close pass is scheduled ~40 min before its kickoff wave and a post-kickoff snapshot is never selected as the close.
 
 | Job | Schedule |
 |---|---|
-| Refresh betting lines | 3–4× daily; hourly on Saturdays; **[v2] + burst poll every 5–10 min in the 90 min before each kickoff wave** (closing-line capture) |
+| Refresh betting lines | 2× daily for display, plus one close pass ~40 min before each kickoff wave. **[Amended 2026-08-13]** The **burst poll is dispatch-only** — `refresh-lines-burst` exists and is in the dispatch list, and deliberately has no cron (owner decision, Aug 2026: lines barely move intraday, nobody here bets the moves, and the only number that matters is the close, because that is what CLV is graded against). Running it every 5–10 min through every wave would multiply call volume for a number nothing reads. |
 | Update ratings from results | Sunday 8am ET |
 | Weather pull | Saturday 6am local per stadium |
 | Injury/news LLM scan | Daily 7am, scoped to teams playing that week; admin confirms |
@@ -228,9 +230,9 @@ Weights tuned by feel; displayed as a 0–100 score.
 
 **[v2] Pick locking is NOT a cron job** — enforced in the data layer: mutations rejected and visibility granted by `now() vs kickoff_ts` checks (RLS + server).
 
-**Accounts:** **[v2]** Supabase magic-link auth + invite allowlist table + `admin` role flag. Write locks (picks immutable after kickoff, ledger rules) enforced via **RLS policies**, never client-side. Picks are readable crew-wide at all times (changed Aug 2026, migration 0010).
+**Accounts:** **[v2]** Supabase magic-link auth + invite allowlist table + `admin` role flag. Write locks (picks immutable after kickoff, ledger rules) enforced via **RLS policies**, never client-side. Pick visibility is **per group** (`picks_hidden_until_kickoff`, default false) — see §4 R3.
 
-**Stack (confirmed):** Next.js on Vercel (Hobby) + Supabase Postgres/Auth/Edge Functions + pg_cron. CFBD + Open-Meteo + Anthropic APIs server-side only. Mobile-first; PWA for home-screen install. **[v2]** `season_id` on every table from day one — this is a year-round, multi-season product. Keep raw play-level data out of Postgres (free tier is 500MB; aggregate during backtest).
+**Stack (confirmed):** Next.js on Vercel (Hobby) + Supabase Postgres/Auth + GitHub Actions as the scheduler *(amended 2026-08-13 — no Edge Functions, no pg_cron; see the correction above)*. CFBD + Open-Meteo + Anthropic APIs server-side only. Mobile-first; PWA for home-screen install. **[v2]** `season_id` on every table from day one — this is a year-round, multi-season product. Keep raw play-level data out of Postgres (free tier is 500MB; aggregate during backtest).
 
 **[v2] Cost sheet:** CFBD $5–10/mo · Supabase $0 (Pro $25/mo only if needed) · Vercel $0 · Odds API $0 (Phase 2: $30/mo) · LLM $50–150/season. **Total: ~$6–15/mo.**
 

@@ -165,6 +165,60 @@ shipping it.
 
 ## Log
 
+### Aug 13 — Seven places the docs described a product we do not have
+
+`docs/STATUS.md` §2.3 collected the doc-vs-code contradictions found by reading
+both. All of them are now amended, each with the code cited rather than the
+memory of it. The two that were load-bearing:
+
+**§8 said all jobs run on Supabase pg_cron → Edge Functions.** They never did in
+production, and as of this morning they cannot — that code is deleted. A reader
+following the spec would have gone looking for a scheduler that does not exist.
+The Stack line repeated it. Both now name GitHub Actions and, more usefully,
+state the constraint every schedule in the file is shaped around: Actions cron
+lags 5–30 minutes, which is why each close pass sits ~40 min ahead of its wave.
+
+**§2.2's K-factor still said "start ~0.15–0.20, tune via backtest".** The tuning
+happened months ago and landed on 0.3. The amendment carries the part that keeps
+it from being re-opened: the joint K/HFA refit preferred K=0.4, which is *the
+edge of the grid*, and that config bought no margin MAE while moving the 0.7–0.8
+win-prob bucket from 1.6 points off to 6.2. §2.3's win-prob slope is now 0.101,
+with the fact that matters more than the number — it is not independently
+fitted, it is 1.7/σ, so it moves whenever `marginSigma` does.
+
+The rest: §4 R3 described migration 0010's crew-wide picks when 0023 made
+visibility a per-group setting (and §8's Accounts paragraph repeated the old
+claim); §7 listed `/crew` in the nav, which is a redirect; the burst poll was
+specced as a 5–10 minute cron when it is deliberately dispatch-only; both
+`README` and §1 said the CFBD free tier "won't survive the backtest backfill",
+which is false by a factor of sixty — the backfill is 16 calls, and Tier 1+ is
+an entitlement question, not a quota one. Bug #9's evidence in the Aug 6 audit
+was stale in two places, not the one the tracker recorded.
+
+**`probe.ts`'s `emptyIsHealthy` comment was corrected and the flag deliberately
+left on.** The comment claimed `/scoreboard` "returns `[]` all week and only
+fills on a Saturday"; the Aug 12 probe pulled 889 rows on a Wednesday. So the
+flag's entire stated justification was false, and what it does in practice is
+mask a genuinely empty board — the one symptom that would reveal a dead live
+layer. Removing it is still the wrong move today: two documents disagree on the
+remedy, and tightening a health check sixteen days out on an endpoint whose
+first real in-season call has not yet happened is not a trade worth taking. The
+comment now records the truth and the disagreement; the decision waits for the
+`observe-scoreboard` dispatch over the openers, which is the one observation
+that settles it.
+
+Also fixed: `docs/STATUS.md` §4 asserted PUSH-6 was "worth closing before Week
+0" three paragraphs after marking it declined. The owner's decision stands and
+the prose now agrees with it.
+
+Line-number citations survived: §8 grew by two lines, and every `SPEC.md:NN`
+reference in the live docs points above it — except the slip-order line, which
+moved 253 → 255 and is now cited by section instead. The audit files keep their
+original citations; they are history and are not edited to look better in
+hindsight.
+
+No model change. `DEFAULT_PARAMS` untouched, no tuner run.
+
 ### Aug 13 — Deleting the second scheduler, and a table that said "all 0"
 
 **Q7, answered: the edge function is gone.** `supabase/functions/jobs/` was 710

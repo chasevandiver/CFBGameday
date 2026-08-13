@@ -354,38 +354,56 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
       `/admin` instead of only in a probe. `sync-games` now reports `tv` count
       too. The stale "swallows this silently" notes in `probe-cfbd.ts:55` and
       `probe.ts:13` were corrected in the same commit.
-- [ ] **P1-4** Schedule the burst poll, or say in the spec that it's
-      dispatch-only. `refresh-lines --burst` exists and is in the dispatch list
-      (`jobs.yml:28`), but no cron maps to it (`jobs.yml:163`). · 0.5 h
+- [x] **P1-4** Spec amended 2026-08-13 rather than a cron added: the code is
+      right and §8 was stale. `refresh-lines-burst` is deliberately
+      dispatch-only per the owner decision recorded at `jobs.yml:8-12` — lines
+      barely move intraday, nobody here bets the moves, and the only number that
+      matters is the close. §8 now says so. While in there, two larger §8 lies
+      were fixed: it claimed **all jobs run on Supabase pg_cron → Edge
+      Functions**, which was never true in production and is now not even
+      possible (Q7 deleted that code), and the Stack line said the same.
 
 ### 2.3 Docs that contradict the code (Aug 18)
 
 One sitting, ~2 h. Each is a doc edit, not a code change.
 
-- [ ] **Q3** `SPEC.md` §2.2/§2.3 still say K = 0.15–0.20 and slope ≈ 0.145; the
-      code ships the fitted 0.3 and 0.101. Amend with the run cited, and record
-      that K's joint refit hit a grid boundary at 0.4 so nobody re-litigates it.
+- [x] **Q3** Amended 2026-08-13. §2.2 now states the fitted `kFactor` 0.3 and
+      carries the reason nobody should re-open it: the joint K/HFA refit picked
+      K=0.4 at the **edge of the grid**, bought no margin MAE, and moved the
+      0.7–0.8 win-prob bucket from 1.6 points off to 6.2. §2.3 states
+      `winProbSlope` 0.101 and, more usefully, that it is not independently
+      fitted — it is 1.7/σ, so it moves whenever `marginSigma` does.
 - [ ] **Q4 / P1-2** FCS two-bucket rule: specced, never built —
       `fcsTopRating`/`fcsOtherRating` are dead constants
       (`ratings.ts:112,200`) and every fitted parameter was fit under the flat
       −30 the replay actually runs. **Recommended: amend the spec to one bucket
       at −30 and delete the constants**; revisit with `--tune-fcs` in the
       offseason. Owner call — see §3.
-- [ ] **Q5** `SPEC.md` §4 R3 describes migration 0010's crew-wide picks; 0023
-      made it a per-group setting (`picks_hidden_until_kickoff`, default false).
-      Behavior is right, the spec is one step behind.
-- [ ] **P1-6** `SPEC.md` §7 lists `/crew` as primary nav; `/crew` is a redirect
-      to `/groups`.
-- [ ] **P2-7** `README.md:10` and `SPEC.md:20` claim the CFBD free tier "won't
-      survive the backtest backfill." It would — a full cold 2023–25 backfill is
-      16 calls. The real reason for Tier 1+ is `/scoreboard`.
-- [ ] **Bug #9 evidence** `docs/AUDIT-2026-08.md` cites `actions/picks.ts:54,58`
-      for a fix that now lives in the `remove_pick` RPC (`0021:255-257`) —
-      stronger than what's documented, but the citation is stale.
-- [ ] **probe.ts:52** still says `/scoreboard` "returns `[]` all week and only
-      fills on a Saturday." The Aug 12 probe disproved it (whole season, 889
-      rows) — and that sentence is the stated justification for
-      `emptyIsHealthy`, which today would mask a genuinely empty board.
+- [x] **Q5** Amended 2026-08-13. §4 R3 now describes the per-group
+      `picks_hidden_until_kickoff` (default false) and the `picks_revealed()`
+      gate, including that a TBD kickoff stays hidden rather than open forever.
+      The §8 Accounts paragraph repeated the old crew-wide claim and was fixed
+      in the same pass.
+- [x] **P1-6** Amended 2026-08-13 — §7's nav list reads `Groups`, with a note
+      that `/crew` survives as a redirect because the old URL is in people's
+      history and in the ledger's footer copy.
+- [x] **P2-7** Corrected 2026-08-13 in both files. Tier 1+ is required because
+      scoreboard and weather are **entitlements**, not because of quota — a full
+      cold 2023–25 backfill is 16 calls against the free tier's 1,000.
+- [x] **Bug #9 evidence** Corrected 2026-08-13. Two stale spots, not one: the
+      fix table said `.select("id")` + zero-row check, which is gone, and the
+      finding's own line range predates the move into the RPC. Both now point at
+      `remove_pick` (`0021:255-257`). The finding itself was always right.
+- [x] **probe.ts:52** Comment corrected 2026-08-13; **the flag stays on, for
+      now.** The sentence was false — the Aug 12 probe pulled 889 rows on a
+      Wednesday — and it was the whole stated justification for
+      `emptyIsHealthy`, which therefore masks the one symptom that would reveal
+      a dead live layer on a Saturday. Two documents disagree on the remedy:
+      this file said it should go, `audit/KICKOFF_READINESS.md:69` says it
+      "costs nothing and stays". Tightening a health check sixteen days out, on
+      an endpoint whose first real in-season call has not yet happened, is the
+      wrong trade — so the comment now states the truth and the disagreement,
+      and the decision moves to §4 for after Week 0.
 
 ### 2.4 Model work that is not accuracy work (Aug 18–20)
 
@@ -535,7 +553,14 @@ Two items remain open; the closed ones are kept for the record.
 **Ops / perf**
 - [x] **P2-3 / 05:C5 / 07:OPS-11 / SEC-12** Dead edge function deleted
       2026-08-13 — see Q7 in §3.
-- [ ] **P2-6** `ratings/page.tsx:56` still does `teams.select("*")`; the
+- [ ] **`emptyIsHealthy` on `/scoreboard`** — decide after Week 0. The flag's
+      stated justification was disproved on 08-12 and `probe.ts` now says so,
+      but the flag is still on, so a genuinely empty board reads as green. This
+      file and `audit/KICKOFF_READINESS.md:69` reach opposite conclusions from
+      the same fact. **What settles it:** one observation of what `/scoreboard`
+      does during a live game — which is exactly what the `observe-scoreboard`
+      dispatch in §2.4 is for. Decide with that in hand, not before. · S
+- [ ] **P2-6** `ratings/page.tsx` still does `teams.select("*")`; the
       game-page equivalent was narrowed by `09:P-5`. · 0.25 h
 - [ ] **09:P-1b** Slim `/api/slate-live` heal endpoint — decide after P-16's
       numbers. · M
@@ -674,12 +699,20 @@ a trigger off, and one-off sends are all table edits from `/admin`.
 
 **Built and live 2026-08-12** — PUSH-1, 2, 3, 4, 7 and 8, plus a fourth kind
 (`log_bets`, betting groups before each Saturday wave) and per-kind defaults
-with bad beats shipping off. Migrations 0032/0033 applied. **PUSH-6 is the only
-item left, and it is the one that protects a Saturday:** nothing caps how many
-bad-beat notifications one chaotic afternoon can send, and nothing respects
-`profiles.timezone`, so a late Pac-after-dark flip will buzz at 2am. Neither has
-bitten yet because no game has gone live since the feature shipped. Worth
-closing before Week 0.
+with bad beats shipping off. Migrations 0032/0033 applied.
+
+**PUSH-6 is the only item left, and it stays declined** — owner call,
+reaffirmed 2026-08-13. *(This paragraph used to end "Worth closing before Week
+0", contradicting the `[~]` declined row above it. One or the other had to go,
+and the owner's decision is the one that counts. The exposure is real and
+recorded in that row; the mitigating fact is that bad beats default OFF, so it
+only reaches someone who deliberately switched them on and can switch them back
+off.)*
+
+**What was wrong with this section, found 2026-08-13:** PUSH-3 and PUSH-9 were
+ticked as shipped and were — but their crons were never routed, so neither job
+had ever run. See SCHED-1 in §2.1c. The ticks were honest about the code and
+silent about the wiring, which is the gap that let it sit for a day.
 
 - [x] **PUSH-8** Migration 0031 applied and VAPID keys set in Vercel and
       Actions, 2026-08-12. **Verified end to end on a real iPhone (iOS 18.7):**
@@ -747,7 +780,9 @@ Additive features, no defect behind any of them. Verified still open 2026-08-12.
 | §23 #31 | BetForm game **search** — labels, validation and the −3d/+9d window shipped; the picker is a plain `<select>` | Fine at 60 games/week |
 | §23 #42 | **Route smoke tests** — 41 test files, 585 tests, none exercise a route | The one partial that touches correctness; named, not rounded up |
 
-**Explicit slip order** if time runs out (`SPEC.md:253`): team-page LLM verdicts
+**Explicit slip order** if time runs out (`SPEC.md` §10, Buffer — cited by
+section rather than by line, because the 08-13 §8 amendments moved it from 253
+to 255 and it will move again): team-page LLM verdicts
 and the admin review queue first, then F13/F9/F16, then P1-2 FCS buckets, then
 P2-2/P2-5. **Never slipped:** the slate, pick'em, the ledger, the freeze, the
 close passes.
