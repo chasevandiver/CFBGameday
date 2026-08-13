@@ -921,20 +921,80 @@ silent about the wiring, which is the gap that let it sit for a day.
       live active-group cookie flow to test · S
 - [ ] **F10** "Biggest line move" slate sort — needs real movement data · S
 - [ ] **F13** Returning-production % on team pages — lights up when data lands · S
-- [ ] **UX-08** Remaining sub-44px targets: star, pin, BetSlip remove, void
-      link, units input · S–M
-- [ ] **UX-22** MatchupCard push results get icon + colour, not sr-only text · S
+- [ ] **UX-08 — four of seven done 2026-08-13; three need a layout decision.**
+      The row listed five targets and there were **seven**: the two it missed
+      are the bet-chip void `X` on a game card (`GameCard.tsx:922-937`, ~15px)
+      and the BetSlip toast dismiss (`BetSlip.tsx:120-126`, ~21px).
+      **Fixed:** the void link (`VoidBetButton`, a bare ~14px text line, now
+      `min-h-11` with `-mx-2` so the target grows without widening its row), the
+      BetSlip remove `X` and toast dismiss (both `min-h-11 min-w-11`), the units
+      input (`h-7` → `h-11`), and the toast's Share button, which was `min-h-9`
+      — 36px, short of the rule and not on anyone's list.
+      **Still open, and not a class tweak:** the star, the pin and the bet-chip
+      `X` all sit inside `.trow` rows about 30px tall, stacked two to a card. A
+      44px target centred on a 13px glyph would overlap its sibling vertically,
+      and overlapping targets mis-fire worse than small ones do. The fix is a
+      taller row, which is a layout change that has to be seen on a device
+      rather than reasoned about — pair it with the Aug 21 real-device pass. · S
+- [x] **UX-22** Fixed 2026-08-13. `PickerChip` tested only `win` and `loss`, so
+      `push` **and `void`** fell through both branches and rendered exactly like
+      an ungraded pick — a sighted member could not tell a push from a game
+      nobody had graded yet, with only the `sr-only` string carrying it. Now a
+      map covering all four results, per `chips.tsx:76`'s house rule ("icon +
+      text, never color alone"): `Minus` + `text-push` for a push, and `Minus` +
+      `text-dim` for a void, which is not the same event — a canceled game
+      returns the stake and settles nothing. That is the distinction P1-1(b)
+      already fixed in words on the home hub, where a void read "Push".
+      No new tokens. **Not seen rendered** — the page needs a live Supabase.
 - [ ] **UX-06 (residue)** Sub-4.5 tokens: light `chalk/50–55` table headers,
       dark `/35–/45` decorative labels, edge-on-card — needs a rendered pass · S–M
 - [ ] **UX-21** Ledger "today" keyed to CT for non-CT bettors · S
-- [ ] **UX-24** Week page passes raw `line_at_pick` into `pickSideLabel`
-      ("0" ≠ "PK") · S
+- [x] **UX-24** Fixed 2026-08-13, and it was **three call sites, not one** —
+      the week page plus both render sites on `/game` (`game/[id]/page.tsx:81`,
+      rendered at `:399` and `:453`). The bug is home-side only: `fmtSpread`
+      tests `spread === 0` to print "PK", so a string `"0"` prints a bare `0`,
+      while the away side survives by accident because `lineForSide` negates it
+      and `-"0"` is numeric `-0`. Coerced inside `pickSideLabel` rather than at
+      the three edges — it is the single point every label already funnels
+      through, and the next caller gets it for free. 1 test, both sides plus a
+      stringly-typed total. See 05:N12 for the same question settled for the
+      arithmetic path.
 - [ ] **UX-25** `profiles.timezone` surfaced on `/me` and used server-side · S–M
-- [ ] **UX-27/28** `error.tsx` without nav; standings name truncation at 375px · S
+- [x] **UX-27/28** Both fixed 2026-08-13. `error.tsx` now renders `<AppNav />`
+      like `not-found.tsx` and `loading.tsx` do — nav is not in the root layout
+      (`layout.tsx:74-104`), every page mounts its own, and a boundary that
+      skipped it left the reader on a dead end with no way out but the back
+      button. It also gained `id="main"`, because `AppNav` renders a skip link
+      to `#main` and would otherwise have arrived pointing at nothing.
+      Standings: the team cell's `truncate` span could not actually shrink —
+      its flex parent had no `min-w-0`, so a flex child's `min-width: auto`
+      floor meant the three right-hand columns got squeezed instead at 375px.
+      Added, with a `title` so the full name survives the ellipsis.
+      **Checked while in there and *not* a bug:** `error.tsx` destructures
+      `retry`, and Next's older contract passed `reset`. `retry` is correct
+      here — both props exist in 16.3.0, `retry()` re-fetches and re-renders
+      while `reset()` only clears the error state, and `retry` became stable in
+      exactly this version (`next/dist/docs/.../error.md`, Version History).
+      Read the installed docs rather than trusting the remembered API, which is
+      what `AGENTS.md` asks for and would have produced a regression here.
+      Also raised the two recovery buttons (`error.tsx`, `not-found.tsx`) to
+      `min-h-11`; both were ~36px. **Not seen rendered.**
 - [ ] **UX-31 / §23 #19** Week changes via `pushState` so Back traverses weeks
       (`SlateView.tsx:263` is `replaceState` — deliberate, revisit) · S
-- [ ] **05:N12** Pin one numeric-arrival convention in `records` · S, no
-      user-facing effect
+- [x] **05:N12** Pinned 2026-08-13. The module's types said `number` while its
+      implementation defended against strings (`num()`, and a test asserting
+      `numeric` columns "arrive as strings"), and `audit/05` §29 had already
+      verified live that they **do not** — PostgREST answers `-3.0` unquoted.
+      The real defect was that the callers never agreed: `ledger/page.tsx`
+      passes `payout_units` straight off the row and `Number()`s `units` in the
+      next expression, so one line assumed the premise and its neighbour
+      assumed the opposite.
+      Settled toward the version that cannot break: `records.ts` is the
+      arithmetic boundary, it coerces once in `num()`, and a `Numeric =
+      number | string` type now says so. The alternative — delete `num()` and
+      trust the types — means auditing every call site to add a `Number()`, and
+      missing one turns `units` into string concatenation silently. Test kept,
+      with its false premise replaced by the actual reason.
 - [ ] **G7/G8/G11** Crew disagreement roll-up; fade-the-crew; pick nudge — need
       a *sample* of graded picks before they say anything true; pre-register n
       before building

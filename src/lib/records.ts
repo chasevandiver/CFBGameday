@@ -27,16 +27,34 @@
 /** `picks.result` / `bets.result`: ungraded, or one of four outcomes. */
 export type WagerResult = "win" | "loss" | "push" | "void" | null;
 
+/**
+ * The numeric-arrival convention, pinned here once (05:N12).
+ *
+ * The premise this module was written on — "`numeric` columns arrive as
+ * strings" — is **false** as the stack is configured: `audit/05-clv-and-grading.md`
+ * §29 verified live that PostgREST answers `"spread":-3.0`, unquoted. But the
+ * callers never agreed about it. `ledger/page.tsx` passes `payout_units`
+ * straight off the row and `Number()`s `units` in the very next expression, so
+ * one line assumed the premise was true and its neighbour assumed it was false.
+ *
+ * Settled in the direction that cannot break: this module is the arithmetic
+ * boundary, it coerces once in `num()`, and the type now says so instead of
+ * claiming a `number` the callers were not all supplying. The alternative —
+ * delete `num()` and trust the types — means auditing every call site to add a
+ * `Number()`, and missing one turns `units` into string concatenation silently.
+ */
+export type Numeric = number | string;
+
 export interface Wager {
   result: WagerResult;
   /** Stake. `picks.units` defaults to 1; `bets.units` is user-set. */
-  units: number;
+  units: Numeric;
   /**
    * Graded payout at the wager's real odds, or null for anything graded at the
    * flat pick'em price. Null is not "zero" — it means "derive it".
    */
-  payoutUnits?: number | null;
-  clv?: number | null;
+  payoutUnits?: Numeric | null;
+  clv?: Numeric | null;
 }
 
 export interface Tally {
@@ -68,7 +86,8 @@ export interface Tally {
  */
 export const PICKEM_WIN_PAYOUT = 0.909;
 
-const num = (v: number | string | null | undefined): number => Number(v ?? 0);
+/** The one coercion point. See the `Numeric` note above for why it stays. */
+const num = (v: Numeric | null | undefined): number => Number(v ?? 0);
 
 /** Graded payout: the real one when a wager has it, the −110 one otherwise. */
 function payoutOf(w: Wager): number {

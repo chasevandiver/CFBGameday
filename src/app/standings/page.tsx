@@ -127,9 +127,15 @@ export default async function StandingsPage() {
                     {byConference.get(conf)!.map((r) => (
                       <tr key={r.team.id} className="border-t border-chalk/5">
                         <td className="py-1.5 pl-4 pr-2">
+                          {/* min-w-0: a flex child defaults to min-width:auto,
+                              so the truncate below could not actually shrink
+                              and the three right-hand columns got squeezed
+                              instead at 375px. title gives the full name back
+                              to anyone who loses it to the ellipsis (UX-28). */}
                           <Link
                             href={`/team/${r.team.id}`}
-                            className="flex items-center gap-2 font-sans text-chalk hover:text-accent"
+                            title={r.team.school}
+                            className="flex min-w-0 items-center gap-2 font-sans text-chalk hover:text-accent"
                           >
                             {r.team.logo_url && (
                               // eslint-disable-next-line @next/next/no-img-element

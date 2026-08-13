@@ -481,6 +481,23 @@ describe("pickSideLabel", () => {
 
   it("says PK on a pick'em rather than +0", () => {
     expect(pickSideLabel("spread", "away", 0, "UGA", "BAMA")).toBe("BAMA PK");
+    expect(pickSideLabel("spread", "home", 0, "UGA", "BAMA")).toBe("UGA PK");
+  });
+
+  it("says PK on a stringly-typed zero too, on both sides (UX-24)", () => {
+    // fmtSpread tests `spread === 0`, so a line arriving as "0" printed a bare
+    // "0" on the home side. The away side hid the bug: lineForSide negates it
+    // and -"0" is numeric -0, which does equal 0. Three call sites pass a
+    // PickRow field straight through, so the coercion lives in pickSideLabel.
+    const zero = "0" as unknown as number;
+    expect(pickSideLabel("spread", "home", zero, "UGA", "BAMA")).toBe("UGA PK");
+    expect(pickSideLabel("spread", "away", zero, "UGA", "BAMA")).toBe("BAMA PK");
+    expect(pickSideLabel("spread", "home", "-6.5" as unknown as number, "UGA", "BAMA")).toBe(
+      "UGA -6.5",
+    );
+    expect(pickSideLabel("total", "over", "51.5" as unknown as number, "UGA", "BAMA")).toBe(
+      "Over 51.5",
+    );
   });
 
   it("words straight-up long by default and short when compact", () => {

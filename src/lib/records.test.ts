@@ -91,11 +91,14 @@ describe("tally", () => {
     expect(t.clvCount).toBe(0);
   });
 
-  it("coerces numerics that PostgREST returned as strings", () => {
-    // `numeric` columns arrive as strings; every call site used to Number() them
-    // by hand, and forgetting turned units into concatenation.
+  it("coerces numerics whichever way PostgREST hands them over", () => {
+    // Not because they *do* arrive as strings — audit/05 §29 verified live that
+    // they do not — but because this module is the arithmetic boundary and its
+    // callers never agreed (ledger/page.tsx converts `units` and passes
+    // `payout_units` raw in adjacent expressions). `Numeric` makes the contract
+    // say what num() has always done, rather than a `number` nobody enforced.
     const t = tally([
-      { result: "win", units: "2" as unknown as number, payoutUnits: null, clv: "1.5" as unknown as number },
+      { result: "win", units: "2", payoutUnits: null, clv: "1.5" },
     ]);
     expect(t.units).toBeCloseTo(2 * PICKEM_WIN_PAYOUT, 10);
     expect(t.avgClv).toBe(1.5);

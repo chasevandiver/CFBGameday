@@ -122,13 +122,22 @@ export function pickSideLabel(
   awayAbbr: string,
   opts: { compact?: boolean } = {},
 ): string {
+  // Coerced here rather than at the call sites. `fmtSpread` tests `spread === 0`
+  // to print "PK", so a line arriving as the string "0" prints a bare "0" on the
+  // home side — while the away side survives by accident, because `lineForSide`
+  // negates it and `-"0"` is numeric `-0`. Three callers pass a `PickRow` field
+  // straight through (the week page and both render sites on /game), and one
+  // coercion at the single point every label already funnels through beats
+  // three at the edges (UX-24). See `records.ts` for the same question answered
+  // once for the arithmetic side.
+  const n = line === null || line === undefined ? null : Number(line);
   const team = side === "home" ? homeAbbr : awayAbbr;
   if (market === "straight_up") return opts.compact ? `${team} ML` : `${team} to win`;
-  if (market === "spread") return `${team} ${fmtSpread(lineForSide(side, line))}`;
+  if (market === "spread") return `${team} ${fmtSpread(lineForSide(side, n))}`;
   const over = side === "over";
   return opts.compact
-    ? `${over ? "O" : "U"} ${fmtTotal(line)}`
-    : `${over ? "Over" : "Under"} ${fmtTotal(line)}`;
+    ? `${over ? "O" : "U"} ${fmtTotal(n)}`
+    : `${over ? "Over" : "Under"} ${fmtTotal(n)}`;
 }
 
 /**
