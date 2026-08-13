@@ -166,6 +166,57 @@ shipping it.
 
 ## Log
 
+### Aug 13 — Asking what the product is missing, instead of what the spec is
+
+Every gap list in this repo so far was produced by the same method: read
+`docs/SPEC.md`, read the code, report the difference. That method cannot see a
+feature nobody has ever written down, and eleven months of it had built up an
+assumption that the spec is the ceiling.
+
+So this pass asked the other question — what would a bettor or a crew member
+want that neither the spec nor any audit ever proposed — and checked the answers
+against the schema and `src/` rather than against the docs. **35 items,
+W1–W35**, in `docs/STATUS.md` §4 under *The first-principles pass*. No code
+changed.
+
+The pattern in what came back is worth recording, because it is not a list of
+small omissions:
+
+- **The group has no money in it.** Picks, units and a leaderboard are all
+  tracked; the pot, the buy-in and who-owes-whom are not, so the one thing the
+  crew will argue about in December lives in a group chat (W1, W2).
+- **The ledger cannot hold a parlay.** `bets` is one row, one `game_id`, one
+  `line_taken` — a three-teamer can only be logged as freeform text, grades as
+  nothing, and silently breaks the units arithmetic on the page this product
+  calls sacred (W7).
+- **There is exactly one pool format.** No survivor, no confidence, no
+  head-to-head season, no bracket (W3–W6).
+- **There are no players.** No rosters, no depth charts, no box score — `games`
+  holds points and nothing else. That single absence is the shared root of F3,
+  04:DQ-6, 04:DQ-11 and 04:DQ-12, which had each been filed as its own data-
+  quality item (W11, W12).
+- **Nobody can say anything.** No comments, no reactions, no member pages, no
+  names on the weekly awards `/recap` already computes. A receipts culture with
+  nowhere to gloat (W19–W22).
+- **Push is the only channel**, and on iOS it reaches only an installed PWA —
+  so anyone who declines the install is currently unreachable (W16).
+- **Three obligations are simply absent**: no account deletion or data export,
+  no privacy policy or terms, no admin audit log on a console that can void
+  other people's picks and push to everyone (W23, W24, W26).
+
+Two things were considered and deliberately not proposed: SMS (per-message cost
+and a consent surface, for a crew already in one group chat), and any in-play
+odds work (a different product, and the changelog already labels the data gap).
+
+One item is flagged as a decision rather than a task. **W30 — there is no
+product analytics of any kind**, which is an accident and not a choice; zero
+hits for any SDK in `src/` or `package.json`. It is also the missing evidence
+under UX-33 and G6, both of which are currently owner-judgement calls that data
+would answer. It belongs in §3 with a yes or a no.
+
+None of this is launch work and none of it is a defect — Week 0 is in 16 days
+and §2 is what matters until then.
+
 ### Aug 13 — CI confirmed the FCS change is inert
 
 The identity claim was asserted locally in `replay.test.ts`. PR #54's

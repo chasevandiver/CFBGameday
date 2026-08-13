@@ -532,6 +532,7 @@ These block nothing today but change what gets built. Recommendations are from
 | ~~**Q9**~~ | ~~Duplicate frozen predictions~~ | **Answered and done 2026-08-12** — cleared via migration 0028. DB-2 turned out not to be a defect at all. See §2.1b. |
 | ~~**BRAND-1**~~ | ~~Recolour before Aug 29 or after?~~ | **Answered 2026-08-12: now.** Owner call, against the recommendation below; shipped the same day. Original note: **After.** `docs/BRAND.md` §5 replaces every surface colour and §12 swaps the display face — that is every page, 17 days out, against DESIGN.md's "build one screen, get it approved, then propagate". Both near-blacks read as black on a phone, so nothing looks broken today; the visible tell is the two golds (`#E8B93D` vs `#f2b63c`) side by side. Queued as BRAND-2/BRAND-3. |
 | **UX-33** | Does `/edges` keep a permanent bottom-nav slot now that edges are demoted to information? | Owner call. |
+| **W30** | Product analytics: yes or no? There is none today, by accident rather than by decision — zero hits for any SDK in `src/` or `package.json`. | **Decide it deliberately.** It is the missing evidence under UX-33 and G6, both of which are currently judgement calls that one week of page counts would answer. A no is fine; a no *on purpose* is what is missing. |
 | **09:§3** | Re-verify current Supabase free-tier limits against the pricing page | Human, 0.25 h. |
 | **OPS-1b** | Dispatch one deliberately-failing run and confirm who receives the email | Human, 0.25 h. Pairs with P1-8. |
 
@@ -539,7 +540,10 @@ These block nothing today but change what gets built. Recommendations are from
 
 ## 4. Queued for after launch
 
-Real work, deliberately not before Aug 29.
+Real work, deliberately not before Aug 29. The categories down to **Product /
+UX** came out of the audits; the block after them
+(**the first-principles pass**, W1–W35) did not, and is a wish list rather than
+a queue — see its own preamble.
 
 **Brand rollout** — icon and install surfaces landed 2026-08-12, then the
 traced vector, the palette and the display face the same day (`docs/CHANGELOG.md`).
@@ -830,6 +834,149 @@ silent about the wiring, which is the gap that let it sit for a day.
 - [ ] **F16** Systems side-by-side on slate cards (the game page has it) · S–M
 - [ ] **F-§3 / F-§6** Team-page LLM depth; tale of the tape · L / needs season stats
 - [ ] **G13 / F18 / §23 #36 residue** Season archive + `SEASON` rollover · offseason
+
+### The first-principles pass, 2026-08-13
+
+Everything above this line came out of the audits, and the audits all asked one
+question: *does the code match the spec?* **This block asks a different one —
+what would a bettor or a crew member want that neither document ever proposed?**
+So it is a wish list, not a queue. Nothing here is a defect, none of it has an
+owner or a date, and several items are product bets large enough to deserve a
+row in §3 before anyone starts. They live here because the alternative is a
+second list, and this file is the only list.
+
+Checked against the schema and `src/` rather than against the docs, so
+"missing" below means missing from the code. Sizes are first-guess, not
+estimates anyone has defended.
+
+**Money the crew actually settles**
+- [ ] **W1** Settle-up: who owes whom. Groups track picks, units and a
+      leaderboard; nothing tracks *money between members*. `groups` (0020) has no
+      buy-in, no pot and no payout structure, and there is no debt ledger — so a
+      crew with money on it settles from memory in a group chat. The largest
+      missing benefit on the social side. · M
+- [ ] **W2** Units → dollars. `UnitsCurve` plots units and nothing anchors them
+      to a bankroll, so "up 12 units" never reads as "up $600". Deposits,
+      withdrawals, unit size. · S–M
+
+**Pool formats — there is exactly one**
+- [ ] **W3** Survivor pool: one team a week, no repeats, elimination. Own table,
+      own grading. The format that keeps someone who is out of the main race
+      still opening the site in November. · M
+- [ ] **W4** Confidence points. `picks.units` exists but ships flat at 1 and
+      there is nothing to rank or budget against — a real confidence pool needs a
+      per-week ordering and a uniqueness rule. · M
+- [ ] **W5** Season-long futures/props pool — pairs with **F7**'s
+      mark-to-market, which is the same missing machinery from the other side. · M
+- [ ] **W6** Head-to-head season schedule + a playoff bracket for the pool.
+      `MatchupCard` renders one week against one opponent; nothing schedules a
+      season of them or seeds a bracket at the end. · M
+
+**The bettor's ledger is single-leg only**
+- [ ] **W7** Parlays, teasers, round-robins. `bets` is one row with one
+      `game_id`, one `line_taken` and one `odds` (0001), so a three-teamer can
+      only be logged as freeform `description` — it grades as nothing, and it
+      quietly breaks the units arithmetic on the page that is supposed to be
+      sacred. Needs a parent/child bet shape. · M
+- [ ] **W8** In-play bets grade against a close they never saw: `closing_line`
+      and CLV both assume the bet predates kickoff. Either exclude them
+      explicitly, with the reason stored, or teach the grader an entry time. · S
+- [ ] **W9** Line shopping. Two books are captured and averaged into consensus
+      (`consensus.ts:44-53`); no surface shows them side by side or says which
+      one has the better number. A free half-point that is already in the
+      database. · S
+- [ ] **W10** Bet entry is slow: game **search** in BetForm (§23 #31), a "log
+      this" button on the game and slate cards, and paste-a-screenshot parsing.
+      · S / S / M
+
+**Data we do not have at all**
+- [ ] **W11** No player-level data anywhere — no rosters, no depth charts, no
+      player stats. This is the shared root cause of **F3**, **04:DQ-6**,
+      **04:DQ-12** and the missing starters grid: every "who is actually playing"
+      question is a manual admin adjustment today. · L
+- [ ] **W12** No box score. `games` (0001) holds points and nothing else — no
+      yards, turnovers, drives or time of possession — so there is no postgame
+      analysis, no real `turnoverMargin` (**04:DQ-11**), and no efficiency work
+      is possible even in principle. · M
+- [ ] **W13** Betting splits / public money %. The companion to fade-the-crew
+      (**G8**) and the one contrarian number this crew will ask for by October.
+      Needs a provider we do not have. · M
+- [ ] **W14** Live win-probability chart. `liveWinProb` is computed on every
+      render (`model/live.ts:34`, used by `GameHeader` and `slate.ts:367`) and
+      then thrown away — nothing stores or plots it, so a bad-beat receipt has no
+      curve behind it and `cover_flips` has no picture. · S–M
+- [ ] **W15** Injury/news producer — the missing half of **F3** — plus
+      depth-chart change detection. Inherits W11. · M
+
+**Channels — push is the only one**
+- [ ] **W16** Email. Supabase already sends auth mail; there is no transactional
+      or digest path. iOS Web Push works **only** for a PWA installed to the Home
+      Screen, so anyone who declines the install currently gets nothing at
+      all. · M
+- [ ] **W17** Group-chat webhook (iMessage / Discord / Slack). **G10-v1**'s
+      copy-digest button is the hand-operated version of exactly this, and is the
+      right way to find out whether the content is wanted first. · S–M
+- [ ] **W18** Calendar: `.ics` for favourite teams and for the group's pick
+      deadline. · S
+- SMS considered and **not** proposed: per-message cost and a consent surface,
+  for a crew that is already all in one group chat.
+
+**The social layer is silent**
+- [ ] **W19** No comments, reactions or trash talk anywhere in the product. A
+      receipts culture with nowhere to gloat is missing the half that makes
+      receipts fun; one reaction row per pick would carry most of it. · S–M
+- [ ] **W20** Weekly awards and streaks, with names on them. `records.ts` has
+      the tally machinery and `/recap` already computes upsets and bad beats —
+      nobody is credited or blamed by name. · S
+- [ ] **W21** Member profile pages. You cannot look at what someone else picked
+      all season; `/me` is yours only. · S
+- [ ] **W22** Identity beyond `display_name` — avatars, or anything that makes a
+      leaderboard row look like a person. · S
+
+**Trust, and the boring obligations**
+- [ ] **W23** No account deletion and no personal-data export. The cascade
+      exists on `auth.users` (0001); the button does not. `/ledger/export` is the
+      closest thing and covers only bets. · S
+- [ ] **W24** No privacy policy and no terms. The footer carries the gambling
+      line (`layout.tsx:99`) and nothing else, on a site that stores an email
+      address and a season of betting activity. · S
+- [ ] **W25** No in-app feedback or bug report. Fifteen users, and the only
+      channel is texting the owner. · S
+- [ ] **W26** No admin audit log. `/admin` can void other people's picks
+      (**P1-1**) and push to everyone (**PUSH-7**); `job_runs` records what the
+      *jobs* did and nothing records what an admin did. · S
+- [ ] **W27** No rate limiting on auth or on the server actions — **SEC-01** is
+      only the join-code half of this. · S–M
+
+**The app itself**
+- [ ] **W28** No offline or poor-signal behaviour. `public/sw.js` handles push
+      and caches nothing, so a phone in a stadium bowl with no bars gets a blank
+      page — the exact device and the exact three hours this product was built
+      for. · M
+- [ ] **W29** No client error reporting. `error.tsx` renders the fallback and
+      `console.error`s into a browser nobody is watching. · S
+- [ ] **W30** No product analytics, by accident rather than by decision — zero
+      hits for any analytics SDK in `src/` or `package.json`. "Which pages does
+      the crew actually open" is unanswerable today, and it is the evidence that
+      would settle **UX-33** and **G6**. Deserves a deliberate yes or no in §3
+      rather than a default. · S
+- [ ] **W31** No public status surface; the freshness card is behind
+      `/admin`. · S
+
+**Finding things, and coming back**
+- [ ] **W32** Global search across teams, games and members — ⌘K is §23 #45;
+      this is the index that would sit behind it. Slate and `/teams` each have
+      their own local search today. · S–M
+- [ ] **W33** "What changed since you last looked" — line moves, injuries,
+      picks made, results. The best midweek re-engagement surface there is, and
+      nothing computes it. · M
+
+**The other eight months**
+- [ ] **W34** Offseason mode (SPEC §9 bowl opt-outs, portal mode). **G13**
+      archives the season; nothing says what the site *is* in February — which is
+      also when Actions disables crons for repo inactivity (`07`'s trap). · M
+- [ ] **W35** Recruiting and the portal as a user-facing surface. The data is
+      already ingested for the model and rendered nowhere. · S–M
 
 ---
 
