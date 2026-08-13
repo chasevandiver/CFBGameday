@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { GameRow, TeamRow } from "../../../lib/db-types";
 import { fetchCurrentSeasonWeek } from "../../../lib/queries";
+import type { SeasonType } from "../../../lib/season";
 import type { MyBetView, MyPickView } from "../../../lib/slate";
 import { tickerMine, type TickerData, type TickerGame, type TickerMine } from "../../../lib/ticker";
 import { createClient } from "../../../lib/supabase/server";
@@ -19,13 +20,37 @@ export async function GET() {
 
   // Public — the ticker is read-only scores (audit bug #5: used to 401 anon).
   const { seasonId, week, seasonType } = await fetchCurrentSeasonWeek(supabase);
-  const { data } = await supabase
-    .from("games")
-    .select("id, status, start_ts, current_period, current_clock, home_points, away_points, home_team_id, away_team_id")
-    .eq("season_id", seasonId)
-    .eq("week", week)
-    .eq("season_type", seasonType)
-    .order("start_ts", { ascending: true });
+  // Both leagues share the strip: a Sunday ticker is an NFL ticker. Guarded —
+  // the strip must render CFB alone until nfl-sync-reference has run. NFL
+  // chips update on the 60s poll; the realtime channel stays keyed to the CFB
+  // week (one channel, and CFB Saturdays are where the 30s freshness matters).
+  let nfl: { seasonId: number; week: number; seasonType: SeasonType } | null = null;
+  try {
+    nfl = await fetchCurrentSeasonWeek(supabase, "nfl");
+  } catch {
+    /* no NFL season configured */
+  }
+
+  const GAME_COLS =
+    "id, status, start_ts, current_period, current_clock, home_points, away_points, home_team_id, away_team_id";
+  const [{ data }, { data: nflData }] = await Promise.all([
+    supabase
+      .from("games")
+      .select(GAME_COLS)
+      .eq("season_id", seasonId)
+      .eq("week", week)
+      .eq("season_type", seasonType)
+      .order("start_ts", { ascending: true }),
+    nfl
+      ? supabase
+          .from("games")
+          .select(GAME_COLS)
+          .eq("season_id", nfl.seasonId)
+          .eq("week", nfl.week)
+          .eq("season_type", nfl.seasonType)
+          .order("start_ts", { ascending: true })
+      : Promise.resolve({ data: [] }),
+  ]);
 
   type Row = Pick<
     GameRow,
@@ -40,7 +65,11 @@ export async function GET() {
     | "away_team_id"
   >;
   const now = Date.now();
-  const rows = ((data ?? []) as Row[]).filter((g) => {
+  const nflIds = new Set(((nflData ?? []) as Row[]).map((g) => g.id));
+  const merged = ([...(data ?? []), ...(nflData ?? [])] as Row[]).sort((a, b) =>
+    (a.start_ts ?? "9999").localeCompare(b.start_ts ?? "9999"),
+  );
+  const rows = merged.filter((g) => {
     if (g.status === "in_progress") return true;
     const kick = g.start_ts ? Date.parse(g.start_ts) : null;
     if (kick === null) return false;
@@ -129,6 +158,8 @@ export async function GET() {
     homePoints: g.home_points,
     awayPoints: g.away_points,
     mine: mineById.get(g.id) ?? null,
+    // MIA is Miami on Saturday and the Dolphins on Sunday; the chip says which.
+    ...(nflIds.has(g.id) ? { sport: "nfl" as const } : {}),
   }));
 
   const payload: TickerData = { seasonId, week, games };

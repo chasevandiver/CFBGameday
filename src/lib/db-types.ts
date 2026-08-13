@@ -147,6 +147,9 @@ export interface GroupRow {
   kind: GroupKind;
   /** Others' picks are unreadable until each game kicks off (migration 0023). */
   picks_hidden_until_kickoff: boolean;
+  /** Pick'em league scope (0042): cfb by default, admin can open nfl or both.
+   *  Meaningless on betting groups — the sheet follows the bets. */
+  leagues: Array<"cfb" | "nfl">;
   join_code: string;
   created_by: string;
   created_at: string;

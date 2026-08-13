@@ -7,7 +7,7 @@ import {
   type MatchupPick,
 } from "../../../../../components/group/MatchupCard";
 import type { CoverFlipRow, PickRow } from "../../../../../lib/db-types";
-import { fetchGroupMembers, fetchGroupWeek, resolveActiveGroup } from "../../../../../lib/groups";
+import { fetchGroupMembers, fetchGroupWeek, groupLeague, resolveActiveGroup } from "../../../../../lib/groups";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../../../lib/queries";
 import { EMPTY_TALLY, formatRecord, tallyBy } from "../../../../../lib/records";
 import { pickSideLabel, type GameView } from "../../../../../lib/slate";
@@ -43,10 +43,10 @@ export default async function GroupWeekPage({
   searchParams,
 }: {
   params: Promise<{ slug: string; week: string }>;
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string; league?: string }>;
 }) {
   const { slug, week: weekStr } = await params;
-  const { view: viewParam } = await searchParams;
+  const { view: viewParam, league: leagueParam } = await searchParams;
   const view: View = viewParam === "pick" ? "pick" : "person";
 
   const week = Number(weekStr);
@@ -61,7 +61,8 @@ export default async function GroupWeekPage({
   // Pick'em only — a betting group has no weekly board of picks to list.
   if (active.kind === "betting") redirect(`/groups/${slug}`);
 
-  const { seasonId, seasonType } = await fetchCurrentSeasonWeek(supabase);
+  const league = groupLeague(leagueParam, active.leagues);
+  const { seasonId, seasonType } = await fetchCurrentSeasonWeek(supabase, league);
   const [groupWeek, members, slate, lifetimeRes] = await Promise.all([
     fetchGroupWeek(supabase, active.id, seasonId, week, seasonType),
     fetchGroupMembers(supabase, active.id),

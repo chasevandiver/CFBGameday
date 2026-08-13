@@ -23,6 +23,9 @@ export interface TickerGame {
   awayPoints: number | null;
   /** Only present for a signed-in viewer with something on the game. */
   mine?: TickerMine | null;
+  /** Present (as "nfl") on NFL chips — MIA is Miami on Saturday and the
+   *  Dolphins on Sunday, and the chip has to say which. Absent = CFB. */
+  sport?: "nfl";
 }
 
 export interface TickerData {

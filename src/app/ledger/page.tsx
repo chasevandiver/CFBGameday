@@ -10,6 +10,7 @@ import { VoidBetButton } from "../../components/VoidBetButton";
 import { REASON_TAGS, REASON_TAG_LABELS, type BetRow, type TeamRow } from "../../lib/db-types";
 import { kickParts, tzLabel, DEFAULT_TZ } from "../../lib/kick";
 import { statusForBet, type LiveBetStatus } from "../../lib/live-status";
+import { seasonIdsForYear, seasonYearOf, sportOfSeasonId } from "../../lib/league";
 import { fetchBetFormGames, fetchCurrentSeasonWeek } from "../../lib/queries";
 import { cumulativeUnits, formatRecord, tally, tallyBy } from "../../lib/records";
 import { fmtSpread, fmtTotal, lineForSide } from "../../lib/slate";
@@ -77,7 +78,8 @@ export default async function LedgerPage({
       ? supabase
           .from("bets")
           .select("*")
-          .eq("season_id", seasonId)
+          // one book, both leagues — the season id encodes which (0042)
+          .in("season_id", seasonIdsForYear(seasonYearOf(seasonId)))
           .eq("user_id", user.id)
           .order("placed_at", { ascending: false })
       : Promise.resolve({ data: [] as BetRow[] }),
@@ -162,6 +164,14 @@ export default async function LedgerPage({
     .map((b) => ({ ...b, payoutUnits: b.payout_units }));
   const overall = tally(graded);
   const { units, avgClv } = overall;
+
+  // Who's doing better where: the combined book stays the headline, and the
+  // per-league split only appears once there are graded bets in BOTH leagues —
+  // an all-CFB ledger looks exactly like it did before the NFL existed.
+  const byLeague = tallyBy(graded, (b) => sportOfSeasonId(b.season_id));
+  const cfbSplit = byLeague.get("cfb");
+  const nflSplit = byLeague.get("nfl");
+  const showSplit = cfbSplit !== undefined && nflSplit !== undefined;
 
   // Reason-tag audit (spec §5.3): W-L, units, ROI, CLV by tag — most bettors
   // have one profitable angle and four leaks. The ledger's marquee feature.
@@ -252,6 +262,20 @@ export default async function LedgerPage({
             value={avgClv === null ? "–" : `${avgClv > 0 ? "+" : ""}${avgClv.toFixed(2)}`}
             tone={avgClv !== null && avgClv > 0 ? "gold" : undefined}
           />
+          {showSplit && (
+            <>
+              <StatTile
+                label="CFB"
+                value={`${formatRecord(cfbSplit)} · ${cfbSplit.units >= 0 ? "+" : ""}${cfbSplit.units.toFixed(1)}u`}
+                tone={cfbSplit.units > 0 ? "gold" : cfbSplit.units < 0 ? "flag" : undefined}
+              />
+              <StatTile
+                label="NFL"
+                value={`${formatRecord(nflSplit)} · ${nflSplit.units >= 0 ? "+" : ""}${nflSplit.units.toFixed(1)}u`}
+                tone={nflSplit.units > 0 ? "gold" : nflSplit.units < 0 ? "flag" : undefined}
+              />
+            </>
+          )}
         </section>
 
         {/* Season curve */}

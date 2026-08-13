@@ -10,7 +10,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BetRow } from "./db-types";
 import { fetchGroupMembers, type GroupMemberView } from "./groups";
-import { formatRecord } from "./records";
+import { seasonIdsForYear, seasonYearOf, sportOfSeasonId } from "./league";
+import { formatRecord, tally, type Tally } from "./records";
 import {
   classifyBets,
   recentForm,
@@ -24,6 +25,7 @@ import {
 export const toSheetBet = (b: BetRow): SheetBet => ({
   id: b.id,
   userId: b.user_id,
+  seasonId: b.season_id,
   gameId: b.game_id,
   betType: b.bet_type,
   side: b.side,
@@ -40,6 +42,8 @@ export const toSheetBet = (b: BetRow): SheetBet => ({
 export interface SheetMember extends GroupMemberView {
   stats: MemberStats;
   form: Form;
+  /** Per-league records (0042) — who's doing better where. */
+  leagueSplit: { cfb: Tally; nfl: Tally };
 }
 
 export interface BettingSheet {
@@ -76,7 +80,9 @@ export async function fetchBettingSheet(
   const { data } = await supabase
     .from("bets")
     .select("*")
-    .eq("season_id", seasonId)
+    // A betting group always reads both leagues (0042): the sheet is its
+    // members' one book. Origination classifies across the whole book too.
+    .in("season_id", seasonIdsForYear(seasonYearOf(seasonId)))
     .in("user_id", ids)
     .order("placed_at", { ascending: true });
   const raw = (data ?? []) as BetRow[];
@@ -89,11 +95,27 @@ export async function fetchBettingSheet(
     byUser.set(b.userId, [...(byUser.get(b.userId) ?? []), b]);
   }
 
+  const settled = (list: SheetBet[], sport: "cfb" | "nfl") =>
+    tally(
+      list
+        .filter((b) => sportOfSeasonId(b.seasonId) === sport && b.result && b.result !== "void")
+        .map((b) => ({
+          result: b.result,
+          units: b.units,
+          payoutUnits: b.payoutUnits,
+          clv: b.clv,
+        })),
+    );
+
   return {
     members: members.map((m) => ({
       ...m,
       stats: stats.get(m.userId)!,
       form: recentForm(byUser.get(m.userId) ?? []),
+      leagueSplit: {
+        cfb: settled(byUser.get(m.userId) ?? [], "cfb"),
+        nfl: settled(byUser.get(m.userId) ?? [], "nfl"),
+      },
     })),
     bets,
     nameById: new Map(members.map((m) => [m.userId, m.name])),

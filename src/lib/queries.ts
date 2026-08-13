@@ -16,6 +16,7 @@ import { tallyBy } from "./records";
 import { toSheetBet } from "./betting-groups";
 import { classifyBets, recentForm, statsByMember, type GroupBetView } from "./tailing";
 import { fetchCurrentSlate, type SeasonType } from "./season";
+import { seasonIdsForYear, seasonYearOf, sportOfSeasonId, type Sport } from "./league";
 import { atsRecord, ouRecord } from "./slate";
 import type {
   CrewPickView,
@@ -145,7 +146,7 @@ export async function fetchSlateView(
     .order("start_ts", { ascending: true });
   if (error) throw error;
   if (!games || games.length === 0)
-    return { seasonId, week, seasonType, fetchedAt, linesAsOf: null, games: [] };
+    return { seasonId, sport: sportOfSeasonId(seasonId), week, seasonType, fetchedAt, linesAsOf: null, games: [] };
 
   const gameRows = games as GameRow[];
   const gameIds = gameRows.map((g) => g.id);
@@ -573,7 +574,7 @@ export async function fetchSlateView(
     if (c.as_of !== null && (linesAsOf === null || c.as_of > linesAsOf)) linesAsOf = c.as_of;
   }
 
-  return { seasonId, week, seasonType, fetchedAt, linesAsOf, games: views };
+  return { seasonId, sport: sportOfSeasonId(seasonId), week, seasonType, fetchedAt, linesAsOf, games: views };
 }
 
 export interface TeamAtsSummary {
@@ -660,37 +661,44 @@ export async function fetchTeamAtsSeason(
  * from the hot path; the staleness bound is far inside the rollover
  * granularity (audit 09/P-15).
  */
-let pointerCache: {
-  at: number;
-  value: { seasonId: number; week: number; seasonType: SeasonType; minWeek: number };
-} | null = null;
+const pointerCache = new Map<
+  Sport,
+  { at: number; value: { seasonId: number; week: number; seasonType: SeasonType; minWeek: number } }
+>();
 
 export async function fetchCurrentSeasonWeek(
   supabase: SupabaseClient,
+  sport: Sport = "cfb",
 ): Promise<{ seasonId: number; week: number; seasonType: SeasonType; minWeek: number }> {
-  if (pointerCache && Date.now() - pointerCache.at < 60_000) return pointerCache.value;
+  const cached = pointerCache.get(sport);
+  if (cached && Date.now() - cached.at < 60_000) return cached.value;
   const { data: season } = await supabase
     .from("seasons")
     .select("id")
     .eq("is_current", true)
+    .eq("sport", sport)
     .maybeSingle();
-  if (!season) throw new Error("No current season configured — seed the seasons table.");
+  if (!season) throw new Error(`No current ${sport} season configured — seed the seasons table.`);
 
-  // Does this season have a Week 0? Some do (2026: Aug 29), some don't, and the
-  // week selector should not offer a week with nothing in it. One indexed
-  // existence check, on the same 60s cache as the pointer it travels with.
-  const { data: wk0 } = await supabase
-    .from("games")
-    .select("id")
-    .eq("season_id", season.id)
-    .eq("week", 0)
-    .eq("season_type", "regular")
-    .limit(1)
-    .maybeSingle();
+  // Does this season have a Week 0? Some CFB seasons do (2026: Aug 29), some
+  // don't — and the NFL never does — and the week selector should not offer a
+  // week with nothing in it. One indexed existence check, on the same 60s
+  // cache as the pointer it travels with.
+  const { data: wk0 } =
+    sport === "cfb"
+      ? await supabase
+          .from("games")
+          .select("id")
+          .eq("season_id", season.id)
+          .eq("week", 0)
+          .eq("season_type", "regular")
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
 
   const pointer = await fetchCurrentSlate(supabase, season.id);
   const value = { seasonId: season.id, ...pointer, minWeek: wk0 ? 0 : 1 };
-  pointerCache = { at: Date.now(), value };
+  pointerCache.set(sport, { at: Date.now(), value });
   return value;
 }
 
@@ -709,7 +717,8 @@ export async function fetchBetFormGames(
   const { data } = await supabase
     .from("games")
     .select("id, start_ts, home_team_id, away_team_id")
-    .eq("season_id", seasonId)
+    // both leagues: the ledger is one book, and this week has games in each
+    .in("season_id", seasonIdsForYear(seasonYearOf(seasonId)))
     .gte("start_ts", new Date(now - 3 * 24 * 3600 * 1000).toISOString())
     .lte("start_ts", new Date(now + 9 * 24 * 3600 * 1000).toISOString())
     .order("start_ts", { ascending: true });
@@ -742,7 +751,9 @@ export async function fetchAdminGames(
   const { data } = await supabase
     .from("games")
     .select("id, start_ts, status, home_team_id, away_team_id")
-    .eq("season_id", seasonId)
+    // both leagues, for the same reason as the bet form: a void control that
+    // cannot reach a postponed NFL game cannot void the bets on it
+    .in("season_id", seasonIdsForYear(seasonYearOf(seasonId)))
     .gte("start_ts", new Date(now - 3 * 24 * 3600 * 1000).toISOString())
     .lte("start_ts", new Date(now + 9 * 24 * 3600 * 1000).toISOString())
     .order("start_ts", { ascending: true });

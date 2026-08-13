@@ -168,6 +168,26 @@ export async function setGroupWeekConfig(input: {
   return res;
 }
 
+/** Pick'em league scope (0042): which leagues this group's boards may use. */
+export async function setGroupLeagues(
+  groupId: string,
+  leagues: Array<"cfb" | "nfl">,
+): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Sign in first" };
+
+  const { error } = await supabase.rpc("set_group_leagues", {
+    p_group: groupId,
+    p_leagues: leagues,
+  });
+  if (error) return { ok: false, message: error.message };
+  revalidatePath("/groups", "layout");
+  return { ok: true };
+}
+
 /**
  * Rename a group, or open it up / close it off.
  *

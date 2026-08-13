@@ -47,17 +47,26 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
   if (!Number.isFinite(units) || units <= 0) return { ok: false, message: "Units must be > 0" };
 
   let gameId: number | null = null;
+  // A bet attached to a game belongs to that game's season — the form's
+  // season is the CFB pointer, and the games list spans both leagues now, so
+  // an NFL bet must land under 102026 or the NFL grader never sees it.
+  let gameSeasonId: number | null = null;
   if (gameIdRaw !== "") {
     const parsed = Number(gameIdRaw);
     if (!Number.isInteger(parsed)) return { ok: false, message: "Bad game" };
-    const { data: game } = await supabase.from("games").select("id").eq("id", parsed).maybeSingle();
+    const { data: game } = await supabase
+      .from("games")
+      .select("id, season_id")
+      .eq("id", parsed)
+      .maybeSingle();
     if (!game) return { ok: false, message: "Bad game" };
     gameId = parsed;
+    gameSeasonId = game.season_id;
   }
   const side = ["home", "away", "over", "under"].includes(sideRaw) ? sideRaw : null;
 
   const { error } = await supabase.from("bets").insert({
-    season_id: seasonId,
+    season_id: gameSeasonId ?? seasonId,
     user_id: user.id,
     game_id: gameId,
     bet_type: betType,
@@ -117,12 +126,15 @@ export async function logSlipBets(
   }
 
   const gameIds = [...new Set(bets.map((b) => b.gameId))];
-  const { data: games } = await supabase.from("games").select("id").in("id", gameIds);
+  const { data: games } = await supabase.from("games").select("id, season_id").in("id", gameIds);
   if ((games ?? []).length !== gameIds.length) return { ok: false, message: "Bad game" };
+  // The slip's season is whatever slate it was opened on; each row still
+  // stores its own game's season so cross-league grading always finds it.
+  const seasonByGame = new Map((games ?? []).map((g) => [g.id, g.season_id as number]));
 
   const { error } = await supabase.from("bets").insert(
     bets.map((b) => ({
-      season_id: seasonId,
+      season_id: seasonByGame.get(b.gameId) ?? seasonId,
       user_id: user.id,
       game_id: b.gameId,
       bet_type: b.betType,

@@ -1,3 +1,4 @@
+import { sportOfSeasonId } from "../../../lib/league";
 import { createClient } from "../../../lib/supabase/server";
 
 // CSV export of the caller's own bets and picks (audit 10/G12): people want
@@ -36,16 +37,20 @@ export async function GET() {
       .order("created_at", { ascending: true }),
   ]);
 
+  // The league is encoded in season_id (0042); spelling it out costs one
+  // column and saves every spreadsheet a lookup table.
+  const withLeague = (rows: Array<Record<string, unknown>> | null) =>
+    (rows ?? []).map((r) => ({ ...r, league: sportOfSeasonId(Number(r.season_id)) }));
   const betCsv = toCsv(
     [
-      "placed_at", "season_id", "bet_type", "description", "side", "line_taken", "odds",
+      "placed_at", "season_id", "league", "bet_type", "description", "side", "line_taken", "odds",
       "units", "book", "reason_tag", "result", "closing_line", "clv", "payout_units", "voided_at",
     ],
-    (bets ?? []) as Array<Record<string, unknown>>,
+    withLeague(bets as Array<Record<string, unknown>> | null),
   );
   const pickCsv = toCsv(
-    ["created_at", "season_id", "group_id", "game_id", "market", "side", "line_at_pick", "result", "clv"],
-    (picks ?? []) as Array<Record<string, unknown>>,
+    ["created_at", "season_id", "league", "group_id", "game_id", "market", "side", "line_at_pick", "result", "clv"],
+    withLeague(picks as Array<Record<string, unknown>> | null),
   );
 
   const body = `# The CFB Slate — ledger export\n\n## Bets\n${betCsv}\n\n## Pick'em\n${pickCsv}\n`;

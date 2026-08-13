@@ -265,6 +265,36 @@ Weights tuned by feel; displayed as a 0–100 score.
 
 ---
 
+# 10.5 [v3] NFL (added 2026-08-13)
+
+The product carries both leagues (BRAND.md §2, §17: "do not visually lock the
+identity to college football alone"). The NFL is scores, lines and bets — a
+second slate, the same ledger — **not** a second model.
+
+- **Source: ESPN's public scoreboard API**, free and unauthenticated.
+  `src/lib/espn.ts` is the only module allowed to talk to it — the same
+  one-fetcher rule as §1's CFBD client, one client per source. One scoreboard
+  response carries schedule, live state, broadcasts, venue and the priority
+  book's odds with true openers; snapshots append into `line_snapshots` as
+  `source='espn'` under the §5.3 contract (append-only, never in place).
+- **NFL 2026 is season id 102026** (100000 + year), its own `seasons` row with
+  `sport='nfl'` (migration 0042). Teams/venues store offset ids
+  (`src/lib/league.ts`); games store their raw ESPN event id — globally
+  allocated, and the ingest refuses any id already stored as CFB rather than
+  trusting that. Separate season rows are what keep every season-scoped CFB
+  job blind to NFL rows, and cross-league reads are an explicit
+  `.in("season_id", [year, 100000+year])`.
+- **No model.** Nothing in `src/model/*` prices an NFL game; `predictions`
+  never carries an NFL row; `/edges` stays CFB. NFL cards render the market
+  and the absence of a lean. Grading, CLV and League Rule #4 voids run through
+  the same shared machinery (`gradeSeasonFinals`).
+- **Weeks**: regular 1–18, postseason 1–4 (Wild Card → Super Bowl; the Pro
+  Bowl is dropped at ingest). No week 0, ever.
+- **Groups**: pick'em groups carry `leagues` (default `{cfb}`, admin-set); a
+  both-league group holds one board per league per week — separate
+  `group_week_config` rows under separate season ids. Betting groups have no
+  scope: the sheet is the members' one book, split per league in display.
+
 # 11. Honest Notes (build these truths into the product)
 
 1. The closing line is sharp; the goal is being right about disagreements and exploiting structurally soft markets, verified by CLV.

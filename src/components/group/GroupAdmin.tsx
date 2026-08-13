@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { archiveGroup, regenerateJoinCode, updateGroup } from "../../app/actions/groups";
+import { archiveGroup, regenerateJoinCode, setGroupLeagues, updateGroup } from "../../app/actions/groups";
 
 /**
  * The parts of a group that aren't a week: its name, who can see it, its join
@@ -17,12 +17,15 @@ export function GroupAdmin({
   name,
   visibility,
   hidePicks,
+  leagues,
   joinCode,
 }: {
   groupId: string;
   name: string;
   visibility: "private" | "public";
   hidePicks: boolean;
+  /** Pick'em league scope (0042); the settings page only renders for pick'em. */
+  leagues: Array<"cfb" | "nfl">;
   joinCode: string;
 }) {
   const router = useRouter();
@@ -33,10 +36,16 @@ export function GroupAdmin({
   const [draftName, setDraftName] = useState(name);
   const [draftVis, setDraftVis] = useState(visibility);
   const [draftHide, setDraftHide] = useState(hidePicks);
+  const [draftLeagues, setDraftLeagues] = useState<Array<"cfb" | "nfl">>(leagues);
   const [confirmArchive, setConfirmArchive] = useState(false);
 
+  const leaguesDirty =
+    [...draftLeagues].sort().join(",") !== [...leagues].sort().join(",");
   const dirty =
-    draftName.trim() !== name || draftVis !== visibility || draftHide !== hidePicks;
+    draftName.trim() !== name ||
+    draftVis !== visibility ||
+    draftHide !== hidePicks ||
+    leaguesDirty;
 
   const save = () =>
     start(async () => {
@@ -47,11 +56,21 @@ export function GroupAdmin({
         setError(res.message ?? "Could not save");
         return;
       }
+      if (leaguesDirty) {
+        const leagueRes = await setGroupLeagues(groupId, draftLeagues);
+        if (!leagueRes.ok) {
+          setError(leagueRes.message ?? "Could not change the leagues");
+          return;
+        }
+      }
       setNote("Saved");
       // The slug moves with the name, so the current URL is now stale.
       if (res.slug) router.replace(`/groups/${res.slug}/settings`);
       router.refresh();
     });
+
+  const toggleLeague = (l: "cfb" | "nfl") =>
+    setDraftLeagues((cur) => (cur.includes(l) ? cur.filter((x) => x !== l) : [...cur, l]));
 
   return (
     <div className="flex flex-col gap-4">
@@ -103,6 +122,31 @@ export function GroupAdmin({
         <p className="text-[11px] leading-snug text-dim">
           Your own picks are always visible to you. Hiding the rest stops the group copying
           whoever&rsquo;s hot; the board still says how many are in.
+        </p>
+      </fieldset>
+
+      <fieldset className="flex flex-col gap-1.5">
+        <legend className="mb-1 text-xs text-dim">Leagues on the board</legend>
+        {(
+          [
+            ["cfb", "College football"],
+            ["nfl", "NFL"],
+          ] as const
+        ).map(([l, label]) => (
+          <label key={l} className="flex min-h-11 items-center gap-2 text-sm text-chalk">
+            <input
+              type="checkbox"
+              checked={draftLeagues.includes(l)}
+              // the RPC refuses an empty scope; don't offer the click that hits it
+              disabled={draftLeagues.includes(l) && draftLeagues.length === 1}
+              onChange={() => toggleLeague(l)}
+            />
+            {label}
+          </label>
+        ))}
+        <p className="text-[11px] leading-snug text-dim">
+          Each league keeps its own weeks and boards — CFB week 3 and NFL week 1 run side by
+          side. Turning a league off hides its future boards; settled weeks keep their history.
         </p>
       </fieldset>
 

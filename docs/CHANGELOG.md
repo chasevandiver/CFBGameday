@@ -166,6 +166,59 @@ shipping it.
 
 ## Log
 
+### Aug 13 (later still) — The NFL, as a second seasons row
+
+The site carries both leagues now: NFL scores and lines on the slate behind a
+CFB | NFL toggle, NFL bets grading into the same ledger, pick'em groups with
+an admin-chosen league scope, betting groups reading their members' whole
+book with a per-league split. BRAND.md §17 has wanted this since v1.0; this
+is the plumbing catching up. Branch `claude/nfl-scores-lines-l4bhio`.
+
+**The load-bearing decision is that NFL 2026 is season id 102026** (100000 +
+year, `src/lib/league.ts`), not a second week-space inside 2026. Every
+season-scoped CFB job — freeze pricing, the ratings replay, weather, rankings
+— filters by `season_id` and is therefore blind to NFL rows with zero filter
+changes, and CFB week 3 / NFL week 1 never meet in a query, a realtime
+channel, or a `group_week_config` key. Cross-league reads (ledger, home,
+grading, sheets) opt in via `.in("season_id", [2026, 102026])`. Team and
+venue ids offset by the same constant (ESPN NFL ids 1–34 collide with CFBD's
+college ids); game ids stored raw because ESPN allocates event ids globally —
+an assumption the ingest enforces by refusing any event id already stored as
+a CFB game rather than trusting it.
+
+**The model is untouched, deliberately.** No `src/model/*` change, no tuner
+run, no decisions-table row. NFL games render with `prediction: null`, which
+every consumer already handles (it is the early-season CFB state), the
+`freezeJob` pricing path never sees season 102026, and `ratingsUpdateJob`'s
+replay half is unchanged — its settlement half was extracted verbatim as
+`gradeSeasonFinals(db, seasonId)` so the new `nfl-grade` task can run the
+identical grading/CLV/void math over NFL finals. Same shape for the live
+layer: `applyScoreboard` is the old `scoreboardJob` body, fed by CFBD for
+CFB and by the new `src/lib/espn.ts` (the only module allowed to talk to
+site.api.espn.com) for NFL, cover flips and bad-beat pushes included.
+
+**The odds sign convention is pinned by fixtures captured from the live feed**
+(2026-08-13, preseason week 2 + the season openers), favorites verified
+against the book's own `details` string: ESPN's `spread` is home-perspective,
+negative = home favored — the stored convention exactly — and the parser
+drops any spread its own cross-checks (details string, favorite flag)
+contradict, because a dropped snapshot costs nothing and an inverted one
+poisons an append-only table. ESPN carries true openers
+(`pointSpread.home.open.line`), so NFL snapshots have real
+`spread_open`/`total_open` rather than a first-capture proxy. One book per
+snapshot (`source='espn'`, provider from the feed — DraftKings currently);
+`line_consensus` handles a one-provider game by construction.
+
+Dry-runs against the live feed: 32 teams with the editorial division table,
+272 regular-season games (TBD playoff slots skipped until January), 16 week-1
+snapshot rows with lines already posted. Migration 0042 (sport columns,
+one-current-per-sport partial unique index, `groups.leagues` +
+`set_group_leagues`) proved against a local cluster — 163 DB assertions, 8
+new. 683 vitest tests. **Not yet live: 0042 is unapplied and
+`nfl-sync-reference` undispatched — and the order is load-bearing** (the
+sport-aware pointer must deploy before the second `is_current` row exists).
+Open rows in `docs/STATUS.md` §4 under NFL-2…NFL-6.
+
 ### Aug 13 (later) — Making silence stop looking like success
 
 Three fixes, one theme: a failure that produced the same observation as health.

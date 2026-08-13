@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dayTabLabels } from "./kick";
+import { dayTabLabels, nflKickSlot } from "./kick";
 
 describe("dayTabLabels", () => {
   const CT = "America/Chicago";
@@ -37,5 +37,19 @@ describe("dayTabLabels", () => {
   it("collapses many kickoffs on one day to a single chip", () => {
     const tabs = dayTabLabels([at(9, 12), at(9, 12), at(9, 12)], CT);
     expect(tabs).toHaveLength(1);
+  });
+});
+
+describe("nflKickSlot", () => {
+  // Eastern-clock windows, like kickSlot: the same games in every timezone.
+  it("splits a Sunday into the broadcast windows", () => {
+    expect(nflKickSlot("2026-09-13T17:00:00Z")).toBe("Early window"); // 1:00 ET
+    expect(nflKickSlot("2026-09-13T20:25:00Z")).toBe("Late window"); // 4:25 ET
+    expect(nflKickSlot("2026-09-14T00:20:00Z")).toBe("Primetime"); // SNF 8:20 ET
+  });
+  it("brands the night games by day prefix, not here", () => {
+    // TNF and MNF are also just Primetime — "Thu · Primetime" reads as TNF.
+    expect(nflKickSlot("2026-09-11T00:15:00Z")).toBe("Primetime"); // Thu 8:15 ET
+    expect(nflKickSlot("2026-09-15T00:15:00Z")).toBe("Primetime"); // Mon 8:15 ET
   });
 });

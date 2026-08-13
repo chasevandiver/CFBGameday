@@ -98,6 +98,15 @@ on:
           - notify-picks-due
           # Betting groups only, 15 min before each Saturday kickoff wave.
           - notify-log-bets
+          # NFL (all ESPN, free + unauthenticated; idle guards keep every one
+          # of these near-free off-wave). Reference bootstrap is dispatch-only:
+          # it sets which season is current for the nfl sport, and MUST run
+          # only after the sport-aware pointer (0042) is deployed.
+          - nfl-sync-reference
+          - nfl-sync-games
+          - nfl-refresh-lines
+          - nfl-lines-close
+          - nfl-grade
   schedule:
     # Lines 2x daily (8am/6pm ET) — display freshness only
     - cron: "0 12,22 * * *"
@@ -109,6 +118,16 @@ on:
     - cron: "50 1 * * 0"
     # Thursday/Friday night games (7-8pm ET kicks — MACtion joins in November):
     - cron: "50 22 * * 4,5"
+    # NFL close passes (nfl-refresh-lines --burst; the display refresh rides
+    # the daily "0 12,22" chain). Kickoff waves in UTC: Sunday early wave
+    # 17:00, Sunday late wave ~20:05/20:25, and the night games — SNF Sun,
+    # MNF Mon, TNF Thu — all kick ~00:15 the NEXT UTC day, so their close
+    # pass runs 23:45 the same UTC evening. Saturday joins each set for the
+    # late-season weeks 15-18 slates; off-wave runs exit on the kick-window
+    # check without a single ESPN call.
+    - cron: "20 16 * * 0,6"
+    - cron: "45 19 * * 0,6"
+    - cron: "45 23 * * 0,1,4,6"
     # Games sync daily
     - cron: "0 9 * * *"
     # Picks-due nudge, ~2h before each kickoff wave. The job only notifies
@@ -169,6 +188,10 @@ on:
     - cron: "5 10 * * 6"
     # Sunday ratings update + grading (8am ET)
     - cron: "0 13 * * 0"
+    # NFL settlement after each slate finishes: Mon (Sunday's games), Tue
+    # (MNF), Fri (TNF), morning UTC. Idempotent — result-null filters make a
+    # re-run a no-op — so over-running costs one query.
+    - cron: "30 13 * * 1,2,5"
     # Watchdog: absence check on the data jobs, a few times a day and once
     # mid-Saturday-afternoon while games are live. Red run = a job went silent.
     - cron: "0 8,14,20 * * *"
@@ -225,12 +248,14 @@ jobs:
         run: |
           case "${{ github.event.schedule }}" in
             "0 12,22 * * *"|"20 15 * * 6"|"50 18 * * 6"|"20 22 * * 6"|"50 1 * * 0"|"50 22 * * 4,5"|"5 10 * * 6") echo "task=refresh-lines" >> "$GITHUB_OUTPUT" ;;
+            "20 16 * * 0,6"|"45 19 * * 0,6"|"45 23 * * 0,1,4,6") echo "task=nfl-lines-close" >> "$GITHUB_OUTPUT" ;;
             "0 9 * * *") echo "task=sync-games" >> "$GITHUB_OUTPUT" ;;
             "0 15 * * 6"|"0 18 * * 6"|"0 22 * * 4,5") echo "task=notify-picks-due" >> "$GITHUB_OUTPUT" ;;
             "45 15 * * 6"|"15 19 * * 6"|"15 23 * * 6") echo "task=notify-log-bets" >> "$GITHUB_OUTPUT" ;;
             "0 15-23 * * 6"|"0 0-5 * * 0"|"0 0-3 * * 5,6"|"0 16-23 * * 0,1"|"0 0-3 * * 1,2"|"0 0-4 * * 3,4"|"0 10-14 * * 6") echo "task=scoreboard-loop" >> "$GITHUB_OUTPUT" ;;
             "0 10 * * 6") echo "task=weather" >> "$GITHUB_OUTPUT" ;;
             "0 13 * * 0") echo "task=ratings-update" >> "$GITHUB_OUTPUT" ;;
+            "30 13 * * 1,2,5") echo "task=nfl-grade" >> "$GITHUB_OUTPUT" ;;
             "0 8,14,20 * * *"|"30 21 * * 6") echo "task=watchdog" >> "$GITHUB_OUTPUT" ;;
             "0 15 * * 0") echo "task=backup" >> "$GITHUB_OUTPUT" ;;
             "0 6 1 * *") echo "task=keepalive" >> "$GITHUB_OUTPUT" ;;
@@ -248,12 +273,19 @@ jobs:
             # and every 10 minutes through the Saturday kickoff waves, and the
             # freeze is idempotent and cheap. A missed run costs materialisation,
             # never correctness — group_week_is_locked reads the clock.
-            refresh-lines) npx tsx scripts/refresh-lines.ts && npx tsx scripts/run-job.ts freeze-groups ;;
+            # The NFL line refresh rides the CFB display-refresh chain: same
+            # twice-daily cadence, and the group-week freeze after it covers
+            # NFL pick'em boards too (freeze_group_week resolves per season).
+            refresh-lines) npx tsx scripts/refresh-lines.ts && npx tsx scripts/nfl-refresh-lines.ts && npx tsx scripts/run-job.ts freeze-groups ;;
             refresh-lines-burst) npx tsx scripts/refresh-lines.ts --burst && npx tsx scripts/run-job.ts freeze-groups ;;
+            nfl-lines-close) npx tsx scripts/nfl-refresh-lines.ts --burst && npx tsx scripts/run-job.ts freeze-groups ;;
             # daily slot also refreshes poll rankings (AP Sun, CFP Tue — 1 call/day)
-            sync-games) npx tsx scripts/sync-games.ts && npx tsx scripts/run-job.ts sync-rankings && npx tsx scripts/run-job.ts sync-systems ;;
+            sync-games) npx tsx scripts/sync-games.ts && npx tsx scripts/nfl-sync-games.ts && npx tsx scripts/run-job.ts sync-rankings && npx tsx scripts/run-job.ts sync-systems ;;
+            nfl-sync-reference) npx tsx scripts/nfl-sync-reference.ts ;;
+            nfl-sync-games) npx tsx scripts/nfl-sync-games.ts ;;
+            nfl-refresh-lines) npx tsx scripts/nfl-refresh-lines.ts ;;
             scoreboard-loop) npx tsx scripts/scoreboard-loop.ts --minutes 63 ;;
-            sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze|freeze-groups|watchdog|notify-picks-due|notify-log-bets) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
+            sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze|freeze-groups|watchdog|notify-picks-due|notify-log-bets|nfl-grade) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
             # Keep-alive: touch nothing, just make the run green so GitHub's
             # 60-day inactivity timer resets. No DB, no CFBD.
             keepalive) echo "keep-alive tick $(date -u +%Y-%m-%d) — resets the Actions inactivity clock" ;;

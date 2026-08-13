@@ -41,6 +41,8 @@ import { isDecided, tally, type Tally, type Wager, type WagerResult } from "./re
 export interface SheetBet {
   id: number;
   userId: string;
+  /** Which season (and so which league, 0042) the bet belongs to. */
+  seasonId: number;
   gameId: number | null;
   betType: string;
   side: string | null;

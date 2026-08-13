@@ -499,6 +499,7 @@ export function demoSlateData(now: number): SlateData {
   const positioned = new Map(demoPositions(now).map((p) => [p.game.id, p.game]));
   return {
     seasonId: DEMO_SEASON,
+    sport: "cfb",
     week: DEMO_WEEK,
     seasonType: "regular",
     fetchedAt: new Date(now).toISOString(),
@@ -563,6 +564,7 @@ const group = (
   role,
   visibility: "private",
   picksHiddenUntilKickoff: false,
+  leagues: ["cfb"],
 });
 
 const SATURDAY_BOYS = group("g1", "Saturday Boys", "saturday-boys", "pickem", "admin");

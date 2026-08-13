@@ -13,15 +13,20 @@ export const metadata = { title: "Slate" };
 export default async function SlatePage({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string; st?: string; g?: string }>;
+  searchParams: Promise<{ week?: string; st?: string; g?: string; sport?: string }>;
 }) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const { seasonId, week: currentWeek, seasonType, minWeek } = await fetchCurrentSeasonWeek(supabase);
 
-  const { week: weekParam, st: stParam, g: groupParam } = await searchParams;
+  const { week: weekParam, st: stParam, g: groupParam, sport: sportParam } = await searchParams;
+  // Anything that isn't exactly the other league is the default league.
+  const sport = sportParam === "nfl" ? ("nfl" as const) : ("cfb" as const);
+  const { seasonId, week: currentWeek, seasonType, minWeek } = await fetchCurrentSeasonWeek(
+    supabase,
+    sport,
+  );
   const parsed = Number(weekParam);
   const hasWeekParam = isValidWeek(parsed);
   // ?st=post pins the bowls/CFP view; an explicit ?week= means the regular
