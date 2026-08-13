@@ -49,33 +49,36 @@ export interface ProbeResult {
 /**
  * Turn one probe outcome into a status.
  *
- * `emptyIsHealthy` covers the endpoints whose empty response is the correct
- * answer rather than a symptom.
+ * **`emptyIsHealthy` is gone (2026-08-13).** Only `/scoreboard` ever set it,
+ * and the reason given was false: the flag claimed the board "returns `[]` all
+ * week and only fills on a Saturday", but the Aug 12 probe pulled 889 rows on a
+ * Wednesday in August. What it actually did was print `ok` for zero rows —
+ * masking the one symptom that would say the live layer is dead on a Saturday.
+ * A dead board and a quiet board produced the same line in the table, which is
+ * the same defect as the backup step that exited 0 with a 20-byte artifact and
+ * as the query helpers that dropped `error`.
  *
- * **Corrected 2026-08-13.** This used to justify the flag by saying
- * `/scoreboard` "returns `[]` all week and only fills on a Saturday". That is
- * false: the Aug 12 probe pulled the whole season, 889 rows, on a Wednesday in
- * August. So the flag's stated reason never held, and what it actually does
- * today is mask a genuinely empty board — the one symptom that would tell you
- * the live layer is dead on a Saturday.
+ * Zero rows now reports `EMPTY`, always and for every endpoint. That is a
+ * reporting change, not a gating one: `probeFailures` has never counted EMPTY,
+ * so a legitimately empty offseason board still does not turn the run red —
+ * the two documents that disagreed about this (`docs/STATUS.md` vs
+ * `audit/KICKOFF_READINESS.md:69`) were arguing about a red/green trade that
+ * was never on the table. What changes is that the table stops saying `ok`
+ * about nothing.
  *
- * It is left ON deliberately, for now. `audit/KICKOFF_READINESS.md:69` reaches
- * the opposite conclusion from the same fact ("costs nothing and stays"), and
- * turning a health check stricter sixteen days before kickoff, on an endpoint
- * whose first real in-season call has not happened yet, is the wrong week for
- * it. Revisit after Week 0, when there is one observation of what
- * `/scoreboard` does during a live game. Tracked in `docs/STATUS.md` §4.
+ * A required endpoint coming back empty additionally emits an Actions warning
+ * from `probe-cfbd.ts`, so it is visible in the run summary without being a
+ * failure. Going red on empty needs one observation of what `/scoreboard` does
+ * during a live game — that is still the `observe-scoreboard` dispatch.
  *
  * Pure, so the classification is testable without a network or a key — the
  * same split `watchdogVerdict` and `scoreboardPatch` use.
  */
 export function classifyProbe(
   outcome: { rows: number } | { error: unknown },
-  emptyIsHealthy: boolean,
 ): { status: ProbeStatus; httpStatus: number | null; rows: number | null } {
   if ("rows" in outcome) {
-    const status: ProbeStatus = outcome.rows > 0 || emptyIsHealthy ? "OK" : "EMPTY";
-    return { status, httpStatus: null, rows: outcome.rows };
+    return { status: outcome.rows > 0 ? "OK" : "EMPTY", httpStatus: null, rows: outcome.rows };
   }
   const err = outcome.error;
   if (err instanceof CfbdError) {
@@ -91,6 +94,15 @@ export function classifyProbe(
 /** Does this set of results mean the run should go red? */
 export function probeFailures(results: ProbeResult[]): ProbeResult[] {
   return results.filter((r) => r.required && (r.status === "DENIED" || r.status === "ERROR"));
+}
+
+/**
+ * Required endpoints that answered with nothing. Not failures — see
+ * `classifyProbe` — but the caller surfaces them, because an empty board that
+ * nobody mentions is indistinguishable from a healthy one.
+ */
+export function probeEmpties(results: ProbeResult[]): ProbeResult[] {
+  return results.filter((r) => r.required && r.status === "EMPTY");
 }
 
 /** Fixed-width table, so a run log diffs cleanly against the last one. */

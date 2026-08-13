@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AppNav } from "../../components/AppNav";
+import { required } from "../../lib/db-result";
 import type { TeamRow } from "../../lib/db-types";
 import { fetchCurrentSeasonWeek } from "../../lib/queries";
 import { createClient } from "../../lib/supabase/server";
@@ -26,7 +27,7 @@ export default async function StandingsPage() {
   const supabase = await createClient();
   const { seasonId } = await fetchCurrentSeasonWeek(supabase);
 
-  const [{ data: teamRows }, { data: finals }, { data: ratingRows }] = await Promise.all([
+  const [teamsRes, finalsRes, ratingsRes] = await Promise.all([
     supabase.from("teams").select("*").eq("classification", "fbs"),
     supabase
       .from("games")
@@ -35,9 +36,18 @@ export default async function StandingsPage() {
       .eq("status", "final"),
     supabase.from("latest_ratings").select("team_id, overall").eq("season_id", seasonId),
   ]);
-  const teams = ((teamRows ?? []) as TeamRow[]).filter((t) => t.conference !== null);
+  // All three are what this page IS — a standings table missing teams, results
+  // or ratings is not a standings table with gaps, it is a lie. See db-result.ts.
+  const teams = required<TeamRow>(teamsRes, "teams").filter((t) => t.conference !== null);
+  const finals = required<{
+    home_team_id: number;
+    away_team_id: number;
+    home_points: number | null;
+    away_points: number | null;
+    conference_game: boolean | null;
+  }>(finalsRes, "final games");
   const rating = new Map(
-    ((ratingRows ?? []) as Array<{ team_id: number; overall: number }>).map((r) => [
+    required<{ team_id: number; overall: number }>(ratingsRes, "ratings").map((r) => [
       r.team_id,
       Number(r.overall),
     ]),
@@ -49,13 +59,7 @@ export default async function StandingsPage() {
     r[field] += 1;
     rec.set(id, r);
   };
-  for (const g of (finals ?? []) as Array<{
-    home_team_id: number;
-    away_team_id: number;
-    home_points: number | null;
-    away_points: number | null;
-    conference_game: boolean;
-  }>) {
+  for (const g of finals) {
     if (g.home_points === null || g.away_points === null || g.home_points === g.away_points)
       continue;
     const winner = g.home_points > g.away_points ? g.home_team_id : g.away_team_id;

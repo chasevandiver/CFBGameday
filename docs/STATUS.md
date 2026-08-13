@@ -763,13 +763,25 @@ Two items remain open; the closed ones are kept for the record.
 **Ops / perf**
 - [x] **P2-3 / 05:C5 / 07:OPS-11 / SEC-12** Dead edge function deleted
       2026-08-13 — see Q7 in §3.
-- [ ] **`emptyIsHealthy` on `/scoreboard`** — decide after Week 0. The flag's
-      stated justification was disproved on 08-12 and `probe.ts` now says so,
-      but the flag is still on, so a genuinely empty board reads as green. This
-      file and `audit/KICKOFF_READINESS.md:69` reach opposite conclusions from
-      the same fact. **What settles it:** one observation of what `/scoreboard`
-      does during a live game — which is exactly what the `observe-scoreboard`
-      dispatch in §2.4 is for. Decide with that in hand, not before. · S
+- [x] **`emptyIsHealthy` — deleted 2026-08-13.** Only `/scoreboard` ever set
+      it, and its stated justification was disproved on 08-12: the flag claimed
+      the board "returns `[]` all week and only fills on a Saturday", but that
+      probe pulled 889 rows on a Wednesday. What it actually did was print
+      `ok` over zero rows — the one symptom that would say the live layer is
+      dead on a Saturday.
+      **The disagreement this row recorded turned out to be about nothing.**
+      This file wanted the flag gone; `audit/KICKOFF_READINESS.md:69` said it
+      "costs nothing and stays". Both were arguing a red/green trade that was
+      never on the table: `probeFailures` has only ever counted DENIED and
+      ERROR, so EMPTY never failed a run. Removing the flag changes what the
+      table *says*, not what the job *does* — an empty offseason board still
+      exits 0.
+      Zero rows now reports EMPTY for every endpoint, and a **required**
+      endpoint coming back empty raises an Actions `::warning::` naming it, so
+      it is visible in the run summary without being a failure. Going red on
+      empty still needs one observation of a live game — that is the
+      `observe-scoreboard` dispatch in §2.4, unchanged. 4 tests.
+
 - [x] **P2-6** Narrowed 2026-08-13 to the six columns the row mapper reads
       (`id, school, abbreviation, conference, color, logo_url`); `mascot`,
       `classification` and `alt_color` were ~138 rows of payload nothing
@@ -1048,21 +1060,26 @@ silent about the wiring, which is the gap that let it sit for a day.
       returns the stake and settles nothing. That is the distinction P1-1(b)
       already fixed in words on the home hub, where a void read "Push".
       No new tokens. **Not seen rendered** — the page needs a live Supabase.
-- [ ] **The error boundary is unreachable through a data failure.** Found
-      2026-08-13 while rendering UX-27. `error.tsx` says "a Supabase hiccup
-      gets a retry", and a Supabase hiccup does not reach it: a build pointed
-      at a non-resolving database still served **200 on every route probed** —
-      `/slate`, `/standings`, `/receipts`, `/recap/1`, `/rankings`, `/teams`,
-      `/model`, `/ledger`, `/game/1` — because the query helpers destructure
-      `{ data }` and drop `error`, so a failed fetch becomes an empty page
-      rather than a thrown one. Seeing the boundary at all required a
-      deliberately-throwing route.
-      **That is arguably the right behaviour** — a slate that renders empty
-      beats one that shows a stack trace — but it is not what the file claims,
-      and it means a total data-layer outage on a Saturday looks identical to a
-      quiet week, which is the `emptyIsHealthy` argument in this same section
-      wearing different clothes. Decide the pair together after Week 0: either
-      the copy is wrong, or some routes should surface the failure. · S
+- [x] **Error surfacing — fixed 2026-08-13, and my first measurement of it was
+      wrong.** The claim was that a build pointed at a non-resolving database
+      still served 200 on every route. **That experiment was invalid**: Next
+      inlines `NEXT_PUBLIC_*` at build time, *including in server components*,
+      so overriding the URL at `next start` did nothing and the server was
+      talking to the live project the whole time. Verified by finding the real
+      project ref baked into `.next/server` chunks.
+      **The defect was real anyway, and is now measured properly** — rebuilt
+      with the bad URL baked in, so the client genuinely could not resolve it:
+      `/standings`, `/ratings`, `/receipts`, `/recap`, `/slate`, `/rankings`,
+      `/teams`, `/ledger` **all rendered as an empty season, silently**, on
+      `main`. After the fix, all eight render the error boundary.
+      The cause was `const { data } = await supabase…` dropping `error` at
+      every call site. New `src/lib/db-result.ts` — `required()` / `requiredOne()`
+      — throws on a failed read and never on an empty one, because empty is a
+      real state here (`/ratings` before the first preseason load). Applied to
+      the rows each page **is**, not to enrichment: a missing dome flag or poll
+      rank still degrades quietly rather than blanking a slate. 8 tests.
+      Fixing this also corrected an unsound `as TeamRow[]` on `/recap`, where
+      the query selects four columns and the cast claimed nine.
 
 - [ ] **UX-06 (residue)** Sub-4.5 tokens: light `chalk/50–55` table headers,
       dark `/35–/45` decorative labels, edge-on-card — needs a rendered pass · S–M
@@ -1078,25 +1095,41 @@ silent about the wiring, which is the gap that let it sit for a day.
       stringly-typed total. See 05:N12 for the same question settled for the
       arithmetic path.
 - [ ] **UX-25** `profiles.timezone` surfaced on `/me` and used server-side · S–M
-- [x] **UX-27/28** Both fixed 2026-08-13. `error.tsx` now renders `<AppNav />`
-      like `not-found.tsx` and `loading.tsx` do — nav is not in the root layout
+- [x] **UX-27** Fixed 2026-08-13. `error.tsx` now renders `<AppNav />` like
+      `not-found.tsx` and `loading.tsx` do — nav is not in the root layout
       (`layout.tsx:74-104`), every page mounts its own, and a boundary that
       skipped it left the reader on a dead end with no way out but the back
       button. It also gained `id="main"`, because `AppNav` renders a skip link
-      to `#main` and would otherwise have arrived pointing at nothing.
-      Standings: the team cell's `truncate` span could not actually shrink —
-      its flex parent had no `min-w-0`, so a flex child's `min-width: auto`
-      floor meant the three right-hand columns got squeezed instead at 375px.
-      Added, with a `title` so the full name survives the ellipsis.
+      to `#main` and would otherwise have arrived pointing at nothing. Both
+      recovery buttons (`error.tsx`, `not-found.tsx`) went to `min-h-11`; both
+      were ~36px. **Rendered:** the boundary shows top lockup and bottom nav,
+      and "Try again" measures 44×44.
       **Checked while in there and *not* a bug:** `error.tsx` destructures
       `retry`, and Next's older contract passed `reset`. `retry` is correct
       here — both props exist in 16.3.0, `retry()` re-fetches and re-renders
       while `reset()` only clears the error state, and `retry` became stable in
       exactly this version (`next/dist/docs/.../error.md`, Version History).
-      Read the installed docs rather than trusting the remembered API, which is
-      what `AGENTS.md` asks for and would have produced a regression here.
-      Also raised the two recovery buttons (`error.tsx`, `not-found.tsx`) to
-      `min-h-11`; both were ~36px. **Not seen rendered.**
+      Reading the installed docs rather than the remembered API is what
+      `AGENTS.md` asks for, and it was the difference between a fix and a
+      regression.
+- [ ] **UX-28 — reopened 2026-08-13: the symptom does not reproduce.** The
+      change shipped (`min-w-0` on the team cell's flex parent, plus a `title`)
+      and it is correct defensively, but **it fixes nothing measurable today**,
+      so the box goes back. Measured against the live database: no school name
+      clips at 375px (`scrollWidth == clientWidth` on all 138), none at 320px,
+      the document never scrolls sideways, and the column widths are identical
+      with and without `min-w-0` — `[172, 43, 64, 66]` both ways — including a
+      forced worst case of the longest FBS name ("Florida International")
+      beside full end-of-season records.
+      It was briefly ticked as done on 08-13. That was wrong: shipping a
+      defensive change is not the same as fixing a defect, and this file's
+      whole contract is that a checked box means the thing is fixed. Either the
+      audit's 375px observation predates a layout change, or it was reasoned
+      from the markup rather than measured — the same failure mode that
+      produced the nine rows in §8.
+      **What would settle it:** the Aug 21 real-device pass. If nobody can make
+      a name truncate on a real phone, close it as "not a defect" rather than
+      as done. · S
 - [ ] **UX-31 / §23 #19** Week changes via `pushState` so Back traverses weeks
       (`SlateView.tsx:263` is `replaceState` — deliberate, revisit) · S
 - [x] **05:N12** Pinned 2026-08-13. The module's types said `number` while its

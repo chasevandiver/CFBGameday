@@ -1,6 +1,7 @@
 import { AppNav } from "../../components/AppNav";
 import { RatingsTable, type RatingRow } from "../../components/RatingsTable";
 import { MODEL_VERSION, splitInformative } from "../../model/ratings";
+import { required } from "../../lib/db-result";
 import type { TeamRow } from "../../lib/db-types";
 import { fetchCurrentSeasonWeek } from "../../lib/queries";
 import { pickPollRanks, pollShortName } from "../../lib/rankings";
@@ -28,12 +29,14 @@ export default async function RatingsPage() {
   const supabase = await createClient();
   const { seasonId } = await fetchCurrentSeasonWeek(supabase);
 
-  const { data: allRatings } = await supabase
+  const allRatingsRes = await supabase
     .from("ratings")
     .select("team_id, week, overall, offense, defense")
     .eq("season_id", seasonId)
     .order("week", { ascending: false });
-  const ratings = (allRatings ?? []) as DbRating[];
+  // The page is the ratings table; a failed read must not render as "no teams
+  // yet", which is a real and different state (db-result.ts).
+  const ratings = required<DbRating>(allRatingsRes, "ratings");
 
   // Latest week per team + the week before it for movement arrows
   const latestWeek = ratings.length > 0 ? Math.max(...ratings.map((r) => r.week)) : 0;
@@ -75,7 +78,7 @@ export default async function RatingsPage() {
     TeamRow,
     "id" | "school" | "abbreviation" | "conference" | "color" | "logo_url"
   >;
-  const teams = new Map(((teamsRes.data ?? []) as RatingTeam[]).map((t) => [t.id, t]));
+  const teams = new Map(required<RatingTeam>(teamsRes, "teams").map((t) => [t.id, t]));
   const comps = new Map(
     ((compsRes.data ?? []) as DbComponents[]).map((c) => [c.team_id, c]),
   );

@@ -3,6 +3,7 @@ import { AppNav } from "../../components/AppNav";
 import { summarizeClv } from "../../lib/clv";
 import type { GameRow, PredictionRow, TeamRow } from "../../lib/db-types";
 import { DEFAULT_TZ, kickDateLong, kickParts, tzLabel } from "../../lib/kick";
+import { required } from "../../lib/db-result";
 import { fetchCurrentSeasonWeek } from "../../lib/queries";
 import { fmtSpread } from "../../lib/slate";
 import { createClient } from "../../lib/supabase/server";
@@ -35,13 +36,16 @@ export default async function ReceiptsPage() {
 
   // Scoped to the current season (audit bug #7: this used to fetch every
   // frozen prediction ever and merge same-numbered weeks across seasons).
-  const { data: predRows } = await supabase
+  const predRes = await supabase
     .from("predictions")
     .select("*")
     .eq("frozen", true)
     .eq("season_id", seasonId)
     .order("created_at", { ascending: false });
-  const frozen = (predRows ?? []) as PredictionRow[];
+  // Receipts ARE the frozen predictions; a failed read rendering as "nothing
+  // frozen yet" would misreport the one thing this page exists to prove
+  // (db-result.ts).
+  const frozen = required<PredictionRow>(predRes, "frozen predictions");
 
   // Newest frozen row per game is the standing prediction; older rows from
   // prior model versions stay in the table as history but don't render.
@@ -51,15 +55,15 @@ export default async function ReceiptsPage() {
   }
   const gameIds = [...newestByGame.keys()];
 
-  const { data: gameRows } = gameIds.length
+  const gamesRes = gameIds.length
     ? await supabase.from("games").select("*").in("id", gameIds)
-    : { data: [] };
-  const games = (gameRows ?? []) as GameRow[];
+    : { data: [], error: null };
+  const games = required<GameRow>(gamesRes, "games");
   const teamIds = [...new Set(games.flatMap((g) => [g.home_team_id, g.away_team_id]))];
-  const { data: teamRows } = teamIds.length
+  const teamsRes = teamIds.length
     ? await supabase.from("teams").select("*").in("id", teamIds)
-    : { data: [] };
-  const teams = new Map(((teamRows ?? []) as TeamRow[]).map((t) => [t.id, t]));
+    : { data: [], error: null };
+  const teams = new Map(required<TeamRow>(teamsRes, "teams").map((t) => [t.id, t]));
 
   const receipts: Receipt[] = [];
   for (const g of games) {
