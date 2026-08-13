@@ -47,10 +47,9 @@ Two live documents, then the history.
 
 The audits are history, kept intact and not edited to look better in hindsight.
 Read them for *why* a finding exists; read `docs/STATUS.md` for whether it is
-still open. `docs/AUDIT-2026-08.md` (Aug 6 product audit, 18 bugs + 46-item
-checklist), `audit/KICKOFF_READINESS.md` (Aug 11–12 Week 0 readiness, P0/P1/P2),
-`audit/CHECKLIST.md` (the completed Package A–C program), `audit/00`–`10` (the
-workstream reports the `NN:XX-N` IDs come from).
+still open. All fourteen live in `audit/`, indexed by **`audit/README.md`** —
+which pass is which, how to resolve an ID (the number in `04:DQ-13` is the
+file), and what four audits nonetheless failed to catch.
 
 ## Model changes
 

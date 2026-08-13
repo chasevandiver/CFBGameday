@@ -1,5 +1,33 @@
 # Week 0 Kickoff Readiness Audit — The CFB Slate
 
+> **Historical document. For what is still open, read `docs/STATUS.md`.**
+>
+> This is the Aug 11–12 point-in-time audit, and it is the last of the three to
+> get this banner — `audit/AUDIT-2026-08.md` and `audit/CHECKLIST.md` have
+> carried one since 08-12, which made this file the only audit that still read
+> as a live worklist. Added 2026-08-13.
+>
+> **Most of what follows is closed.** Every P0 was closed on 08-12. On 08-13 the
+> code and docs half of the P1/P2 list went with it: **P1-1** (admin void
+> control), **P1-3** (`.env.example`), **P1-4** (burst poll — spec amended, no
+> cron added), **P1-5** (`/ratings` empty state), **P1-8** (the email arrived —
+> and was unread, which is why `OPS-2` was built), **P2-1** (blank env vars read
+> as zero), **P2-3**/**Q7** (dead edge function deleted), **P2-10** (insurance
+> crons, with `5 10 * * 6` substituted for a string already owned by weather),
+> **P2-11** (`gameMedia` failures no longer silent), and **Q4** (FCS buckets,
+> built at identity). The day-by-day plan in §10 is spent.
+>
+> **What this file is still good for** is the reasoning: why each finding was
+> ranked where it was, the evidence behind it, and — read §1's revision notes —
+> where the first pass got it wrong. It ranked a non-issue first and missed the
+> real one entirely, and both are visible above rather than quietly corrected.
+> Nothing here is edited to look better in hindsight.
+>
+> It also does not know about three defects found on 08-13 that no audit
+> caught: the notification crons were declared and never routed, `make_pick`
+> never cleared `result` so a re-picked game could not be graded, and nine
+> failure emails had arrived unread.
+
 **Audit date:** 2026-08-11 · **Week 0 kickoff:** Sat 2026-08-29 (18 days) · **Week 1:** Sat 2026-09-05 (25 days)
 **Scope:** read-only. Nothing in the repo was modified by this pass. Every finding is a work item, not a change.
 **Method:** verified against the code on this branch (`claude/cfb-slate-kickoff-audit-lawxb8`, identical tree to `main` at `765c63d`). Prior audit documents were treated as claims and re-checked, not as evidence.
@@ -32,7 +60,7 @@
 
 The endpoint question that dominated rev 1 is **settled**: `scripts/probe-cfbd.ts` called all 11 endpoints against the live key and every one returned data, including both Tier 1+ ones. And the model, which rev 1 could only report secondhand from `docs/CHANGELOG.md`, has been re-run: **MAE 13.25, market 11.98, bias +0.03, b₁ 0.035 (t=0.83) against the market's 0.985 (t=22.87), n=2611, all five pre-registered tier tests failing.** The changelog was accurate to the third significant figure.
 
-The second-order risk is confidence: this repo's documentation is unusually good, and that is itself a hazard. `audit/CHECKLIST.md` and `docs/AUDIT-2026-08.md` are ~95% accurate, which is high enough to be trusted and not high enough to be trusted blindly. Three checklist items are checked that are not fully done (§7). **The same trap caught this audit**: I ranked an early-kickoff CLV loss as the #1 P0 on a plausible reading of the cron table, and one field in one job log — `days_to_kickoff: 18.2` — showed the scenario does not fire. Reason about a schedule, verify against the schedule.
+The second-order risk is confidence: this repo's documentation is unusually good, and that is itself a hazard. `audit/CHECKLIST.md` and `audit/AUDIT-2026-08.md` are ~95% accurate, which is high enough to be trusted and not high enough to be trusted blindly. Three checklist items are checked that are not fully done (§7). **The same trap caught this audit**: I ranked an early-kickoff CLV loss as the #1 P0 on a plausible reading of the cron table, and one field in one job log — `days_to_kickoff: 18.2` — showed the scenario does not fire. Reason about a schedule, verify against the schedule.
 
 ---
 
@@ -601,7 +629,7 @@ Reconciled against `audit/CHECKLIST.md` (the master remediation list). **Verifie
 ### Package C — Launch-week polish
 All 18 `[x]` items spot-verified as **DONE**, with routes present in the production build output: `/model`, `/ledger/export`, `/opengraph-image`, `/game/[id]/opengraph-image`, `/apple-icon`, `/rules`, `/recap`, `/recap/[week]`. The 8 `[ ]` deferred items (G10-v1, UX-14, F10, F13, UX-08, UX-22, 05:N12, SEC-01) are **NOT DONE and correctly so** — each carries a stated reason. No item is checked without a corresponding code change.
 
-### `docs/AUDIT-2026-08.md` — the 18 bugs and the 46-item checklist
+### `audit/AUDIT-2026-08.md` — the 18 bugs and the 46-item checklist
 Re-verified the rows most likely to have drifted:
 
 | Row | Doc claim | Verified | Note |
@@ -760,7 +788,7 @@ Ordered by dependency. Per `SPEC.md:253`, **the team-page LLM review backlog is 
 | **Sat Aug 15** | **09:P-16 load rehearsal** (owner-run): seed fixtures, `autocannon -c 15/-c 30` against `next start`, record vs p95 <1.5s / tick <300 KB. | Aug 12 | 3 |
 | **Sun Aug 16** | **P1-1:** admin "void this game" control + the grading path that consumes it. Test. | — | 3 |
 | **Mon Aug 17** | **P1-3:** commit `.env.example` + `.gitignore` negation (now 17 keys — the three empty ones from P1-9 included). **P1-5:** `/ratings` empty state. **P2-1:** empty-string guard on `PRESEASON_TILT_CARRY`. | — | 1.5 |
-| **Tue Aug 18** | Doc amendments: **Q3** (SPEC §2.2/§2.3 K + slope), **Q4** (§2.1 FCS), **Q5** (§4 R3), **P1-4** (§5.3/§8 burst poll), **P1-6** (§7 nav). Fix the stale Bug #9 evidence in `docs/AUDIT-2026-08.md`. | Q3–Q5 | 2 |
+| **Tue Aug 18** | Doc amendments: **Q3** (SPEC §2.2/§2.3 K + slope), **Q4** (§2.1 FCS), **Q5** (§4 R3), **P1-4** (§5.3/§8 burst poll), **P1-6** (§7 nav). Fix the stale Bug #9 evidence in `audit/AUDIT-2026-08.md`. | Q3–Q5 | 2 |
 | **Wed Aug 19** | **Q7:** delete the dead edge function (or banner it). **P2-4:** drop the dead 0018 pick policies (migration 0028). **P2-6:** narrow `ratings/page.tsx` select. | Q7 | 2 |
 | **Thu Aug 20** | ⚠️ **`preseason-refresh` starts going RED on decline from today** (`jobs.yml:221`). Watch it. **F2/P1-9:** add `ANTHROPIC_API_KEY`, dispatch `verdicts` once. Also: `refresh-lines` leaves its idle guard ~Aug 22 (`LINES_IDLE_DAYS` 7) — first snapshots since spring. | Q1 | 2 |
 | **Fri Aug 21** | Quality floor: real-device pass at 375px, light-mode phone pass over the slate, reduced-motion + focus-ring check. `UX-06` residue. | — | 3 |
