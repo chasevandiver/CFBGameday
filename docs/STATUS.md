@@ -1035,7 +1035,9 @@ silent about the wiring, which is the gap that let it sit for a day.
       44px target centred on a 13px glyph would overlap its sibling vertically,
       and overlapping targets mis-fire worse than small ones do. The fix is a
       taller row, which is a layout change that has to be seen on a device
-      rather than reasoned about — pair it with the Aug 21 real-device pass. · S
+      rather than reasoned about — pair it with the Aug 21 real-device pass.
+      **Measured 2026-08-13** on a 375px viewport with the slip seeded: remove
+      44×44, units input 48×44, and `error.tsx`'s "Try again" 44×44. · S
 - [x] **UX-22** Fixed 2026-08-13. `PickerChip` tested only `win` and `loss`, so
       `push` **and `void`** fell through both branches and rendered exactly like
       an ungraded pick — a sighted member could not tell a push from a game
@@ -1046,6 +1048,22 @@ silent about the wiring, which is the gap that let it sit for a day.
       returns the stake and settles nothing. That is the distinction P1-1(b)
       already fixed in words on the home hub, where a void read "Push".
       No new tokens. **Not seen rendered** — the page needs a live Supabase.
+- [ ] **The error boundary is unreachable through a data failure.** Found
+      2026-08-13 while rendering UX-27. `error.tsx` says "a Supabase hiccup
+      gets a retry", and a Supabase hiccup does not reach it: a build pointed
+      at a non-resolving database still served **200 on every route probed** —
+      `/slate`, `/standings`, `/receipts`, `/recap/1`, `/rankings`, `/teams`,
+      `/model`, `/ledger`, `/game/1` — because the query helpers destructure
+      `{ data }` and drop `error`, so a failed fetch becomes an empty page
+      rather than a thrown one. Seeing the boundary at all required a
+      deliberately-throwing route.
+      **That is arguably the right behaviour** — a slate that renders empty
+      beats one that shows a stack trace — but it is not what the file claims,
+      and it means a total data-layer outage on a Saturday looks identical to a
+      quiet week, which is the `emptyIsHealthy` argument in this same section
+      wearing different clothes. Decide the pair together after Week 0: either
+      the copy is wrong, or some routes should surface the failure. · S
+
 - [ ] **UX-06 (residue)** Sub-4.5 tokens: light `chalk/50–55` table headers,
       dark `/35–/45` decorative labels, edge-on-card — needs a rendered pass · S–M
 - [ ] **UX-21** Ledger "today" keyed to CT for non-CT bettors · S

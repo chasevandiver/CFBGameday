@@ -249,10 +249,31 @@ live table-level `SELECT` is a no-op, which is the lesson `0013:26` already
 recorded and which an assertion failing against a "working" migration taught
 again.
 
-**Not seen rendered.** The UI changes (push/void chips, standings truncation,
-error boundary, five tap targets) were verified by `tsc`, lint and tests only;
-the pages need a live Supabase. `docs/DESIGN.md` asks for that to be said rather
-than glossed.
+**Rendered against the live project the same day**, after the commits above
+said they had not been. A build pointed at `the-cfb-slate` and driven headless
+at 375px, and it changed three of the claims:
+
+- **UX-22 shipped a defect the tests could not see.** Push and void both used
+  `Minus`, and `--push` (#9aa1ad) against `--text-dim` (#a89f90) is two greys
+  differing only in temperature. Distinct in the DOM, identical to the eye at
+  10px. Void now takes `Ban`. All five states confirmed separable.
+- **UX-28's symptom did not reproduce.** No school name clips at 375px or
+  320px, the document never scrolls sideways, and the column widths are
+  identical with and without `min-w-0` — including a forced worst case of the
+  longest FBS name beside full end-of-season records. The change is correct
+  defensively and inert today. Recorded rather than claimed.
+- **UX-27 and the tap targets measured clean.** The boundary renders both navs;
+  "Try again" 44×44, BetSlip remove 44×44, units input 48×44. P2-6's `/ratings`
+  serves 138 rows with `logo_url` wired through the narrowed select.
+
+Reaching the error boundary needed a temporary throwing route, and that is its
+own finding: a build pointed at a **non-resolving database still served 200 on
+every route probed**, because the query helpers destructure `{ data }` and drop
+`error`. A data-layer outage renders empty pages, not the boundary — which is
+the `emptyIsHealthy` argument in different clothes. Tracked in §4.
+
+Still unrendered: the receipts tooltip, because `predictions` is empty by design
+after 0028, so no receipt rows exist to hover.
 
 **Left undone on purpose, each with its reason in the row:** three of UX-08's
 seven tap targets (a 44px target in a ~30px stacked row overlaps its sibling —

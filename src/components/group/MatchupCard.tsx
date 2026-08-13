@@ -1,4 +1,4 @@
-import { Check, Minus, X } from "lucide-react";
+import { Ban, Check, Minus, X } from "lucide-react";
 import Link from "next/link";
 import { flipHeadline, flipWhen } from "../../lib/cover";
 import type { CoverFlipRow, PickMarket, PickRow } from "../../lib/db-types";
@@ -329,7 +329,12 @@ const GRADED_CHIP: Record<
   win: { Icon: Check, tone: "text-win" },
   loss: { Icon: X, tone: "text-loss" },
   push: { Icon: Minus, tone: "text-push" },
-  void: { Icon: Minus, tone: "text-dim" },
+  // Ban, not Minus. Both greys are greys — `--push` #9aa1ad and `--text-dim`
+  // #a89f90 differ only in temperature and are not separable at 10px, which a
+  // render check caught after the first pass shipped them with the same glyph.
+  // The icon is what carries the difference, which is the same reason
+  // chips.tsx pairs every colour with one.
+  void: { Icon: Ban, tone: "text-dim" },
 };
 
 function PickerChip({
