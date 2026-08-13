@@ -1,7 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { rm, readFile } from "node:fs/promises";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import type { CfbdGame } from "../../src/lib/cfbd";
 import { DEFAULT_PARAMS } from "../../src/model/ratings";
-import { MAX_TILT, chainTilts, replaySeason, scaleTilts, type SeasonData } from "./replay";
+import {
+  CACHE_DIR,
+  MAX_TILT,
+  cached,
+  chainTilts,
+  replaySeason,
+  scaleTilts,
+  type SeasonData,
+} from "./replay";
 
 const game = (
   id: number,
@@ -248,5 +258,65 @@ describe("FCS bucket identity (P1-2 / Q4)", () => {
     const asTop = replaySeason(withFcs, priors, split, undefined, new Set([50])).predictions;
     const byId = new Map(asTop.map((p) => [p.gameId, p]));
     expect(asOther.some((p) => byId.get(p.gameId)?.margin !== p.margin)).toBe(true);
+  });
+});
+
+describe("cached", () => {
+  const names: string[] = [];
+  const tmp = (n: string) => {
+    const name = `zz-test-${n}-${process.pid}`;
+    names.push(name);
+    return name;
+  };
+  const fileFor = (name: string) => path.join(CACHE_DIR, `${name}.json`);
+  const exists = async (name: string) =>
+    readFile(fileFor(name), "utf8").then(
+      () => true,
+      () => false,
+    );
+
+  afterEach(async () => {
+    await Promise.all(names.splice(0).map((n) => rm(fileFor(n), { force: true })));
+  });
+
+  it("does not persist an empty response (04:DQ-15)", async () => {
+    // CFBD answers 200 with [] for a season it has not published yet, and
+    // cfbd.ts only throws on !res.ok. Writing that pins the absence: every
+    // later run reads the file, skips the fetch, and gets [] again long after
+    // the real data landed.
+    const name = tmp("empty");
+    await expect(cached(name, async () => [], false)).resolves.toEqual([]);
+    expect(await exists(name)).toBe(false);
+  });
+
+  it("still persists a response that has rows", async () => {
+    const name = tmp("full");
+    await expect(cached(name, async () => [{ id: 1 }], false)).resolves.toEqual([{ id: 1 }]);
+    expect(await exists(name)).toBe(true);
+  });
+
+  it("persists a non-array payload, empty or not — only lists are judged", async () => {
+    // The emptiness test is Array-shaped on purpose. An object response has no
+    // length to reason about, and guessing at one would be the kind of clever
+    // that silently drops a legitimately empty record.
+    const name = tmp("object");
+    await expect(cached(name, async () => ({}), false)).resolves.toEqual({});
+    expect(await exists(name)).toBe(true);
+  });
+
+  it("reads the cache back rather than refetching when told to", async () => {
+    const name = tmp("roundtrip");
+    await cached(name, async () => [{ id: 7 }], false);
+    let called = false;
+    const again = await cached(
+      name,
+      async () => {
+        called = true;
+        return [{ id: 99 }];
+      },
+      true,
+    );
+    expect(again).toEqual([{ id: 7 }]);
+    expect(called).toBe(false);
   });
 });

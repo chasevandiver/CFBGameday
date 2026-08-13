@@ -12,7 +12,7 @@ export default function NotFound() {
         </p>
         <Link
           href="/slate"
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink transition-opacity hover:opacity-90"
+          className="inline-flex min-h-11 items-center rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink transition-opacity hover:opacity-90"
         >
           Back to the slate
         </Link>

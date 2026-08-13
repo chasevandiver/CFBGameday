@@ -154,8 +154,11 @@ async function main() {
 
   console.log(formatProbe(results));
 
-  // Meter the probe's own calls. The backtest and preseason paths are still
-  // unmetered (audit 07/OPS-14a) — no reason to add a third.
+  // Meter the probe's own calls. `build-preseason` meters itself the same way
+  // as of 2026-08-13; the backtest path is still unmetered (audit 07/OPS-14a),
+  // because `backtest.yml` carries only a CFBD key and adding Supabase secrets
+  // to a workflow that fires on every model PR is a wider change than the count
+  // is worth.
   try {
     await logCfbdCalls(createServiceClient(), "cfbd-probe", cfbdCallCount());
   } catch {

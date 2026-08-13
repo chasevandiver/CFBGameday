@@ -88,3 +88,29 @@ rollback;
 
 select pg_temp.chk('nobody became admin along the way',
   (select count(*) = 1 from profiles where is_admin));
+
+\echo '# is_admin is not readable signed out (0040, P2-2 / SEC-08)'
+-- Both SELECT policies on this table are `using (true)`, so before 0040 a
+-- signed-out PostgREST call could read every column of every profile and learn
+-- who the admins were. RLS restricts rows, not columns — the fix is a column
+-- grant, the read-side twin of 0013's UPDATE narrowing above.
+begin;
+  select test_as_anon();
+  select pg_temp.raises('anon reading is_admin',
+    $$select is_admin from profiles$$);
+  select pg_temp.raises('anon reading the whole row',
+    $$select * from profiles$$);
+  select pg_temp.raises('anon reading a timezone',
+    $$select timezone from profiles$$);
+  -- Names stay public: /recap and /game render display_name for signed-out
+  -- visitors, and fetchProfiles (queries.ts) asks for exactly these two.
+  select pg_temp.chk('but names are still readable',
+                     (select count(*) from (select id, display_name from profiles) q) = 2);
+rollback;
+-- A signed-in member is unaffected — narrowing that is a separate, larger
+-- change (an is_current_user_admin() RPC and six call sites), left queued.
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.chk('a signed-in member can still read is_admin',
+                     (select count(*) from (select is_admin from profiles) q) = 2);
+rollback;

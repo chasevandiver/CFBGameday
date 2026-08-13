@@ -2131,11 +2131,20 @@ async function main() {
   }
 
   const run = (params: ModelParams): ReplayPrediction[] => {
-    // No preseason tilt — matches production, where week-0 halves are even
-    // unless PRESEASON_TILT_CARRY has been set from a --tune-preseason-tilts
-    // winner. Run that flag to re-decide; it is no longer swept inline here
-    // because the inline version chained tilts in every arm, which is not
-    // what production does.
+    // No preseason tilt here, and that does NOT match production (02:M-12).
+    // The comment this replaces said it did, on the premise that the tilt is
+    // off "unless PRESEASON_TILT_CARRY has been set" — but the default is in
+    // the code, not only in the environment: `build-preseason.ts:91` reads
+    // `envNum("PRESEASON_TILT_CARRY", 0.4, …)`, so production ships 0.4 and an
+    // unset variable changes nothing. The headline calibration below is
+    // therefore computed at tilt 0 against a production that carries 0.4.
+    //
+    // Left at 0 rather than raised to match, because moving it silently
+    // restates every number this report has ever produced, and the report is
+    // the honesty gate for model changes. Re-decide with
+    // `--tune-preseason-tilts`, which is why the inline sweep was removed: it
+    // chained tilts in every arm, which production does not do either.
+    // Recorded rather than fixed — see docs/STATUS.md.
     let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
     const all: ReplayPrediction[] = [];
     for (const season of seasons) {

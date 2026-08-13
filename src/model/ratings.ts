@@ -420,7 +420,22 @@ export interface RatingUpdate {
   awayDelta: number;
 }
 
-/** Elo-style update on capped margin error, split between the two teams. */
+/**
+ * Elo-style update on capped margin error, split between the two teams.
+ *
+ * **Kept deliberately, though nothing in production calls it** (02:M-10, where
+ * it was queued as dead code alongside `suggestedStake`). The two are not the
+ * same case. Both live paths — `updateSubRatings` here and the replay — are
+ * specified *against* this function rather than independently: `ratings.ts`'s
+ * own note below says the off+def halves must move by "the overall update's
+ * K·marginError/2", and `replay.ts:249` says the same in the other direction.
+ * Two tests exercise it as that reference.
+ *
+ * So deleting it costs the stated form of an invariant two other pieces of code
+ * are checked against, and saves seven lines. That trade is the wrong way
+ * round. It is a reference implementation, not dead weight — which is the
+ * distinction M-10 did not draw.
+ */
 export function updateFromResult(g: GameResultInput, p: ModelParams = DEFAULT_PARAMS): RatingUpdate {
   const capped = clamp(g.actualHomeMargin, -p.marginCap, p.marginCap);
   const cappedPrediction = clamp(g.predictedMargin, -p.marginCap, p.marginCap);
@@ -674,17 +689,12 @@ export function centeredBlendedHfa(
   return Math.max(0, p.baseHfa + p.teamHfaBlend * (teamRawHfa - meanRawHfa));
 }
 
-// ---------------------------------------------------------------------------
-// Bet sizing (§5.4): ¼ Kelly, hard-capped at 2 units
-// ---------------------------------------------------------------------------
-
-export function suggestedStake(coverProb: number, americanOdds = -110): number {
-  const b = americanOdds > 0 ? americanOdds / 100 : 100 / -americanOdds;
-  const kelly = (coverProb * (b + 1) - 1) / b;
-  const quarter = Math.max(kelly, 0) / 4;
-  // Stake as units where full Kelly on a 100u bankroll ~ percentage points
-  return Math.min(round1(quarter * 100), 2);
-}
+// Bet sizing (SPEC §5.4's ¼-Kelly `suggestedStake`) was deleted 2026-08-13
+// (02:M-11). It had no caller anywhere in `src/` or `scripts/` — only its own
+// test — and the product deliberately does not size bets: edges are published
+// as information, not wagers (`docs/STATUS.md` §1, "The edge verdict"), so a
+// function recommending a stake was a feature the spec had moved away from.
+// Recoverable from git if §5.4 is ever built.
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -692,10 +702,6 @@ export function suggestedStake(coverProb: number, americanOdds = -110): number {
 
 export function clamp(x: number, lo: number, hi: number): number {
   return Math.min(Math.max(x, lo), hi);
-}
-
-function round1(x: number): number {
-  return Math.round(x * 10) / 10;
 }
 
 /** Standard normal CDF via Abramowitz–Stegun approximation. */

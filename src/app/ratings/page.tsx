@@ -53,7 +53,14 @@ export default async function RatingsPage() {
 
   const teamIds = current.map((r) => r.team_id);
   const [teamsRes, compsRes, pollsRes] = await Promise.all([
-    supabase.from("teams").select("*").in("id", teamIds),
+    // The six columns the row mapper below reads, not all nine — this pulls
+    // every FBS team, so mascot/classification/alt_color were ~138 rows of
+    // payload nothing rendered. Its two siblings in this Promise.all were
+    // already narrowed (P2-6).
+    supabase
+      .from("teams")
+      .select("id, school, abbreviation, conference, color, logo_url")
+      .in("id", teamIds),
     supabase
       .from("preseason_components")
       .select("team_id, churn_adjustment, luck_correction")
@@ -64,7 +71,11 @@ export default async function RatingsPage() {
       .eq("season_id", seasonId)
       .eq("season_type", "regular"),
   ]);
-  const teams = new Map(((teamsRes.data ?? []) as TeamRow[]).map((t) => [t.id, t]));
+  type RatingTeam = Pick<
+    TeamRow,
+    "id" | "school" | "abbreviation" | "conference" | "color" | "logo_url"
+  >;
+  const teams = new Map(((teamsRes.data ?? []) as RatingTeam[]).map((t) => [t.id, t]));
   const comps = new Map(
     ((compsRes.data ?? []) as DbComponents[]).map((c) => [c.team_id, c]),
   );

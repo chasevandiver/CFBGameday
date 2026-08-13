@@ -1,4 +1,4 @@
-import { Check, X } from "lucide-react";
+import { Ban, Check, Minus, X } from "lucide-react";
 import Link from "next/link";
 import { flipHeadline, flipWhen } from "../../lib/cover";
 import type { CoverFlipRow, PickMarket, PickRow } from "../../lib/db-types";
@@ -322,6 +322,21 @@ function MarketSplit({
  * cross beside the colour — `ResultChip`'s rule is icon plus text, never colour
  * alone, and this is the same information.
  */
+const GRADED_CHIP: Record<
+  NonNullable<PickRow["result"]>,
+  { Icon: typeof Check; tone: string }
+> = {
+  win: { Icon: Check, tone: "text-win" },
+  loss: { Icon: X, tone: "text-loss" },
+  push: { Icon: Minus, tone: "text-push" },
+  // Ban, not Minus. Both greys are greys — `--push` #9aa1ad and `--text-dim`
+  // #a89f90 differ only in temperature and are not separable at 10px, which a
+  // render check caught after the first pass shipped them with the same glyph.
+  // The icon is what carries the difference, which is the same reason
+  // chips.tsx pairs every colour with one.
+  void: { Icon: Ban, tone: "text-dim" },
+};
+
 function PickerChip({
   pick,
   game,
@@ -331,8 +346,18 @@ function PickerChip({
   game: GameView;
   mine: boolean;
 }) {
-  const won = pick.result === "win";
-  const lost = pick.result === "loss";
+  // Every graded state gets an icon and a colour, because `chips.tsx`'s
+  // ResultChip says so — "icon + text, never color alone". Push and void used
+  // to fall through both branches below and render exactly like an ungraded
+  // pick, with only the sr-only string carrying the outcome, so a sighted
+  // member could not tell a push from a game nobody had graded yet (UX-22).
+  //
+  // Void is not push. A canceled game returns the stake and settles nothing,
+  // so it takes the muted treatment rather than the push colour — the same
+  // distinction the home hub makes in words, where labelling a canceled game
+  // "Push" was the bug P1-1(b) fixed.
+  const graded = pick.result ? GRADED_CHIP[pick.result] : null;
+  const Icon = graded?.Icon;
   // The heading already carries the side for a total, so the chip only needs
   // the number where it differs between pickers — spreads.
   const number =
@@ -348,9 +373,8 @@ function PickerChip({
           : "bg-elev text-chalk"
       }`}
     >
-      {won && <Check size={10} aria-hidden className="shrink-0 text-win" />}
-      {lost && <X size={10} aria-hidden className="shrink-0 text-loss" />}
-      <span className={`truncate ${won ? "text-win" : lost ? "text-loss" : ""}`}>{pick.name}</span>
+      {Icon && <Icon size={10} aria-hidden className={`shrink-0 ${graded.tone}`} />}
+      <span className={`truncate ${graded?.tone ?? ""}`}>{pick.name}</span>
       {number && <span className="shrink-0 text-dim">{number}</span>}
       <span className="sr-only">
         {" "}

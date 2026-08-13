@@ -89,6 +89,10 @@ export async function joinGroup(formData: FormData): Promise<ActionResult> {
     p_code: String(formData.get("code") ?? ""),
   });
   if (error) return { ok: false, message: error.message };
+  // A null id is "no group with that code". 0039 stopped raising on that one
+  // path deliberately: `raise` would roll back the attempt row its brute-force
+  // throttle counts, so the miss is reported as a value and worded here.
+  if (!data) return { ok: false, message: "No group with that code" };
 
   const { data: group } = await supabase
     .from("groups")

@@ -1,14 +1,24 @@
 # The CFB Slate — Status
 
 **The one file that answers "what's left."** Reconciled 2026-08-13 against the
-code on `claude/games-launch-checklist-b7pzab`. Week 0 is **Sat Aug 29** — 16
-days.
+code on `claude/status-md-tasks-ivmbtb`. Week 0 is **Sat Aug 29** — 16 days.
 
 **As of 2026-08-13, §2 has no code or docs work left in it.** Everything still
 unchecked below is either owner-run (P1-8, 09:P-16 — P1-9b closed the same
 day), a dispatch
 (`--tune-fcs`, `observe-scoreboard`, Q8), or a dated watch. That is the whole
 remaining blocking list.
+
+**§4 was opened early, 2026-08-13, by owner decision** — the post-launch queue
+is marked "deliberately not before Aug 29" and eleven rows were pulled forward
+anyway because §2 had nothing buildable left. Landed: the four security rows
+(P2-5, SEC-01, SEC-02, P2-2/SEC-08) as migrations 0038–0040, five UX rows, and
+five ops/data-quality rows including migration 0041. **Migrations 0038–0041 are
+in the repo and proved against a local Postgres; they have NOT been applied to
+the live project** — that is a production write on new schema and it is the
+owner's call. Nothing in the app requires them until they are.
+**Nine tracked rows described their own defect wrongly**, and in four cases the
+wrong detail changed the fix. Each correction is in the row.
 
 §1's numbers are point-in-time and go stale between reconciliations; the boxes
 do not, because they are checked in the commit that lands the fix. If §1
@@ -40,12 +50,12 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **637 tests across 45 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13. **129 DB assertions**, run in-session against a real Postgres 16 cluster rather than carried from CI. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
+| **Build** | **649 tests across 46 files**, `tsc` and lint clean — all run in-session 2026-08-13 after the §4 pull-forward below. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
 | **Scheduler** | 111 completed runs. Reds to date: one watchdog firing correctly on a cold `job_runs` table, and runs #107–109 — the backup verification sequence, each a real defect, all closed. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
 | **Model in code** | `2026.5.0` — tilt carry, `baseHfa` 3.0, centered team-HFA, portal fix, market-anchored tier recentre |
-| **Database** | 0034 (game-status constraint + the `make_pick` re-pick fix) and 0035 (`teams.fcs_avg_margin`) added 2026-08-13 and **not yet applied to the live project** — both are inert until applied, and 0035 is inert after it too. Verified live 2026-08-12: **32** migrations applied and 32 recorded — the `0017` ledger gap (DB-3) was repaired the same day. 0031–0033 add the push tables. `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
+| **Database** | ⚠️ **Deliberately out of sync as of 2026-08-13: 40 migration files, 37 recorded rows.** 0038 is applied (`20260813194949 pick_and_membership_integrity`, verified live). **0039, 0040 and 0041 are held on purpose until this branch merges and deploys** — each is coupled to code that only exists here, and applying them against the deployed `main` breaks something: 0039 makes `join_group` return null on a bad code, which `main`'s action reads as success; 0040 revokes `is_admin` from anon while `main`'s `fetchProfiles` still does `select("*")` and drops its error, blanking every name on signed-out `/recap`; and 0041 renames a column `main`'s `build-preseason` still writes, which would fail `preseason-refresh` — the job the Aug 26 checkpoint depends on. Apply all three straight after the deploy. Before this pass it was 36/36, and 0034–0037 **are applied** — an earlier version of this row said 0034 and 0035 were "not yet applied to the live project" and gave the count as 32/32, and both were stale by the time they were written. It matters because two ticked rows depend on them: P1-1's re-pick fix *is* 0034 (`make_pick` confirmed carrying it live), and OPS-2's watchdog push needs 0036's enum value and 0037's `notification_settings` row — `notifyWatchdog` returns `{notified: 0, errors: 0}` when that row is missing (`notify-jobs.ts:375`), so it would have been a silent no-op. Both confirmed live, along with 2 admin push subscriptions for it to reach. The `0017` ledger gap (DB-3) was repaired 08-12. 0031–0033 add the push tables. `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
 | **Model in production** | ⚠️ `2026.2.0`. **Four versions behind**, pricing every cross-classification opener ~10 points toward the G5. Waiting on CFBD to publish 2026 talent; `preseason-refresh` retries daily and loads itself the first morning `--check` is green. |
 | **The edge verdict** | b₁ = 0.035 (t = 0.84) for the model vs 0.987 (t = 22.81) for the market, n = 2611; flagged edges 49.2% ATS vs the close. Edges are **information, not bets** — and no model-accuracy work belongs in the next 17 days. |
 
@@ -535,6 +545,22 @@ One sitting, ~2 h. Each is a doc edit, not a code change.
       and a *green* run — a dead live layer and a quiet Saturday are currently
       the same observation. Liveness is only measurable over a live game, once,
       unrepeatably. The instrument exists; the measurement does not. · dispatch
+- [ ] **The backtest's headline numbers are computed at tilt 0; production ships
+      0.4.** Found 2026-08-13 while correcting `02:M-12`'s comment, which
+      asserted the opposite. `backtest.ts`'s `run()` replays with no preseason
+      tilt on the stated grounds that this "matches production… unless
+      `PRESEASON_TILT_CARRY` has been set" — but the default is in the code, not
+      the environment: `build-preseason.ts:91` reads
+      `envNum("PRESEASON_TILT_CARRY", 0.4, …)`, so an unset variable changes
+      nothing and production carries 0.4.
+      **Not changed, deliberately.** Raising the replay to 0.4 silently restates
+      every number the calibration report has ever produced, and that report is
+      the honesty gate for model changes — including the b₁/b₂ figures in §1 and
+      the 2026.5.0 identity check in Q4. Re-decide with
+      `--tune-preseason-tilts`, which is the flag that owns this parameter, and
+      give it a decisions-table row either way. **Not before Week 0**: nothing
+      depends on the answer and it is model work, which §1 says does not belong
+      in the next 16 days. · 1 h, after launch
 
 ### 2.5 The hard dates
 
@@ -588,7 +614,10 @@ These block nothing today but change what gets built. Recommendations are from
 
 ## 4. Queued for after launch
 
-Real work, deliberately not before Aug 29.
+Real work, deliberately not before Aug 29 — **except for the eleven rows pulled
+forward on 2026-08-13** by owner decision, which are ticked in place below with
+what they turned out to be. The intent of this section is unchanged: what is
+still unchecked here is still not launch work.
 
 **Brand rollout** — icon and install surfaces landed 2026-08-12, then the
 traced vector, the palette and the display face the same day (`docs/CHANGELOG.md`).
@@ -641,28 +670,95 @@ Two items remain open; the closed ones are kept for the record.
 **Correctness / security**
 - [ ] **P1-1b — frozen `predictions` on a dead game are never settled.** Found
       while building P1-1 and deliberately left out of it. The model-CLV pass
-      keys only on `finalIds` (`jobs-core.ts:890-925`), so a frozen row on a
-      game that never played keeps `close_spread` null and is re-read as
-      ungraded every Sunday forever. Invisible to users — `close_spread` is
-      read nowhere in `src/` — and the cost is a few wasted rows per week, so it
-      is a decision rather than a bug fix, and not one to take under launch
-      pressure. **The decision:** either settle the row (which banks a "no
-      close" reading indistinguishable from a genuinely missing snapshot) or
-      exclude dead games from the ungraded set (which needs a second predicate
-      and leaves the receipt permanently open). Worth noting `receipts` shows
-      "graded after kickoff" on such a row, which is wrong either way. · S — the
-      table grants were revoked in `0013:92` and `0021:268`, so they can never
-      fire. Verified *not* a hole, but misleading. Migration 0028. · 0.5 h
-- [ ] **P2-5** `remove_pick` never checks group membership and returns `ok:true`
-      on a zero-row delete. Safe (scoped to `user_id = auth.uid()`), untidy. · 0.5 h
-- [ ] **P2-2 / SEC-08** `profiles` is world-readable **including `is_admin`**,
-      signed out. Fine for 15 friends, wrong in principle. · 1 h
-- [ ] **SEC-02** A removed admin rejoins as admin — removal isn't durable. · S
-- [ ] **SEC-01** Join codes → 10-char base32 + per-user attempt throttle in
-      `join_group`. Needs a full-function migration rewriting
-      `create_group`/`regenerate_join_code` (next free number is **0028**).
-      ~0 real private groups pre-launch, so brute force is negligible until
-      after. · S
+      keys only on `finalIds` (`jobs-core.ts:934-942`), so a frozen row on a
+      game that never played keeps `close_spread` null forever.
+      **Mechanism corrected 2026-08-13** — an earlier version of this row said
+      the row "is re-read as ungraded every Sunday forever" and cost "a few
+      wasted rows per week". It is not re-read at all: the query filters
+      `.in("game_id", finalIds)`, and `isDeadStatus` games are never in
+      `finalIds` (`jobs-core.ts:809-812`), so the pass does not see the row and
+      there is no recurring cost. `close_spread` is written and read in that one
+      block and nowhere else in `src/`. That also kills one of the two options
+      this row offered: "exclude dead games from the ungraded set" is already
+      true, so the live decision is only whether to *settle* the row — which
+      banks a "no close" reading indistinguishable from a genuinely missing
+      snapshot, and a canceled game has no close to record either way.
+      **The one user-visible half is fixed** (2026-08-13): `receipts` said
+      "graded after kickoff" on a game with no kickoff left to come, and now
+      says "never played — no closing line" via `isDeadStatus`
+      (`receipts/page.tsx`). The settle-or-not decision stays open. · S
+- [x] **P2-5** Fixed 2026-08-13, migration **0038**. `remove_pick` now opens
+      with the same `is_group_member` guard `make_pick` has carried since
+      `0021:162`, so being removed from a group stops your writes in both
+      directions rather than one, and it returns the number of rows it deleted
+      instead of `void`. **The `ok:true` was never the RPC's** — it is
+      `actions/picks.ts:79`, which this row mis-attributed; corrected in place.
+      Zero rows deliberately stays a success: removal is idempotent and the
+      second tap of a double-tap asks for a state the pick is already in, so
+      raising would put an error toast on a pick that is correctly gone. The
+      audit's complaint was that the caller could not *tell*, and a count
+      answers that without inventing a failure. 3 DB assertions.
+- [x] **P2-2 / SEC-08** Closed for signed-out callers 2026-08-13, migration
+      **0040**. Both SELECT policies on `profiles` are `using (true)`
+      (`0001:307`, `0011:21`) and RLS restricts rows, not columns — so the fix
+      is a column grant, the read-side twin of 0013's UPDATE narrowing. `anon`
+      now reads `id, display_name` and nothing else; `/recap` and `/game` render
+      names signed-out and need exactly those. `queries.ts`'s `fetchProfiles`
+      was `select("*")` and is narrowed to match, so the migration cannot break
+      it. **Scope, stated rather than implied:** this closes the signed-out half
+      only. `is_admin` is still readable by any *signed-in* user, because
+      hiding it needs a security-definer `is_current_user_admin()` and six call
+      sites moved onto it (`AuthButton.tsx:30`, `admin/page.tsx:41`, four server
+      actions) — worth doing, larger than this row, still queued below. 5 DB
+      assertions.
+- [x] **SEC-02** Fixed 2026-08-13, migration **0038**. `join_group`'s
+      `on conflict … do update set removed_at = null` discarded the `'member'`
+      in its VALUES list, so the role survived untouched and an admin removed by
+      another admin walked back in through the join code still an admin. The
+      0020 comment described it as a feature ("Rejoining restores the old row,
+      and with it the role you left holding"), which is why it sat.
+      **Always rejoining as `member` would have been wrong**, and the test suite
+      says so: `leave_group` deliberately lets the last member out of a group
+      with no successor (`0020:413`, "An empty group needs no admin"), so a sole
+      owner who left their own group would come back a member of a group with no
+      admin and the deferred `group_members_keep_admin` trigger would refuse the
+      insert — the creator locked out of their own group. So the two exits stop
+      being interchangeable: a new `group_members.removed_by` is null when you
+      left and set when an admin removed you, and only the second demotes on
+      rejoin. That is what "removal isn't durable" was actually about. 4 DB
+      assertions, including the sole-owner case.
+- [x] **SEC-01** Done 2026-08-13, migration **0039**. Codes were **six upper
+      hex characters** — a 16-symbol alphabet, 16^6 ≈ 16.7M, not the 36^6 this
+      row implied — minted by the same loop copy-pasted into three places
+      (`0020:370`, `0020:536`, `0027:112`). Now one `new_join_code()` generator
+      at ten Crockford base32 characters (32^10 ≈ 1.1e15, ~67M× the old space;
+      no I/L/O/U, so nothing to misread off a phone), plus
+      `normalize_join_code` folding case, spaces, hyphens and the dropped
+      letters onto what a person actually typed. Randomness comes from
+      `gen_random_uuid()`'s v4 payload, not `random()` and not pgcrypto — which
+      lives in the `extensions` schema on Supabase and is absent from the bare
+      Postgres `npm run db:test` uses.
+      Throttle: ten failures per user per fifteen minutes, in a deny-all
+      `group_join_attempts` table. **The failure path had to stop raising for
+      the throttle to work at all** — `raise` aborts the transaction, which
+      would roll back the very attempt row being counted, so a bad code returns
+      null and `actions/groups.ts` words it. That is the whole reason for the
+      shape, recorded because it looks like a downgrade.
+      **Two adjacent holes fixed in the same migration.** `anon` could read
+      `join_code` for any public group: `0020:302` grants every column and the
+      app-side guard at `groups/[slug]/page.tsx:89` is a page component, not a
+      boundary. Live exposure was zero — `visibility` defaults to private and
+      the project has no public groups — so this is latent, not urgent. And
+      `create_group` lost its `revoke … from public, anon` in the 0027 rename
+      (`0020:685` had it; `0027:127` only re-granted), leaving Postgres's
+      default EXECUTE-to-PUBLIC standing on a function that raises on a null
+      `auth.uid()` anyway. 14 DB assertions.
+      **Existing six-character codes were left alone**, deliberately:
+      regenerating invalidates codes already sent to the crew, and any admin can
+      mint a ten-character one from group settings. Worth doing before inviting
+      anyone new.
+      *(Both this row and §7 said "next free number is **0028**". 0028–0037 were
+      taken; the next free number is now **0041**.)*
 
 **Ops / perf**
 - [x] **P2-3 / 05:C5 / 07:OPS-11 / SEC-12** Dead edge function deleted
@@ -674,8 +770,17 @@ Two items remain open; the closed ones are kept for the record.
       the same fact. **What settles it:** one observation of what `/scoreboard`
       does during a live game — which is exactly what the `observe-scoreboard`
       dispatch in §2.4 is for. Decide with that in hand, not before. · S
-- [ ] **P2-6** `ratings/page.tsx` still does `teams.select("*")`; the
-      game-page equivalent was narrowed by `09:P-5`. · 0.25 h
+- [x] **P2-6** Narrowed 2026-08-13 to the six columns the row mapper reads
+      (`id, school, abbreviation, conference, color, logo_url`); `mascot`,
+      `classification` and `alt_color` were ~138 rows of payload nothing
+      rendered. Its two siblings in the same `Promise.all` were already narrow.
+      **The provenance in this row was wrong:** `09:P-5` narrowed
+      **`profiles`** on the game page, not `teams` — `game/[id]/page.tsx:121`
+      is still `select("*")` and was never touched. Left that way on purpose:
+      it fetches exactly two rows, so the win is nil and the audit of which team
+      fields that page reads is real work. Seven other `teams.select("*")` sites
+      remain (`teams/`, `team/[id]`, `rankings/`, `receipts/`, `ledger/`,
+      `standings/`, `queries.ts:156`) and are not part of this row.
 - [ ] **09:P-1b** Slim `/api/slate-live` heal endpoint — decide after P-16's
       numbers. · M
 - [ ] **09:P-11** Cacheable weekly-static pages · M
@@ -684,7 +789,22 @@ Two items remain open; the closed ones are kept for the record.
       collapse; ratings latest-in-Postgres; receipts pagination · S–M each
 - [ ] **07:OPS-6** Backfill mode for null-CLV rows (post-kickoff `captured_at`
       is excluded forever) — only matters after a missed close · S–M
-- [ ] **07:OPS-14a** Meter the unmetered CFBD calls (CI, backtest, preseason) · S
+- [x] **07:OPS-14a — preseason metered 2026-08-13; backtest deliberately not.**
+      **"CI" in this row was already stale**: `probe-cfbd.ts:158` has metered
+      itself for some time. The real gap was `build-preseason.ts`, and it was
+      the one that mattered — `preseason-refresh` runs daily through August
+      (`jobs.yml:239`) and each firing is *two* invocations, a `--check` and
+      then the build, so the monthly count on the admin freshness card was
+      structurally low in exactly the weeks it is worth reading. Now metered as
+      `preseason-check` / `build-preseason`, best-effort like the probe's, from
+      a `finally` so the two early returns in `--check` and a thrown build are
+      counted too.
+      **`backtest.ts` and `diagnose-tiers-2026.ts` stay unmetered**, which is a
+      decision rather than an omission: `backtest.yml` carries only
+      `CFBD_API_KEY`, so metering it means putting Supabase service credentials
+      into a workflow that fires on every model PR. That is a wider change than
+      an accurate count is worth. ~10 calls per backtest run, and the number is
+      knowable from the run log.
 - [ ] **07:OPS-18** App-token PRs trigger no CI — process fix · S
 - [ ] **07:OPS-8b** Scheduled Sunday calibration report — needs season data · M
 - [ ] **07:OPS-16** Snapshot coarsening job — 2027, explicitly not now
@@ -704,8 +824,31 @@ Two items remain open; the closed ones are kept for the record.
 - [ ] **02:M-07 / 03:M-9b** "incl. adj" beside adjusted spreads + an admin
       warning that the spec's magnitudes are unvalidated · S
 - [ ] **02:M-08** In-sample caveat on the Receipts explainer · S
-- [ ] **02:M-09/M-10/M-11/M-12** Dead code: fcs params (see Q4),
-      `updateFromResult`, `suggestedStake`, stale replay comment · S
+- [x] **02:M-10/M-11/M-12** Settled 2026-08-13, three different answers —
+      which is why the four were wrong to be one row.
+      **M-09 was already closed** and is struck: Q4 built the FCS buckets on
+      08-13, so the params are live at `fcs.ts:147` with four call sites and two
+      test files. Both ship at −30, which makes them *inert*, not dead — the
+      code path runs and the outputs coincide.
+      **M-11 `suggestedStake` deleted.** No caller in `src/` or `scripts/`, only
+      its own test, and the product deliberately does not size bets — edges are
+      information, not wagers — so SPEC §5.4's ¼-Kelly was a feature the spec had
+      moved away from. Took the now-unused `round1` with it.
+      **M-10 `updateFromResult` kept**, against the row. It has no production
+      caller but it is not dead weight: both live paths are specified *against*
+      it — `ratings.ts` requires the off+def halves to move by "the overall
+      update's K·marginError/2" and `replay.ts:249` says the same from the other
+      side — and two tests exercise it as that reference. Deleting it costs the
+      stated form of an invariant two other pieces of code are checked against
+      and saves seven lines. Relabelled a reference implementation instead.
+      **M-12 comment corrected, and it was hiding something.** It claimed tilt 0
+      "matches production… unless `PRESEASON_TILT_CARRY` has been set" — but the
+      default lives in the code, not the environment: `build-preseason.ts:91`
+      reads `envNum("PRESEASON_TILT_CARRY", 0.4, …)`. **Production ships 0.4 and
+      the headline calibration is computed at 0.** Left at 0 rather than
+      silently restating every number the honesty gate has ever produced;
+      re-decide with `--tune-preseason-tilts`. Now a §2.4-style open question
+      rather than a comment that read as settled.
 - [ ] **G5** Prediction attribution ("why this number") — freeze the
       decomposition and design the column set before the first retune · M
 
@@ -714,12 +857,36 @@ Two items remain open; the closed ones are kept for the record.
       entries) then production/snaps (M) + a decisions-table row. Today the
       term measures **headcount, not talent**: 91% of entries are 2–3 star, so a
       team shedding 20 backups scores like one losing 20 starters.
-- [ ] **04:DQ-5** Rename/drop `returning_prod_def`, which stores an offense
-      metric — schema churn during launch isn't worth it · S
+- [x] **04:DQ-5** Renamed to `returning_prod_usage` 2026-08-13, migration
+      **0041**. **Far cheaper than this row assumed** — "schema churn during
+      launch isn't worth it" priced a migration nobody had costed. The column
+      has *zero* readers: nothing in `src/` selects it, the model's churn term
+      comes from `percentPPA` rather than these columns, and `retDef` was
+      write-only in the builder. One rename, one line of TypeScript, no
+      backfill, no data movement; the stored numbers were always correct and are
+      untouched. Only the label was wrong.
+      The modelling consequence was found and fixed long before this —
+      `backtest.ts:1556` records that the "defense" input being a second offense
+      metric put ~10 of effective weight on one correlated quantity instead of
+      5+5 on two, saturating the ±6 clamp for four of the top 40. What was left
+      was the name, which is what would have sent the next reader down the same
+      path.
 - [ ] **04:DQ-6** `qbReturns` from roster facts instead of the passing-PPA
       proxy · M
 - [ ] **04:DQ-11** Real `turnoverMargin` for the luck rule · S/M
-- [ ] **04:DQ-15** `cached()` shouldn't persist empty CFBD responses · S, local-dev only
+- [x] **04:DQ-15** Fixed 2026-08-13 — and **"local-dev only" was wrong**.
+      `cached()` now declines to write an empty array. CFBD answers `200` with
+      `[]` for a season it has not published yet and `cfbd.ts:69` only throws on
+      `!res.ok`, so the old code cached the absence permanently: every later run
+      read the file, skipped the fetch, and got `[]` again long after the real
+      data landed — silent, and pointing the wrong way, because a build on an
+      empty talent list reads as a modelling problem rather than a stale file.
+      The scope was understated because roughly 25 call sites pass
+      `useCache: true` as a literal rather than threading `--cached`, so
+      `build-preseason` on a persistent working directory carries a poisoned
+      entry between runs. Only on a fresh CI runner is the damage confined to
+      one run. 4 tests, including that a non-array payload is still cached —
+      the emptiness test is Array-shaped on purpose.
 
 **Push notifications** — §23 #38, scoped and then built 2026-08-12. iOS
 supports Web Push from 16.4, but **only for a web app installed to the Home
@@ -854,20 +1021,98 @@ silent about the wiring, which is the gap that let it sit for a day.
       live active-group cookie flow to test · S
 - [ ] **F10** "Biggest line move" slate sort — needs real movement data · S
 - [ ] **F13** Returning-production % on team pages — lights up when data lands · S
-- [ ] **UX-08** Remaining sub-44px targets: star, pin, BetSlip remove, void
-      link, units input · S–M
-- [ ] **UX-22** MatchupCard push results get icon + colour, not sr-only text · S
+- [ ] **UX-08 — four of seven done 2026-08-13; three need a layout decision.**
+      The row listed five targets and there were **seven**: the two it missed
+      are the bet-chip void `X` on a game card (`GameCard.tsx:922-937`, ~15px)
+      and the BetSlip toast dismiss (`BetSlip.tsx:120-126`, ~21px).
+      **Fixed:** the void link (`VoidBetButton`, a bare ~14px text line, now
+      `min-h-11` with `-mx-2` so the target grows without widening its row), the
+      BetSlip remove `X` and toast dismiss (both `min-h-11 min-w-11`), the units
+      input (`h-7` → `h-11`), and the toast's Share button, which was `min-h-9`
+      — 36px, short of the rule and not on anyone's list.
+      **Still open, and not a class tweak:** the star, the pin and the bet-chip
+      `X` all sit inside `.trow` rows about 30px tall, stacked two to a card. A
+      44px target centred on a 13px glyph would overlap its sibling vertically,
+      and overlapping targets mis-fire worse than small ones do. The fix is a
+      taller row, which is a layout change that has to be seen on a device
+      rather than reasoned about — pair it with the Aug 21 real-device pass.
+      **Measured 2026-08-13** on a 375px viewport with the slip seeded: remove
+      44×44, units input 48×44, and `error.tsx`'s "Try again" 44×44. · S
+- [x] **UX-22** Fixed 2026-08-13. `PickerChip` tested only `win` and `loss`, so
+      `push` **and `void`** fell through both branches and rendered exactly like
+      an ungraded pick — a sighted member could not tell a push from a game
+      nobody had graded yet, with only the `sr-only` string carrying it. Now a
+      map covering all four results, per `chips.tsx:76`'s house rule ("icon +
+      text, never color alone"): `Minus` + `text-push` for a push, and `Minus` +
+      `text-dim` for a void, which is not the same event — a canceled game
+      returns the stake and settles nothing. That is the distinction P1-1(b)
+      already fixed in words on the home hub, where a void read "Push".
+      No new tokens. **Not seen rendered** — the page needs a live Supabase.
+- [ ] **The error boundary is unreachable through a data failure.** Found
+      2026-08-13 while rendering UX-27. `error.tsx` says "a Supabase hiccup
+      gets a retry", and a Supabase hiccup does not reach it: a build pointed
+      at a non-resolving database still served **200 on every route probed** —
+      `/slate`, `/standings`, `/receipts`, `/recap/1`, `/rankings`, `/teams`,
+      `/model`, `/ledger`, `/game/1` — because the query helpers destructure
+      `{ data }` and drop `error`, so a failed fetch becomes an empty page
+      rather than a thrown one. Seeing the boundary at all required a
+      deliberately-throwing route.
+      **That is arguably the right behaviour** — a slate that renders empty
+      beats one that shows a stack trace — but it is not what the file claims,
+      and it means a total data-layer outage on a Saturday looks identical to a
+      quiet week, which is the `emptyIsHealthy` argument in this same section
+      wearing different clothes. Decide the pair together after Week 0: either
+      the copy is wrong, or some routes should surface the failure. · S
+
 - [ ] **UX-06 (residue)** Sub-4.5 tokens: light `chalk/50–55` table headers,
       dark `/35–/45` decorative labels, edge-on-card — needs a rendered pass · S–M
 - [ ] **UX-21** Ledger "today" keyed to CT for non-CT bettors · S
-- [ ] **UX-24** Week page passes raw `line_at_pick` into `pickSideLabel`
-      ("0" ≠ "PK") · S
+- [x] **UX-24** Fixed 2026-08-13, and it was **three call sites, not one** —
+      the week page plus both render sites on `/game` (`game/[id]/page.tsx:81`,
+      rendered at `:399` and `:453`). The bug is home-side only: `fmtSpread`
+      tests `spread === 0` to print "PK", so a string `"0"` prints a bare `0`,
+      while the away side survives by accident because `lineForSide` negates it
+      and `-"0"` is numeric `-0`. Coerced inside `pickSideLabel` rather than at
+      the three edges — it is the single point every label already funnels
+      through, and the next caller gets it for free. 1 test, both sides plus a
+      stringly-typed total. See 05:N12 for the same question settled for the
+      arithmetic path.
 - [ ] **UX-25** `profiles.timezone` surfaced on `/me` and used server-side · S–M
-- [ ] **UX-27/28** `error.tsx` without nav; standings name truncation at 375px · S
+- [x] **UX-27/28** Both fixed 2026-08-13. `error.tsx` now renders `<AppNav />`
+      like `not-found.tsx` and `loading.tsx` do — nav is not in the root layout
+      (`layout.tsx:74-104`), every page mounts its own, and a boundary that
+      skipped it left the reader on a dead end with no way out but the back
+      button. It also gained `id="main"`, because `AppNav` renders a skip link
+      to `#main` and would otherwise have arrived pointing at nothing.
+      Standings: the team cell's `truncate` span could not actually shrink —
+      its flex parent had no `min-w-0`, so a flex child's `min-width: auto`
+      floor meant the three right-hand columns got squeezed instead at 375px.
+      Added, with a `title` so the full name survives the ellipsis.
+      **Checked while in there and *not* a bug:** `error.tsx` destructures
+      `retry`, and Next's older contract passed `reset`. `retry` is correct
+      here — both props exist in 16.3.0, `retry()` re-fetches and re-renders
+      while `reset()` only clears the error state, and `retry` became stable in
+      exactly this version (`next/dist/docs/.../error.md`, Version History).
+      Read the installed docs rather than trusting the remembered API, which is
+      what `AGENTS.md` asks for and would have produced a regression here.
+      Also raised the two recovery buttons (`error.tsx`, `not-found.tsx`) to
+      `min-h-11`; both were ~36px. **Not seen rendered.**
 - [ ] **UX-31 / §23 #19** Week changes via `pushState` so Back traverses weeks
       (`SlateView.tsx:263` is `replaceState` — deliberate, revisit) · S
-- [ ] **05:N12** Pin one numeric-arrival convention in `records` · S, no
-      user-facing effect
+- [x] **05:N12** Pinned 2026-08-13. The module's types said `number` while its
+      implementation defended against strings (`num()`, and a test asserting
+      `numeric` columns "arrive as strings"), and `audit/05` §29 had already
+      verified live that they **do not** — PostgREST answers `-3.0` unquoted.
+      The real defect was that the callers never agreed: `ledger/page.tsx`
+      passes `payout_units` straight off the row and `Number()`s `units` in the
+      next expression, so one line assumed the premise and its neighbour
+      assumed the opposite.
+      Settled toward the version that cannot break: `records.ts` is the
+      arithmetic boundary, it coerces once in `num()`, and a `Numeric =
+      number | string` type now says so. The alternative — delete `num()` and
+      trust the types — means auditing every call site to add a `Number()`, and
+      missing one turns `units` into string concatenation silently. Test kept,
+      with its false premise replaced by the actual reason.
 - [ ] **G7/G8/G11** Crew disagreement roll-up; fade-the-crew; pick nudge — need
       a *sample* of graded picks before they say anything true; pre-register n
       before building
@@ -946,7 +1191,7 @@ here was decided by a commit message.
 |---|---|---|
 | `audit/CHECKLIST.md` `05:N9` | `[x]` postponed/canceled grade void | **Partial.** The grader is right; nothing writes those statuses. Re-opened as **P1-1** in §2.2. |
 | `audit/CHECKLIST.md` `04:DQ-13` | `[x]` rejects NaN/empty `PRESEASON_TILT_CARRY` | **Partial.** NaN is caught, empty string silently becomes `0`. Re-opened as **P2-1**. |
-| `audit/CHECKLIST.md` `SEC-01` | "migration 0026" | Stale — 0026 and 0027 are taken; next free is **0028**. |
+| `audit/CHECKLIST.md` `SEC-01` | "migration 0026" | Stale — 0026 and 0027 are taken; next free was **0028**. *(And that correction went stale in its turn: SEC-01 shipped as **0039** on 08-13. Next free is **0041**.)* |
 | `audit/AUDIT-2026-08.md` §23 | 46 raw `[ ]` boxes, all unchecked, below a table saying 38 are done | The boxes now carry their verified status. The table was right; the boxes were three months of drift. |
 | `audit/AUDIT-2026-08.md` Bug #9 | cites `actions/picks.ts:54,58` | The fix moved into the `remove_pick` RPC (`0021:255-257`) and got *stronger*. Citation queued for correction in §2.3. |
 | `docs/CHANGELOG.md` Aug 12 (portal) | — | Created a new open item (**Q8**, re-run `--tune-churn`) that no checklist carried. Now in §2.4. |
@@ -960,3 +1205,44 @@ cron to `refresh-lines-burst`), P1-6 (`crew/page.tsx` is a redirect), P2-1
 (`build-preseason.ts:82-86`), P2-3 (`supabase/functions/jobs/index.ts` present),
 P2-6 (`ratings/page.tsx:56`), P2-10 (`0 10 * * 6` is the weather cron), P2-11
 (`sync-games.ts:63`), §23 #40/#44/#45, #31, #38, #42.
+
+---
+
+## 8. Corrections from the 2026-08-13 §4 pass
+
+Nine rows described their own defect wrongly. Found by writing the fix, not by
+re-reading the prose — which is why they had survived a reconciliation that was
+looking for exactly this. In four cases the wrong detail changed the fix.
+
+| Row | Claimed | Actually |
+|---|---|---|
+| §1 **Database** | 0034/0035 "not yet applied"; 32 migrations | **36/36, applied.** Both stale when written. P1-1's re-pick fix *is* 0034 and OPS-2's push needs 0036/0037 — and `notifyWatchdog` returns `{notified: 0}` rather than throwing when its settings row is absent, so it would have been silently dead. Confirmed live. |
+| **P2-5** | `remove_pick` "returns `ok:true`" | The RPC returned `void`; the `ok:true` is `actions/picks.ts:79`. |
+| **SEC-01** | codes are base32-ish; "next free number is **0028**" | **Upper hex, six chars** — 16^6, not 36^6. 0028–0037 were taken; SEC-01 shipped as 0039. |
+| **SEC-02** | "a removed admin rejoins as admin" | True, but the obvious fix breaks a real case: always rejoining as `member` locks a sole owner out of their own group, because `leave_group` lets the last member out and the keep-admin trigger then refuses the insert. Needed `removed_by` to tell removal from departure. |
+| **P1-1b** | the row "is re-read as ungraded every Sunday forever"; costs "a few wasted rows per week" | **Never read at all** — the query filters to `finalIds`, which excludes dead games by construction. No recurring cost. Also kills one of the two options the row offered, since "exclude dead games" is already the behaviour. |
+| **P2-6** | "the game-page equivalent was narrowed by `09:P-5`" | 09:P-5 narrowed **`profiles`**. `game/[id]/page.tsx:121` is still `teams.select("*")`. |
+| **07:OPS-14a** | unmetered: "CI, backtest, preseason" | The probe self-meters already. The real gap was `build-preseason` — daily through August, two invocations per firing. |
+| **04:DQ-15** | "local-dev only" | ~25 call sites pass `useCache: true` as a literal, so `build-preseason` carries a poisoned cache between runs on a persistent working dir. |
+| **04:DQ-5** | "schema churn during launch isn't worth it" | Zero readers anywhere. One rename, one line of TypeScript, no backfill. |
+| **02:M-09/M-10/M-11/M-12** | one row, "dead code" | Three different answers. M-09 already closed by Q4; M-11 genuinely dead; **M-10 kept** — no caller, but two live paths are specified against it and two tests exercise it as that reference. |
+| **UX-08** | five sub-44px targets | **Seven.** Plus the toast's Share button at `min-h-9`, which was on no list. |
+| **UX-24** | "week page passes raw `line_at_pick`" | Three call sites — `/game` renders it twice as well. |
+
+**Checked and *not* a defect**, recorded so it is not re-raised: `error.tsx`
+destructures `retry` where older Next passed `reset`. Both props exist in
+16.3.0, `retry` is the recommended one and became stable in exactly this
+version. Reading `node_modules/next/dist/docs/` rather than trusting the
+remembered API — which `AGENTS.md` asks for — was the difference between a fix
+and a regression. Likewise `scripts/db-test.sh`: a suite that aborts mid-way
+prints "0 failed", which reads like a silent pass, but `set -euo pipefail` is
+set and the run does exit 1. Verified with a deliberately-aborting probe suite.
+
+**Left deliberately undone, with the reason in the row:** the three remaining
+UX-08 targets (star, pin, bet-chip `X` — they sit in ~30px stacked rows, so a
+44px target would overlap its sibling and that needs a layout change seen on a
+device), `backtest.ts` metering (needs Supabase secrets in a workflow that runs
+on every model PR), the `game/[id]` teams query (two rows, no win), P2-2's
+signed-in half (needs an `is_current_user_admin()` RPC and six call sites), and
+the existing six-character join codes (regenerating invalidates codes already
+sent to the crew).

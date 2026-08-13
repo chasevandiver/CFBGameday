@@ -5,6 +5,9 @@ import { voidBet } from "../app/actions/bets";
 
 export function VoidBetButton({ betId }: { betId: number }) {
   const [pending, startTransition] = useTransition();
+  // -mx-2 keeps the 44px target from widening the row it sits in: the padding
+  // grows the hit area outward and the negative margin gives the space back to
+  // the layout (UX-08, DESIGN.md's 44px rule).
   return (
     <button
       disabled={pending}
@@ -13,7 +16,7 @@ export function VoidBetButton({ betId }: { betId: number }) {
           startTransition(() => voidBet(betId).then(() => undefined));
         }
       }}
-      className="text-xs text-chalk/40 underline hover:text-loss disabled:opacity-50"
+      className="-mx-2 inline-flex min-h-11 items-center px-2 text-xs text-chalk/40 underline hover:text-loss disabled:opacity-50"
     >
       void
     </button>

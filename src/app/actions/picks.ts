@@ -54,6 +54,11 @@ export async function makePick(
  * the kickoff lock by affecting zero rows, leaving the caller to infer why
  * (audit bug #9); with `market` in the key that predicate only got harder to
  * express in a policy, so the lock now says so itself.
+ *
+ * As of 0038 it also refuses a non-member and returns the number of rows it
+ * deleted. Zero is still reported here as success, now deliberately: removal is
+ * idempotent, and the second tap of a double-tap asks for a state the pick is
+ * already in. Every reason it could legitimately fail raises instead (P2-5).
  */
 export async function removePick(
   groupId: string,

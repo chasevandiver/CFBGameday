@@ -112,7 +112,7 @@ export function BetSlip({
               away on the ledger: this is the second someone wants to send it. */}
           <button
             onClick={() => void share(logged, loggedUnits.current)}
-            className="stat inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-chalk/20 px-2.5 text-xs font-semibold text-chalk hover:border-chalk/50"
+            className="stat inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-chalk/20 px-2.5 text-xs font-semibold text-chalk hover:border-chalk/50"
           >
             <Share size={13} aria-hidden />
             {shareNote ?? "Share slip"}
@@ -120,7 +120,7 @@ export function BetSlip({
           <button
             onClick={() => setLogged(null)}
             aria-label="Dismiss"
-            className="ml-0.5 shrink-0 rounded p-1 text-dim hover:text-chalk"
+            className="ml-0.5 flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-dim hover:text-chalk"
           >
             <X size={13} aria-hidden />
           </button>
@@ -226,13 +226,13 @@ export function BetSlip({
                         placeholder="1"
                         inputMode="decimal"
                         aria-label={`Units for ${s.label}`}
-                        className="stat h-7 w-12 rounded-md border border-chalk/12 bg-elev px-1.5 text-right text-xs text-chalk focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+                        className="stat h-11 w-12 rounded-md border border-chalk/12 bg-elev px-1.5 text-right text-xs text-chalk focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
                       />
                     </label>
                     <button
                       onClick={() => remove(s.gameId, s.betType)}
                       aria-label={`Remove ${s.label} from bet slip`}
-                      className="shrink-0 rounded p-1 text-chalk/30 transition-colors hover:text-loss"
+                      className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-chalk/30 transition-colors hover:text-loss"
                     >
                       <X size={14} aria-hidden />
                     </button>
