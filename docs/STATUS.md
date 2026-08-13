@@ -427,8 +427,13 @@ One sitting, ~2 h. Each is a doc edit, not a code change.
       them in `priors` and the replay would Elo-update them into drifting
       entities.
       Also removed the four hardcoded copies of −30.
-      **The run has not happened and must not happen before Week 0** — see the
-      row in §2.4.
+      **Identity confirmed by CI, not just locally**: PR #54's auto-triggered
+      backtest report is character-identical to run `31563098426`, the Aug 12
+      run that shipped 2026.5.0 — every slice row, every opener bucket, and
+      `b1 0.035 (t 0.83)` / `b2 0.985 (t 22.87)` at n=2611. A second machine,
+      live CFBD data.
+      **The tuner run has not happened and must not happen before Week 0** —
+      see the row in §2.4.
 - [x] **Q5** Amended 2026-08-13. §4 R3 now describes the per-group
       `picks_hidden_until_kickoff` (default false) and the `picks_revealed()`
       gate, including that a TBD kickoff stays hidden rather than open forever.

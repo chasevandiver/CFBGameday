@@ -166,6 +166,23 @@ shipping it.
 
 ## Log
 
+### Aug 13 — CI confirmed the FCS change is inert
+
+The identity claim was asserted locally in `replay.test.ts`. PR #54's
+auto-triggered backtest checked it on a second machine against live CFBD data,
+and the report is **character-identical** to run `31563098426` — the Aug 12 run
+that shipped 2026.5.0 — line for line: `totals -0.063/-0.81/0.865`, `thin 428
+0.077/1.00/0.990`, `thick 2183 0.021/0.41/0.986`, `conference 1635
+0.070/1.03/0.921`, `non-conference 976 0.017/0.31/1.019`, the three opener
+buckets to the unit, and `b1 0.035 (t 0.83)` vs `b2 0.985 (t 22.87)` at n=2611.
+
+Both buckets sit at −30, so bucket membership is unobservable and a wrong
+classification cannot move a number. That is what makes the machinery safe to
+land now and the values safe to defer to `--tune-fcs`.
+
+It proves inertness, not correctness — nothing here says the split is right, and
+Gate 0 may yet return "one bucket, on evidence."
+
 ### Aug 13 — Nine alerts arrived and nobody read one
 
 P1-8 asked a yes/no question: did the Aug 10 watchdog failure email arrive? It
