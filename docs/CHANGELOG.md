@@ -166,6 +166,50 @@ shipping it.
 
 ## Log
 
+### Aug 13 — Three green runs, and only the third one meant it
+
+P1-9b is closed. Run #122, `jobs · backup`: `dead-man ping ok — backup
+(HTTP 200)`. The scheduler finally has a witness that does not depend on the
+scheduler — the gap `watchdogJob` cannot cover, because a job cannot report
+its own death, and OPS-2's push is sent from inside that same job.
+
+**It took three runs, and all three were green.** That is the finding, not the
+setup.
+
+- **#120** — secret set, and the ping never left the runner: `curl: (3) URL
+  rejected: No host part in the URL`. Malformed value.
+- **#121** — value fixed, request delivered, `curl: (22) 404`. The value was
+  an **API key** rather than the project **ping key**. Healthchecks answers a
+  key that matches no project exactly as it answers a slug that matches no
+  check, so the two failures are one status code.
+- **#122** — ping key, `HTTP 200`.
+
+Every one of those runs reported success, because the step was
+`curl -fsS … > /dev/null || true`. A dead-man switch that did not exist was
+indistinguishable from one that did — and the whole value of the thing is that
+it fires when something is *absent*. An absence detector that is itself
+silently absent is worse than none, because it is trusted.
+
+This is the same defect as the backup step directly above it, which shipped
+`pg_dump | gzip` under a non-`pipefail` shell and uploaded 20-byte artifacts
+green for a day (Aug 12, below). Same shape, same file, one step apart, eight
+days later. Worth naming: the reflex to write `|| true` after anything
+described as "best effort" is how both were built.
+
+So the step reports now. It still cannot fail a run —
+`scripts/lib/jobs-core.ts:134`, observability must never break the thing it
+observes, and that rule is why `|| true` was there in the first place. The fix
+is not to remove the rule but to stop conflating "does not fail the run" with
+"says nothing": missing secret is a `::notice::` matching the backup step's
+wording, `200`/`201` prints the slug and code, `404` is a `::notice::` because
+an unknown slug is the designed way to monitor 6 of the 24 tasks, and no
+answer at all is a `::warning::` naming the shape the URL must have. #120 and
+#121 would each have been one run to diagnose instead of three.
+
+Proven for `backup` only. The other five slugs are configured and unobserved
+until their crons fire, `watchdog` first at 20:00 UTC — and a slug that misses
+its check now says so, so each first firing is its own proof.
+
 ### Aug 13 — P1-9b, decided down to the click
 
 No code. P1-9b has sat open as "create a healthchecks.io project" since audit
