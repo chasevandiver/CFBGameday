@@ -166,6 +166,44 @@ shipping it.
 
 ## Log
 
+### Aug 13 — P1-9b, decided down to the click
+
+No code. P1-9b has sat open as "create a healthchecks.io project" since audit
+07, estimated at half an hour — but the half hour was never the clicking, it
+was reconstructing what the ping step actually wants from a workflow file that
+has grown to 22 tasks and 30 crons. That reconstruction is now written into
+`docs/STATUS.md` rather than being done again by whoever picks it up.
+
+Four things it decides. **The secret is a ping key, not a check UUID** — the
+step pings `"$HEALTHCHECK_PING_URL/<task>"`, which is healthchecks' slug form
+(`https://hc-ping.com/<ping-key>/<slug>`), and a UUID with a task name glued
+on the end matches no check. **No trailing slash**, for the same reason and
+with the same failure mode: a silent permanent 404, invisible in the Actions
+log because the curl is `-fsS … > /dev/null || true`. **Six slugs, cron
+schedules copied from `jobs.yml`, grace ≥ 2 h**, because Actions cron lags
+5–30 min by design and a one-hour grace alerts on a healthy scheduler. And
+**no `?create=1`**: all 24 task names ping, auto-provisioning would create a
+check for each, and the free tier holds 20.
+
+`watchdog` is called out as the one to do first. It pings 3×/day and the step
+is `if: success()`, so a red watchdog withholds its ping — one check covers
+both "a data job went silent" and "the scheduler is gone", which no other
+single check does.
+
+The alert channel is the part P1-8 changes. Nine failure emails arrived over
+Aug 10–12 and none was opened, so routing healthchecks to email would buy a
+second alert into the same unread stream. Anything else — ntfy, Telegram,
+Pushover, Discord, Slack — is on the free tier, and the requirement is only
+that it is not the GitHub notification inbox.
+
+Verification does not have to wait for a cron: `backup` is dispatchable and
+read-only, so a `jobs · backup` dispatch proves the secret end to end against
+the `backup` check.
+
+Still unchecked. It needs a third-party account and a repository secret, and
+neither is reachable from a session — this removes the deciding, not the
+owner.
+
 ### Aug 13 — Fourteen history files, one door
 
 `docs/` held five live documents and one frozen one; `audit/` held the other
