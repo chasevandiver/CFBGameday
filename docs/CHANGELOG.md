@@ -166,6 +166,65 @@ shipping it.
 
 ## Log
 
+### Aug 13 — Nine alerts arrived and nobody read one
+
+P1-8 asked a yes/no question: did the Aug 10 watchdog failure email arrive? It
+did — `Run failed: jobs - main (de8e7f2)`, 09:26 UTC, in the inbox, "Failed in
+19 seconds", which is the watchdog tripping on a cold `job_runs` table exactly
+as the tracker described. The channel works.
+
+Reading the same inbox answered a better question. That email is **still
+unread**, and so are the eight other failure emails from Aug 10–12 — including
+all three `jobs · backup` failures, the sequence that found five real defects.
+Nine delivered alerts, zero opened. They arrive among a few hundred GitHub
+notifications and are visually identical to the Vercel build comment sitting
+above them.
+
+So "does the email arrive" was the wrong question, and ticking the box on a yes
+would have been technically true and practically wrong. **OPS-2:** `watchdogJob`
+now also sends a push, to the one channel proven to reach a person — the stack
+shipped in 0031 and verified on a real iPhone the day before. Fifth notification
+kind, admin audience, enabled by default (unlike bad beats: this one only fires
+when something is already broken, so the firehose argument does not apply).
+
+Three details that are the actual work:
+
+**Deduped on the UTC date, not the problem.** The watchdog runs on
+`0 8,14,20 * * *` plus a Saturday afternoon pass. Keying the receipt on the
+failing job alone would re-send on every run until it recovered — four buzzes a
+day about the same dead cron, which is how someone learns to swipe the app away.
+Keyed on the day, a persistent fault is a daily reminder; a *new* job going
+silent is different subject text and notifies immediately, because that is news.
+
+**It swallows everything.** The push happens on the line before the throw. If a
+push failure propagated, the red run would say "push service down" instead of
+naming the job that went quiet — the alerting layer would have eaten the signal
+it exists to carry. There is a test for exactly that.
+
+**It is not a replacement for healthchecks.io, and the code says so in three
+places.** A push sent by a job that has itself stopped running cannot fire; a
+scheduler that dies entirely takes `watchdogJob` and its push down together.
+That is the hole the external dead-man covers and this does not. What this
+closes is the commoner case — one job goes silent while the scheduler lives —
+with something that vibrates in a pocket.
+
+Migrations 0036/0037, split for the same reason 0032/0033 were: Postgres refuses
+to use a new enum value in the transaction that adds it.
+
+Also this session, applied to the live project: **0034 and 0035**. Verified by
+query rather than by assumption — 34 rows in `supabase_migrations`, the
+constraint present and `NOT VALID` as intended, `make_pick` containing
+`result = null`, and `fcs_avg_margin` null across all 266 team rows, which is
+the inert state. The constraint was probed behaviourally inside a block that
+force-rolls back: `postponed` and `canceled` accepted, `cancelled` and
+`weather_delay` refused, and all 888 games still `scheduled` afterwards. Worth
+recording that **zero existing rows violate the constraint**, so the `NOT VALID`
+could be validated whenever someone wants to.
+
+645 tests, 129 DB assertions.
+
+No model change. `DEFAULT_PARAMS` untouched, no tuner run.
+
 ### Aug 13 — The FCS split, built so that it changes nothing
 
 Q4 asked whether to build the specced two FCS buckets or amend the spec down to

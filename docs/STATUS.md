@@ -135,11 +135,30 @@ watches, plus two migrations to apply.
       three reds would have been *visible* a week ago — the step exited 0 with a
       20-byte artifact regardless.
 - [ ] **P1-9b** Create a healthchecks.io project, set `HEALTHCHECK_PING_URL`
-      (the ping step is already wired; free tier covers this). **Now load-bearing
-      rather than nice-to-have:** with the LLM tier off and no other channel
-      added, GitHub's failure email is the *only* thing that tells you a job
-      died, and it only fires when a run ERRORS — a scheduler that silently
-      stops firing alerts nobody. That is exactly the hole this closes. · 0.5 h
+      (the ping step is already wired; free tier covers this). **Still the only
+      thing that catches the scheduler dying entirely** — `watchdogJob` cannot
+      report its own death, and OPS-2's push is sent by that job, so a total
+      stop takes both down. Needs a third-party account and a GitHub Actions
+      secret, neither of which is reachable from a session. **Owner-only.** · 0.5 h
+- [x] **P1-8 — answered 2026-08-13, and the answer changes P1-9b's shape.** The
+      Aug 10 email **arrived**: `Run failed: jobs - main (de8e7f2)`, 09:26 UTC,
+      inbox, "Failed in 19 seconds" — the watchdog on a cold `job_runs` table,
+      exactly as described. So the channel works.
+      **It is also still unread, and so are eight others** from Aug 10–12,
+      including all three `jobs · backup` failures. Nine delivered alerts, zero
+      opened. They arrive in a stream of a few hundred GitHub notifications and
+      look identical to a Vercel build comment. An alert channel that delivers
+      into a place nobody reads is not much better than one that does not fire,
+      which is why OPS-2 below was built rather than just ticking this row.
+- [x] **OPS-2 — the watchdog buzzes a phone**, 2026-08-13. A fifth notification
+      kind (`watchdog`, migrations 0036/0037 — split for the enum reason
+      0032/0033 were), sent to admins from inside `watchdogJob` immediately
+      before it throws. Deduped on the **UTC date**, not the run: the watchdog
+      fires 3–4× daily, so keying on the problem alone would nag until the job
+      recovered. Swallows its own errors, so a push failure can never replace
+      the fault it is reporting — asserted in a test, along with the admin
+      audience and the no-admins/no-keys/switched-off paths. 8 tests.
+      **Explicitly not a replacement for P1-9b**, and the code says so.
 - [ ] **P1-8** Check the inbox: a watchdog failure email fired Aug 10 — did it
       arrive? **The single highest-value 2 minutes left on this list.** It is
       now the primary alerting channel, and an unverified failure channel is no

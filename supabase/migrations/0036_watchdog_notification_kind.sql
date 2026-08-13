@@ -1,0 +1,26 @@
+-- The watchdog buzzes a phone, not just an inbox (OPS-2) — part 1 of 2.
+--
+-- The absence check has always thrown, which turns the Actions run red and
+-- sends GitHub's failure email. That channel was verified on 2026-08-13 and it
+-- does work: the Aug 10 watchdog failure email arrived. It is also, from the
+-- same inbox, **unread** — as are the other eight failure emails from Aug
+-- 10–12, including all three `jobs · backup` failures. Nine delivered alerts,
+-- zero opened, because they land in a stream of a few hundred GitHub
+-- notifications and are indistinguishable from a Vercel build comment.
+--
+-- So the watchdog gets the one channel already proven to reach the owner: the
+-- push stack from 0031, verified end to end on a real iPhone on 08-12.
+--
+-- WHAT THIS IS NOT: a replacement for the external dead-man ping
+-- (HEALTHCHECK_PING_URL, P1-9b). A push sent by a job that has itself stopped
+-- running cannot fire, and a scheduler that dies entirely takes the watchdog
+-- down with it. That is precisely the hole healthchecks.io exists to cover and
+-- this does not. What this closes is the commoner case — one job goes silent
+-- while the scheduler keeps running — with something the owner will notice.
+--
+-- Split across 0036/0037 for the same reason 0032/0033 were: Postgres will not
+-- let a new enum value be USED in the transaction that adds it, and the seed
+-- row is keyed on the value added here. One file fails with "unsafe use of new
+-- value".
+
+alter type public.notification_kind add value if not exists 'watchdog';

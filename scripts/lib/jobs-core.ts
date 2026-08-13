@@ -15,7 +15,7 @@ import { modelClv, roundClv, spreadClv, totalClv } from "../../src/lib/clv";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
 import { clockToSeconds, coverMargin, spreadCoverSide, totalCoverSide } from "../../src/lib/cover";
 import { gradePick, type PickMarket } from "../../src/lib/grade";
-import { notifyBadBeats, type FlipNotice } from "./notify-jobs";
+import { notifyBadBeats, notifyWatchdog, type FlipNotice } from "./notify-jobs";
 import { buildTeamNameIndex } from "../../src/lib/rankings";
 import { fetchCurrentSlate } from "../../src/lib/season";
 import { fcsRatingOf, fcsTopIds } from "../../src/model/fcs";
@@ -259,7 +259,16 @@ export async function watchdogJob(db: SupabaseClient): Promise<Json> {
     (live ?? []).length > 0,
     (upcoming ?? []).length > 0,
   );
-  if (problems.length > 0) throw new Error(`watchdog: ${problems.join("; ")}`);
+  if (problems.length > 0) {
+    // Buzz a phone before going red (OPS-2). The throw below is still what
+    // makes the run fail and sends GitHub's email — this is an additional
+    // channel, added because that email arrives and does not get read: on
+    // 2026-08-13 the Aug 10 watchdog failure was found in the inbox unread,
+    // along with eight others. `notifyWatchdog` swallows its own errors, so a
+    // push failure can never replace the real fault with its own.
+    await notifyWatchdog(db, problems);
+    throw new Error(`watchdog: ${problems.join("; ")}`);
+  }
   return {
     checked: [
       "refresh-lines",
