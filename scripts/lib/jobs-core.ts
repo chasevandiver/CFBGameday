@@ -286,15 +286,34 @@ export async function watchdogJob(db: SupabaseClient): Promise<Json> {
  * since 0001 but nothing ever wrote it). The scoreboard loop throttles and
  * stops off this table, and the Crew admin panel shows the month's total.
  */
+export async function logApiCalls(
+  db: SupabaseClient,
+  job: string,
+  calls: number,
+  source: string,
+): Promise<void> {
+  if (calls <= 0) return;
+  const rows = Array.from({ length: calls }, () => ({ source, endpoint: job }));
+  const { error } = await db.from("api_call_log").insert(rows);
+  if (error) console.error(`api_call_log insert failed: ${error.message}`);
+}
+
 export async function logCfbdCalls(
   db: SupabaseClient,
   job: string,
   calls: number,
 ): Promise<void> {
-  if (calls <= 0) return;
-  const rows = Array.from({ length: calls }, () => ({ source: "cfbd", endpoint: job }));
-  const { error } = await db.from("api_call_log").insert(rows);
-  if (error) console.error(`api_call_log insert failed: ${error.message}`);
+  return logApiCalls(db, job, calls, "cfbd");
+}
+
+/** ESPN is free and unauthenticated, but an unmetered loop is invisible in
+ *  /admin — so its calls land in api_call_log like every other feed's. */
+export async function logEspnCalls(
+  db: SupabaseClient,
+  job: string,
+  calls: number,
+): Promise<void> {
+  return logApiCalls(db, job, calls, "espn");
 }
 
 // ---------------------------------------------------------------------------
