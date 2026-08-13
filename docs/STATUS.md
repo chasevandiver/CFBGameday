@@ -137,6 +137,39 @@ watches, plus two migrations to apply.
       report its own death, and OPS-2's push is sent by that job, so a total
       stop takes both down. Needs a third-party account and a GitHub Actions
       secret, neither of which is reachable from a session. **Owner-only.** · 0.5 h
+      **The recipe, worked out 2026-08-13, so the half hour is clicking rather
+      than deciding.** `jobs.yml` pings `"$HEALTHCHECK_PING_URL/<task>"` —
+      that is healthchecks' *slug* form, so the secret is the project's **ping
+      key** URL, `https://hc-ping.com/<ping-key>` (Project Settings → Ping
+      key), and **not** a check's UUID URL: a UUID with a task name appended
+      matches nothing. **No trailing slash** — one makes every ping `//<task>`
+      and 404s forever, silently.
+      Six checks, each schedule type **Cron**, timezone **UTC**, slug exactly
+      the task name, cron string copied from `jobs.yml`: `watchdog`
+      `0 8,14,20 * * *` grace 2 h; `refresh-lines` `0 12,22 * * *` grace 2 h;
+      `sync-games` `0 9 * * *` grace 2 h; `ratings-update` `0 13 * * 0` grace
+      6 h; `backup` `0 15 * * 0` grace 6 h; `keepalive` `0 6 1 * *` grace
+      48 h. Grace is not padding: Actions cron lags 5–30 min by design (the
+      `jobs.yml` header budgets for it), so anything under an hour alerts on a
+      healthy scheduler. **`watchdog` is the one that matters** — it pings
+      3×/day, and the step is `if: success()`, so a red watchdog *withholds*
+      its ping and that single check covers both "a data job went silent" and
+      "the scheduler is gone". Do it first if only one gets done.
+      Those slugs only, and **do not append `?create=1`.** All 24 task names
+      ping, so auto-provisioning would create a check for each — 24 against
+      the free tier's 20, at a default period nobody chose. An unmatched slug
+      404s and `|| true` swallows it, which is the designed behaviour, not a
+      gap.
+      Route the alerts **anywhere but email**: P1-8 below is the evidence —
+      nine delivered failure emails, zero opened. Everything but SMS, voice
+      and WhatsApp is on the free tier (ntfy, Telegram, Pushover, Discord,
+      Slack all qualify); the requirement is a channel that is not the GitHub
+      notification stream, the same reasoning that produced OPS-2.
+      **Verify without waiting on a cron:** `backup` is dispatchable and
+      read-only, so dispatch `jobs · backup` and watch the `backup` check go
+      green. The Actions log will not tell you either way — the curl is
+      `-fsS … > /dev/null || true` on purpose, so the ping is only observable
+      from the healthchecks side.
 - [x] **P1-8 — answered 2026-08-13, and the answer changes P1-9b's shape.** The
       Aug 10 email **arrived**: `Run failed: jobs - main (de8e7f2)`, 09:26 UTC,
       inbox, "Failed in 19 seconds" — the watchdog on a cold `job_runs` table,
