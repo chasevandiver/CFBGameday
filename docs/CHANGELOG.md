@@ -166,6 +166,102 @@ shipping it.
 
 ## Log
 
+### Aug 13 — The post-launch queue, opened early, and nine rows that lied about themselves
+
+§2 had nothing buildable left — every unchecked row in the blocking list is
+owner-run, a dispatch or a dated watch — so §4 was opened 16 days early by owner
+decision. Eleven rows landed across three commits: four security, five UX, five
+ops/data-quality. 645 → 649 tests, 129 → **155 DB assertions**, `tsc` and lint
+clean.
+
+**The number worth keeping is nine.** Nine of the rows described their own
+defect wrongly, and in four cases the wrong detail changed the fix. They were
+not found by re-reading the tracker — a reconciliation on 08-12 read the whole
+file looking for exactly this and passed over all nine. They were found by
+writing the fix and having the code disagree.
+
+The four where it mattered:
+
+- **SEC-02 could not be fixed the way it was written.** "A removed admin
+  rejoins as admin" is true, and the obvious repair — always rejoin as
+  `member` — locks a sole owner out of their own group. `leave_group`
+  deliberately lets the last member out without a successor, so they would come
+  back to a group with no admin and the deferred keep-admin trigger refuses the
+  insert. Removal and departure had to stop being the same event:
+  `group_members.removed_by` is null when you left and set when an admin removed
+  you, and only the second demotes on rejoin.
+- **SEC-01's throttle forced a shape that looks like a downgrade.** `raise`
+  aborts the transaction, which rolls back the very attempt row a rate limit
+  counts — so a function that raises on a bad code can never accumulate evidence
+  that codes are being guessed. `join_group` now returns null on a miss and the
+  server action words it. Codes themselves were **six upper hex characters**,
+  16^6 ≈ 16.7M, not the 36^6 the row implied; now ten Crockford base32,
+  ≈1.1e15.
+- **P1-1b's mechanism was backwards.** The row said a frozen prediction on a
+  dead game "is re-read as ungraded every Sunday forever". It is never read at
+  all — the query filters to `finalIds`, which excludes dead games by
+  construction. That also retires one of the two options the row offered, since
+  "exclude dead games from the ungraded set" is already the behaviour. The only
+  user-visible half, receipts saying "graded after kickoff" about a game with no
+  kickoff left to come, is fixed.
+- **§1 said migrations 0034/0035 were unapplied.** The live ledger is 36 files,
+  36 rows, and has been since 08-13. It mattered because two ticked rows depend
+  on them: P1-1's re-pick fix *is* 0034, and OPS-2's watchdog push needs 0036's
+  enum value and 0037's settings row — and `notifyWatchdog` returns
+  `{notified: 0, errors: 0}` rather than throwing when that row is missing, so
+  it would have been silently dead rather than loudly broken. Both confirmed
+  live against the project, along with two admin push subscriptions for it to
+  reach.
+
+The other five: `remove_pick`'s `ok:true` was the server action, not the RPC;
+P2-6's "the game page was already narrowed by 09:P-5" — 09:P-5 narrowed
+*profiles*; OPS-14a listed the probe, which self-meters, and missed
+`build-preseason`, which runs twice a day through August; DQ-15's "local-dev
+only", when ~25 call sites pass `useCache: true` as a literal; and DQ-5's
+"schema churn isn't worth it" on a column with zero readers.
+
+**Two things checked and found *not* to be defects**, recorded so they are not
+re-raised. `error.tsx` destructures `retry` where the Next in training data
+passes `reset` — but both exist in 16.3.0, `retry` is the recommended one, and
+it became stable in exactly this version. Reading `node_modules/next/dist/docs/`
+instead of trusting the remembered API, which `AGENTS.md` asks for, was the
+difference between a fix and a regression. And `scripts/db-test.sh` prints
+"0 failed" when a suite aborts mid-way, which reads like a silent pass — but
+`set -euo pipefail` is set and the run exits 1. Verified with a
+deliberately-aborting probe suite rather than by reading the script.
+
+**A live discrepancy found while correcting a comment, and deliberately not
+fixed.** `02:M-12`'s stale note claimed the backtest replays at tilt 0 to match
+production "unless `PRESEASON_TILT_CARRY` has been set". The default is in the
+code, not the environment — `build-preseason.ts:91` reads
+`envNum("PRESEASON_TILT_CARRY", 0.4, …)` — so production ships **0.4 and the
+headline calibration is computed at 0**. Raising the replay would silently
+restate every number this report has produced, including the b₁/b₂ figures and
+the 2026.5.0 identity check, so it is queued for `--tune-preseason-tilts` after
+Week 0 with a decisions-table row owed either way. **No decisions-table row for
+this entry otherwise: nothing here touches `DEFAULT_PARAMS`.**
+
+**Migrations 0038–0041 are in the repo and proved against a local Postgres 16;
+they are NOT applied to the live project.** Each of the 26 new DB assertions was
+checked to fail against the pre-fix schema before being kept. Both column
+revokes needed the table grant dropped first — a column-level revoke against a
+live table-level `SELECT` is a no-op, which is the lesson `0013:26` already
+recorded and which an assertion failing against a "working" migration taught
+again.
+
+**Not seen rendered.** The UI changes (push/void chips, standings truncation,
+error boundary, five tap targets) were verified by `tsc`, lint and tests only;
+the pages need a live Supabase. `docs/DESIGN.md` asks for that to be said rather
+than glossed.
+
+**Left undone on purpose, each with its reason in the row:** three of UX-08's
+seven tap targets (a 44px target in a ~30px stacked row overlaps its sibling —
+needs a layout change seen on a device), `backtest.ts` metering (Supabase
+secrets in a workflow that fires on every model PR), the `game/[id]` teams
+query (two rows, no win), P2-2's signed-in half (needs an
+`is_current_user_admin()` RPC across six call sites), and the existing
+six-character join codes (regenerating invalidates codes already sent).
+
 ### Aug 13 — Three green runs, and only the third one meant it
 
 P1-9b is closed. Run #122, `jobs · backup`: `dead-man ping ok — backup
@@ -3425,8 +3521,11 @@ and signed-error reporting; nine backtest tuners.
   daily `preseason-refresh` job retries until CFBD publishes. **No manual step
   is required** — but if it is still red by ~Aug 26, that is worth looking at,
   because the openers are Aug 29.
-- **`supabase/functions/jobs/index.ts` is dead and drifted** — never deployed,
-  and behind `scripts/lib/jobs-core.ts`. Left untouched deliberately.
+- ~~**`supabase/functions/jobs/index.ts` is dead and drifted**~~ — **deleted
+  2026-08-13** (Q7). This entry said it was "left untouched deliberately" and
+  went stale the day the file went: it had inverted CLV in all four branches
+  and was 4+ versions behind `scripts/lib/jobs-core.ts`, and a tombstone with a
+  live landmine in it is worse than none. Git preserves it.
 - **The matchup split has only been seen with a synthetic second member.** The
   Aug 9 render check used a throwaway "Jeff" profile; the geometry, the lean bar
   and the graded chips are verified, but nobody has looked at the card with two

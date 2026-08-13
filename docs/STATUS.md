@@ -1,14 +1,24 @@
 # The CFB Slate — Status
 
 **The one file that answers "what's left."** Reconciled 2026-08-13 against the
-code on `claude/games-launch-checklist-b7pzab`. Week 0 is **Sat Aug 29** — 16
-days.
+code on `claude/status-md-tasks-ivmbtb`. Week 0 is **Sat Aug 29** — 16 days.
 
 **As of 2026-08-13, §2 has no code or docs work left in it.** Everything still
 unchecked below is either owner-run (P1-8, 09:P-16 — P1-9b closed the same
 day), a dispatch
 (`--tune-fcs`, `observe-scoreboard`, Q8), or a dated watch. That is the whole
 remaining blocking list.
+
+**§4 was opened early, 2026-08-13, by owner decision** — the post-launch queue
+is marked "deliberately not before Aug 29" and eleven rows were pulled forward
+anyway because §2 had nothing buildable left. Landed: the four security rows
+(P2-5, SEC-01, SEC-02, P2-2/SEC-08) as migrations 0038–0040, five UX rows, and
+five ops/data-quality rows including migration 0041. **Migrations 0038–0041 are
+in the repo and proved against a local Postgres; they have NOT been applied to
+the live project** — that is a production write on new schema and it is the
+owner's call. Nothing in the app requires them until they are.
+**Nine tracked rows described their own defect wrongly**, and in four cases the
+wrong detail changed the fix. Each correction is in the row.
 
 §1's numbers are point-in-time and go stale between reconciliations; the boxes
 do not, because they are checked in the commit that lands the fix. If §1
@@ -40,7 +50,7 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **637 tests across 45 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13. **129 DB assertions**, run in-session against a real Postgres 16 cluster rather than carried from CI. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
+| **Build** | **649 tests across 46 files**, `tsc` and lint clean — all run in-session 2026-08-13 after the §4 pull-forward below. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
 | **Scheduler** | 111 completed runs. Reds to date: one watchdog firing correctly on a cold `job_runs` table, and runs #107–109 — the backup verification sequence, each a real defect, all closed. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
@@ -535,6 +545,22 @@ One sitting, ~2 h. Each is a doc edit, not a code change.
       and a *green* run — a dead live layer and a quiet Saturday are currently
       the same observation. Liveness is only measurable over a live game, once,
       unrepeatably. The instrument exists; the measurement does not. · dispatch
+- [ ] **The backtest's headline numbers are computed at tilt 0; production ships
+      0.4.** Found 2026-08-13 while correcting `02:M-12`'s comment, which
+      asserted the opposite. `backtest.ts`'s `run()` replays with no preseason
+      tilt on the stated grounds that this "matches production… unless
+      `PRESEASON_TILT_CARRY` has been set" — but the default is in the code, not
+      the environment: `build-preseason.ts:91` reads
+      `envNum("PRESEASON_TILT_CARRY", 0.4, …)`, so an unset variable changes
+      nothing and production carries 0.4.
+      **Not changed, deliberately.** Raising the replay to 0.4 silently restates
+      every number the calibration report has ever produced, and that report is
+      the honesty gate for model changes — including the b₁/b₂ figures in §1 and
+      the 2026.5.0 identity check in Q4. Re-decide with
+      `--tune-preseason-tilts`, which is the flag that owns this parameter, and
+      give it a decisions-table row either way. **Not before Week 0**: nothing
+      depends on the answer and it is model work, which §1 says does not belong
+      in the next 16 days. · 1 h, after launch
 
 ### 2.5 The hard dates
 
@@ -588,7 +614,10 @@ These block nothing today but change what gets built. Recommendations are from
 
 ## 4. Queued for after launch
 
-Real work, deliberately not before Aug 29.
+Real work, deliberately not before Aug 29 — **except for the eleven rows pulled
+forward on 2026-08-13** by owner decision, which are ticked in place below with
+what they turned out to be. The intent of this section is unchanged: what is
+still unchecked here is still not launch work.
 
 **Brand rollout** — icon and install surfaces landed 2026-08-12, then the
 traced vector, the palette and the display face the same day (`docs/CHANGELOG.md`).
@@ -1158,3 +1187,44 @@ cron to `refresh-lines-burst`), P1-6 (`crew/page.tsx` is a redirect), P2-1
 (`build-preseason.ts:82-86`), P2-3 (`supabase/functions/jobs/index.ts` present),
 P2-6 (`ratings/page.tsx:56`), P2-10 (`0 10 * * 6` is the weather cron), P2-11
 (`sync-games.ts:63`), §23 #40/#44/#45, #31, #38, #42.
+
+---
+
+## 8. Corrections from the 2026-08-13 §4 pass
+
+Nine rows described their own defect wrongly. Found by writing the fix, not by
+re-reading the prose — which is why they had survived a reconciliation that was
+looking for exactly this. In four cases the wrong detail changed the fix.
+
+| Row | Claimed | Actually |
+|---|---|---|
+| §1 **Database** | 0034/0035 "not yet applied"; 32 migrations | **36/36, applied.** Both stale when written. P1-1's re-pick fix *is* 0034 and OPS-2's push needs 0036/0037 — and `notifyWatchdog` returns `{notified: 0}` rather than throwing when its settings row is absent, so it would have been silently dead. Confirmed live. |
+| **P2-5** | `remove_pick` "returns `ok:true`" | The RPC returned `void`; the `ok:true` is `actions/picks.ts:79`. |
+| **SEC-01** | codes are base32-ish; "next free number is **0028**" | **Upper hex, six chars** — 16^6, not 36^6. 0028–0037 were taken; SEC-01 shipped as 0039. |
+| **SEC-02** | "a removed admin rejoins as admin" | True, but the obvious fix breaks a real case: always rejoining as `member` locks a sole owner out of their own group, because `leave_group` lets the last member out and the keep-admin trigger then refuses the insert. Needed `removed_by` to tell removal from departure. |
+| **P1-1b** | the row "is re-read as ungraded every Sunday forever"; costs "a few wasted rows per week" | **Never read at all** — the query filters to `finalIds`, which excludes dead games by construction. No recurring cost. Also kills one of the two options the row offered, since "exclude dead games" is already the behaviour. |
+| **P2-6** | "the game-page equivalent was narrowed by `09:P-5`" | 09:P-5 narrowed **`profiles`**. `game/[id]/page.tsx:121` is still `teams.select("*")`. |
+| **07:OPS-14a** | unmetered: "CI, backtest, preseason" | The probe self-meters already. The real gap was `build-preseason` — daily through August, two invocations per firing. |
+| **04:DQ-15** | "local-dev only" | ~25 call sites pass `useCache: true` as a literal, so `build-preseason` carries a poisoned cache between runs on a persistent working dir. |
+| **04:DQ-5** | "schema churn during launch isn't worth it" | Zero readers anywhere. One rename, one line of TypeScript, no backfill. |
+| **02:M-09/M-10/M-11/M-12** | one row, "dead code" | Three different answers. M-09 already closed by Q4; M-11 genuinely dead; **M-10 kept** — no caller, but two live paths are specified against it and two tests exercise it as that reference. |
+| **UX-08** | five sub-44px targets | **Seven.** Plus the toast's Share button at `min-h-9`, which was on no list. |
+| **UX-24** | "week page passes raw `line_at_pick`" | Three call sites — `/game` renders it twice as well. |
+
+**Checked and *not* a defect**, recorded so it is not re-raised: `error.tsx`
+destructures `retry` where older Next passed `reset`. Both props exist in
+16.3.0, `retry` is the recommended one and became stable in exactly this
+version. Reading `node_modules/next/dist/docs/` rather than trusting the
+remembered API — which `AGENTS.md` asks for — was the difference between a fix
+and a regression. Likewise `scripts/db-test.sh`: a suite that aborts mid-way
+prints "0 failed", which reads like a silent pass, but `set -euo pipefail` is
+set and the run does exit 1. Verified with a deliberately-aborting probe suite.
+
+**Left deliberately undone, with the reason in the row:** the three remaining
+UX-08 targets (star, pin, bet-chip `X` — they sit in ~30px stacked rows, so a
+44px target would overlap its sibling and that needs a layout change seen on a
+device), `backtest.ts` metering (needs Supabase secrets in a workflow that runs
+on every model PR), the `game/[id]` teams query (two rows, no win), P2-2's
+signed-in half (needs an `is_current_user_admin()` RPC and six call sites), and
+the existing six-character join codes (regenerating invalidates codes already
+sent to the crew).
