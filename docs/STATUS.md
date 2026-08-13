@@ -758,7 +758,9 @@ Two items remain open; the closed ones are kept for the record.
       mint a ten-character one from group settings. Worth doing before inviting
       anyone new.
       *(Both this row and §7 said "next free number is **0028**". 0028–0037 were
-      taken; the next free number is now **0041**.)*
+      taken then; 0038–0041 have since shipped, so **the next free number is
+      0042**. This line has now been wrong twice — treat any hardcoded "next
+      free" as stale on sight and count the directory.)*
 
 **Ops / perf**
 - [x] **P2-3 / 05:C5 / 07:OPS-11 / SEC-12** Dead edge function deleted
@@ -1224,7 +1226,7 @@ here was decided by a commit message.
 |---|---|---|
 | `audit/CHECKLIST.md` `05:N9` | `[x]` postponed/canceled grade void | **Partial.** The grader is right; nothing writes those statuses. Re-opened as **P1-1** in §2.2. |
 | `audit/CHECKLIST.md` `04:DQ-13` | `[x]` rejects NaN/empty `PRESEASON_TILT_CARRY` | **Partial.** NaN is caught, empty string silently becomes `0`. Re-opened as **P2-1**. |
-| `audit/CHECKLIST.md` `SEC-01` | "migration 0026" | Stale — 0026 and 0027 are taken; next free was **0028**. *(And that correction went stale in its turn: SEC-01 shipped as **0039** on 08-13. Next free is **0041**.)* |
+| `audit/CHECKLIST.md` `SEC-01` | "migration 0026" | Stale — 0026 and 0027 are taken; next free was **0028**. *(And that correction went stale in its turn, twice: SEC-01 shipped as **0039** on 08-13, and 0040/0041 followed the same day. Next free is **0042** — count the directory rather than trusting this cell.)* |
 | `audit/AUDIT-2026-08.md` §23 | 46 raw `[ ]` boxes, all unchecked, below a table saying 38 are done | The boxes now carry their verified status. The table was right; the boxes were three months of drift. |
 | `audit/AUDIT-2026-08.md` Bug #9 | cites `actions/picks.ts:54,58` | The fix moved into the `remove_pick` RPC (`0021:255-257`) and got *stronger*. Citation queued for correction in §2.3. |
 | `docs/CHANGELOG.md` Aug 12 (portal) | — | Created a new open item (**Q8**, re-run `--tune-churn`) that no checklist carried. Now in §2.4. |
