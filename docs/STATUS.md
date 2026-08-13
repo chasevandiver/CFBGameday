@@ -1160,6 +1160,41 @@ silent about the wiring, which is the gap that let it sit for a day.
 - [ ] **F-§3 / F-§6** Team-page LLM depth; tale of the tape · L / needs season stats
 - [ ] **G13 / F18 / §23 #36 residue** Season archive + `SEASON` rollover · offseason
 
+**NFL** — owner request 2026-08-13 ("NFL scores and lines as bets people can
+make"; BRAND.md §17 has required the identity carry both leagues since v1.0).
+Built on `claude/nfl-scores-lines-l4bhio`; the design and its evidence are in
+`docs/CHANGELOG.md` (Aug 13, "The NFL, as a second seasons row").
+- [x] **NFL-1** The whole build: `src/lib/espn.ts` + fixture-pinned odds
+      parsing, migration 0042 (sport columns, one-current-per-sport,
+      `groups.leagues`), the three ingest CLIs + cron wiring, `?sport=` slate
+      with the CFB | NFL toggle and NFL kick windows, cross-league ledger /
+      bets / home, `gradeSeasonFinals` + `nfl-grade`, `applyScoreboard` +
+      dual-league scoreboard loop, group league scope + per-league splits,
+      ticker with league tag. Model, freeze pricing and ratings replay
+      untouched. 683 tests, 163 DB assertions, dry-runs against the live feed.
+- [ ] **NFL-2** Go live, in order: deploy the code, apply 0042, then dispatch
+      `nfl-sync-reference` → `nfl-sync-games` → `nfl-refresh-lines`. **The
+      order is load-bearing**: the sport-aware `fetchCurrentSeasonWeek` must be
+      serving before the 102026 `is_current` row exists, or every page's season
+      pointer errors. Owner-run (production write). · 0.5 h
+- [ ] **NFL-3** The DESIGN.md one-screen gate: `/slate?sport=nfl` on a real
+      phone before any further NFL surface work — card density with no ranks /
+      systems row, "Kansas City Chiefs"-length names in `TeamRow`, division
+      filter labels, Early/Late window/Primetime section titles. · owner + 0.5 h
+- [ ] **NFL-4** First settlement watched, not assumed: TNF Sep 10 — close pass
+      at 23:45 UTC Thu (`nfl-lines-close`), `nfl-grade` Fri 13:30 UTC; check a
+      logged bet grades with CLV against the captured close. A finaled
+      preseason game on a Supabase branch works sooner. · 0.5 h
+- [ ] **NFL-5** The live-situation shape against a real in-progress game:
+      `parseEvent`'s possession/down-distance mapping is pinned by a
+      synthesized fixture (ESPN's documented shape), not yet by a live board —
+      preseason runs nightly this week; `espn.scoreboard()` over any live game
+      and eyeball `situation`/`possession`/`lastPlay`. · 0.25 h
+- [ ] **NFL-6** Deferred, recorded: playoff-round labels + postseason week
+      browsing (January; stored weeks 1–4 exist now), NFL venues + weather
+      (existing `weatherJob` machinery, needs offset venue rows + coords),
+      watchdog rows for NFL job ages, NFL demo data.
+
 ---
 
 ## 5. Not built, by choice

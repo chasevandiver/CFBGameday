@@ -146,6 +146,11 @@ function ChipBody({ g }: { g: TickerGame }) {
       )}
       {/* colour is never alone: the underline's read, in words */}
       {g.mine && <span className="sr-only">{MINE_WORDS[g.mine]}</span>}
+      {g.sport === "nfl" && (
+        <span className="text-[9px] font-semibold uppercase tracking-wider text-chalk/40">
+          NFL
+        </span>
+      )}
       <span className="font-medium text-chalk">
         {g.awayAbbr} {live || final ? (g.awayPoints ?? 0) : ""}
       </span>
