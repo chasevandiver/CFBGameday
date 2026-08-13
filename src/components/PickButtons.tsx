@@ -195,7 +195,8 @@ export function PickButtons({
             <p className="stat text-sm text-chalk/70">
               Locked: {pickLabel(p, homeLabel, awayLabel)}
             </p>
-            {p.result && p.result !== "void" && (
+            {/* Including "void", which falls to the neutral branch below. */}
+            {p.result && (
               <span
                 className={`chip ${
                   p.result === "win"

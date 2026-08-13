@@ -165,6 +165,76 @@ shipping it.
 
 ## Log
 
+### Aug 13 — A rule that had never once run, and the re-pick that could not work
+
+League Rule #4 — a postponed or canceled game voids every wager on it — has been
+implemented correctly in the grader since 0013 and had never executed. Nothing
+in the system writes those statuses: `sync-games` only ever asserts `final`, the
+scoreboard patch is a closed map to `in_progress`/`final`, and CFBD's game feed
+carries a bare `completed` boolean with no cancellation signal anywhere in it. A
+human is the only available source of truth, so P1-1 is a **Game status**
+section on `/admin`.
+
+The display layer turned out to be finished already — `GameCard` and
+`GameHeader` print the status, `isDead` sinks the card, suppresses the aura,
+hides the odds and disables all three bet-slip cells. Every bit of it had been
+unreachable.
+
+**The void runs inline, not on Sunday.** A game postponed at noon would
+otherwise show open picks on a game that will never be played until
+`ratings-update` fires, which is the job with the longest overdue horizon on the
+admin card. Both callers share `voidWagersForGames` and both filter on the
+result still being null, so running twice is a no-op.
+
+**The state machine refuses more than it allows**, which is the substance of the
+work rather than a detail of it. Voiding is destructive to other people's picks
+and nothing gives them back, so: a `final` game cannot be voided, because
+grading has already written results, CLV and units against it and flipping it
+would void nothing while making the card read POSTPONED over a final score; a
+live game cannot be *postponed*, because the scoreboard loop rewrites
+`in_progress` every 30 seconds and the postponement would vanish within a tick
+while the picks it voided stayed voided — but it can be *canceled*, which is the
+honest word for an abandoned game; and an unrecognised status is refused rather
+than defaulted.
+
+**Two things surfaced while building it.**
+
+*The "member re-picks" path did not work.* `jobs-core.ts` has carried a comment
+since 0013 saying voided picks stay voided and the member re-picks on the
+revived game. They could not have. `make_pick`'s `on conflict do update` set
+`side`, `line_at_pick` and `locked_at` — not `result` — so re-picking updated
+the row that already held `result='void'`, and the grader reads
+`.is("result", null)`. That pick would never have been graded, in any season.
+Migration 0034 clears `result` and `clv` on replace, which also closes the
+general case: any pick replaced after grading kept its old result. The DB
+assertion for it fails against the old function and passes against the new one,
+which is the only reason to believe the fix.
+
+*A voided pick rendered as nothing.* Five sites guarded their result chip with
+`result !== "void"`, so a member whose pick was voided by Rule #4 would watch it
+silently disappear from their own screen. Four of them fall through to the same
+neutral styling a push uses and just needed the exclusion dropped. The home hub
+needed more: it labels chips in words, and "Push" on a canceled game is not a
+softer way of saying void, it is wrong — a push means the number landed exactly,
+a void means nothing happened. Its verdict now carries a label beside the tone.
+
+0034 also gives `games.status` a check constraint, `not valid` so it cannot fail
+on a legacy row. The five states had lived in a trailing SQL comment since 0001.
+That was survivable while only sync jobs wrote the column and stops being
+survivable the moment an admin can — and the constraint rejects `cancelled`,
+which matters, because `isDeadStatus` deliberately does not recognise the
+British spelling and a stored `cancelled` would read as alive.
+
+Deferred with the reasoning written down (`docs/STATUS.md` §4, P1-1b): frozen
+`predictions` on a dead game are never settled, so they re-read as ungraded
+every Sunday forever. It is invisible to users, costs a few rows, and settling
+it banks a "no close" reading indistinguishable from a genuinely missing
+snapshot — a decision, not a bug fix, and not one to take sixteen days out.
+
+622 tests, 129 DB assertions.
+
+No model change. `DEFAULT_PARAMS` untouched, no tuner run.
+
 ### Aug 13 — An empty environment variable is not a zero
 
 `Number("")` is `0`. Every numeric env guard in this repo was written as

@@ -13,6 +13,7 @@ import { gradePick, type PickMarket } from "../../src/lib/grade";
 import { notifyBadBeats, type FlipNotice } from "./notify-jobs";
 import { buildTeamNameIndex } from "../../src/lib/rankings";
 import { fetchCurrentSlate } from "../../src/lib/season";
+import { isDeadStatus, voidWagersForGames } from "../../src/lib/void";
 import {
   DEFAULT_PARAMS,
   MODEL_VERSION,
@@ -770,7 +771,7 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
   const gradableFinals = allGames.filter(
     (g) => g.status === "final" && g.home_points !== null && g.away_points !== null,
   );
-  const deadGames = allGames.filter((g) => g.status === "postponed" || g.status === "canceled");
+  const deadGames = allGames.filter((g) => isDeadStatus(g.status));
 
   const { data: hfaRows } = await db.from("team_hfa").select("team_id, blended_hfa");
   const hfa = new Map<number, number>(
@@ -1019,30 +1020,25 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
     }
   }
 
-  // League Rule #4: postponed/canceled = void, for picks and bets alike. A
-  // postponed-then-rescheduled game flips back to `scheduled` on the next
-  // sync, so this only ever voids wagers on games that are dead RIGHT NOW —
-  // and a game that later revives simply grades normally when it goes final,
-  // because voided rows are excluded from the grading queries above... for
-  // bets. Voided picks stay voided; the member re-picks on the revived game.
+  // League Rule #4: postponed/canceled = void, for picks and bets alike. This
+  // only ever voids wagers on games that are dead RIGHT NOW, and a game that
+  // later revives grades normally when it goes final: voided BETS are excluded
+  // from the grading queries above, and since 0034 a re-picked game clears its
+  // `result` in `make_pick`'s upsert, so the member's new pick is gradable.
+  // (Before 0034 the upsert set only side/line/locked_at, so a re-pick
+  // inherited `result='void'` and the grader's `.is("result", null)` filter
+  // skipped it forever — the "member re-picks" path was documented here but
+  // did not work.)
+  //
+  // Since P1-1 the same write also runs inline from the /admin control, so a
+  // Saturday postponement voids immediately rather than waiting for Sunday.
+  // Both callers share `voidWagersForGames` and both are idempotent.
   if (deadGames.length > 0) {
-    const deadIds = deadGames.map((g) => g.id);
-    const { data: vp, error: vpErr } = await db
-      .from("picks")
-      .update({ result: "void" })
-      .in("game_id", deadIds)
-      .is("result", null)
-      .select("id");
-    if (vpErr) throw new Error(`grading: voiding picks failed: ${vpErr.message}`);
-    const { data: vb, error: vbErr } = await db
-      .from("bets")
-      .update({ result: "void", voided_at: new Date().toISOString() })
-      .in("game_id", deadIds)
-      .is("result", null)
-      .is("voided_at", null)
-      .select("id");
-    if (vbErr) throw new Error(`grading: voiding bets failed: ${vbErr.message}`);
-    voided = (vp?.length ?? 0) + (vb?.length ?? 0);
+    const counts = await voidWagersForGames(
+      db,
+      deadGames.map((g) => g.id),
+    );
+    voided = counts.picks + counts.bets;
   }
 
   return {

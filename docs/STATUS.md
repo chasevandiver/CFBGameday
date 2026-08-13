@@ -259,12 +259,45 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
 
 ### 2.2 This week (Aug 14–18)
 
-- [ ] **P1-1** A postponed or canceled game can never be voided. The grader
-      implements Rule #4 correctly (`jobs-core.ts:953-977`) but **nothing writes
-      those statuses** — `sync-games.ts:93` only ever asserts `final`. Needs an
-      admin "void this game" control plus the grading path that consumes it.
-      *(This is why `05:N9` is a `[x]` in `audit/CHECKLIST.md` that is really a
-      partial — see §7.)* · 3 h
+- [x] **P1-1** Shipped 2026-08-13. A **Game status** section on `/admin`
+      postpones, cancels or restores a game, and voids its open picks and bets
+      **inline** rather than waiting for Sunday's `ratings-update` — a game
+      postponed at noon on a Saturday would otherwise show open picks on a game
+      that will never be played for up to a week. Both callers share
+      `voidWagersForGames` in the new `src/lib/void.ts` and both are idempotent,
+      so the Sunday pass stays as the backstop.
+      Service-role write, deliberately: `games` is SELECT-only under RLS with no
+      update policy, so a cookie-client write would affect zero rows and report
+      success (audit 06/SEC-11's exact shape). Opening an update policy on the
+      one table every anonymous visitor reads was the worse trade.
+      **`nextGameStatus` refuses more than it allows**, because voiding is
+      destructive to other people's picks with no undo: a `final` game cannot be
+      voided (grading has already written results, CLV and units), a live game
+      cannot be *postponed* (the scoreboard loop overwrites it within a tick
+      while the voids persist) though it can be canceled, and an unrecognised
+      status is refused rather than defaulted. The two destructive buttons arm
+      before they fire. 14 unit tests.
+      **Two things found while building it, both fixed here:**
+      **(a) "the member re-picks" did not work.** `jobs-core.ts` has carried
+      that comment since 0013, but `make_pick`'s `on conflict do update` set
+      only `side`, `line_at_pick` and `locked_at` — so a re-pick on a revived
+      game kept `result='void'`, and the grader selects on `result is null`. It
+      would never have been graded. Migration **0034** clears `result` and `clv`
+      on replace, which also fixes the general case of any pick replaced after
+      grading. Proved by DB assertion: the test fails without the change.
+      **(b) a voided pick rendered as nothing** at five sites, so a member whose
+      pick was voided watched the chip silently disappear. It now shows, through
+      the same neutral styling as a push — except on the home hub, which labels
+      its chips in words and would have said "Push" on a canceled game.
+      0034 also makes `games.status` a real check constraint (`not valid`, so it
+      cannot fail on a legacy row): the five states had lived only in a comment
+      since 0001, which was survivable while only the sync jobs wrote the column
+      and stops being once an admin can. 11 new DB assertions, 129 total.
+      *(`05:N9` in `audit/CHECKLIST.md` is now genuinely done rather than the
+      partial §7 records.)*
+      **Not verified from here:** the end-to-end run needs the live database —
+      void a scratch game from `/admin`, confirm the card reads POSTPONED,
+      confirm `job_runs.detail` on the next `ratings-update`.
 - [ ] **09:P-16** Load rehearsal — **owner-run**, needs a live server. Seed via
       `scripts/seed-fixtures.ts`, `autocannon -c 15 / -c 30` against
       `next start`, record against the bars: p95 < 1.5 s, tick < 300 KB. The
@@ -465,7 +498,18 @@ Two items remain open; the closed ones are kept for the record.
       needed, has to come from whatever produced the artwork.
 
 **Correctness / security**
-- [ ] **P2-4 / SEC-10** Drop the dead `picks` policies 0018 recreated — the
+- [ ] **P1-1b — frozen `predictions` on a dead game are never settled.** Found
+      while building P1-1 and deliberately left out of it. The model-CLV pass
+      keys only on `finalIds` (`jobs-core.ts:890-925`), so a frozen row on a
+      game that never played keeps `close_spread` null and is re-read as
+      ungraded every Sunday forever. Invisible to users — `close_spread` is
+      read nowhere in `src/` — and the cost is a few wasted rows per week, so it
+      is a decision rather than a bug fix, and not one to take under launch
+      pressure. **The decision:** either settle the row (which banks a "no
+      close" reading indistinguishable from a genuinely missing snapshot) or
+      exclude dead games from the ungraded set (which needs a second predicate
+      and leaves the receipt permanently open). Worth noting `receipts` shows
+      "graded after kickoff" on such a row, which is wrong either way. · S — the
       table grants were revoked in `0013:92` and `0021:268`, so they can never
       fire. Verified *not* a hole, but misleading. Migration 0028. · 0.5 h
 - [ ] **P2-5** `remove_pick` never checks group membership and returns `ok:true`

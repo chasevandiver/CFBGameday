@@ -353,7 +353,10 @@ function RowHeader({
 
 type Verdict =
   | { kind: "live"; status: NonNullable<ReturnType<typeof statusForBet>> }
-  | { kind: "graded"; result: "pass" | "fail" | "push" }
+  // `label` rides along with the tone because a void and a push share the
+  // neutral styling but are not the same outcome — one tied, the other never
+  // happened, and "Push" on a canceled game is simply wrong.
+  | { kind: "graded"; result: "pass" | "fail" | "push"; label: string }
   | null;
 
 /**
@@ -365,14 +368,14 @@ type Verdict =
  * with a guess.
  */
 function verdictForBet(b: HomeBet, settled: boolean, h: number, a: number): Verdict {
-  if (b.result && b.result !== "void") return { kind: "graded", result: chipResult(b.result) };
+  if (b.result) return { kind: "graded", result: chipResult(b.result), label: chipLabel(b.result) };
   if (!settled) return null;
   const status = statusForBet(b, h, a);
   return status ? { kind: "live", status } : null;
 }
 
 function verdictForPick(p: HomePick, settled: boolean, h: number, a: number): Verdict {
-  if (p.result && p.result !== "void") return { kind: "graded", result: chipResult(p.result) };
+  if (p.result) return { kind: "graded", result: chipResult(p.result), label: chipLabel(p.result) };
   if (!settled) return null;
   const status = statusForPick(p.market, p.side, p.line, h, a);
   return status ? { kind: "live", status } : null;
@@ -380,6 +383,10 @@ function verdictForPick(p: HomePick, settled: boolean, h: number, a: number): Ve
 
 const chipResult = (result: string): "pass" | "fail" | "push" =>
   result === "win" ? "pass" : result === "loss" ? "fail" : "push";
+
+/** A voided wager says so. Everything else keeps the words it always had. */
+const chipLabel = (result: string): string =>
+  result === "win" ? "Won" : result === "loss" ? "Lost" : result === "void" ? "Void" : "Push";
 
 /**
  * One thing you hold on this game: what it is, what it's doing, and whether the
@@ -417,10 +424,7 @@ function PositionLine({
       {note && <span className="stat text-[10.5px] text-dim">{note}</span>}
       {verdict?.kind === "live" && <LiveStatusChip prefix="" status={verdict.status} />}
       {verdict?.kind === "graded" && (
-        <ResultChip
-          label={verdict.result === "pass" ? "Won" : verdict.result === "fail" ? "Lost" : "Push"}
-          result={verdict.result}
-        />
+        <ResultChip label={verdict.label} result={verdict.result} />
       )}
       {move && move.now !== null && <LineMove move={move} />}
     </div>
