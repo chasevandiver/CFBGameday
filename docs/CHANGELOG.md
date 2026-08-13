@@ -165,6 +165,76 @@ shipping it.
 
 ## Log
 
+### Aug 12 — The iPad splash was stretched, because nothing matched it
+
+Reported by the owner on an iPad. Two causes, both in the device table, both
+mine.
+
+**Portrait only.** Every one of the thirteen entries carried
+`(orientation: portrait)`. The comment above them said landscape was skipped
+because "on iPad the app is very rarely launched to a cold splash in landscape",
+which is a guess, and a bad one for a device most people hold sideways. The
+failure mode is not a missing splash — when nothing matches, iOS stretches
+whatever it has to fill the screen, which is exactly what was seen. iPads now
+get both orientations; iPhones stay portrait-only because iOS genuinely ignores
+landscape startup images on them.
+
+**Stale sizes.** A current iPad mini is 744×1133, not the 768×1024 of the 9.7"
+and the mini 5. The M4 Pros are 834×1210 and 1032×1376, not the 1194 and 1366 of
+their predecessors. Three current iPads matched nothing *in either orientation*.
+The old sizes are kept — those iPads still exist — and the new ones added
+alongside.
+
+`device-width` and `device-height` stay the portrait values in both queries,
+because iOS reports the natural size regardless of how the device is held; only
+`orientation` varies and the image dimensions swap. Getting that backwards
+produces a table that looks right and matches nothing.
+
+13 images to 24, 936 KB to 2.0 MB. Verified by rendering the case that was
+broken — a 2732×2048 landscape iPad — and confirming the mark keeps its aspect.
+
+The lesson for the device table: **an unmatched query is worse than an absent
+feature.** No startup image at all gives a plain dark frame; a table that misses
+a device gives a stretched one.
+
+### Aug 12 — Closing out the brand and push queues
+
+Four owner decisions and two builds.
+
+**PUSH-10, the absence check.** `watchdogJob` now covers `notify-picks-due` and
+`notify-log-bets`, and the interesting part is the gate rather than the horizon.
+Both jobs are weekly *and* seasonal, so a plain hours-since-last-ok check would
+go red every week from December to August — and a watchdog that cries every week
+for eight months is one nobody reads by the time it matters. The check only
+applies when there is a scheduled game inside the next week. 8 days rather than
+7, so a run that slips a day is not a fault. Four tests, including the offseason
+case, which is the one that would have made this useless.
+
+**BRAND-7, the vector master.** `public/brand/slate-icon-master.svg`: layered
+and named, palette in a `<style>` block so a recolour is one edit. Outlines are
+the trace, so the letterform is exact at any size — print, embroidery, a
+one-colour reversal.
+
+It is **flat**, and that is the decision worth recording. §20 also asks for Bevel
+and Lighting layers. Those live in the raster, and rebuilding them as vector
+would mean guessing at the original's lighting — which is exactly the mistake
+that produced two rejected recreations earlier today. A flat master is also what
+print and embroidery actually want. Anything that should look dimensional uses
+the raster.
+
+**DB-3 closed, and a correction.** `0017_rivalries_seed` is now recorded in
+`supabase_migrations` (version `20260806061800`); 32 files match 32 rows. An
+intermediate version of that entry claimed re-running the seed would duplicate
+rows or hit a constraint. **It would not** — the insert has a `where not exists`
+guard on the pair in both directions. That claim came from grepping for
+`on conflict`, finding none, and concluding the worst instead of reading twelve
+more lines. The original entry, which called it harmless, was right.
+
+**PUSH-6 declined, BRAND-8 answered no.** Field stays one of three themes. PUSH-6
+is kept in the file rather than deleted: the exposure is real — no daily cap, no
+quiet hours — but bad beats now default off, so it reaches only someone who
+switched them on and can switch them back.
+
 ### Aug 12 — Bad beats go opt-in, and betting groups get a nudge
 
 Two owner requests, migrations 0032/0033, both applied.

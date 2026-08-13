@@ -269,11 +269,33 @@ function buildIco(entries: { size: number; data: Buffer }[]): Buffer {
 /* ── iOS startup images ───────────────────────────────────────────────────── */
 
 /**
- * Portrait only. Landscape startup images on iPhone are ignored by iOS, and on
- * iPad a cold launch to landscape is rare enough that another dozen PNGs in the
- * repo is the wrong trade.
+ * Devices to cut a startup image for.
+ *
+ * `w`/`h` are the device's **portrait** dimensions and stay that way in both
+ * orientations — iOS reports `device-width`/`device-height` as the natural size
+ * regardless of how the thing is being held, so only `orientation` varies in
+ * the query while the image itself swaps.
+ *
+ * iPads get both orientations. An earlier version shipped portrait only, on the
+ * reasoning that a cold launch to landscape is rare; that was wrong, and the
+ * failure is loud rather than absent — when nothing matches, iOS stretches
+ * whatever it has to fill the screen. iPhones stay portrait-only because iOS
+ * genuinely ignores landscape startup images on them.
+ *
+ * The sizes matter more than they look. A current iPad mini is 744×1133, not
+ * the 768×1024 of the 9.7" and the mini 5, and the M4 Pros are 834×1210 and
+ * 1032×1376 rather than the 1194/1366 of their predecessors. Miss one and that
+ * device matches nothing at all.
  */
-const DEVICES: ReadonlyArray<{ id: string; w: number; h: number; dpr: number; note: string }> = [
+const DEVICES: ReadonlyArray<{
+  id: string;
+  w: number;
+  h: number;
+  dpr: number;
+  note: string;
+  /** iPad: cut portrait and landscape. iPhone: portrait only. */
+  both?: boolean;
+}> = [
   { id: "iphone-xr", w: 414, h: 896, dpr: 2, note: "iPhone 11, XR" },
   { id: "iphone-x", w: 375, h: 812, dpr: 3, note: "iPhone 11 Pro, 12 mini, 13 mini, X, XS" },
   { id: "iphone-xs-max", w: 414, h: 896, dpr: 3, note: "iPhone 11 Pro Max, XS Max" },
@@ -283,11 +305,45 @@ const DEVICES: ReadonlyArray<{ id: string; w: number; h: number; dpr: number; no
   { id: "iphone-14-pro-max", w: 430, h: 932, dpr: 3, note: "iPhone 14/15 Pro Max, 15 Plus, 16 Plus" },
   { id: "iphone-16-pro", w: 402, h: 874, dpr: 3, note: "iPhone 16 Pro" },
   { id: "iphone-16-pro-max", w: 440, h: 956, dpr: 3, note: "iPhone 16 Pro Max" },
-  { id: "ipad-mini", w: 768, h: 1024, dpr: 2, note: "iPad mini, iPad 9.7" },
-  { id: "ipad-air", w: 820, h: 1180, dpr: 2, note: "iPad Air 10.9" },
-  { id: "ipad-pro-11", w: 834, h: 1194, dpr: 2, note: 'iPad Pro 11"' },
-  { id: "ipad-pro-12", w: 1024, h: 1366, dpr: 2, note: 'iPad Pro 12.9"' },
+  { id: "ipad-97", w: 768, h: 1024, dpr: 2, note: 'iPad 9.7", iPad mini 4/5', both: true },
+  { id: "ipad-mini-6", w: 744, h: 1133, dpr: 2, note: "iPad mini 6, mini 7", both: true },
+  { id: "ipad-109", w: 820, h: 1180, dpr: 2, note: 'iPad Air 10.9", iPad 10th/11th gen', both: true },
+  { id: "ipad-pro-11", w: 834, h: 1194, dpr: 2, note: 'iPad Pro 11" 1st–4th gen', both: true },
+  { id: "ipad-pro-11-m4", w: 834, h: 1210, dpr: 2, note: 'iPad Pro 11" M4, Air 11" M2', both: true },
+  { id: "ipad-pro-129", w: 1024, h: 1366, dpr: 2, note: 'iPad Pro 12.9", Air 13" M2', both: true },
+  { id: "ipad-pro-13-m4", w: 1032, h: 1376, dpr: 2, note: 'iPad Pro 13" M4', both: true },
 ];
+
+/** One image to cut: a device in one orientation. */
+interface SplashTarget {
+  id: string;
+  href: string;
+  media: string;
+  pxW: number;
+  pxH: number;
+  note: string;
+}
+
+function splashTargets(): SplashTarget[] {
+  const out: SplashTarget[] = [];
+  for (const d of DEVICES) {
+    const orientations: ("portrait" | "landscape")[] = d.both
+      ? ["portrait", "landscape"]
+      : ["portrait"];
+    for (const orientation of orientations) {
+      const landscape = orientation === "landscape";
+      out.push({
+        id: landscape ? `${d.id}-landscape` : d.id,
+        href: `/splash/${landscape ? `${d.id}-landscape` : d.id}.png`,
+        media: `(device-width: ${d.w}px) and (device-height: ${d.h}px) and (-webkit-device-pixel-ratio: ${d.dpr}) and (orientation: ${orientation})`,
+        pxW: (landscape ? d.h : d.w) * d.dpr,
+        pxH: (landscape ? d.w : d.h) * d.dpr,
+        note: `${d.note}${landscape ? " (landscape)" : ""}`,
+      });
+    }
+  }
+  return out;
+}
 
 /**
  * The splash extends the icon's world rather than enlarging the icon (§23): the
@@ -487,26 +543,27 @@ export const SLATE_MARK_ASPECT = ${(markAspect).toFixed(4)};
   const tag = setLine(plex, "RATINGS · PREDICTIONS · PICKS · BET TRACKING", 100, 4);
   const markUri = `data:image/png;base64,${keyed.toString("base64")}`;
 
+  const targets = splashTargets();
   let bytes = 0;
-  for (const d of DEVICES) {
+  for (const t of targets) {
     const svg = buildSplash(
       markUri,
       markAspect,
-      d.w * d.dpr,
-      d.h * d.dpr,
+      t.pxW,
+      t.pxH,
       { d: word.d, width: word.width, capTop },
       tag,
     );
     // Palette-quantised: a splash is one dark ground, one aura and two colours
-    // of type. 256 entries hold all of it, and it takes the set from 5.5 MB to
-    // under a megabyte — the icons stay full-colour, where gradients would band.
+    // of type. 256 entries hold all of it, and it keeps the set under a couple
+    // of megabytes now that iPads need both orientations.
     const data = await sharp(Buffer.from(new Resvg(svg).render().asPng()))
       .png({ palette: true, quality: 92, effort: 9 })
       .toBuffer();
-    writeFileSync(out(`public/splash/${d.id}.png`), data);
+    writeFileSync(out(`public/splash/${t.id}.png`), data);
     bytes += data.length;
   }
-  console.log(`  ${DEVICES.length} files, ${(bytes / 1024).toFixed(0)} KB total`);
+  console.log(`  ${targets.length} files, ${(bytes / 1024).toFixed(0)} KB total`);
 
   writeFileSync(
     out("src/lib/apple-startup-images.ts"),
@@ -520,10 +577,9 @@ export const SLATE_MARK_ASPECT = ${(markAspect).toFixed(4)};
  * paint, which is the one thing the brand spec says must never happen.
  */
 export const APPLE_STARTUP_IMAGES: ReadonlyArray<{ href: string; media: string }> = [
-${DEVICES.map(
-  (d) =>
-    `  // ${d.note}\n  {\n    href: "/splash/${d.id}.png",\n    media:\n      "(device-width: ${d.w}px) and (device-height: ${d.h}px) and (-webkit-device-pixel-ratio: ${d.dpr}) and (orientation: portrait)",\n  },`,
-).join("\n")}
+${targets
+  .map((t) => `  // ${t.note}\n  {\n    href: "${t.href}",\n    media:\n      "${t.media}",\n  },`)
+  .join("\n")}
 ];
 `,
   );

@@ -226,6 +226,26 @@ describe("watchdogVerdict (audit 07/OPS-1c)", () => {
   it("a never-run job (Infinity) trips its threshold", () => {
     expect(watchdogVerdict({ ...fresh, refreshLines: Infinity }, false)[0]).toMatch(/refresh-lines/);
   });
+
+  // PUSH-10. The notify jobs are weekly and seasonal: silent all offseason on
+  // purpose, so they are gated on there being something to notify about rather
+  // than on an hours horizon.
+  it("says nothing about the notify jobs out of season, however long they have been silent", () => {
+    const silent = { ...fresh, picksDue: Infinity, logBets: Infinity };
+    expect(watchdogVerdict(silent, false, false)).toEqual([]);
+  });
+  it("flags a notify job that missed a week while games are on", () => {
+    const missed = { ...fresh, picksDue: 9 * 24, logBets: 2 };
+    expect(watchdogVerdict(missed, false, true)[0]).toMatch(/notify-picks-due/);
+  });
+  it("tolerates a run that slipped a day", () => {
+    // Weekly crons plus Actions lag: 7 days and change is normal, not a fault.
+    expect(watchdogVerdict({ ...fresh, picksDue: 7.5 * 24, logBets: 2 }, false, true)).toEqual([]);
+  });
+  it("flags log-bets independently of picks-due", () => {
+    const missed = { ...fresh, picksDue: 2, logBets: 9 * 24 };
+    expect(watchdogVerdict(missed, false, true)[0]).toMatch(/notify-log-bets/);
+  });
 });
 
 describe("detectCoverFlips — bad beats and backdoor covers (audit 10/G9)", () => {

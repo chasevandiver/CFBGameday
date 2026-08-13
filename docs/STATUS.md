@@ -36,12 +36,12 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **585 tests across 41 files**, `tsc` and lint clean — run in-session 2026-08-12 after the push-notification merge. 118 DB assertions carried from CI. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
+| **Build** | **592 tests across 41 files**, `tsc` and lint clean — run in-session 2026-08-12 after the notify-job watchdog. 118 DB assertions carried from CI. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
 | **Scheduler** | 111 completed runs. Reds to date: one watchdog firing correctly on a cold `job_runs` table, and runs #107–109 — the backup verification sequence, each a real defect, all closed. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
 | **Model in code** | `2026.5.0` — tilt carry, `baseHfa` 3.0, centered team-HFA, portal fix, market-anchored tier recentre |
-| **Database** | Verified live 2026-08-12: **31** migrations applied, `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
+| **Database** | Verified live 2026-08-12: **32** migrations applied and 32 recorded — the `0017` ledger gap (DB-3) was repaired the same day. 0031–0033 add the push tables. `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
 | **Model in production** | ⚠️ `2026.2.0`. **Four versions behind**, pricing every cross-classification opener ~10 points toward the G5. Waiting on CFBD to publish 2026 talent; `preseason-refresh` retries daily and loads itself the first morning `--check` is green. |
 | **The edge verdict** | b₁ = 0.035 (t = 0.84) for the model vs 0.987 (t = 22.81) for the market, n = 2611; flagged edges 49.2% ATS vs the close. Edges are **information, not bets** — and no model-accuracy work belongs in the next 17 days. |
 
@@ -213,11 +213,16 @@ Dated per `KICKOFF_READINESS` §10. Total ≈ 20 h of code plus the checkpoints.
       pick, but the board page is now long. And this is the realistic load case
       for `09:P-10` (board picks-query collapse) and for the `09:P-16` rehearsal
       — seed week 1, not a 10-game week.
-- [ ] **DB-3 — `0017_rivalries_seed` is not in the applied-migrations ledger**,
-      though `rivalries` holds its 29 rows, so the seed reached the database by
-      some other path. Harmless today; it means a `db push` against a fresh
-      project (or a restore into one) would not reproduce this database from the
-      repo. Reconcile the ledger. · 0.25 h
+- [x] **DB-3 — `0017_rivalries_seed` recorded in the ledger**, 2026-08-12.
+      The seed had reached the database by some other path (29 rivalries live)
+      but had no row in `supabase_migrations`, so a `db push` against a fresh
+      project or a restore would not reproduce this database from the repo.
+      Repaired by recording version `20260806061800`; 32 files now match 32
+      recorded rows. **Correction:** an intermediate version of this entry
+      claimed re-running the seed would duplicate rows or hit a constraint. It
+      would not — the insert carries a `where not exists` guard on the pair in
+      both directions. That was a grep for `on conflict` finding nothing and
+      concluding the worst.
 - [ ] **DB-4 — no postseason rows** (`games` is 888, all `season_type =
       'regular'`). Expected — CFBD publishes bowls in December — but it means
       the postseason ingestion path shipped in `§23 #35` has never run against
@@ -370,21 +375,36 @@ Two items remain open; the closed ones are kept for the record.
       (§22), the startup image matching on a device that is actually in the
       media-query table, and that no white band appears between tap and first
       paint (§41.15–17). The unit tests cover transparency, square corners and
-      the maskable safe radius; they cannot cover any of these. · 0.5 h, human
+      the maskable safe radius; they cannot cover any of these. **Done
+      2026-08-12: iPhone passes** — tile, install and splash all confirmed by
+      the owner. The iPad found a real bug (stretched splash: portrait-only
+      queries plus three current iPads missing from the table entirely), fixed
+      the same day. Original note: **Partly done
+      2026-08-12:** the PWA was installed on an iPhone (iOS 18.7) for the push
+      work, so the install path and the home-screen tile are confirmed to
+      render. The row test against DraftKings/ESPN and the white-band check
+      were not deliberately looked at. · 0.25 h, human
 - [x] **BRAND-5** Game cards, pick'em and the edge display as descendants of
       the icon (§32–34) — carried by the token swap, and therefore only in the
       Field theme. Verified by screenshot at 420px in all three.
-- [ ] **BRAND-8** Decide whether Field ever becomes the default. It exists so
-      the app can match its own icon; today it is one of three and the owner
-      picked charcoal. No work until that call. · owner call
+- [x] **BRAND-8 — answered 2026-08-12: no.** Field stays one of three. The
+      owner wants the three options, so charcoal dark remains the default and
+      the brand palette is a choice rather than a migration.
 - [x] **BRAND-6** An S in the nav lockup, from the traced outline
       (`src/lib/brand-mark-outline.ts`). Letter takes `currentColor`, so it
       inverts for the light theme; only the seam is pinned to the accent.
-- [ ] **BRAND-7** A true vector master (§20). The supplied artwork is a 1254²
-      raster, so every export is a downscale and there is nothing to hand to a
-      printer or recolour. No shipped surface needs it — the largest is a 512px
-      launcher icon — but a large-format OG variant or any print use would.
-      Either trace it or rebuild it in a vector editor. · owner call
+- [x] **BRAND-7** Vector master, 2026-08-12:
+      `public/brand/slate-icon-master.svg` — layered and named
+      (Ground / S / Football-Seam) with the palette in a `<style>` block, so a
+      recolour is one edit rather than one per path. Outlines traced from the
+      supplied raster, so the letterform is exact at any size: print,
+      embroidery, a large-format OG variant, a one-colour reversal.
+      **It is flat, deliberately.** §20 also lists Bevel and Lighting layers;
+      those live in the raster, and rebuilding them as vector would be guessing
+      at the original's lighting — the exact mistake the traced outline exists
+      to avoid. Anything that should look dimensional uses
+      `slate-icon-source.png`. A layered *dimensional* vector, if ever genuinely
+      needed, has to come from whatever produced the artwork.
 
 **Correctness / security**
 - [ ] **P2-4 / SEC-10** Drop the dead `picks` policies 0018 recreated — the
@@ -451,14 +471,15 @@ Two items remain open; the closed ones are kept for the record.
 - [ ] **04:DQ-11** Real `turnoverMargin` for the luck rule · S/M
 - [ ] **04:DQ-15** `cached()` shouldn't persist empty CFBD responses · S, local-dev only
 
-**Push notifications** — §23 #38, scoped 2026-08-12. iOS supports Web Push
-from 16.4, but **only for a web app installed to the Home Screen**; a PWA in a
-Safari tab cannot even ask. The install side of that landed with the brand work
-(manifest, `display: standalone`, real icons). Everything below is what is
-still missing — there is no service worker anywhere in the tree today.
+**Push notifications** — §23 #38, scoped and then built 2026-08-12. iOS
+supports Web Push from 16.4, but **only for a web app installed to the Home
+Screen**; a PWA in a Safari tab cannot even ask. Sending is standard VAPID Web
+Push, the same code as Chrome and Firefox — no Apple Developer account, no APNs
+certificate.
 
-Sending is standard VAPID Web Push, the same code as Chrome and Firefox. No
-Apple Developer account, no APNs certificate.
+**Live and verified on a real iPhone.** The list below is kept with its original
+scope text so the estimates can be judged against what it took; the two unticked
+items are what is genuinely left.
 
 - [x] **PUSH-1 — the delivery path.** Migration 0031: `push_subscriptions`
       (user, endpoint unique, keys, `last_seen_at`, failure count; RLS so a
@@ -469,9 +490,10 @@ Apple Developer account, no APNs certificate.
       into the game or the board) and `pushsubscriptionchange` handlers; iOS
       drops subscriptions on disuse, and without that last one delivery stops
       silently. A server action in `src/app/actions/` to store and revoke, and
-      `web-push` in the job runner. Secrets: `VAPID_PUBLIC_KEY`,
-      `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, plus the public key as
-      `NEXT_PUBLIC_VAPID_PUBLIC_KEY`. `web-push` goes in **dependencies**, not
+      `web-push` in the job runner. Secrets, as actually read by the code:
+      `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
+      (there is no unprefixed `VAPID_PUBLIC_KEY` — the scope said so and it was
+      wrong). `web-push` goes in **dependencies**, not
       dev: PUSH-2 wants a "send me a test" button, and that runs on Vercel. It
       is server-side only and never reaches the browser bundle. · 5 h
 - [x] **PUSH-2 — the opt-in.** A row in `/me`. Permission has to be requested
@@ -499,15 +521,26 @@ Apple Developer account, no APNs certificate.
       change, which is the difference between the owner running this and the
       owner filing a ticket for it. Ships with PUSH-2: together they are the
       point where the feature is self-serve. · 4 h
-- [ ] **PUSH-6 — guardrails.** Daily cap per user, quiet hours off
-      `profiles.timezone` (already on the table, defaulted to CT), prune
-      subscriptions on 404/410 from the push service, and a preference per kind
-      rather than one global switch. · 2 h
+- [~] **PUSH-6 — guardrails. Declined by the owner 2026-08-12.** Kept rather
+      than deleted because the exposure is real and someone will rediscover it:
+      with no daily cap a chaotic Saturday sends one bad-beat push per late
+      swing, and with no quiet hours a Pac-after-dark flip buzzes at 2am. The
+      mitigating fact, and presumably why it was declined: bad beats now
+      default OFF, so this reaches only someone who deliberately switched them
+      on and can switch them back off. Revisit if anyone turns them on and
+      regrets it. Original scope: two of the four shipped
+      with PUSH-1: 404/410 pruning is in `sendToUser`, and per-kind preferences
+      are the `notification_prefs` table. **What is left is the daily cap per
+      user and quiet hours off `profiles.timezone`** — nothing limits how many
+      bad-beat pushes one chaotic Saturday can fire, and a late Pac-after-dark
+      flip will buzz at 2am. Less urgent since bad beats now default off, so it
+      only reaches people who asked, but not gone. · 1 h
 
 **Deliberately not notified:** line moves, edge alerts, "your game is starting".
 BRAND §16 and §38 — this is an intelligence tool, and a product that pings you
-about a two-point move is how people turn notifications off. PUSH-3 and PUSH-4
-are two interruptions a week at most.
+about a two-point move is how people turn notifications off. What ships: one
+picks-due nudge a week, three log-bets reminders on a Saturday for a betting
+group, and bad beats only for someone who switched them on.
 
 **PUSH-5, a Sunday results digest, was declined by the owner on 2026-08-12** and
 the ID is left vacant rather than reused. It would have been one push after
@@ -516,11 +549,13 @@ page already exists and Sunday is the one day nobody needs prompting to go look
 at it — a digest would have been the first notification anyone muted, and
 muting is per-app, so it would have taken the two that matter with it.
 
-**How you know it is working**, in three layers, none of which involve asking
-anyone: the test button in `/me` proves your own device end to end; the send log
-on `/admin` shows every scheduled push, who it went to and what bounced; and a
-notify job that goes silent past its cadence trips the existing `watchdog` the
-same way a missed `freeze` does, which is a red run and an email.
+**How you know it is working**, without asking anyone: the test button in `/me`
+proves your own device end to end, and the send log on `/admin` shows every push,
+who it went to and what bounced.
+
+There is **no absence check** on the notify jobs — see PUSH-10. An earlier
+version of this section claimed the `watchdog` covered them; it does not. It
+checks `refresh-lines`, `sync-games` and `scoreboard-loop` and nothing else.
 
 **What still needs a code change after PUSH-7:** a genuinely new *kind* of
 trigger — some event nothing currently watches. Timing, copy, audience, turning
@@ -533,14 +568,25 @@ item left, and it is the one that protects a Saturday:** nothing caps how many
 bad-beat notifications one chaotic afternoon can send, and nothing respects
 `profiles.timezone`, so a late Pac-after-dark flip will buzz at 2am. Neither has
 bitten yet because no game has gone live since the feature shipped. Worth
-closing before Week 0. Two operational steps are outstanding and cannot be done
-from a branch:
+closing before Week 0.
 
 - [x] **PUSH-8** Migration 0031 applied and VAPID keys set in Vercel and
       Actions, 2026-08-12. **Verified end to end on a real iPhone (iOS 18.7):**
       installed to the Home Screen, subscription stored, test notification
-      delivered, receipt logged `sent`. That closes the one thing BRAND-4 could
-      not check from CI — a real handset has now taken a push from this app.
+      delivered, receipt logged `sent`.
+- [x] **PUSH-9** `log_bets`, a fourth kind: one push per betting group per
+      Saturday wave, three crons 15 min before the 11:00 / 14:30 / 18:30 CT
+      waves. Plus per-kind defaults in `notification_settings.default_enabled`,
+      with bad beats shipping **off**. Migrations 0032/0033, applied
+      2026-08-12. Owner request.
+- [x] **PUSH-10** Absence check on the notify jobs, 2026-08-12. `watchdogJob`
+      now covers `notify-picks-due` and `notify-log-bets` on an 8-day horizon,
+      **gated on there being a scheduled game inside the next week**. That gate
+      is the whole design: both jobs are weekly and seasonal, so from December
+      to August they are correctly silent, and an hours-since-last-ok check
+      would go red every week for eight months until nobody read it. 8 days,
+      not 7, so a run that slips a day is not a fault. Four tests, including
+      the offseason case.
 
 **Product / UX**
 - [ ] **G10-v1** Copy-digest ShareButton: Thursday (frozen slate / edges / "N
