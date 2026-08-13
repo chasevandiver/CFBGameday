@@ -274,7 +274,7 @@ export interface SlateData {
   /** Which league this slate is — derived from the season id, never guessed. */
   sport: Sport;
   week: number;
-  seasonType: "regular" | "postseason";
+  seasonType: "preseason" | "regular" | "postseason";
   fetchedAt: string;
   /**
    * Newest line snapshot across the week's games — when the lines on screen

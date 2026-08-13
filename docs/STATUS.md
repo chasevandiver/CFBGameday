@@ -1216,6 +1216,19 @@ Built on `claude/nfl-scores-lines-l4bhio`; the design and its evidence are in
       browsing (January; stored weeks 1–4 exist now), NFL venues + weather
       (existing `weatherJob` machinery, needs offset venue rows + coords),
       watchdog rows for NFL job ages, NFL demo data.
+- [x] **NFL-7** Preseason, owner request 2026-08-13 ("Can we add preseason
+      too?"). `preseason` is a third season_type on the NFL side only: stored
+      1:1 from ESPN (weeks 1–4, week 1 the Hall of Fame game), no schema
+      change needed (season_type carries no check constraint anywhere —
+      verified against the live catalog). `nflStoredWeek` passes it through,
+      sync fetches the four boards (dry-run: 321 games = 272 + 49),
+      refresh-lines picks its week by earliest scheduled kickoff instead of a
+      season-type sort (pre → regular → post has no lexical order), the
+      pointer's `toPointer` passes it through, and the NFL week select gains
+      Pre 1–4 (`?st=pre&week=N`). Real games — scores, lines, bets, live
+      states — but pick'em boards still reject the season type
+      (`set_group_week_config`, deliberate) and the model never sees the NFL
+      at all. CFB untouched: no CFB row carries the type.
 
 ---
 

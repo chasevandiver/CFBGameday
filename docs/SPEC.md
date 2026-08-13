@@ -288,8 +288,11 @@ second slate, the same ledger — **not** a second model.
   never carries an NFL row; `/edges` stays CFB. NFL cards render the market
   and the absence of a lean. Grading, CLV and League Rule #4 voids run through
   the same shared machinery (`gradeSeasonFinals`).
-- **Weeks**: regular 1–18, postseason 1–4 (Wild Card → Super Bowl; the Pro
-  Bowl is dropped at ingest). No week 0, ever.
+- **Weeks**: preseason 1–4 (week 1 is the Hall of Fame game), regular 1–18,
+  postseason 1–4 (Wild Card → Super Bowl; the Pro Bowl is dropped at ingest).
+  No week 0, ever. Preseason games are real games — scores, lines, bets, live
+  states — but never pick'em boards (`set_group_week_config` rejects the
+  season type) and never model input.
 - **Groups**: pick'em groups carry `leagues` (default `{cfb}`, admin-set); a
   both-league group holds one board per league per week — separate
   `group_week_config` rows under separate season ids. Betting groups have no

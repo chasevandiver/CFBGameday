@@ -29,18 +29,31 @@ export default async function SlatePage({
   );
   const parsed = Number(weekParam);
   const hasWeekParam = isValidWeek(parsed);
-  // ?st=post pins the bowls/CFP view; an explicit ?week= means the regular
-  // season; otherwise the default follows the calendar into the postseason.
+  // ?st=post pins the bowls/CFP (or NFL playoffs) view; ?st=pre pins an NFL
+  // preseason week; an explicit ?week= alone means the regular season;
+  // otherwise the default follows the calendar through pre → regular → post.
   const st =
-    stParam === "post" ? ("postseason" as const) : hasWeekParam ? ("regular" as const) : seasonType;
+    stParam === "post"
+      ? ("postseason" as const)
+      : stParam === "pre"
+        ? ("preseason" as const)
+        : hasWeekParam
+          ? ("regular" as const)
+          : seasonType;
   const week =
     st === "postseason"
       ? seasonType === "postseason"
         ? currentWeek
         : 1
-      : hasWeekParam
-        ? parsed
-        : currentWeek;
+      : st === "preseason"
+        ? hasWeekParam
+          ? parsed
+          : seasonType === "preseason"
+            ? currentWeek
+            : 1
+        : hasWeekParam
+          ? parsed
+          : currentWeek;
 
   // Two layers, two groups. The pool's picks are scoped to a pick'em group and
   // the sheet to a betting group; someone can be in one, both or neither, and

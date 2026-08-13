@@ -166,6 +166,27 @@ shipping it.
 
 ## Log
 
+### Aug 13 (night) — NFL preseason: August is real on the NFL side
+
+Owner request an hour after go-live. `preseason` becomes a third
+season_type — NFL only, no CFB row ever carries it — stored 1:1 from
+ESPN's boards (weeks 1–4, week 1 the Hall of Fame game). No migration:
+`season_type` has no check constraint anywhere, verified against the live
+catalog rather than the migration files. `nflStoredWeek` stops dropping
+type 1, sync fetches four more boards (dry-run 321 = 272 + 49),
+refresh-lines picks its week by earliest scheduled kickoff — a
+season-type sort can't order pre → regular → post — and the slate's NFL
+week select gains Pre 1–4 behind `?st=pre&week=N`. The pointer needed
+one line: `toPointer` passing the type through; the kickoff-derived
+current-slate logic (audit bug #6's fix) already lands on tonight's
+preseason week by construction.
+
+Preseason games are real games — scores, live states, lines when the
+book posts them, bets that grade — with two deliberate exclusions
+unchanged: `set_group_week_config` still rejects the season type, so no
+pick'em board can be hung on an exhibition, and the model never sees the
+NFL at all.
+
 ### Aug 13 (later still) — The NFL, as a second seasons row
 
 The site carries both leagues now: NFL scores and lines on the slate behind a

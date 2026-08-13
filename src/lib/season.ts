@@ -18,7 +18,10 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type SeasonType = "regular" | "postseason";
+/** CFB uses regular | postseason; the NFL adds preseason (August, weeks 1–4,
+ *  week 1 being the Hall of Fame game). Real games, real lines, real bets —
+ *  just no pick'em boards (set_group_week_config rejects it) and no model. */
+export type SeasonType = "preseason" | "regular" | "postseason";
 
 export interface SlatePointer {
   week: number;
@@ -57,5 +60,9 @@ export async function fetchCurrentSlate(
 }
 
 function toPointer(week: number, seasonType: string): SlatePointer {
-  return { week, seasonType: seasonType === "postseason" ? "postseason" : "regular" };
+  return {
+    week,
+    seasonType:
+      seasonType === "postseason" ? "postseason" : seasonType === "preseason" ? "preseason" : "regular",
+  };
 }

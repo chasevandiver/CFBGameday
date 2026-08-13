@@ -403,18 +403,21 @@ export function parseEvent(event: EspnEvent): NflScoreboardGame {
 }
 
 /**
- * The (season_type, week) an ESPN postseason event is stored under, or null
- * when the event isn't part of the bracket. ESPN's postseason weeks are
- * 1 Wild Card · 2 Divisional · 3 Conference · 4 Pro Bowl · 5 Super Bowl;
- * stored weeks are 1–4 with the Pro Bowl dropped and the Super Bowl at 4.
+ * The (season_type, week) an ESPN event is stored under, or null when the
+ * event isn't stored at all. Preseason maps 1:1 (weeks 1–4; week 1 is the
+ * Hall of Fame game). ESPN's postseason weeks are 1 Wild Card · 2 Divisional
+ * · 3 Conference · 4 Pro Bowl · 5 Super Bowl; stored weeks are 1–4 with the
+ * Pro Bowl dropped and the Super Bowl at 4.
  */
 export function nflStoredWeek(
   espnSeasonType: number,
   espnWeek: number,
   eventName: string,
-): { seasonType: "regular" | "postseason"; week: number } | null {
+): { seasonType: "preseason" | "regular" | "postseason"; week: number } | null {
+  if (espnSeasonType === ESPN_SEASON_TYPE.preseason)
+    return { seasonType: "preseason", week: espnWeek };
   if (espnSeasonType === ESPN_SEASON_TYPE.regular) return { seasonType: "regular", week: espnWeek };
-  if (espnSeasonType !== ESPN_SEASON_TYPE.postseason) return null; // preseason not stored
+  if (espnSeasonType !== ESPN_SEASON_TYPE.postseason) return null;
   if (espnWeek === 4 || /pro bowl/i.test(eventName)) return null;
   if (espnWeek === 5) return { seasonType: "postseason", week: 4 };
   if (espnWeek >= 1 && espnWeek <= 3) return { seasonType: "postseason", week: espnWeek };
