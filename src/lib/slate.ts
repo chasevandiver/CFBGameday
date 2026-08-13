@@ -10,6 +10,7 @@ import { liveWinProb } from "../model/live";
 import type { GroupBetView } from "./tailing";
 import { spreadCoverSide, totalCoverSide } from "./cover";
 import type { PickMarket } from "./grade";
+import type { Sport } from "./league";
 import { isDeadStatus } from "./void";
 
 export interface TeamView {
@@ -270,6 +271,8 @@ export interface SystemRatingView {
 
 export interface SlateData {
   seasonId: number;
+  /** Which league this slate is — derived from the season id, never guessed. */
+  sport: Sport;
   week: number;
   seasonType: "regular" | "postseason";
   fetchedAt: string;

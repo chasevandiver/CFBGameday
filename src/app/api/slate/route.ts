@@ -19,7 +19,8 @@ export async function GET(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(supabase);
+  const sport = request.nextUrl.searchParams.get("sport") === "nfl" ? "nfl" : "cfb";
+  const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(supabase, sport);
   const stParam = request.nextUrl.searchParams.get("st");
   const weekParam = Number(request.nextUrl.searchParams.get("week"));
   const hasWeek = isValidWeek(weekParam);

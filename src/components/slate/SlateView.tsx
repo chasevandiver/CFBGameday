@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType }
 import { onBetsChanged } from "../../lib/bets-changed";
 import { useFocusedGames, useStarred, useViewerTz } from "../../lib/client-store";
 import type { GameRow } from "../../lib/db-types";
-import { clockTime, dayKey, dayTabLabel, dayTabLabels, kickSlot, DEFAULT_TZ, tzLabel } from "../../lib/kick";
+import { clockTime, dayKey, dayTabLabel, dayTabLabels, kickSlot, nflKickSlot, DEFAULT_TZ, tzLabel } from "../../lib/kick";
 import { liveUrgency } from "../../lib/live-status";
 import { useGamesRealtime } from "../../lib/use-games-realtime";
 import {
@@ -127,12 +127,13 @@ export function SlateView({
   const liveEventAt = useRef(new Map<number, number>());
 
   const seasonType = data.seasonType;
+  const sport = data.sport;
   const refresh = useCallback(async (targetWeek: number, showSkeleton: boolean, st?: string) => {
     if (demo) return;
     if (showSkeleton) setLoading(true);
     const fetchStart = Date.now();
     try {
-      const res = await fetch(`/api/slate?week=${targetWeek}&st=${st ?? "regular"}`, {
+      const res = await fetch(`/api/slate?week=${targetWeek}&st=${st ?? "regular"}&sport=${sport}`, {
         cache: "no-store",
       });
       if (res.ok) {
@@ -165,7 +166,7 @@ export function SlateView({
     } finally {
       if (showSkeleton) setLoading(false);
     }
-  }, [demo]);
+  }, [demo, sport]);
 
   const handleGameUpdate = useCallback((row: GameRow) => {
     liveEventAt.current.set(row.id, Date.now());
@@ -250,6 +251,7 @@ export function SlateView({
   useEffect(() => {
     if (!urlReady.current) return;
     const sp = new URLSearchParams();
+    if (sport === "nfl") sp.set("sport", "nfl");
     if (seasonType === "postseason") sp.set("st", "post");
     else if (week !== currentWeek) sp.set("week", String(week));
     if (conference !== "all") sp.set("conf", conference);
@@ -264,7 +266,7 @@ export function SlateView({
     if (day !== "all") sp.set("day", day);
     const qs = sp.toString();
     window.history.replaceState(null, "", qs ? `/slate?${qs}` : "/slate");
-  }, [week, seasonType, currentWeek, conference, network, spreadRange, rankedOnly, betsOnly, picksOnly, sort, query, day]);
+  }, [week, seasonType, sport, currentWeek, conference, network, spreadRange, rankedOnly, betsOnly, picksOnly, sort, query, day]);
 
   /* ---- derived --------------------------------------------------------- */
 
@@ -374,9 +376,12 @@ export function SlateView({
     // big slates get the broadcast-window structure; small ones stay one block
     const slotted: Array<{ key: string; title: string; games: GameView[] }> = [];
     if (upcoming.length >= 8) {
+      // each league's own broadcast vocabulary: Noon/Afternoon/Primetime/Late
+      // for CFB Saturdays, Early/Late window/Primetime for NFL Sundays
+      const slotOf = sport === "nfl" ? nflKickSlot : kickSlot;
       for (const g of upcoming) {
         const title = g.startTs
-          ? `${dayTabLabel(g.startTs, tz)} · ${kickSlot(g.startTs)}`
+          ? `${dayTabLabel(g.startTs, tz)} · ${slotOf(g.startTs)}`
           : "Kickoff TBD";
         const last = slotted[slotted.length - 1];
         if (last && last.title === title) last.games.push(g);
@@ -391,7 +396,7 @@ export function SlateView({
       ...slotted,
       { key: "final", title: "Final", games: finalGames },
     ].filter((s) => s.games.length > 0);
-  }, [sorted, sort, tz]);
+  }, [sorted, sort, tz, sport]);
 
   const rankedCount = games.filter(isRankedMatchup).length;
   const record = weekModelRecord(games);
@@ -416,9 +421,14 @@ export function SlateView({
         style={{ top: "calc(3rem + var(--ticker-h, 0px))" }}
       >
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 py-2.5">
+          {/* Switching league is a full server refetch with its own current
+              week, so these are links, not state (the LedgerTabs pattern) —
+              and the demo holds one CFB week, so there they'd 404 the point. */}
+          {!demo && <SportToggle sport={sport} />}
           <WeekSelect
             week={week}
             seasonType={seasonType}
+            sport={sport}
             currentWeek={currentWeek}
             minWeek={minWeek}
             onChange={changeWeek}
@@ -490,7 +500,10 @@ export function SlateView({
           <FilterSelect
             value={conference}
             onChange={setConference}
-            options={[["all", "All conferences"], ...conferences.map((c): [string, string] => [c, c])]}
+            options={[
+              ["all", sport === "nfl" ? "All divisions" : "All conferences"],
+              ...conferences.map((c): [string, string] => [c, c]),
+            ]}
           />
           <FilterSelect
             value={network}
@@ -663,9 +676,36 @@ function absOr(v: number | null, fallback: number): number {
   return v === null ? fallback : Math.abs(v);
 }
 
+/**
+ * CFB | NFL, as links. A league switch replaces the whole slate — different
+ * season row, different current week — so it goes through the server like the
+ * ledger's tabs do, and Back returns to the other league.
+ */
+function SportToggle({ sport }: { sport: "cfb" | "nfl" }) {
+  const seg = (active: boolean) =>
+    `flex h-8 items-center rounded-lg px-3 text-xs font-semibold transition-colors ${
+      active ? "bg-accent text-accent-ink" : "text-dim hover:bg-surface hover:text-chalk"
+    }`;
+  return (
+    <nav aria-label="League" className="flex shrink-0 items-center gap-1">
+      <a href="/slate" className={seg(sport === "cfb")} aria-current={sport === "cfb" ? "page" : undefined}>
+        CFB
+      </a>
+      <a
+        href="/slate?sport=nfl"
+        className={seg(sport === "nfl")}
+        aria-current={sport === "nfl" ? "page" : undefined}
+      >
+        NFL
+      </a>
+    </nav>
+  );
+}
+
 function WeekSelect({
   week,
   seasonType,
+  sport,
   currentWeek,
   minWeek = 1,
   onChange,
@@ -673,6 +713,7 @@ function WeekSelect({
 }: {
   week: number;
   seasonType: "regular" | "postseason";
+  sport: "cfb" | "nfl";
   currentWeek: number;
   /** 0 when the season has a Week 0 — the last Saturday of August. */
   minWeek?: number;
@@ -680,6 +721,7 @@ function WeekSelect({
   /** The demo holds one week. A control that changes nothing is worse than none. */
   disabled?: boolean;
 }) {
+  const maxWeek = sport === "nfl" ? 18 : 16;
   return (
     <label className="relative shrink-0">
       <span className="sr-only">Week</span>
@@ -691,13 +733,13 @@ function WeekSelect({
         }
         className="display h-8 appearance-none rounded-lg border border-chalk/12 bg-surface pl-3 pr-8 text-base text-chalk focus:border-accent/60 focus:outline-none disabled:opacity-60"
       >
-        {Array.from({ length: 16 + (1 - minWeek) }, (_, i) => i + minWeek).map((w) => (
+        {Array.from({ length: maxWeek + (1 - minWeek) }, (_, i) => i + minWeek).map((w) => (
           <option key={w} value={w}>
             Week {w}
             {w === currentWeek && seasonType === "regular" ? " ·" : ""}
           </option>
         ))}
-        <option value="post">Bowls &amp; CFP</option>
+        <option value="post">{sport === "nfl" ? "Playoffs" : "Bowls & CFP"}</option>
       </select>
       <ChevronDown
         size={14}

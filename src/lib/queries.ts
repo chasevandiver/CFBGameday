@@ -16,7 +16,7 @@ import { tallyBy } from "./records";
 import { toSheetBet } from "./betting-groups";
 import { classifyBets, recentForm, statsByMember, type GroupBetView } from "./tailing";
 import { fetchCurrentSlate, type SeasonType } from "./season";
-import type { Sport } from "./league";
+import { sportOfSeasonId, type Sport } from "./league";
 import { atsRecord, ouRecord } from "./slate";
 import type {
   CrewPickView,
@@ -146,7 +146,7 @@ export async function fetchSlateView(
     .order("start_ts", { ascending: true });
   if (error) throw error;
   if (!games || games.length === 0)
-    return { seasonId, week, seasonType, fetchedAt, linesAsOf: null, games: [] };
+    return { seasonId, sport: sportOfSeasonId(seasonId), week, seasonType, fetchedAt, linesAsOf: null, games: [] };
 
   const gameRows = games as GameRow[];
   const gameIds = gameRows.map((g) => g.id);
@@ -574,7 +574,7 @@ export async function fetchSlateView(
     if (c.as_of !== null && (linesAsOf === null || c.as_of > linesAsOf)) linesAsOf = c.as_of;
   }
 
-  return { seasonId, week, seasonType, fetchedAt, linesAsOf, games: views };
+  return { seasonId, sport: sportOfSeasonId(seasonId), week, seasonType, fetchedAt, linesAsOf, games: views };
 }
 
 export interface TeamAtsSummary {
