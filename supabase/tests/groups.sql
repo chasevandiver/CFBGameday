@@ -490,3 +490,57 @@ begin;
                                picks_hidden_until_kickoff, archived_at
                         from groups) q) >= 0);
 rollback;
+
+\echo '# league scope (0042)'
+-- NFL season + one NFL game, seeded as postgres. Offset ids per league.ts.
+\o /dev/null
+insert into seasons (id, label, week0_start, is_current, sport)
+values (102026, '2026 NFL', date '2026-09-10', true, 'nfl');
+insert into teams (id, school, abbreviation, conference, classification, sport) values
+  (100012, 'Kansas City Chiefs', 'KC',  'AFC West', 'nfl', 'nfl'),
+  (100024, 'Los Angeles Chargers', 'LAC', 'AFC West', 'nfl', 'nfl');
+insert into games (id, season_id, week, season_type, start_ts, home_team_id, away_team_id, sport)
+values (900001, 102026, 1, 'regular', now() + interval '5 days', 100012, 100024, 'nfl');
+\o
+
+select pg_temp.chk('a group plays CFB by default',
+                   (select leagues = '{cfb}' from groups where id = :'grp'::uuid));
+
+-- bob is the admin (ann was demoted above)
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.raises('an NFL week is refused while the group is CFB-only',
+    format($$select set_group_week_config(%L, 102026, 1, 'regular', 'full_slate', null,
+             array['spread'])$$, :'grp'));
+  select set_group_leagues(:'grp'::uuid, array['nfl','cfb']);
+  select pg_temp.chk('the admin opened the group to both leagues — stored deduped and ordered',
+                     (select leagues = '{cfb,nfl}' from groups where id = :'grp'::uuid));
+  select set_group_week_config(:'grp'::uuid, 102026, 1, 'regular', 'full_slate', null,
+                               array['spread']);
+  select pg_temp.chk('an NFL week config lands once the league is on',
+                     exists (select 1 from group_week_config
+                             where group_id = :'grp'::uuid and season_id = 102026 and week = 1));
+  select pg_temp.raises('but at least one league must stay on',
+    format($$select set_group_leagues(%L, array[]::text[])$$, :'grp'));
+  select pg_temp.raises('and an invented league is refused',
+    format($$select set_group_leagues(%L, array['xfl'])$$, :'grp'));
+rollback;
+
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.raises('a plain member cannot change the leagues',
+    format($$select set_group_leagues(%L, array['nfl'])$$, :'grp'));
+rollback;
+
+-- A betting group has no league scope: the sheet follows the bets.
+\o /dev/null
+begin;
+  select test_as(:bob::uuid);
+  select create_group('Degens', 'private', 'betting') as bgrp \gset
+commit;
+\o
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.raises('a betting group refuses a league scope',
+    format($$select set_group_leagues(%L, array['nfl'])$$, :'bgrp'));
+rollback;
