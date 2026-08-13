@@ -306,6 +306,8 @@ const DEVICES: ReadonlyArray<{
   { id: "iphone-16-pro", w: 402, h: 874, dpr: 3, note: "iPhone 16 Pro" },
   { id: "iphone-16-pro-max", w: 440, h: 956, dpr: 3, note: "iPhone 16 Pro Max" },
   { id: "ipad-97", w: 768, h: 1024, dpr: 2, note: 'iPad 9.7", iPad mini 4/5', both: true },
+  { id: "ipad-102", w: 810, h: 1080, dpr: 2, note: 'iPad 7th–9th gen 10.2"', both: true },
+  { id: "ipad-105", w: 834, h: 1112, dpr: 2, note: 'iPad Pro 10.5", iPad Air 3', both: true },
   { id: "ipad-mini-6", w: 744, h: 1133, dpr: 2, note: "iPad mini 6, mini 7", both: true },
   { id: "ipad-109", w: 820, h: 1180, dpr: 2, note: 'iPad Air 10.9", iPad 10th/11th gen', both: true },
   { id: "ipad-pro-11", w: 834, h: 1194, dpr: 2, note: 'iPad Pro 11" 1st–4th gen', both: true },
@@ -459,6 +461,61 @@ ${cells}
 `;
 }
 
+/**
+ * Diagnostic: which startup-image query matches the device you are holding.
+ *
+ * `apple-touch-startup-image` fails silently and confusingly — an unmatched
+ * query does not give you a plain frame, it gives you a stretched one, and from
+ * the device there is no way to tell which. This evaluates every query with
+ * `matchMedia` and prints the device's own numbers, so a missing size is a fact
+ * rather than a hypothesis.
+ */
+function buildSplashCheck(
+  entries: { href: string; media: string; note: string }[],
+): string {
+  return `<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Splash check</title>
+<style>
+  body { margin:0; padding:24px; background:${BRAND.nearBlack}; color:${BRAND.chalk};
+         font:14px/1.5 ui-sans-serif, system-ui, sans-serif }
+  h1 { font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:${BRAND.gold}; margin:0 0 12px }
+  .big { font-family:ui-monospace,monospace; font-size:20px; color:${BRAND.gold}; margin:12px 0 }
+  table { border-collapse:collapse; width:100%; font-size:11px; font-family:ui-monospace,monospace }
+  td { padding:4px 6px; border-top:1px solid rgba(244,239,226,.1); vertical-align:top }
+  .yes { color:#35a46f; font-weight:700 }
+  .no  { color:#6E8579 }
+  p { color:#8FA79B; max-width:70ch }
+</style>
+<h1>Startup image check</h1>
+<p>Open this on the device with the problem, in the orientation with the problem.
+   If <b>no</b> row says MATCH, iOS has nothing to show and stretches a fallback —
+   that is the bug, and the numbers below are what the device table is missing.</p>
+<div class="big" id="dev"></div>
+<table id="rows"></table>
+<script>
+  var entries = ${JSON.stringify(entries)};
+  var o = (window.screen.orientation && window.screen.orientation.type) || "unknown";
+  document.getElementById("dev").textContent =
+    "screen " + screen.width + "x" + screen.height +
+    " · dpr " + window.devicePixelRatio +
+    " · " + (window.matchMedia("(orientation: landscape)").matches ? "landscape" : "portrait") +
+    " (" + o + ")";
+  var html = "", hits = 0;
+  entries.forEach(function (e) {
+    var m = window.matchMedia(e.media).matches;
+    if (m) hits++;
+    html += "<tr><td class=" + (m ? "yes>MATCH" : "no>—") + "</td><td>" + e.note +
+            "</td><td class=no>" + e.media.replace(/ and /g, "<br>and ") + "</td></tr>";
+  });
+  document.getElementById("rows").innerHTML =
+    "<tr><td colspan=3 class=" + (hits ? "yes" : "no") + ">" + hits +
+    " of " + entries.length + " matched</td></tr>" + html;
+</script>
+`;
+}
+
 /* ── Run ──────────────────────────────────────────────────────────────────── */
 
 async function main() {
@@ -584,6 +641,15 @@ ${targets
 `,
   );
   console.log("  src/lib/apple-startup-images.ts");
+
+  // Guessing at the device table has now been wrong twice. This reports what a
+  // real handset actually says, so the next fix is measured rather than
+  // inferred: open /brand/splash-check.html on the device in question.
+  writeFileSync(
+    out("public/brand/splash-check.html"),
+    buildSplashCheck(targets.map((t) => ({ href: t.href, media: t.media, note: t.note }))),
+  );
+  console.log("  public/brand/splash-check.html");
 
   writeFileSync(out("public/brand/contact-sheet.html"), buildContactSheet());
   console.log("  public/brand/contact-sheet.html");

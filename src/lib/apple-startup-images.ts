@@ -74,6 +74,30 @@ export const APPLE_STARTUP_IMAGES: ReadonlyArray<{ href: string; media: string }
     media:
       "(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)",
   },
+  // iPad 7th–9th gen 10.2"
+  {
+    href: "/splash/ipad-102.png",
+    media:
+      "(device-width: 810px) and (device-height: 1080px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
+  },
+  // iPad 7th–9th gen 10.2" (landscape)
+  {
+    href: "/splash/ipad-102-landscape.png",
+    media:
+      "(device-width: 810px) and (device-height: 1080px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)",
+  },
+  // iPad Pro 10.5", iPad Air 3
+  {
+    href: "/splash/ipad-105.png",
+    media:
+      "(device-width: 834px) and (device-height: 1112px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)",
+  },
+  // iPad Pro 10.5", iPad Air 3 (landscape)
+  {
+    href: "/splash/ipad-105-landscape.png",
+    media:
+      "(device-width: 834px) and (device-height: 1112px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)",
+  },
   // iPad mini 6, mini 7
   {
     href: "/splash/ipad-mini-6.png",
