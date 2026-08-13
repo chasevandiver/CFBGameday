@@ -19,6 +19,7 @@ import { fetchBettingSheet, byUnits } from "./betting-groups";
 import { spreadClv, totalClv } from "./clv";
 import type { GroupWeekConfigRow, PickMarket } from "./db-types";
 import { fetchMyGroups, type GroupSummary } from "./groups";
+import { seasonIdsForYear, seasonYearOf } from "./league";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "./queries";
 import {
   byLeagueRules,
@@ -302,6 +303,29 @@ export async function fetchHomeData(
       .filter((ts): ts is string => ts !== null && new Date(ts).getTime() > now)
       .sort()[0] ?? null;
 
+  // The hero stays CFB — Saturday is the product's spine — but "what you have
+  // riding" is one book across both leagues, so positions and tallies below
+  // read the NFL's current week too. Absent until nfl-sync-reference has run;
+  // a home page must not 500 over a league that isn't configured yet.
+  let nflPointer: { seasonId: number; week: number; seasonType: SeasonType } | null = null;
+  try {
+    nflPointer = await fetchCurrentSeasonWeek(supabase, "nfl");
+  } catch {
+    /* no NFL season configured */
+  }
+  const { data: nflWeekGameRows } = nflPointer
+    ? await supabase
+        .from("games")
+        .select("id")
+        .eq("season_id", nflPointer.seasonId)
+        .eq("week", nflPointer.week)
+        .eq("season_type", nflPointer.seasonType)
+    : { data: [] };
+  const nflWeekGameIds = new Set(
+    ((nflWeekGameRows ?? []) as Array<{ id: number }>).map((g) => g.id),
+  );
+  const actionWeekGameIds = new Set([...weekGameIds, ...nflWeekGameIds]);
+
   const empty: HomeData = {
     seasonId,
     week,
@@ -342,12 +366,12 @@ export async function fetchHomeData(
           .from("picks")
           .select("group_id, user_id, game_id, market, side, line_at_pick, result, units, clv")
           .in("group_id", pickemIds)
-          .eq("season_id", seasonId)
+          .in("season_id", seasonIdsForYear(seasonYearOf(seasonId)))
       : Promise.resolve({ data: [] }),
     supabase
       .from("bets")
       .select("id, game_id, bet_type, side, line_taken, result, units, payout_units, clv, placed_at")
-      .eq("season_id", seasonId)
+      .in("season_id", seasonIdsForYear(seasonYearOf(seasonId)))
       .eq("user_id", userId)
       .is("voided_at", null)
       .order("placed_at", { ascending: true }),
@@ -441,7 +465,7 @@ export async function fetchHomeData(
   /* ---- this week ---- */
 
   const configByGroup = new Map(configs.map((c) => [c.group_id, c]));
-  const myWeekPicks = myPickRows.filter((p) => weekGameIds.has(p.game_id));
+  const myWeekPicks = myPickRows.filter((p) => actionWeekGameIds.has(p.game_id));
   const progress: WeekProgress[] = mine
     .filter((g) => g.kind === "pickem" && configByGroup.has(g.id))
     .map((g) => {
@@ -470,7 +494,7 @@ export async function fetchHomeData(
     groupName: groupById.get(p.group_id)?.name ?? "A pool",
     groupSlug: groupById.get(p.group_id)?.slug ?? "",
   }));
-  const weekBetRows = betRows.filter((b) => b.game_id !== null && weekGameIds.has(b.game_id));
+  const weekBetRows = betRows.filter((b) => b.game_id !== null && actionWeekGameIds.has(b.game_id));
   const homeBets: HomeBet[] = weekBetRows.map((b) => ({
     id: b.id,
     gameId: b.game_id as number,
@@ -497,13 +521,27 @@ export async function fetchHomeData(
     // Only now is the slate's full loader worth its fifteen queries. Picks and
     // bets are supplied above rather than by passing a user and a group here:
     // the hub shows every pool the viewer is in, and `fetchSlateView` can only
-    // scope its pick layer to one.
-    const slate = await fetchSlateView(supabase, seasonId, week, null, seasonType, null, null);
-    positions = buildPositions(
-      slate.games.filter((g) => actionGameIds.has(g.id)),
-      homePicks,
-      homeBets,
+    // scope its pick layer to one. The NFL slate is only loaded when a
+    // position actually rides on it.
+    const wantsNfl = nflPointer && [...actionGameIds].some((id) => nflWeekGameIds.has(id));
+    const [slate, nflSlate] = await Promise.all([
+      fetchSlateView(supabase, seasonId, week, null, seasonType, null, null),
+      wantsNfl && nflPointer
+        ? fetchSlateView(
+            supabase,
+            nflPointer.seasonId,
+            nflPointer.week,
+            null,
+            nflPointer.seasonType,
+            null,
+            null,
+          )
+        : Promise.resolve(null),
+    ]);
+    const actionGames = [...slate.games, ...(nflSlate?.games ?? [])].filter((g) =>
+      actionGameIds.has(g.id),
     );
+    positions = buildPositions(actionGames, homePicks, homeBets);
   }
 
   return {

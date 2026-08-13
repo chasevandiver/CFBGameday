@@ -16,7 +16,7 @@ import { tallyBy } from "./records";
 import { toSheetBet } from "./betting-groups";
 import { classifyBets, recentForm, statsByMember, type GroupBetView } from "./tailing";
 import { fetchCurrentSlate, type SeasonType } from "./season";
-import { sportOfSeasonId, type Sport } from "./league";
+import { seasonIdsForYear, seasonYearOf, sportOfSeasonId, type Sport } from "./league";
 import { atsRecord, ouRecord } from "./slate";
 import type {
   CrewPickView,
@@ -717,7 +717,8 @@ export async function fetchBetFormGames(
   const { data } = await supabase
     .from("games")
     .select("id, start_ts, home_team_id, away_team_id")
-    .eq("season_id", seasonId)
+    // both leagues: the ledger is one book, and this week has games in each
+    .in("season_id", seasonIdsForYear(seasonYearOf(seasonId)))
     .gte("start_ts", new Date(now - 3 * 24 * 3600 * 1000).toISOString())
     .lte("start_ts", new Date(now + 9 * 24 * 3600 * 1000).toISOString())
     .order("start_ts", { ascending: true });
@@ -750,7 +751,9 @@ export async function fetchAdminGames(
   const { data } = await supabase
     .from("games")
     .select("id, start_ts, status, home_team_id, away_team_id")
-    .eq("season_id", seasonId)
+    // both leagues, for the same reason as the bet form: a void control that
+    // cannot reach a postponed NFL game cannot void the bets on it
+    .in("season_id", seasonIdsForYear(seasonYearOf(seasonId)))
     .gte("start_ts", new Date(now - 3 * 24 * 3600 * 1000).toISOString())
     .lte("start_ts", new Date(now + 9 * 24 * 3600 * 1000).toISOString())
     .order("start_ts", { ascending: true });

@@ -11,6 +11,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cfbd, type CfbdScoreboardGame } from "../../src/lib/cfbd";
+import { espn, nflStoredWeek, parseEvent } from "../../src/lib/espn";
+import { nflTeamId } from "../../src/lib/league";
 import { modelClv, roundClv, spreadClv, totalClv } from "../../src/lib/clv";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
 import { clockToSeconds, coverMargin, spreadCoverSide, totalCoverSide } from "../../src/lib/cover";
@@ -457,6 +459,44 @@ export function detectCoverFlips(
 /** Live scoreboard poll → games status/points/period/clock (slate live states). */
 export async function scoreboardJob(db: SupabaseClient): Promise<Json> {
   const board = await cfbd.scoreboard();
+  return applyScoreboard(db, board);
+}
+
+/**
+ * The NFL half of the live layer: ESPN's current board, adapted into the same
+ * shape and pushed through the same machinery — diffed writes, cover flips,
+ * bad-beat pushes all included. Events outside the stored calendar (preseason,
+ * Pro Bowl, TBD playoff slots) are dropped before they can touch the table.
+ */
+export async function nflScoreboardJob(db: SupabaseClient): Promise<Json> {
+  const board = await espn.scoreboard();
+  const adapted = (board.events ?? [])
+    .map(parseEvent)
+    .filter((g) => nflStoredWeek(g.espnSeasonType, g.espnWeek, g.name) !== null)
+    .filter((g) => g.homeEspnId > 0 && g.awayEspnId > 0)
+    .map(
+      (g): CfbdScoreboardGame => ({
+        id: g.id,
+        startDate: g.startDate,
+        status: g.status === "final" ? "completed" : g.status,
+        period: g.period,
+        clock: g.clock,
+        situation: g.situation,
+        lastPlay: g.lastPlay,
+        possession: g.possession,
+        homeTeam: { id: nflTeamId(g.homeEspnId), name: g.homeAbbr ?? "", points: g.homePoints },
+        awayTeam: { id: nflTeamId(g.awayEspnId), name: g.awayAbbr ?? "", points: g.awayPoints },
+        tv: g.tv,
+      }),
+    );
+  return applyScoreboard(db, adapted);
+}
+
+/** The write half both boards share: diff against stored, flip, patch, notify. */
+export async function applyScoreboard(
+  db: SupabaseClient,
+  board: CfbdScoreboardGame[],
+): Promise<Json> {
   const active = board.filter((g) => g.status === "in_progress" || g.status === "completed");
   if (active.length === 0) return { live_or_final: 0, updated: 0 };
 
@@ -823,12 +863,6 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
   const finals = games.filter(
     (g) => g.status === "final" && g.home_points !== null && g.away_points !== null,
   );
-  // What grading settles: finals of either season type, plus the dead games
-  // League Rule #4 voids.
-  const gradableFinals = allGames.filter(
-    (g) => g.status === "final" && g.home_points !== null && g.away_points !== null,
-  );
-  const deadGames = allGames.filter((g) => isDeadStatus(g.status));
 
   const fcsTop = await loadFcsTop(db);
 
@@ -912,7 +946,50 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
     if (error) throw new Error(error.message);
   }
 
-  // ---- Grading + CLV ----
+  // Grading + League Rule #4 voids, for this season's finals — shared with
+  // the nfl-grade task, which runs the same settlement over season 102026.
+  const graded = await gradeSeasonFinals(db, SEASON);
+
+  return {
+    weeks: weeksPlayed.length,
+    ratingRows: ratingRows.length,
+    ...graded,
+  };
+}
+
+/**
+ * Settle a season's finals: grade picks and bets, record model CLV against
+ * the closing consensus, void wagers on dead games (League Rule #4).
+ *
+ * Extracted from ratingsUpdateJob so the settlement can run for a season the
+ * model does not price: the ratings replay is CFB-only (its parameters were
+ * fit on CFB seasons and NFL teams have no week-0 priors), but an NFL bet
+ * settles into the same ledger with the same math. The predictions pass is a
+ * natural no-op for a season that never froze any.
+ *
+ * Grading covers BOTH season types — bowls, the CFP, and the NFL bracket all
+ * settle — while the caller's ratings replay stays regular-season-only.
+ */
+export async function gradeSeasonFinals(db: SupabaseClient, seasonId: number): Promise<Json> {
+  const { data: gameRows, error: gamesErr } = await db
+    .from("games")
+    .select("id, home_points, away_points, status, start_ts")
+    .eq("season_id", seasonId);
+  if (gamesErr) throw new Error(`grading: games read failed: ${gamesErr.message}`);
+  const allGames = (gameRows ?? []) as Array<{
+    id: number;
+    home_points: number | null;
+    away_points: number | null;
+    status: string;
+    start_ts: string | null;
+  }>;
+  // What grading settles: finals of either season type, plus the dead games
+  // League Rule #4 voids.
+  const gradableFinals = allGames.filter(
+    (g) => g.status === "final" && g.home_points !== null && g.away_points !== null,
+  );
+  const deadGames = allGames.filter((g) => isDeadStatus(g.status));
+
   const finalIds = gradableFinals.map((g) => g.id);
   let picksGraded = 0;
   let betsGraded = 0;
@@ -1102,14 +1179,7 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
     voided = counts.picks + counts.bets;
   }
 
-  return {
-    weeks: weeksPlayed.length,
-    ratingRows: ratingRows.length,
-    picksGraded,
-    betsGraded,
-    predictionsGraded,
-    voided,
-  };
+  return { picksGraded, betsGraded, predictionsGraded, voided };
 }
 
 /**

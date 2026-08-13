@@ -9,6 +9,7 @@ import { createServiceClient } from "../src/lib/supabase/service";
 import {
   freezeGroupWeeksJob,
   freezeJob,
+  gradeSeasonFinals,
   logCfbdCalls,
   ratingsUpdateJob,
   recordJobRun,
@@ -18,6 +19,7 @@ import {
   watchdogJob,
   weatherJob,
 } from "./lib/jobs-core";
+import { NFL_SEASON } from "./lib/nfl";
 import { notifyLogBetsJob, notifyPicksDueJob } from "./lib/notify-jobs";
 
 async function main() {
@@ -38,6 +40,9 @@ async function main() {
     // Push. Sends live inside `scoreboard`; this is the scheduled half.
     "notify-picks-due": notifyPicksDueJob,
     "notify-log-bets": notifyLogBetsJob,
+    // NFL settlement: the ratings replay stays CFB-only, but an NFL final
+    // grades picks/bets and CLV with the identical shared machinery.
+    "nfl-grade": (db: Parameters<typeof gradeSeasonFinals>[0]) => gradeSeasonFinals(db, NFL_SEASON),
   } as const;
   const job = jobs[task as keyof typeof jobs];
   if (!job) throw new Error(`unknown task "${task}" (${Object.keys(jobs).join("|")})`);

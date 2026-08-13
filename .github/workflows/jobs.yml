@@ -106,6 +106,7 @@ on:
           - nfl-sync-games
           - nfl-refresh-lines
           - nfl-lines-close
+          - nfl-grade
   schedule:
     # Lines 2x daily (8am/6pm ET) — display freshness only
     - cron: "0 12,22 * * *"
@@ -187,6 +188,10 @@ on:
     - cron: "5 10 * * 6"
     # Sunday ratings update + grading (8am ET)
     - cron: "0 13 * * 0"
+    # NFL settlement after each slate finishes: Mon (Sunday's games), Tue
+    # (MNF), Fri (TNF), morning UTC. Idempotent — result-null filters make a
+    # re-run a no-op — so over-running costs one query.
+    - cron: "30 13 * * 1,2,5"
     # Watchdog: absence check on the data jobs, a few times a day and once
     # mid-Saturday-afternoon while games are live. Red run = a job went silent.
     - cron: "0 8,14,20 * * *"
@@ -250,6 +255,7 @@ jobs:
             "0 15-23 * * 6"|"0 0-5 * * 0"|"0 0-3 * * 5,6"|"0 16-23 * * 0,1"|"0 0-3 * * 1,2"|"0 0-4 * * 3,4"|"0 10-14 * * 6") echo "task=scoreboard-loop" >> "$GITHUB_OUTPUT" ;;
             "0 10 * * 6") echo "task=weather" >> "$GITHUB_OUTPUT" ;;
             "0 13 * * 0") echo "task=ratings-update" >> "$GITHUB_OUTPUT" ;;
+            "30 13 * * 1,2,5") echo "task=nfl-grade" >> "$GITHUB_OUTPUT" ;;
             "0 8,14,20 * * *"|"30 21 * * 6") echo "task=watchdog" >> "$GITHUB_OUTPUT" ;;
             "0 15 * * 0") echo "task=backup" >> "$GITHUB_OUTPUT" ;;
             "0 6 1 * *") echo "task=keepalive" >> "$GITHUB_OUTPUT" ;;
@@ -279,7 +285,7 @@ jobs:
             nfl-sync-games) npx tsx scripts/nfl-sync-games.ts ;;
             nfl-refresh-lines) npx tsx scripts/nfl-refresh-lines.ts ;;
             scoreboard-loop) npx tsx scripts/scoreboard-loop.ts --minutes 63 ;;
-            sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze|freeze-groups|watchdog|notify-picks-due|notify-log-bets) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
+            sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze|freeze-groups|watchdog|notify-picks-due|notify-log-bets|nfl-grade) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
             # Keep-alive: touch nothing, just make the run green so GitHub's
             # 60-day inactivity timer resets. No DB, no CFBD.
             keepalive) echo "keep-alive tick $(date -u +%Y-%m-%d) — resets the Actions inactivity clock" ;;
