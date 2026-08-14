@@ -166,6 +166,37 @@ shipping it.
 
 ## Log
 
+### Aug 14 (night, last) — The home hub's refresh asked the wrong league
+
+Reported straight after the hub's refresh shipped: *"the Home Screen isn't
+refreshing at all, I have a live Titans 49ers game I'm tailing a bet on and it
+only updates if I click on another page."*
+
+The refresh was wired to `data.liveCount > 0` and `data.firstKick`, and **both
+describe the CFB week deliberately** — `fetchHomeData` says as much three lines
+above them: *"the hero stays CFB, Saturday is the product's spine."* The hub,
+though, shows both leagues. On Aug 14 the CFB week was Week 0, fifteen days
+out, nothing playing — so a page with a live NFL game on it, with the viewer's
+money on that game, evaluated to `live: false, imminent: false` and settled onto
+the **five-minute idle tier**. Five minutes, while watching a game, is
+indistinguishable from never.
+
+The mistake was taking a signal that happened to be nearby and assuming it meant
+what its name said. `liveCount` is an honest field with an honest comment; it
+just answers a different question than "should this page be polling hard".
+
+`homeRefreshTier` now decides from the positions actually on the page, which
+span both leagues, OR'd with the CFB week for a signed-out visitor who has no
+positions. Kickoffs use the slate's own −3h/+6h window, bounded at both ends so
+a game stuck at `scheduled` cannot hold the fast tier forever. The three tests
+covering the reported case were checked failing against the shipped derivation
+before the fix went in.
+
+`HomeAutoRefresh` also gets its own test now. `router.refresh()` is the only
+way a server-rendered hub can update at all, so a no-op there would present
+exactly as this bug did, and that wiring should not have been resting on an
+assumption.
+
 ### Aug 14 (night, later) — The timeout ate the touchdown
 
 Owner report, two complaints that turned out to be one bug: every TV timeout

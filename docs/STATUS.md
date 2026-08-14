@@ -1322,6 +1322,24 @@ Built on `claude/nfl-scores-lines-l4bhio`; the design and its evidence are in
       (`last_score_play`) and a writer rule. Only worth building if the owner
       wants scoring to persist; the current behaviour is correct, just
       transient. · owner decision
+- [x] **NFL-19** The home hub's refresh tier read the wrong league, so it
+      never fired. Owner report 2026-08-14, after NFL-14 shipped: "the Home
+      Screen isn't refreshing at all, I have a live Titans 49ers game I'm
+      tailing a bet on and it only updates if I click on another page."
+      NFL-14 wired the cadence to `data.liveCount > 0` and `data.firstKick`,
+      and **both describe the CFB week on purpose** — `fetchHomeData` says so
+      in the code: "the hero stays CFB, Saturday is the product's spine". On
+      Aug 14 CFB week 0 was fifteen days out with nothing live, so a hub
+      showing a live NFL game the viewer had money on evaluated to
+      `live: false, imminent: false` and sat on the **five-minute idle tier**.
+      Five minutes reads as never. New `homeRefreshTier` decides from the
+      positions actually on the page — which span both leagues — OR'd with the
+      CFB week for a signed-out visitor who has none, using the slate's own
+      −3h/+6h kickoff window so a game stuck at `scheduled` can't hold the
+      fast tier forever. 9 new tests; the three covering the reported case were
+      checked failing against the shipped derivation first. Also
+      `HomeAutoRefresh.test.tsx`, because `router.refresh()` is the hub's only
+      way to update and a no-op there would look identical to this bug.
 - [x] **NFL-14** The home hub, owner report 2026-08-14 ("the home page is
       having the same refresh problem and doesn't show the down and distance
       or last play like it does on the slate"). Two defects, both worse than

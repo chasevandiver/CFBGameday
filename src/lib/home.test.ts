@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   buildPositions,
   heldVsNow,
+  homeRefreshTier,
   placeOf,
   splitPositions,
   type HomeBet,
+  type HomeData,
   type HomePick,
+  type Position,
 } from "./home";
 import { EMPTY_TALLY, tally, type Tally } from "./records";
 import type { GameView } from "./slate";
@@ -49,6 +52,83 @@ const bet = (gameId: number, id = 1): HomeBet => ({
   side: "away",
   line: -3.5,
   result: null,
+});
+
+const homeData = (over: Partial<HomeData> = {}): HomeData =>
+  ({
+    seasonId: 2026,
+    week: 0,
+    seasonType: "regular",
+    fetchedAt: "2026-08-14T02:45:00Z",
+    firstKick: null,
+    liveCount: 0,
+    weekGameCount: 8,
+    positions: [],
+    openBetCount: 0,
+    openBetUnits: 0,
+    weekPickCount: 0,
+    groups: [],
+    progress: [],
+    bets: EMPTY_TALLY,
+    picks: EMPTY_TALLY,
+    pickGroupCount: 0,
+    curve: [],
+    ...over,
+  }) as HomeData;
+
+const position = (g: GameView): Position => ({ game: g, picks: [], bets: [] });
+
+describe("homeRefreshTier", () => {
+  /* The bug this exists for, reported 2026-08-14. liveCount and firstKick
+     describe the CFB week on purpose, and the hub shows both leagues — so a
+     live NFL game the viewer had money on read as "nothing happening" and put
+     the page on its five-minute idle tier. */
+  it("is live when a position is live, even with the CFB week weeks away", () => {
+    const data = homeData({
+      liveCount: 0,                       // CFB week 0 — nothing playing
+      firstKick: "2026-08-29T16:00:00Z",  // fifteen days out
+      positions: [position(game(401874392, "in_progress", "2026-08-14T00:00:00Z"))],
+    });
+    expect(homeRefreshTier(data)).toEqual({ live: true, imminent: true });
+  });
+
+  it("is live on the CFB week alone, for a visitor with no positions", () => {
+    expect(homeRefreshTier(homeData({ liveCount: 3 })).live).toBe(true);
+  });
+
+  it("is imminent when a position kicks off inside six hours", () => {
+    const data = homeData({
+      positions: [position(game(1, "scheduled", "2026-08-14T06:00:00Z"))], // +3h15
+    });
+    expect(homeRefreshTier(data)).toEqual({ live: false, imminent: true });
+  });
+
+  it("stays idle when the only kickoff is days away", () => {
+    const data = homeData({
+      firstKick: "2026-08-29T16:00:00Z",
+      positions: [position(game(1, "scheduled", "2026-08-29T16:00:00Z"))],
+    });
+    expect(homeRefreshTier(data)).toEqual({ live: false, imminent: false });
+  });
+
+  /* Bounded on both sides: a late kickoff still counts, but a game stuck at
+     scheduled long past its start must not hold the fast tier forever. */
+  it("counts a kickoff just past due, but not one stuck for hours", () => {
+    const justLate = homeData({
+      positions: [position(game(1, "scheduled", "2026-08-14T01:00:00Z"))], // -1h45
+    });
+    expect(homeRefreshTier(justLate).imminent).toBe(true);
+
+    const stuck = homeData({
+      positions: [position(game(1, "scheduled", "2026-08-13T12:00:00Z"))], // -14h45
+    });
+    expect(homeRefreshTier(stuck).imminent).toBe(false);
+  });
+
+  it("ignores a position with no kickoff time", () => {
+    const data = homeData({ positions: [position(game(1, "scheduled", null))] });
+    expect(homeRefreshTier(data)).toEqual({ live: false, imminent: false });
+  });
 });
 
 describe("placeOf", () => {

@@ -110,6 +110,50 @@ export interface HomeData {
 
 /* ---- pure helpers (unit-tested in home.test.ts) ------------------------- */
 
+/** How hard the hub should poll, in the tiers `useLiveRefresh` takes. */
+export interface RefreshTier {
+  live: boolean;
+  imminent: boolean;
+}
+
+/**
+ * The hub's refresh cadence, decided by what is on the page.
+ *
+ * This must not read `liveCount`/`firstKick` alone. Those describe the CFB
+ * week on purpose — "the hero stays CFB", below — and the hub shows both
+ * leagues. On 2026-08-14 that combination put the page on its five-minute
+ * idle tier while the owner sat watching a live NFL game he had money on,
+ * because CFB week 0 was fifteen days out and so, as far as this function's
+ * first version could see, nothing was happening. It reads as a page that
+ * never refreshes at all.
+ *
+ * So the positions decide, and they span both leagues, with the CFB week
+ * OR'd in for the signed-out visitor who has no positions at all.
+ *
+ * "Now" is the payload's own stamp, never `Date.now()` — this runs during
+ * render (react-hooks/purity) and has to be stable across a re-render.
+ */
+export function homeRefreshTier(data: HomeData): RefreshTier {
+  const now = Date.parse(data.fetchedAt);
+  if (data.liveCount > 0 || data.positions.some((p) => p.game.status === "in_progress"))
+    return { live: true, imminent: true };
+
+  // Same window the slate uses: kickoff inside six hours, or up to three hours
+  // past a start that hasn't flipped to in_progress yet. Bounded on both sides
+  // so a permanently-stuck scheduled game can't hold the fast tier forever.
+  const kicks = [
+    data.firstKick,
+    ...data.positions
+      .filter((p) => p.game.status === "scheduled")
+      .map((p) => p.game.startTs),
+  ]
+    .filter((ts): ts is string => ts !== null)
+    .map((ts) => Date.parse(ts) - now)
+    .filter((dt) => Number.isFinite(dt) && dt > -3 * 3600_000 && dt < 6 * 3600_000);
+
+  return { live: false, imminent: kicks.length > 0 };
+}
+
 /**
  * Where `userId` sits in an already-sorted standings list.
  *
