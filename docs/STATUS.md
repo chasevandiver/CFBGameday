@@ -1739,8 +1739,25 @@ viewer's own bets, not the whole sheet.
       **What would settle it:** the Aug 21 real-device pass. If nobody can make
       a name truncate on a real phone, close it as "not a defect" rather than
       as done. · S
-- [ ] **UX-31 / §23 #19** Week changes via `pushState` so Back traverses weeks
-      (`SlateView.tsx:263` is `replaceState` — deliberate, revisit) · S
+- [x] **UX-31 / §23 #19** Week changes via `pushState` so Back traverses weeks.
+      Done 2026-08-14. The old blanket `replaceState` was sound about filters —
+      a query typed character by character would fill the history stack with
+      garbage — and wrong about the week, which is a navigation. From week 3,
+      Back left the slate entirely.
+      Split by what changed: week or season type pushes, every other key
+      replaces. A `popstate` handler restores the week from the URL and
+      refetches, because without it Back would move the address bar and leave
+      the grid where it was, which is worse than the old behaviour.
+      **Verified in a browser, and it needed two rounds.** First attempt got
+      the URLs right and the history depth one short: `lastNavRef` started null,
+      so the first change of a fresh visit took the replace branch and
+      overwrote the entry for the week you arrived on — Back from week 2 went to
+      `about:blank`. Seeded with the loaded week instead.
+      Measured on the real page rather than reasoned about: `/slate` (11 cards)
+      → week 1 (94) → week 2 (89) → **Back** → `?week=1` with **94 cards and
+      the selector reading 1** → Back → `/slate`, 11 cards, selector 0 →
+      Forward → `?week=1`. The card counts are the point: they prove the grid
+      moved, not just the URL.
 - [x] **05:N12** Pinned 2026-08-13. The module's types said `number` while its
       implementation defended against strings (`num()`, and a test asserting
       `numeric` columns "arrive as strings"), and `audit/05` §29 had already

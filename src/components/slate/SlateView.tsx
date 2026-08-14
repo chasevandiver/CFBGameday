@@ -2,6 +2,7 @@
 
 import { ChevronDown, RefreshCw, Search, SearchX, Ticket, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import type { SeasonType } from "../../lib/season";
 import { onBetsChanged } from "../../lib/bets-changed";
 import { useFocusedGames, useStarred, useViewerTz } from "../../lib/client-store";
 import type { GameRow } from "../../lib/db-types";
@@ -271,7 +272,27 @@ export function SlateView({
     void refresh(w, true, st);
   };
 
-  /* Mirror week + filters into the query string (replaceState — no history spam).
+  /* UX-31: the week is a navigation, the filters are not.
+   *
+   * Everything here used to `replaceState`, on the sound reasoning that a
+   * filter changing on every keystroke would fill the history stack with
+   * garbage. But that also meant Back left the slate entirely — from week 3 it
+   * went to whatever page you were on before, not to week 2 — which is not what
+   * a week selector looks like it does.
+   *
+   * So the split is by what changed: week or season type gets a `pushState`,
+   * every other key keeps `replaceState`. `lastNavRef` is what makes that
+   * decidable, because this effect re-runs for filter changes too and cannot
+   * otherwise tell which key moved.
+   */
+  const lastNavRef = useRef<{ week: number; seasonType: string }>({ week, seasonType });
+  /* Set while handling a popstate, so restoring state from the URL does not
+   * push a fresh entry for the entry we just went back to — the classic
+   * history loop where Back appears not to work because each press writes a
+   * new entry. */
+  const fromPopRef = useRef(false);
+
+  /* Mirror week + filters into the query string.
    *
    * Starts from the URL that is actually there and edits only the keys this
    * component owns. It used to build a fresh `URLSearchParams()` and overwrite
@@ -322,9 +343,52 @@ export function SlateView({
     // navigation is what desynced the router in the first place, so the cheapest
     // way not to interfere is not to write when nothing changed.
     if (next !== window.location.pathname + window.location.search) {
-      window.history.replaceState(null, "", next);
+      // Seeded with the week the page loaded on, NOT null. Left null, the
+      // first change of a fresh visit compared against nothing, took the
+      // replace branch, and overwrote the entry for the week you arrived on —
+      // so Back from the second week left the slate entirely. Caught in a
+      // browser, not by reading this: the URLs were right and the history
+      // depth was one short.
+      const prev = lastNavRef.current;
+      const navigated = prev.week !== week || prev.seasonType !== seasonType;
+      if (navigated && !fromPopRef.current) window.history.pushState(null, "", next);
+      else window.history.replaceState(null, "", next);
     }
+    // Recorded even when nothing was written, so the NEXT run compares against
+    // what is actually on screen rather than the last thing that happened to
+    // differ from the URL.
+    lastNavRef.current = { week, seasonType };
+    fromPopRef.current = false;
   }, [week, seasonType, sport, currentWeek, conference, network, spreadRange, rankedOnly, betsOnly, picksOnly, sort, query, day]);
+
+  /* Back and Forward have to move the grid, not just the address bar.
+   *
+   * Without this the URL would change and the slate would sit on the week it
+   * was already showing, which is worse than the old behaviour: at least
+   * leaving the page was honest. Reads the same keys the effect above writes.
+   */
+  useEffect(() => {
+    if (demo) return;
+    const onPop = () => {
+      const sp = new URLSearchParams(window.location.search);
+      const stParam = sp.get("st");
+      const st: SeasonType =
+        stParam === "post" ? "postseason" : stParam === "pre" ? "preseason" : "regular";
+      // Absent `week` means the current week — the effect above omits it in
+      // exactly that case, so the inverse has to restore it.
+      const raw = sp.get("week");
+      const w = raw === null ? currentWeek : Number(raw);
+      if (!Number.isFinite(w)) return;
+      if (w === weekRef.current && st === seasonType) return;
+      fromPopRef.current = true;
+      weekRef.current = w;
+      setData((d) => ({ ...d, week: w, seasonType: st, games: [] }));
+      setDay("all");
+      void refresh(w, true, st);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [demo, currentWeek, seasonType, refresh]);
 
   /* ---- derived --------------------------------------------------------- */
 
