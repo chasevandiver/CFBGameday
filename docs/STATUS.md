@@ -1277,6 +1277,34 @@ Built on `claude/nfl-scores-lines-l4bhio`; the design and its evidence are in
       as situation-without-football, the degraded state NFL-5 already
       recorded. The deployed v2 had drifted from the repo copy in two comment
       lines only; v3 is the repo file verbatim.
+- [x] **NFL-11** The touchdown was the one play guaranteed not to render.
+      Owner report 2026-08-14 ("on the last play on the slate cards, it
+      doesn't show what the touchdown play was"). `LiveSituation` opened with
+      `if (!game.situation && !pos) return null`, and ESPN publishes a down
+      and distance only while a snap is pending — so the whole dead-ball
+      stretch after a score (the PAT, the kickoff), end of quarter, and
+      timeouts between possessions all arrive as `situation: null` with
+      `possession: null`, which made `pos` null too and dropped the entire
+      block, last play included. Observed in the stored rows: game 401874392
+      at 01:31 UTC held `current_situation: null` with a real `last_play`.
+      The last play is now a situation in its own right; the down-and-distance
+      row is skipped rather than left empty above it. New
+      `GameCard.situation.test.tsx`, 4 tests — the touchdown case was checked
+      failing against the old guard before the fix went in.
+      **Not fixable from this feed, recorded:** the down and distance a play
+      was *snapped* on. ESPN's scoreboard `lastPlay.start.down`/`.distance`/
+      `.downDistanceText` are all null and `lastPlay.drive` carries only a
+      text summary — verified across six live games. The card's own
+      down-and-distance is the *next* one (post-play), which is why a sack
+      shows "4th & 27" above "sacked for -12". Getting the pre-snap down
+      needs `/summary?event=<id>`, one extra ESPN call per live game per
+      tick; see NFL-12.
+- [ ] **NFL-12** Decision owed: whether to pull `/summary?event=<id>` per live
+      game for pre-snap down-and-distance and richer play typing. Cost is
+      linear in live games (one call per game per tick, so ~16× the current
+      single scoreboard call on an NFL Sunday) against a feed with no
+      published rate limit. Not started — worth it only if the owner wants the
+      play line to read "3rd & 7 · <play>". · owner decision
 - [x] **NFL-10** `/api/slate` served week 0 to every parameterless request.
       Found 2026-08-14 while verifying NFL-9 against production, not by
       looking for it: `/api/slate?sport=nfl` returned `week 0`,
