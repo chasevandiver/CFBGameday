@@ -2417,24 +2417,28 @@ here so they aren't rediscovered as bugs.
 - **The 2026 gate's week-1 lines are the fit set**, so t < 2 there is by
   construction. Out-of-sample evidence is the 2024–25 weeks 2–4 result, and
   going forward the weeks-2+ 2026 lines as they post.
-- **`TRUNCATE` is granted to `anon` and `authenticated` on every public table.**
-  Found 2026-08-14 while verifying 0048's grants, and it is **project-wide, not
-  new**: `games`, `bets`, `picks`, `line_snapshots`, `cover_flips` and
-  `scoring_plays` all carry it, from Supabase's default
-  `alter default privileges … grant all on tables`. It matters because TRUNCATE
-  is a table privilege and is **not subject to RLS** — the policies that make
-  `bets` append-only would not stop it.
-  **Practical exposure today is nil**, which is why this is recorded rather than
-  hot-fixed: those two roles are only reachable through PostgREST, and the Data
-  API exposes no TRUNCATE verb. What it costs is defence in depth — the day any
-  `security definer` function runs dynamic SQL, this becomes reachable, and the
-  whole point of 0013's append-only triggers is that the guarantee should not
-  depend on the API surface staying the shape it is today.
-  **Fix is one statement per table** (`revoke truncate on all tables in schema
-  public from anon, authenticated`) plus an `alter default privileges` so new
-  tables do not re-inherit it. Not done here because it touches every table in
-  the project and belongs in its own change with its own DB assertions, not
-  bolted onto a UI branch. · S
+- ~~**`TRUNCATE` is granted to `anon` and `authenticated` on every public
+  table.**~~ **Fixed 2026-08-14, migration 0049** — moved out of this section
+  because it stopped being a residual. It affected **32 tables**, which is more
+  than the six this row originally listed; the count comes from the failing
+  assertion, which names them.
+  Two statements, and the second is the one that lasts: the revoke fixes the
+  tables that exist, and `alter default privileges` stops the next `create
+  table` re-inheriting it — without that half, the migration would read as done
+  while the hole reopened on the next table anyone added. Scoped to `postgres`,
+  the role that creates every table in this repo. `supabase_admin` carries an
+  identical default ACL for tables *it* creates, and altering that needs
+  membership in that role; **not attempted rather than attempted and swallowed**,
+  because a `DO` block catching `insufficient_privilege` would make a migration
+  that did half its job look exactly like one that did all of it.
+  New `supabase/tests/truncate.sql`, 10 assertions, **7 of them checked failing
+  against the pre-fix schema** — the local harness reproduces Supabase's
+  `grant all` default (`00_shim.sql:24`), so the proof is real rather than
+  vacuous. The 3 that pass either way are deliberate controls: anon keeps
+  SELECT, authenticated keeps INSERT, `service_role` keeps TRUNCATE, because
+  the revoke has to be surgical and a suite that only checks the removal would
+  not notice it took the app's reads with it. 215 DB assertions total.
+  *(Not applied to the live project — same rule as every migration here.)*
 - **The light theme's `--accent` on `--accent-ink` is 3.83:1**, under 1.4.3's
   4.5:1 for the 12px labels that use it. Pre-existing — it carries the slip's
   primary action and the pick buttons — and UX-36's active segment is a new
