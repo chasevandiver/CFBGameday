@@ -1163,10 +1163,28 @@ viewer's own bets, not the whole sheet.
       and looks like a broken logo. Logos are therefore resolved ahead of render
       against an ESPN-CDN allowlist, with a timeout and a size cap. A test
       asserts `169.254.169.254` is never reached. · M–L
-- [ ] **SHARE-6** Client + UI: `shareImage()` via Web Share Level 2 with a
-      download fallback, a share-image entry beside the existing text share at
-      all four share points, and the tier picker in the slip, `BetForm` and the
-      ledger history. · M
+- [x] **SHARE-6** Done 2026-08-14. `shareImage()` (Web Share Level 2, download
+      fallback), `ShareImageButton`, `ConfidencePicker`, `RetagBetButton`, and
+      the payload builders in `share-card-build.ts`.
+      Image share sits **beside** the text share — the slip footer, the
+      post-log toast, the ledger header and the betting-group home. The text
+      share is untouched. The tier is set in the slip (one row each), in
+      `BetForm`, and retagged from the ledger's new Confidence column.
+      Notes. `shareImage` passes **only `files`** — `share-sheet.ts` documents
+      that adding `url` makes iOS append a link that pushes the content off the
+      message preview, and a caption does the same thing to an image. It feature-
+      tests with `canShare({files})` rather than `"share" in navigator`, because
+      plenty of browsers have Web Share and refuse files. There is **no
+      clipboard fallback**: image-to-clipboard is patchy and, where it works,
+      hands the user something they then have to find a place to paste. A
+      download is the honest second choice.
+      The slip's Log button moved to its own full-width row beneath the two
+      share buttons — lowest and widest is the thumb-zone rule, and it was
+      sharing a row with three other controls.
+      `RetagBetButton` deliberately does **not** decide whether an edit is
+      allowed. It renders the picker when the row looks live and surfaces the
+      trigger's own refusal when the browser's clock and Postgres's disagree,
+      so the UI cannot drift out of step with 0045. · M
 - [x] **SHARE-7** Done 2026-08-14, landed with SHARE-5. **The first test in the
       repo to exercise a route** (§23 #42 is now partially closed — one route,
       not the gap in general). 12 assertions: 401 unauthenticated, 400 on an

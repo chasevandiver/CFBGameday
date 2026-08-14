@@ -7,10 +7,18 @@ import {
   SheetGameRow,
   SourceCard,
 } from "../../../components/group/BettingHub";
+import { ShareImageButton } from "../../../components/ShareImageButton";
 import { ShareSheetButton } from "../../../components/group/ShareSheetButton";
 import { byUnits, fetchBettingSheet } from "../../../lib/betting-groups";
 import type { GroupSummary } from "../../../lib/groups";
+import type { BetRow } from "../../../lib/db-types";
 import { buildSheetShareContext } from "../../../lib/group-share";
+import { DEFAULT_TZ } from "../../../lib/kick";
+import {
+  betsCardPayload,
+  shareableBets,
+  type BetCardGame,
+} from "../../../lib/share-card-build";
 import { fetchSlateView } from "../../../lib/queries";
 import type { SeasonType } from "../../../lib/season";
 import { pairStatsFor } from "../../../lib/tailing";
@@ -60,6 +68,43 @@ export async function BettingHome({
   const standings = [...sheet.members].sort(byUnits);
   const pairs = userId ? pairStatsFor(sheet.bets, userId) : [];
   const joinCode = (joinRes.data as { join_code: string } | null)?.join_code ?? null;
+  // The image share is the viewer's OWN bets, not the whole sheet — a card
+  // titled "<display_name> Bets" carrying someone else's picks would be a lie,
+  // and the text share already covers the whole-sheet case.
+  const weekGameIds = slate.games.map((g) => g.id);
+  const { data: myBetRows } =
+    userId && weekGameIds.length > 0
+      ? await supabase
+          .from("bets")
+          .select("*")
+          .eq("user_id", userId)
+          .in("game_id", weekGameIds)
+      : { data: [] };
+  const myOpen = shareableBets((myBetRows ?? []) as BetRow[]);
+  const cardGameById = new Map<number, BetCardGame>(
+    slate.games.map((g) => [
+      g.id,
+      {
+        startTs: g.startTs,
+        away: { abbr: g.away.abbr, logo: g.away.logo, color: g.away.color },
+        home: { abbr: g.home.abbr, logo: g.home.logo, color: g.home.color },
+      },
+    ]),
+  );
+  const myCard =
+    myOpen.length > 0
+      ? betsCardPayload(myOpen, cardGameById, {
+          displayName: sheet.nameById.get(userId ?? "") ?? "",
+          week,
+          day: new Intl.DateTimeFormat("en-US", {
+            timeZone: DEFAULT_TZ,
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+          }).format(new Date()),
+        })
+      : null;
+
   const share = userId
     ? buildSheetShareContext({
         groupName: group.name,
@@ -102,6 +147,7 @@ export async function BettingHome({
           My ledger
         </Link>
         {share && <ShareSheetButton sheet={share} />}
+        {myCard && <ShareImageButton payload={myCard} filename="cfb-slate-bets.png" label="My bets image" />}
         {joinCode && <JoinCode code={joinCode} />}
       </div>
 

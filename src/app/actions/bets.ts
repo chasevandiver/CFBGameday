@@ -36,6 +36,7 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
   const odds = Number(formData.get("odds") || -110);
   const lineRaw = String(formData.get("line_taken") ?? "").trim();
   const book = String(formData.get("book") ?? "").trim();
+  const confidence = String(formData.get("confidence") ?? "bet");
   const seasonId = Number(formData.get("season_id"));
   const gameIdRaw = String(formData.get("game_id") ?? "").trim();
   const sideRaw = String(formData.get("side") ?? "").trim();
@@ -45,6 +46,9 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
     return { ok: false, message: "Pick a reason tag — that's the whole point of the audit" };
   }
   if (!Number.isFinite(units) || units <= 0) return { ok: false, message: "Units must be > 0" };
+  if (!CONFIDENCE_TIERS.includes(confidence as ConfidenceTier)) {
+    return { ok: false, message: "Bad confidence tier" };
+  }
 
   let gameId: number | null = null;
   // A bet attached to a game belongs to that game's season — the form's
@@ -77,6 +81,7 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
     units,
     book: book || null,
     reason_tag: reasonTag,
+    confidence,
   });
 
   if (error) return { ok: false, message: error.message };
@@ -179,5 +184,39 @@ export async function voidBet(betId: number): Promise<BetActionResult> {
   // to clear there too — otherwise the chip lingers until the next poll heals it.
   revalidatePath("/slate");
   revalidatePath("/game", "layout");
+  return { ok: true };
+}
+
+/**
+ * Move a bet's confidence tier before its game kicks off.
+ *
+ * The gate is migration 0045's trigger, not this function: it permits exactly
+ * one more transition than 0013 did, and only while the game has not started.
+ * So the error the user sees is the database's own ("kickoff — the confidence
+ * tier is frozen for this bet"), which means the UI cannot drift out of step
+ * with the rule.
+ *
+ * Freezing at kickoff is what keeps the tier worth storing — a tier that could
+ * move afterwards would let anyone decide, once a game had gone well, that
+ * they had called it their Bet of the Year all along.
+ */
+export async function retagBet(betId: number, confidence: string): Promise<BetActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Not signed in" };
+  if (!CONFIDENCE_TIERS.includes(confidence as ConfidenceTier)) {
+    return { ok: false, message: "Bad confidence tier" };
+  }
+
+  const { error } = await supabase
+    .from("bets")
+    .update({ confidence })
+    .eq("id", betId)
+    .eq("user_id", user.id);
+
+  if (error) return { ok: false, message: error.message };
+  revalidatePath("/ledger");
   return { ok: true };
 }
