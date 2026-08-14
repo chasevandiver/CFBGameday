@@ -132,7 +132,7 @@ export function BetSlip({
             payload={loggedCard}
             filename="cfb-slate-bets.png"
             label="Image"
-            className="stat inline-flex min-h-11 min-w-[5.5rem] items-center justify-center gap-1.5 rounded-lg border border-chalk/20 px-2.5 text-xs font-semibold text-chalk hover:border-chalk/50 disabled:opacity-60"
+            className="stat inline-flex min-h-11 min-w-[5.5rem] items-center justify-center gap-1.5 rounded-lg border border-chalk/20 px-2.5 text-xs font-semibold text-chalk hover:border-chalk/50 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
           />
           <button
             onClick={() => setLogged(null)}
@@ -264,7 +264,7 @@ export function BetSlip({
                       value={s.tier}
                       onChange={(tier) => setTier(s.gameId, s.betType, tier)}
                       label={`Confidence for ${s.label}`}
-                      className="stat mt-1.5 h-11 w-full rounded-md border border-chalk/12 bg-elev px-2 text-[11px] text-chalk focus:border-accent"
+                      className="stat mt-1.5 h-11 w-full rounded-md border border-chalk/12 bg-elev px-2 text-[11px] text-chalk focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
                     />
                   </li>
                 );
@@ -320,7 +320,7 @@ export function BetSlip({
                   payload={cardPayload}
                   filename="cfb-slate-bets.png"
                   label="Image"
-                  className="stat flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-chalk/15 px-2.5 text-xs font-medium text-dim transition-colors hover:border-chalk/40 hover:text-chalk disabled:opacity-60"
+                  className="stat flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-chalk/15 px-2.5 text-xs font-medium text-dim transition-colors hover:border-chalk/40 hover:text-chalk disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
                 />
               </div>
               {/* Full width and last, so the primary action sits lowest and

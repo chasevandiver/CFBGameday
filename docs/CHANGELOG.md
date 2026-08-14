@@ -166,6 +166,85 @@ shipping it.
 
 ## Log
 
+### Aug 14 — The image share, and a confidence tier to organise it
+
+Owner request: an image of your bets you would actually post, sorted by
+conviction then by time, titled `<display_name> Bets`, shareable from the slip,
+the ledger and a group. Commits `2105fd7`, `2a9731e`, `dece0c1`, `3986472`,
+`083cf71`, `029c15d`, `a4c7a1f`. Tracked as SHARE-1…7 in `docs/STATUS.md`.
+
+**The text share was never the problem.** `src/lib/share-text.ts` opens by
+conceding what it cannot do: iMessage renders markdown literally and sets a
+proportional font, so *"no amount of padding will make columns line up."* That
+sentence is the entire case for an image. The card's right-hand column is fixed
+width, in Plex Mono, with every stake printed to one decimal — units under
+units, decimal under decimal. If the image did not do something text cannot, it
+would not be worth a second button.
+
+**Four design directions, and the winner was none of them.** Three were built
+per DESIGN.md exploration mode (`public/design/share-card-a|b|c.html`) and the
+owner picked a hybrid, `share-card-d.html`: B's row engine, A's tier headings
+printed in full but only on a tier *change*, and C's hero made conditional —
+the panel appears iff exactly one bet sits alone at the highest tier. That last
+clause is the whole reason C alone was not chosen: it promoted its first row
+unconditionally, so on a Saturday where every bet is the same tier the card
+asserted one of them was special when nothing said so. A card that lies quietly
+is worse than one that looks wrong.
+
+**Rendering the mockups found three bugs that reading them did not.** A
+overflowed 1350px by ~275px and was clipping two bets and its own footer; B's
+stub stretched to the frame and left a 200px hole under seven bets; D's
+single-bet hero ballooned into an empty green slab. The last two are one
+problem — a fixed canvas holding a variable-length list, where leftover space
+is the *normal* case and one bet leaves ~800px of it — and one `filler` fixes
+both, collapsing to nothing on a dense card and carrying the S at 6% on a
+sparse one.
+
+**Storing the tier was not just a column.** Migration 0013 put
+`enforce_bet_void_only()` on `bets` and its rule is absolute: the only
+user-driven edit is ungraded → voided, every other column rebuilt from `OLD`.
+`0045_bet_confidence.sql` widens that whitelist by exactly one transition, and
+the boundary is **kickoff, not grading**. Freezing at insert makes a typo
+permanent; letting it move after kickoff destroys the only reason to store it,
+because *"how do my Bet of the Day picks actually do?"* is answerable only if
+the tier was set before anyone knew. 11 new SQL assertions, 174 passing.
+
+**Three defects only rendering the real route caught.** A bet with no teams drew
+an empty coloured circle — the monogram fallback needs an abbr and a future has
+none. The eslint rule against constructing JSX inside a try/catch was right and
+load-bearing: `ImageResponse` renders lazily as its stream is consumed, so the
+guard caught nothing and only looked like it did. And the four committed fonts
+do **not** carry the ʻokina, so Hawaiʻi would have set a tofu box — satori draws
+tofu rather than falling back to a system face. U+2212 *is* covered, which
+retired an earlier flag.
+
+**SSRF, named because an image route hides one well.** The payload is
+client-supplied and satori will fetch whatever URL it is handed, server-side,
+from inside the deployment — and because the response is a picture, a probe of
+an internal address fails silently and looks like a broken logo. Logos are
+resolved before render against an ESPN-CDN allowlist, with a timeout and a size
+cap; a test asserts `169.254.169.254` is never reached.
+
+`POST /api/share-card` is also **the first route in the repo with a test**
+(§23 #42). It asserts the PNG magic number and a floor on byte length rather
+than just a 200, because an empty canvas is exactly what satori returns when it
+renders and finds nothing to draw.
+
+**Not verified first-hand, and worth knowing:** nothing here has been run
+against a real Supabase, a real phone or a real share sheet. `npm run db:test`
+cannot complete in the build container — 0043/0044 `create extension pg_cron`,
+which is not installed — so the SQL suites were run with those two migrations
+excluded, which also means **0043 and 0044 have never been exercised by
+`db:test` in that environment at all.**
+
+**One tension, recorded rather than resolved.** BRAND.md §38 says to avoid
+"🔥 LOCK OF THE WEEK 🔥"; "Bet of the Century" sits near that register. §16
+nonetheless lists *confidence* among the preferred vocabulary, and these are the
+user labelling their own conviction rather than the product shouting. They are
+set in Graduate small-caps in chalk, not gold and not oversized. The owner's
+decision stands; the tension is on the record.
+
+
 ### Aug 14 (night, last) — The home hub's refresh asked the wrong league
 
 Reported straight after the hub's refresh shipped: *"the Home Screen isn't

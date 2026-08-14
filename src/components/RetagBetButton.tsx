@@ -54,10 +54,11 @@ export function RetagBetButton({
         value={value}
         onChange={change}
         label="Confidence"
-        className="stat min-h-11 rounded-md border border-chalk/12 bg-elev px-1.5 text-[11px] text-chalk disabled:opacity-60"
+        className="stat min-h-11 rounded-md border border-chalk/12 bg-elev px-1.5 text-[11px] text-chalk focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:opacity-60"
       />
-      {error && <span className="mt-0.5 text-[10px] text-loss">{error}</span>}
-      {pending && <span className="sr-only">Saving</span>}
+      <span role="status" aria-live="polite" className="mt-0.5 text-[10px] text-loss empty:hidden">
+        {pending ? "Saving" : (error ?? "")}
+      </span>
     </span>
   );
 }

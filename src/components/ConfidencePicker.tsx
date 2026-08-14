@@ -35,7 +35,10 @@ export function ConfidencePicker({
       onChange={(e) => onChange(e.target.value as ConfidenceTier)}
       className={
         className ??
-        "stat min-h-11 rounded-lg border border-chalk/20 bg-transparent px-2 text-xs text-chalk"
+        // bg-elev rather than transparent: a native select popup inherits the
+        // control's background on Windows dark mode, and transparent renders it
+        // unreadable.
+        "stat min-h-11 rounded-lg border border-chalk/20 bg-elev px-2 text-xs text-chalk focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
       }
     >
       {/* Highest conviction first: the ladder is stored low-to-high because the

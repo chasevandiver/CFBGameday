@@ -39,17 +39,24 @@ export function ShareImageButton({
   };
 
   return (
-    <button
-      onClick={go}
-      disabled={pending || !payload}
-      aria-busy={pending}
-      className={
-        className ??
-        "stat flex min-h-11 min-w-[8.5rem] items-center justify-center gap-1.5 rounded-lg border border-chalk/20 px-3 text-xs font-semibold text-chalk hover:border-chalk/50 disabled:opacity-60"
-      }
-    >
-      <ImageIcon size={14} aria-hidden />
-      {pending ? "Drawing…" : (note ?? label)}
-    </button>
+    <>
+      <button
+        onClick={go}
+        disabled={pending || !payload}
+        aria-busy={pending}
+        className={
+          className ??
+          "stat flex min-h-11 min-w-[8.5rem] items-center justify-center gap-1.5 rounded-lg border border-chalk/20 px-3 text-xs font-semibold text-chalk hover:border-chalk/50 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+        }
+      >
+        <ImageIcon size={14} aria-hidden />
+        {pending ? "Drawing…" : (note ?? label)}
+      </button>
+      {/* The outcome is swapped into the button's own label, which a screen
+          reader never re-reads on its own. */}
+      <span role="status" aria-live="polite" className="sr-only">
+        {pending ? "Drawing the card" : (note ?? "")}
+      </span>
+    </>
   );
 }
