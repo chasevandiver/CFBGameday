@@ -1081,8 +1081,24 @@ Two items remain open; the closed ones are kept for the record.
 - [ ] **09:P-10** Board picks-query collapse — three overlapping `picks` reads
       per render (season crew picks inside `fetchSlateView`, season tallies,
       week `select("*")`) · S–M
-- [ ] **09:P-13** Receipts pagination — the whole season in one document,
-      ~840 predictions + games + teams by December · S–M
+- [ ] **09:P-13 — half done 2026-08-14, and the other half is a decision, not
+      a build.** The cost was three `select("*")` reads over a whole season:
+      ~840 predictions, their games, and every team by December. All three are
+      now narrowed to the columns the render and the calibration block actually
+      consume — checked against the file, not guessed — with the row types
+      derived by `Pick` from the real ones so a renamed column fails at compile
+      time instead of arriving as undefined. Teams went from nine columns to
+      **two**: this page prints a name and an abbreviation and never draws a
+      crest.
+      **Pagination itself is owner-owned, because it is not obviously right.**
+      The header carries season-wide calibration — SU%, ATS%, flagged-edge
+      record, CLV — computed over every receipt. Paginate the fetch and those
+      numbers silently become *this page's* numbers, which on the one page that
+      exists to prove the model's honesty is worse than a slow page. The two
+      real options are (a) week-scoped like `/recap/[week]`, with the
+      calibration kept season-wide by a second narrow query, or (b) leave it as
+      one scrollable document, which is arguably the point of a receipt book.
+      Not picked here. · owner, then S–M
 - [ ] **07:OPS-6** Backfill mode for null-CLV rows (post-kickoff `captured_at`
       is excluded forever) — only matters after a missed close · S–M
 - [x] **07:OPS-14a — preseason metered 2026-08-13; backtest deliberately not.**
