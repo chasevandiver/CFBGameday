@@ -163,6 +163,7 @@ describe("parseEvent", () => {
     live.competitions[0].competitors[1].score = "10";
     live.competitions[0].situation = {
       shortDownDistanceText: "2nd & 6",
+      downDistanceText: "2nd & 6 at DET 41",
       possession: "8", // DET, the away side
       lastPlay: { text: "Pass complete for 4 yards" },
     };
@@ -171,10 +172,24 @@ describe("parseEvent", () => {
     expect(g.period).toBe(2);
     expect(g.clock).toBe("7:24");
     expect(g.possession).toBe("away");
-    expect(g.situation).toBe("2nd & 6");
+    // the long form, because it carries the spot the field strip needs
+    expect(g.situation).toBe("2nd & 6 at DET 41");
     expect(g.lastPlay).toBe("Pass complete for 4 yards");
     expect(g.homePoints).toBe(14);
     expect(g.awayPoints).toBe(10);
+  });
+
+  // ESPN's own kickoff snapshot: the short form is present before the spot is,
+  // and a card with the down but no field strip is degraded, not broken.
+  it("falls back to the short down-and-distance when there is no spot", () => {
+    const live = structuredClone(HOME_FAVORITE) as EspnEvent;
+    live.competitions[0].status = {
+      displayClock: "15:00",
+      period: 1,
+      type: { name: "STATUS_IN_PROGRESS", state: "in", completed: false },
+    };
+    live.competitions[0].situation = { shortDownDistanceText: "1st & 10" };
+    expect(parseEvent(live).situation).toBe("1st & 10");
   });
 });
 

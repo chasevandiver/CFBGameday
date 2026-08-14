@@ -379,7 +379,14 @@ export function parseEvent(event: EspnEvent): NflScoreboardGame {
     status: mapped,
     period: inProgress ? (status?.period ?? null) : null,
     clock: inProgress ? (status?.displayClock ?? null) : null,
-    situation: inProgress ? (sit?.shortDownDistanceText ?? sit?.downDistanceText ?? null) : null,
+    /* `downDistanceText` first, not `shortDownDistanceText`. The short form is
+       "2nd & 10"; the long form is "2nd & 10 at GB 31", and the spot is what
+       `parseSituation` needs to place the ball on the field strip. NFL-5 read
+       the short one and recorded the strip as never rendering — which is what
+       the owner saw on the iPad next to the CFB demo, where CFBD supplies the
+       long form. Falls back to the short form so a spotless snapshot still
+       renders the down and distance. */
+    situation: inProgress ? (sit?.downDistanceText ?? sit?.shortDownDistanceText ?? null) : null,
     lastPlay: inProgress ? (sit?.lastPlay?.text ?? null) : null,
     possession,
     homeEspnId: Number(home?.team.id ?? 0),

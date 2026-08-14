@@ -17,10 +17,11 @@
  */
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { periodLabel } from "../lib/kick";
 import type { TickerData, TickerGame, TickerMine } from "../lib/ticker";
 import { useGamesRealtime } from "../lib/use-games-realtime";
+import { useLiveRefresh } from "../lib/use-live-refresh";
 
 const MINE_WORDS: Record<TickerMine, string> = {
   covering: "Your side is covering.",
@@ -50,30 +51,37 @@ export function ScoreTicker({ demo }: { demo?: TickerData }) {
   }, [visible]);
 
   const isDemo = demo !== undefined;
+  const mounted = useRef(true);
   useEffect(() => {
-    if (isDemo) return; // demo data arrived as a prop; nothing to fetch
-    let cancelled = false;
-    // async subscription to an external system: state updates land in the
-    // fetch callback, never synchronously in the effect body
-    const load = () =>
-      fetch("/api/ticker", { cache: "no-store" })
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  // async subscription to an external system: state updates land in the
+  // fetch callback, never synchronously in the effect body
+  const load = useCallback(
+    () =>
+      void fetch("/api/ticker", { cache: "no-store" })
         .then(async (res) => {
-          if (res.ok && !cancelled) setData((await res.json()) as TickerData);
+          if (res.ok && mounted.current) setData((await res.json()) as TickerData);
         })
         .catch(() => {
           /* transient network error — next poll retries */
-        });
-    void load();
-    const id = setInterval(() => {
-      if (document.visibilityState === "visible") void load();
-    }, 60_000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [isDemo]);
+        }),
+    [],
+  );
+
+  useEffect(() => {
+    if (isDemo) return; // demo data arrived as a prop; nothing to fetch
+    load();
+  }, [isDemo, load]);
 
   const anyLive = data?.games.some((g) => g.status === "in_progress") ?? false;
+  // Same wall-clock poller as the slate, so the strip is current the moment the
+  // page is looked at again rather than up to a minute later.
+  useLiveRefresh(load, anyLive ? 30_000 : 60_000, !isDemo);
   useGamesRealtime({
     enabled: !isDemo && anyLive && data !== null,
     week: data?.week ?? 0,

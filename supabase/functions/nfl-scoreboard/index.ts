@@ -80,8 +80,10 @@ Deno.serve(async () => {
       away_points: points(away),
       current_period: inP ? (c.status?.period ?? null) : null,
       current_clock: inP ? (c.status?.displayClock ?? null) : null,
+      // long form first — it carries the spot ("2nd & 10 at GB 31"), which is
+      // what the card's field strip parses. Mirrors src/lib/espn.ts.
       current_situation: inP
-        ? (sit.shortDownDistanceText ?? sit.downDistanceText ?? null)
+        ? (sit.downDistanceText ?? sit.shortDownDistanceText ?? null)
         : null,
       last_play: inP ? (sit.lastPlay?.text ?? null) : null,
       possession:

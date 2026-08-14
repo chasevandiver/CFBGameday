@@ -645,6 +645,22 @@ html[data-theme="light"] .field-strip {
   color: var(--text);
 }
 
+/* Last play. Two lines, always two lines tall: a play description is 60–110
+   characters and one clamped line showed about half of it, but letting the
+   box grow and shrink with each snap would bounce every card in the row. */
+.last-play {
+  margin-top: 6px;
+  min-height: 30px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--text-dim);
+}
+
 /* ---- Motion ---------------------------------------------------------- */
 
 @keyframes card-in {

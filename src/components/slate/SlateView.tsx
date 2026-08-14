@@ -8,6 +8,7 @@ import type { GameRow } from "../../lib/db-types";
 import { clockTime, dayKey, dayTabLabel, dayTabLabels, kickSlot, nflKickSlot, DEFAULT_TZ, tzLabel } from "../../lib/kick";
 import { liveUrgency } from "../../lib/live-status";
 import { useGamesRealtime } from "../../lib/use-games-realtime";
+import { useLiveRefresh } from "../../lib/use-live-refresh";
 import {
   displayRank,
   isDead,
@@ -203,7 +204,7 @@ export function SlateView({
       return dt > -3 * 3600_000 && dt < 6 * 3600_000;
     });
   }, [data.games, data.fetchedAt]);
-  const { connected } = useGamesRealtime({
+  useGamesRealtime({
     // "regular week that isn't current" is the one browsing state with nothing
     // live to push; pre- and postseason views ride the pointer's own calendar.
     enabled: !demo && (seasonType !== "regular" || week === currentWeek) && anyImminent,
@@ -212,17 +213,21 @@ export function SlateView({
     onGameUpdate: handleGameUpdate,
   });
 
-  useEffect(() => {
-    if (demo) return;
-    // realtime carries scores; the slower connected poll still heals missed
-    // events and refreshes lines/predictions
-    const ms = connected ? 180_000 : anyLive ? 30_000 : 90_000;
-    const id = setInterval(() => {
-      if (document.visibilityState === "visible")
-        void refresh(weekRef.current, false, seasonType);
-    }, ms);
-    return () => clearInterval(id);
-  }, [anyLive, connected, demo, refresh, seasonType]);
+  /* Realtime carries scores the instant they land; this heals missed events and
+     is the only thing that refreshes lines, predictions and the sheet.
+
+     The cadence used to slow to 180s whenever the realtime channel reported
+     `SUBSCRIBED`, which made a socket that had quietly died — the normal
+     outcome of an iPad sleeping — indistinguishable from a working one, with
+     three minutes of nothing behind it. The channel's own status is no longer
+     an input: while a game is live this matches the 30s ESPN pull behind it
+     (migration 0043), and a hidden tab still costs nothing. */
+  const pollMs = anyLive ? 30_000 : anyImminent ? 60_000 : 120_000;
+  const poll = useCallback(
+    () => void refresh(weekRef.current, false, seasonType),
+    [refresh, seasonType],
+  );
+  useLiveRefresh(poll, pollMs, !demo);
 
   // Logging or voiding a bet is the one data change that comes from inside this
   // page rather than from the scoreboard job, and the poll is much too slow to

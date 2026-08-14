@@ -296,20 +296,29 @@ export interface ParsedSituation {
   down: number;
   /** Yards to go, or "Goal" for goal-to-go */
   distance: number | "Goal";
-  /** Field-side token as CFBD gives it, e.g. "OSU" in "at OSU 34" */
-  sideToken: string;
+  /**
+   * Field-side token as the feed gives it, e.g. "OSU" in "at OSU 34" — null at
+   * midfield, which ESPN prints without one ("2nd & 10 at 50").
+   */
+  sideToken: string | null;
   yardLine: number;
 }
 
-/** Best-effort parse of CFBD's situation string ("2nd & 10 at OSU 34"). */
+/**
+ * Best-effort parse of a situation string ("2nd & 10 at OSU 34" from CFBD,
+ * "2nd & 10 at GB 31" from ESPN's `downDistanceText`). Midfield arrives
+ * token-less as "2nd & 10 at 50" and parses with `sideToken: null` — the spot
+ * is unambiguous there, so dropping the whole parse over it would blank the
+ * field strip for one yard line out of a hundred.
+ */
 export function parseSituation(s: string | null): ParsedSituation | null {
   if (!s) return null;
-  const m = /^(\d)(?:st|nd|rd|th)\s*&\s*(\d+|goal)\s+at\s+(\S+)\s+(\d{1,2})$/i.exec(s.trim());
+  const m = /^(\d)(?:st|nd|rd|th)\s*&\s*(\d+|goal)\s+at\s+(?:(\S+)\s+)?(\d{1,2})$/i.exec(s.trim());
   if (!m) return null;
   return {
     down: Number(m[1]),
     distance: /^goal$/i.test(m[2]) ? "Goal" : Number(m[2]),
-    sideToken: m[3],
+    sideToken: m[3] ?? null,
     yardLine: Number(m[4]),
   };
 }
@@ -330,6 +339,7 @@ export function isRedZone(g: {
   const sit = parseSituation(g.situation);
   if (!sit) return false;
   if (sit.distance === "Goal") return true;
+  if (sit.sideToken === null) return false; // midfield — never the red zone
   const offense = g.possession === "home" ? g.home : g.away;
   const defense = g.possession === "home" ? g.away : g.home;
   const token = sit.sideToken.toUpperCase();
@@ -346,10 +356,14 @@ export interface FieldPosition {
 }
 
 /**
- * Ball spot for the field strip, derived from the CFBD situation string.
+ * Ball spot for the field strip, derived from the stored situation string.
  * Convention: the away team defends the left end zone, home the right, so
  * the offense always drives toward the defender's end. Fails closed (null)
  * when the field-side token matches neither team — same policy as isRedZone.
+ *
+ * A token-less spot is midfield and only midfield: ESPN drops the abbreviation
+ * exactly once, at "at 50", where both teams' 50 is the same stripe. Any other
+ * token-less yard line would be genuinely ambiguous, so it fails closed too.
  */
 export function fieldPosition(g: {
   status: string;
@@ -361,11 +375,16 @@ export function fieldPosition(g: {
   if (g.status !== "in_progress" || !g.possession) return null;
   const sit = parseSituation(g.situation);
   if (!sit) return null;
-  const token = sit.sideToken.toUpperCase();
   let x: number;
-  if (token === g.home.abbr.toUpperCase()) x = 100 - sit.yardLine;
-  else if (token === g.away.abbr.toUpperCase()) x = sit.yardLine;
-  else return null;
+  if (sit.sideToken === null) {
+    if (sit.yardLine !== 50) return null;
+    x = 50;
+  } else {
+    const token = sit.sideToken.toUpperCase();
+    if (token === g.home.abbr.toUpperCase()) x = 100 - sit.yardLine;
+    else if (token === g.away.abbr.toUpperCase()) x = sit.yardLine;
+    else return null;
+  }
   return { x, dir: g.possession === "away" ? "right" : "left" };
 }
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   atsRecord,
   atsResult,
+  fieldPosition,
   fmtMoneyline,
   fmtSpread,
   gradeModel,
@@ -283,11 +284,81 @@ describe("parseSituation", () => {
     });
   });
 
+  // ESPN's downDistanceText drops the abbreviation at midfield, and only there
+  // — "2nd & 10 at 50". Observed live 2026-08-14 on IND@NE.
+  it("parses a token-less midfield spot", () => {
+    expect(parseSituation("2nd & 10 at 50")).toEqual({
+      down: 2,
+      distance: 10,
+      sideToken: null,
+      yardLine: 50,
+    });
+  });
+
+  it("parses ESPN's long form the same way as CFBD's", () => {
+    expect(parseSituation("3rd & Goal at ARI 6")).toEqual({
+      down: 3,
+      distance: "Goal",
+      sideToken: "ARI",
+      yardLine: 6,
+    });
+  });
+
   it("returns null for non-play strings", () => {
     expect(parseSituation("Halftime")).toBeNull();
     expect(parseSituation("End of 3rd Quarter")).toBeNull();
     expect(parseSituation(null)).toBeNull();
     expect(parseSituation("")).toBeNull();
+  });
+
+  // The short form carries no spot, so there is nothing to place on the field.
+  it("returns null for a down-and-distance with no spot", () => {
+    expect(parseSituation("2nd & 10")).toBeNull();
+  });
+});
+
+describe("fieldPosition", () => {
+  const live = (overrides: Partial<GameView>) =>
+    game({
+      status: "in_progress",
+      home: { ...team(1), abbr: "HOME" },
+      away: { ...team(2), abbr: "AWAY" },
+      ...overrides,
+    });
+
+  // x runs 0 = away goal line → 100 = home goal line, and the offense drives
+  // toward the defender's end.
+  it("places the ball on the home team's side of the field", () => {
+    expect(fieldPosition(live({ possession: "away", situation: "1st & 10 at HOME 25" }))).toEqual({
+      x: 75,
+      dir: "right",
+    });
+  });
+
+  it("places the ball on the away team's side of the field", () => {
+    expect(fieldPosition(live({ possession: "home", situation: "2nd & 7 at AWAY 31" }))).toEqual({
+      x: 31,
+      dir: "left",
+    });
+  });
+
+  it("puts a token-less midfield spot on the 50", () => {
+    expect(fieldPosition(live({ possession: "away", situation: "2nd & 10 at 50" }))).toEqual({
+      x: 50,
+      dir: "right",
+    });
+  });
+
+  it("fails closed on ambiguity, missing possession, or non-live games", () => {
+    // a token-less spot anywhere but the 50 could belong to either side
+    expect(fieldPosition(live({ possession: "away", situation: "2nd & 10 at 30" }))).toBeNull();
+    expect(fieldPosition(live({ possession: "away", situation: "2nd & 10 at XYZ 30" }))).toBeNull();
+    expect(fieldPosition(live({ possession: null, situation: "2nd & 10 at HOME 30" }))).toBeNull();
+    expect(
+      fieldPosition(live({ status: "final", possession: "away", situation: "2nd & 10 at HOME 30" })),
+    ).toBeNull();
+    // the short form ESPN used to be stored with: no spot, no strip
+    expect(fieldPosition(live({ possession: "away", situation: "2nd & 10" }))).toBeNull();
   });
 });
 
@@ -319,6 +390,8 @@ describe("isRedZone", () => {
       isRedZone(live({ status: "final", possession: "away", situation: "2nd & 6 at HOME 14" })),
     ).toBe(false);
     expect(isRedZone(live({ possession: "away", situation: "2nd & 6 at HOME 34" }))).toBe(false);
+    // midfield has no side token — and is never the red zone anyway
+    expect(isRedZone(live({ possession: "away", situation: "2nd & 6 at 50" }))).toBe(false);
   });
 });
 

@@ -166,6 +166,77 @@ shipping it.
 
 ## Log
 
+### Aug 14 — The scoreboard nobody was allowed to just leave open
+
+Owner report, watching NFL preseason on an iPad: *"it doesn't look like the
+NFL scoreboard is refreshing on its own — I have to leave the page and go to a
+different tab on the site to get it to refresh."* Plus two things missing from
+the NFL card that the CFB demo has: the ball's spot on the field, and a last
+play that wasn't cut in half. Three separate defects, one screen.
+
+**1. The poll could not survive a tab going away.** `SlateView` and
+`ScoreTicker` each ran a bare `setInterval` gated on
+`document.visibilityState`. Two failure modes stack on a tablet. A backgrounded
+or dimmed tab has its timers throttled or frozen, and when it comes back the
+old interval is armed for a *full fresh period* from whenever it happens to
+resume — nothing refreshes on the way back in, which is exactly why navigating
+to another tab of the site and returning "fixed" it: that remounts the page and
+re-renders it on the server. And the slate slowed its poll to **180s whenever
+the realtime channel reported `SUBSCRIBED`**, which is precisely the state a
+socket that quietly died on sleep still reports. A dead socket and a healthy
+one were indistinguishable, with three minutes of nothing behind either.
+
+New `src/lib/use-live-refresh.ts`, used by both. It decides on the **wall
+clock** rather than on tick count — elapsed-since-last-run checked on a short
+tick, so a suspended timer catches up on its first tick back, and shortening
+the interval (a game kicks off) measures against the last run instead of
+restarting the countdown. And it refreshes on **wake**: `visibilitychange`,
+`focus`, `pageshow` (iOS restores from bfcache with timers frozen) and
+`online`, floored at 4s so the events can't stack. Hidden tabs still cost
+nothing. 12 new tests, including the reported bug as a test: hidden for ten
+minutes, zero fetches, then one on the visibility event.
+
+The channel's status is no longer an input to the cadence. Live is **30s**
+(matching the ESPN pull behind it, migration 0043), imminent 60s, otherwise
+120s. That is up to 6× more `/api/slate` reads than the old connected path
+during the few hours a week games are actually live, and it is the right trade
+for a product whose whole premise is being left open next to a TV.
+
+**2. The football never reached an NFL card.** `parseEvent` stored ESPN's
+`shortDownDistanceText` — "2nd & 10" — where `parseSituation` needs a spot.
+NFL-5 verified that field against a live game and recorded the strip as never
+rendering; what it did not connect is that the strip *is* the field-position
+feature. `downDistanceText` carries it ("2nd & 10 at GB 31") and the short form
+is now only the fallback for ESPN's spotless kickoff snapshot. Changed in both
+writers — `src/lib/espn.ts` and the edge function's own copy.
+
+ESPN drops the abbreviation at exactly one spot, midfield: "2nd & 10 at 50",
+observed live on IND@NE. `parseSituation` takes a null `sideToken` there, and
+`fieldPosition` accepts it **only at the 50** — a token-less spot anywhere else
+would be genuinely ambiguous and still fails closed, as does `isRedZone`.
+Verified against the live feed: `yardLine` is measured from the home goal line,
+which agrees with the parsed string on all five in-progress games.
+
+**3. The last play was one `truncate`d line**, which cut roughly half of every
+real play description ("(Shotgun) F.Mendoza pass short right to M.Washington
+to ARZ 6 for 6 yards (S.Murphy-Bunting) [B.Ojulari]"). Now `.last-play`: two
+lines, clamped, in a box that is two lines tall whether or not it needs them —
+letting it grow and shrink with each snap would bounce every card in the row,
+which DESIGN.md forbids. Checked rendered at 1024×768 and 390×844.
+
+Also here, because CI has been red on it since #66: `supabase/functions/**` is
+Deno, not Next, and is now in `globalIgnores` rather than failing
+`npm run lint` on four unavoidable `any`s over ESPN's untyped JSON.
+
+**The edge function needed its own redeploy**, since it ships to Supabase
+separately from the app. Done the same hour, owner-approved: `nfl-scoreboard`
+v3, `verify_jwt` unchanged, the repo file verbatim. One cron tick later all
+five live preseason games had gone from `"1st & 10"` to `1st & 10 at CIN 46`,
+`3rd & 2 at IND 35`, `3rd & 9 at LAC 47`, `1st & 10 at GB 42` and
+`2nd & 11 at LV 34`, with clocks still advancing — so the 30-second pull is
+intact on v3, and every side token matches a stored `teams.abbreviation`,
+which is the condition `fieldPosition` resolves on.
+
 ### Aug 13 (night) — NFL preseason: August is real on the NFL side
 
 Owner request an hour after go-live. `preseason` becomes a third
