@@ -1261,13 +1261,22 @@ Built on `claude/nfl-scores-lines-l4bhio`; the design and its evidence are in
       1024×768 and 390×844. **`supabase/functions/**` moved to eslint's
       globalIgnores** — it is Deno, and it had been failing `npm run lint`,
       and therefore CI, since #66.
-- [ ] **NFL-9b** Redeploy the edge function so the live pull writes the long
-      situation string. `supabase/functions/nfl-scoreboard/index.ts` is source
-      of truth in the repo but ships to Supabase separately (NFL-8), so until
-      it is redeployed pg_cron keeps writing `shortDownDistanceText` and NFL
-      cards keep showing the down without the field strip. The Actions loop
-      carries the fix on the next code deploy. · owner-approved production
-      write, ~5 min
+- [x] **NFL-9b** Redeploy the edge function so the live pull writes the long
+      situation string — `supabase/functions/nfl-scoreboard/index.ts` is source
+      of truth in the repo but ships to Supabase separately (NFL-8).
+      **Done 2026-08-14 ~01:24 UTC, owner-approved.** `nfl-scoreboard` v3,
+      `verify_jwt` still off, no other change to the function. Verified
+      against live preseason: before the deploy all five in-progress games
+      stored `"1st & 10"`; one cron tick after it, all five stored the spot —
+      `1st & 10 at CIN 46`, `3rd & 2 at IND 35`, `3rd & 9 at LAC 47`,
+      `1st & 10 at GB 42`, `2nd & 11 at LV 34` — with clocks advancing
+      normally (GB@PIT 2:19 → 1:48), so the 30-second pull is intact on v3.
+      Every side token matches one of the two stored `teams.abbreviation`
+      values for its game, which is the condition `fieldPosition` resolves on;
+      the ARI@LV row is at `possession: null` (end-of-half kneel) and renders
+      as situation-without-football, the degraded state NFL-5 already
+      recorded. The deployed v2 had drifted from the repo copy in two comment
+      lines only; v3 is the repo file verbatim.
 - [x] **NFL-7** Preseason, owner request 2026-08-13 ("Can we add preseason
       too?"). `preseason` is a third season_type on the NFL side only: stored
       1:1 from ESPN (weeks 1–4, week 1 the Hall of Fame game), no schema

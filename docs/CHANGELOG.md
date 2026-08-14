@@ -228,10 +228,14 @@ Also here, because CI has been red on it since #66: `supabase/functions/**` is
 Deno, not Next, and is now in `globalIgnores` rather than failing
 `npm run lint` on four unavoidable `any`s over ESPN's untyped JSON.
 
-**The edge function needs a redeploy to take effect** —
-`supabase/functions/nfl-scoreboard/index.ts` is source of truth in the repo but
-ships to Supabase separately, and until it does, pg_cron keeps writing the
-short form. The Actions loop writes the long form as soon as this deploys.
+**The edge function needed its own redeploy**, since it ships to Supabase
+separately from the app. Done the same hour, owner-approved: `nfl-scoreboard`
+v3, `verify_jwt` unchanged, the repo file verbatim. One cron tick later all
+five live preseason games had gone from `"1st & 10"` to `1st & 10 at CIN 46`,
+`3rd & 2 at IND 35`, `3rd & 9 at LAC 47`, `1st & 10 at GB 42` and
+`2nd & 11 at LV 34`, with clocks still advancing — so the 30-second pull is
+intact on v3, and every side token matches a stored `teams.abbreviation`,
+which is the condition `fieldPosition` resolves on.
 
 ### Aug 13 (night) — NFL preseason: August is real on the NFL side
 
