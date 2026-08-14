@@ -244,3 +244,29 @@ select pg_temp.chk('authenticated cannot DELETE cover_flips',
   not has_table_privilege('authenticated', 'public.cover_flips', 'DELETE'));
 select pg_temp.chk('but everyone can read them',
   has_table_privilege('anon', 'public.cover_flips', 'SELECT'));
+
+-- ---------------------------------------------------------------------------
+\echo '# reason_tag is optional now, and still constrained when present (0047)'
+-- ---------------------------------------------------------------------------
+-- LEDGER-1 took the required "Why" picker out of the slip and the form. The
+-- column stays for history and for the CSV export, so what has to hold is:
+-- a bet inserts without one, and a garbage value is still refused. A CHECK
+-- passes on NULL by definition, which is the whole reason it needed no change.
+\o /dev/null
+insert into games (id, season_id, week, season_type, start_ts, home_team_id, away_team_id)
+values (777, 2026, 3, 'regular', now() + interval '5 days', 1, 2);
+\o
+
+\o /dev/null
+insert into bets (season_id, user_id, game_id, bet_type, description, side,
+                  line_taken, odds, units)
+values (2026, :ann::uuid, 777, 'spread', 'Georgia -3', 'home', -3, -110, 2);
+\o
+select pg_temp.chk('a bet logs with no reason tag at all',
+  (select reason_tag is null from bets where game_id = 777));
+
+select pg_temp.raises('and an invented tag is still refused',
+  $$insert into bets (season_id, user_id, game_id, bet_type, description, side,
+                      line_taken, odds, units, reason_tag)
+    values (2026, '11111111-1111-1111-1111-111111111111'::uuid, 777, 'spread',
+            'Georgia -3', 'home', -3, -110, 2, 'vibes')$$);

@@ -50,6 +50,43 @@ export function ScoreTicker({ demo }: { demo?: TickerData }) {
     };
   }, [visible]);
 
+  /* UX-34 — the marquee's two measurements.
+     `still` is whether there is anything to scroll past: one copy of the chips
+     narrower than the frame has nowhere to go, and sliding it would be motion
+     for its own sake. `duration` holds the speed constant in px/sec, so a
+     sixty-game Saturday travels further rather than faster.
+     Measured after paint from the real laid-out width — the chips are variable
+     width (an NFL tag, a live dot, a four-letter abbreviation) and estimating
+     from `games.length` would drift. Re-measured on resize and whenever the
+     game list changes, which a poll can do every 30 seconds. */
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [still, setStill] = useState(true);
+  const [held, setHeld] = useState(false);
+  const [duration, setDuration] = useState(40);
+  const gameCount = data?.games.length ?? 0;
+  useEffect(() => {
+    const measure = () => {
+      const track = trackRef.current;
+      // The viewport, not the sticky wrapper: the wrapper is full-bleed while
+      // the strip inside it is capped at max-w-7xl, so measuring the wrapper
+      // would call a full desktop ticker "fits" and leave it motionless.
+      const frame = track?.parentElement;
+      if (!track || !frame) return;
+      // The track holds one copy while `still`, two once it scrolls; either
+      // way the first copy is the unit of travel.
+      const copy = track.firstElementChild as HTMLElement | null;
+      const contentWidth = copy?.scrollWidth ?? 0;
+      const fits = contentWidth <= frame.clientWidth;
+      setStill(fits);
+      // ~55 px/sec: slow enough to read a score in passing, quick enough that
+      // a game at the far end comes round inside a commercial break.
+      if (!fits) setDuration(Math.max(20, Math.round(contentWidth / 55)));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [gameCount]);
+
   const isDemo = demo !== undefined;
   const mounted = useRef(true);
   useEffect(() => {
@@ -111,27 +148,52 @@ export function ScoreTicker({ demo }: { demo?: TickerData }) {
 
   if (!data || data.games.length === 0) return null;
 
+  const chips = (ariaHidden: boolean) => (
+    <div className="flex shrink-0 items-center gap-1 px-2" aria-hidden={ariaHidden || undefined}>
+      {data.games.map((g) =>
+        isDemo ? (
+          <span key={g.id} className={chipClass(g.mine)}>
+            <ChipBody g={g} />
+          </span>
+        ) : (
+          <Link
+            key={g.id}
+            href={`/game/${g.id}`}
+            /* The duplicate copy exists for the seamless wrap, not for the
+               reader — it is aria-hidden and untabbable, so Tab walks the
+               games once. */
+            tabIndex={ariaHidden ? -1 : undefined}
+            className={`${chipClass(g.mine)} transition-colors hover:bg-surface hover:text-chalk`}
+          >
+            <ChipBody g={g} />
+          </Link>
+        ),
+      )}
+    </div>
+  );
+
   return (
     <div
       ref={stripRef}
       className="sticky top-12 z-[15] border-b border-chalk/10 bg-background/85 backdrop-blur-md"
     >
-      <div className="scroll-thin mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 py-1">
-        {data.games.map((g) =>
-          isDemo ? (
-            <span key={g.id} className={chipClass(g.mine)}>
-              <ChipBody g={g} />
-            </span>
-          ) : (
-            <Link
-              key={g.id}
-              href={`/game/${g.id}`}
-              className={`${chipClass(g.mine)} transition-colors hover:bg-surface hover:text-chalk`}
-            >
-              <ChipBody g={g} />
-            </Link>
-          ),
-        )}
+      <div className="ticker-viewport scroll-thin mx-auto max-w-7xl py-1">
+        <div
+          ref={trackRef}
+          className="ticker-track"
+          data-still={still ? "1" : undefined}
+          data-held={held ? "1" : undefined}
+          /* Constant speed rather than constant duration: 60 chips on a
+             Saturday would otherwise blur past at twelve times the pace of
+             five on a Tuesday. */
+          style={{ "--ticker-duration": `${duration}s` } as React.CSSProperties}
+          onPointerDown={() => setHeld(true)}
+          onPointerUp={() => setHeld(false)}
+          onPointerCancel={() => setHeld(false)}
+        >
+          {chips(false)}
+          {!still && chips(true)}
+        </div>
       </div>
     </div>
   );

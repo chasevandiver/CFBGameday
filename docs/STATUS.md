@@ -1840,10 +1840,41 @@ rather than a quarter linescore.
       caught a vacuous assertion of my own: "names the bet" passed pre-fix
       because the ATS chip renders the same string, so it is now scoped to the
       strip element.
-- [ ] **UX-34** The ticker does not scroll — `ScoreTicker.tsx:119` is a static
-      `overflow-x-auto` strip with no animation.
-- [ ] **UX-35** Remove pinch zoom. Owner request; see §6 for the accessibility
-      residual this deliberately accepts.
+- [x] **UX-34 — the ticker scrolls**, 2026-08-14. It was a static
+      `overflow-x-auto` strip you had to swipe, so on a phone every game past
+      the fourth was invisible unless you went looking. CSS marquee: the track
+      holds the chip list twice and travels exactly −50%, so the wrap is
+      seamless. Duration is set from the **measured** content width, not from
+      `games.length` — chips are variable width — which keeps the speed constant
+      at ~55 px/sec whether it is five games on a Tuesday or sixty on a
+      Saturday. Paused on hover, on focus-within and while a finger is down,
+      because every chip is a 44px link and a moving target is not a target.
+      The duplicate copy is `aria-hidden` and untabbable, so a screen reader and
+      the Tab key each walk the games once. Content narrower than the frame does
+      not animate at all. Under `prefers-reduced-motion` the global clamp stops
+      it and the viewport keeps `overflow-x: auto`, degrading to exactly the
+      strip it replaced — with the second copy hidden, since without motion it
+      would just be every score printed twice. `--ticker-h` is unchanged: the
+      duplicate adds width, not height.
+- [x] **UX-35 — zoom is off**, 2026-08-14, owner request. Three changes, because
+      no single one covers every surface: `maximumScale`/`userScalable` in the
+      viewport (honoured by the **installed PWA**, which is where this was
+      reported, and by Android Chrome); `touch-action: pan-x pan-y` on
+      `html, body`; and a `gesturestart`/`gesturechange`/`gestureend`
+      preventDefault for **Safari in a browser tab**, which has ignored
+      `user-scalable=no` since iOS 10. The handler is guarded on
+      `"ongesturestart" in window`, so it is inert everywhere else rather than
+      throwing.
+      `globals.css` carried the sentence *"Zoom itself is untouched — pinch
+      still works, and nothing here disables it."* That is now false and is
+      corrected in place.
+      **This fails WCAG 2.1 SC 1.4.4 and is recorded in §6 as a residual** so it
+      is not rediscovered as a bug and reverted. What makes it defensible: the
+      layout is fluid and reflows to the OS text size — nothing here is a
+      fixed-width image of text — so a reader who needs larger type gets it from
+      Settings. If that stops being true, this comes out. **Owner-verifiable
+      only on a device**: the installed PWA and Safari-in-a-tab behave
+      differently and only one honours the meta tag.
 - [ ] **UX-36** A Live option on the slate, alongside CFB and NFL. There is no
       live filter today — only a count pill and a section that appears when the
       sort is by kickoff.
@@ -1857,11 +1888,53 @@ rather than a quarter linescore.
       rendered once for both callers. The two comments claiming the football is
       deliberately card-only (`GameCard.tsx:466`, `TeamLine.tsx:79-82`) are
       corrected. 3 tests.
-- [ ] **UX-38 / LEDGER-1** The bet slip is too transparent to read, and the Why
-      field goes. The slip is the one `.card` floating over scrolling content
-      with neither an aura behind it nor a `backdrop-filter`, on an
-      `--glass-surface` tuned at 80% for game cards. `reason_tag` is replaced by
-      the derived tail/fade relation `src/lib/tailing.ts` already computes.
+- [x] **UX-38 — the bet slip is readable**, 2026-08-14. **Cause located:** the
+      slip has no `backdrop-filter` at all. `globals.css:444-447` reserves blur
+      for "the bars that genuinely have content scrolling underneath (nav,
+      header, ticker)" and the slip — a panel fixed over the scrolling slate —
+      was never counted. It also used `.card`, whose face is `--glass-surface`
+      at **80%**, a value the comment at `:52-57` says was tuned for a game
+      card, which has a controlled blurred aura behind it. The slip has neither,
+      so 20% of the cards scrolling underneath came through unblurred.
+      New `--glass-panel` token (96% of the same `--surface`; fully opaque in
+      light mode, where the 4% would be the page's own grey) and a `.panel`
+      class carrying the card's border, radius and shadow plus a blur. Derived
+      from an existing colour, so this is a named step rather than a new value —
+      the rule `docs/DESIGN.md:54` asks for. No sheen: it exists to make a large
+      pane read as curved glass, and on a panel whose job is legibility it is
+      one more thing between the reader and an 11px number.
+      Small text lifted with it: the price and matchup off `--text-dim` and onto
+      `--text` at reduced alpha, the stake input and confidence picker up one
+      step on the existing scale, and the input borders from `chalk/12` to
+      `chalk/20`. **No new sizes** — every value is one already on the scale.
+- [x] **LEDGER-1 — the Why field is gone; tail and fade are derived**,
+      2026-08-14, migration **0047**. Owner: *"Do we need the Why question on
+      bets? I think it's only useful for tails or fades, but that should be
+      automatic if betting with or against people in your betting groups."*
+      That read was right and the automatic half already existed:
+      `src/lib/tailing.ts` has derived origin/tail/fade from arrival order since
+      betting groups shipped, and its docblock argues the case better than any
+      of this — a stored pointer "would only be set on the ones who used the
+      Tail button, which would make the stats a measure of button usage rather
+      than of who is worth following."
+      The required picker is out of both the slip and the bet form, and
+      `logBet`/`logSlipBets` no longer take or validate a tag. **The column
+      stays, nullable**: existing rows carry values that were true when entered,
+      and `ledger/export/route.ts` ships `reason_tag` in the CSV — dropping it
+      would silently change an export people may already hold copies of. The
+      CHECK needs no change, since a CHECK passes on NULL by definition.
+      The ledger's marquee section keeps its heading and changes its question:
+      what you **opened**, what you **tailed**, what you **faded**, plus
+      `pairStatsFor`'s "am I better off just copying Jeff?" — which
+      `tailing.ts:210-217` notes is not answerable from anyone's own record.
+      **Per betting group, never pooled**, because origination means "first in
+      *this* group" and merging two crowds would invent tails that never
+      happened. Viewers in no betting group see the section not render, rather
+      than an empty table. The ledger's per-row Tag column is dropped rather
+      than replaced: a relation is per group, so a single column could not say
+      which group it meant.
+      8 component tests, 2 DB assertions (198 → 200), both checked failing
+      without 0047. `docs/SPEC.md` §4 and §5.3 amended.
 - [ ] **SCORE-1** The scoring timeline, both leagues. Net-new everywhere: no
       plays, drives or linescore data exists, neither API client parses any, and
       `last_play` is **nulled the moment a game goes final**, so postgame there
@@ -1904,6 +1977,16 @@ here so they aren't rediscovered as bugs.
 - **The 2026 gate's week-1 lines are the fit set**, so t < 2 there is by
   construction. Out-of-sample evidence is the 2024–25 weeks 2–4 result, and
   going forward the weeks-2+ 2026 lines as they post.
+- **Zoom is disabled, and that fails WCAG 2.1 SC 1.4.4** (UX-35, owner request
+  2026-08-14). Recorded here rather than left to be rediscovered as a bug and
+  "fixed" back. What makes it defensible is that the layout is fluid and reflows
+  to the OS text size — nothing in the app is a fixed-width image of text — so a
+  reader who needs larger type gets it from Settings rather than by pinching. If
+  that stops being true, or if anyone using the app reports needing pinch,
+  remove the three changes together: the viewport scale limits in `layout.tsx`,
+  the `touch-action` on `html, body` in `globals.css`, and the `gesture*`
+  handler. The `web-design-guidelines` review will flag this every time it runs;
+  that is correct and is not a reason to stop running it.
 - **The blind reads `start_ts`, not status.** A game whose `status` goes final
   while `start_ts` is stale stays hidden. Left as-is: one source of truth in a
   security boundary beats two.

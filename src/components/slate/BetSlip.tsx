@@ -5,7 +5,6 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { logSlipBets } from "../../app/actions/bets";
 import { slipKey, useBetSlip, type SlipSelection } from "../../lib/bet-slip-store";
 import { betsChanged } from "../../lib/bets-changed";
-import { REASON_TAGS, REASON_TAG_LABELS } from "../../lib/db-types";
 import { DEFAULT_TZ, kickHeading } from "../../lib/kick";
 import { slipCardPayload } from "../../lib/share-card-build";
 import { shareOrCopy } from "../../lib/share-sheet";
@@ -61,9 +60,6 @@ export function BetSlip({
   // still overridable, since somebody may have had the same side anyway.
   // Derived rather than synced: an explicit choice wins, and until there is
   // one the default follows what is on the slip.
-  const [tagChoice, setTagChoice] = useState<string | null>(null);
-  const tailedFrom = slip.find((s) => s.tailedFrom !== undefined)?.tailedFrom;
-  const reasonTag = tagChoice ?? (tailedFrom === undefined ? "model_edge" : "tail");
   const [open, setOpen] = useState(true);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -171,12 +167,10 @@ export function BetSlip({
         setLogged(slip.map((s) => toSharePick(s, unitsFor(slipKey(s)), tz)));
         clear();
         setUnits({});
-        setTagChoice(null);
         return;
       }
       const res = await logSlipBets(
         seasonId,
-        reasonTag,
         slip.map((s) => ({
           gameId: s.gameId,
           betType: s.betType,
@@ -196,7 +190,6 @@ export function BetSlip({
         setLogged(slip.map((s) => toSharePick(s, unitsFor(slipKey(s)), tz)));
         clear();
         setUnits({});
-        setTagChoice(null);
         // the cards behind the slip are holding a slate that predates these
         // rows; tell them so rather than making the user wait for a poll
         betsChanged();
@@ -205,7 +198,11 @@ export function BetSlip({
 
   return (
     <div className="fixed bottom-[calc(var(--bottom-nav-h)+env(safe-area-inset-bottom)+0.75rem)] right-4 md:bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 w-[340px] max-w-[calc(100vw-2rem)]">
-      <div className="card overflow-hidden shadow-2xl">
+      {/* UX-38: `.panel`, not `.card`. The slip is the one card-shaped thing
+          that floats over the scrolling slate with no aura behind it and no
+          blur, so at --glass-surface's 80% the game cards underneath showed
+          through and the 11px type on it was unreadable. */}
+      <div className="panel overflow-hidden">
         <button
           onClick={() => setOpen(!open)}
           aria-expanded={open}
@@ -232,21 +229,25 @@ export function BetSlip({
                     <div className="min-w-0 flex-1">
                       <p className="scorebug truncate text-[14px] leading-tight text-chalk">
                         {s.label}
-                        <span className="stat ml-1.5 text-[10.5px] font-normal text-dim">
+                        {/* The price is a value, not a label — it belongs on
+                            --text like the number beside it, and at 11px it is
+                            on the same step as the rest of the slip's data
+                            (UX-38). */}
+                        <span className="stat ml-1.5 text-[11px] font-normal text-chalk/70">
                           {fmtMoneyline(s.odds)}
                         </span>
                       </p>
-                      <p className="stat truncate text-[10.5px] text-dim">{s.matchup}</p>
+                      <p className="stat truncate text-[11px] text-chalk/60">{s.matchup}</p>
                     </div>
                     <label className="flex shrink-0 items-center gap-1">
-                      <span className="text-[10px] uppercase tracking-wide text-chalk/40">u</span>
+                      <span className="text-[10.5px] uppercase tracking-wide text-chalk/60">u</span>
                       <input
                         value={units[key] ?? ""}
                         onChange={(e) => setUnits((u) => ({ ...u, [key]: e.target.value }))}
                         placeholder="1"
                         inputMode="decimal"
                         aria-label={`Units for ${s.label}`}
-                        className="stat h-11 w-12 rounded-md border border-chalk/12 bg-elev px-1.5 text-right text-xs text-chalk focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+                        className="stat h-11 w-12 rounded-md border border-chalk/20 bg-elev px-1.5 text-right text-sm text-chalk focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
                       />
                     </label>
                     <button
@@ -264,33 +265,19 @@ export function BetSlip({
                       value={s.tier}
                       onChange={(tier) => setTier(s.gameId, s.betType, tier)}
                       label={`Confidence for ${s.label}`}
-                      className="stat mt-1.5 h-11 w-full rounded-md border border-chalk/12 bg-elev px-2 text-[11px] text-chalk focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+                      className="stat mt-1.5 h-11 w-full rounded-md border border-chalk/20 bg-elev px-2 text-xs text-chalk focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
                     />
                   </li>
                 );
               })}
             </ul>
 
+            {/* The "Why" picker used to sit here (LEDGER-1). It asked for a
+                self-reported reason tag on every slip, and two of its eight
+                values — tail and fade — are facts the database already knows:
+                `src/lib/tailing.ts` derives them from who got their money down
+                first. The ledger's audit is rebuilt on that instead. */}
             <div className="flex flex-col gap-2 px-3.5 py-3">
-              <label className="relative">
-                <span className="sr-only">Reason tag</span>
-                <select
-                  value={reasonTag}
-                  onChange={(e) => setTagChoice(e.target.value)}
-                  className="h-8 w-full appearance-none rounded-lg border border-chalk/12 bg-elev pl-3 pr-7 text-xs font-medium text-chalk focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
-                >
-                  {REASON_TAGS.map((tag) => (
-                    <option key={tag} value={tag}>
-                      Why: {REASON_TAG_LABELS[tag]}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown
-                  size={12}
-                  aria-hidden
-                  className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-dim"
-                />
-              </label>
               {error && <p className="text-xs text-loss">{error}</p>}
               <div className="flex items-center gap-2">
                 <button

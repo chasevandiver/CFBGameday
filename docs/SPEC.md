@@ -165,13 +165,14 @@ Ambiguity here is the #1 source of arguments in betting groups, so the rules are
 Price from sub-ratings + tempo: team totals, first-half lines, alternate lines. **[v2]** Requires a pace/half-split model beyond the base sub-ratings — Phase 2, flagged as real modeling work, not a formula tweak.
 
 ## 5.3 Ledger (per user)
-- Log: date, game, pick, line taken, odds, units, book (optional), **reason tag** (fixed list: model edge, travel/rest, weather, revenge, QB news, feel, tail, fade)
+- Log: date, game, pick, line taken, odds, units, book (optional), **confidence tier** (lean / bet / slate / day / year / century)
+- **[amended 2026-08-14, LEDGER-1]** A required **reason tag** stood here (model edge, travel/rest, weather, revenge, QB news, feel, tail, fade). It is no longer asked for. Two of its eight values — tail and fade — are derived from arrival order inside a betting group by `src/lib/tailing.ts`, and the other six were a self-report standing between a person and logging a bet. The column survives nullable for history and for the CSV export.
 - **CLV per bet** = line_taken − closing_line (your side's perspective).
 - **[v2] Closing line definition:** CFBD stores only opener + one current line — **no movement history, no explicit close**. Our closing line = **last snapshot in our own append-only `line_snapshots` table before kickoff**, against a **declared canonical book** (consensus; user's actual book stored as metadata). A pre-kickoff **burst poll (every 5–10 min in the final 90 minutes per kickoff wave)** keeps the closing proxy honest. Totals bets grade vs closing total; moneyline CLV is measured in cents.
 - Season dashboard: record, units, ROI, avg CLV, cumulative units curve.
-- **Reason-tag audit:** W-L, ROI, CLV *by reason tag*. Most bettors have one profitable angle and four leaks.
+- **Angle audit:** W-L, ROI, CLV *by how you came to the bet* — what you opened, what you tailed, what you faded — plus your record riding each other member versus opposing them. Most bettors have one profitable angle and four leaks. **[amended 2026-08-14, LEDGER-1]** This was "by reason tag" and was only ever as honest as the label someone picked in a hurry at the bet slip. The relation is derived from who got their money down first, so nobody enters it and nobody can game it. Computed per betting group, never pooled: origination means "first in *this* group".
 - **Futures tracker:** win totals and playoff/champ futures logged in August, marked to market weekly.
-- Numbers are unhideable by design. **[v2] Enforcement:** bets are append-only with `voided_at` (no hard deletes) — schema, not policy.
+- Numbers are unhideable by design. **[v2] Enforcement:** bets are append-only with `voided_at` (no hard deletes) — schema, not policy. **[amended 2026-08-14, ADM-1]** One exception, added deliberately: a site admin can delete a bet outright, because voiding leaves a test row on the ledger forever and clearing test data was the request. The invariant is narrowed rather than dropped — every deletion copies the whole row into a deny-all `deleted_wagers` archive first, so it is now "nothing is removed without a record". Ordinary users still cannot delete: `revoke delete on bets` stands.
 
 ## 5.4 Bet sizing guide
 - Fractional Kelly (¼ Kelly), hard-capped at 2 units, displayed on every flagged game.

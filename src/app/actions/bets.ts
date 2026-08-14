@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { CONFIDENCE_TIERS, REASON_TAGS, type ConfidenceTier } from "../../lib/db-types";
+import { CONFIDENCE_TIERS, type ConfidenceTier } from "../../lib/db-types";
 import { homeLineForSide } from "../../lib/slate";
 import { createClient } from "../../lib/supabase/server";
 
@@ -31,7 +31,6 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
 
   const description = String(formData.get("description") ?? "").trim();
   const betType = String(formData.get("bet_type") ?? "spread");
-  const reasonTag = String(formData.get("reason_tag") ?? "");
   const units = Number(formData.get("units"));
   const odds = Number(formData.get("odds") || -110);
   const lineRaw = String(formData.get("line_taken") ?? "").trim();
@@ -42,9 +41,6 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
   const sideRaw = String(formData.get("side") ?? "").trim();
 
   if (!description) return { ok: false, message: "Describe the bet (e.g. “Michigan -3.5”)" };
-  if (!REASON_TAGS.includes(reasonTag as (typeof REASON_TAGS)[number])) {
-    return { ok: false, message: "Pick a reason tag — that's the whole point of the audit" };
-  }
   if (!Number.isFinite(units) || units <= 0) return { ok: false, message: "Units must be > 0" };
   if (!CONFIDENCE_TIERS.includes(confidence as ConfidenceTier)) {
     return { ok: false, message: "Bad confidence tier" };
@@ -80,7 +76,6 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
     odds,
     units,
     book: book || null,
-    reason_tag: reasonTag,
     confidence,
   });
 
@@ -106,7 +101,6 @@ export interface SlipBetInput {
 /** Log every selection on the bet slip in one shot (one ledger row each). */
 export async function logSlipBets(
   seasonId: number,
-  reasonTag: string,
   bets: SlipBetInput[],
 ): Promise<BetActionResult> {
   const supabase = await createClient();
@@ -116,9 +110,6 @@ export async function logSlipBets(
   if (!user) return { ok: false, message: "Sign in to log bets" };
 
   if (!Number.isInteger(seasonId)) return { ok: false, message: "Bad season" };
-  if (!REASON_TAGS.includes(reasonTag as (typeof REASON_TAGS)[number])) {
-    return { ok: false, message: "Pick a reason tag — that's the whole point of the audit" };
-  }
   if (bets.length === 0) return { ok: false, message: "Nothing on the slip" };
   if (bets.length > 25) return { ok: false, message: "Too many bets at once" };
   for (const b of bets) {
@@ -153,7 +144,6 @@ export async function logSlipBets(
       line_taken: storedLine(b.betType, b.side, b.line),
       odds: b.odds,
       units: b.units,
-      reason_tag: reasonTag,
       confidence: b.confidence,
     })),
   );

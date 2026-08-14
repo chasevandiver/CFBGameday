@@ -10,11 +10,15 @@ import { ShareImageButton } from "../../components/ShareImageButton";
 import { StatTile } from "../../components/StatTile";
 import { UnitsCurve } from "../../components/UnitsCurve";
 import { VoidBetButton } from "../../components/VoidBetButton";
-import { REASON_TAGS, REASON_TAG_LABELS, type BetRow, type TeamRow } from "../../lib/db-types";
+import { TailFadeAudit, type AuditGroup, type PairRow, type RelationRow } from "../../components/TailFadeAudit";
+import { type BetRow, type TeamRow } from "../../lib/db-types";
 import { kickParts, tzLabel, DEFAULT_TZ } from "../../lib/kick";
 import { statusForBet, type LiveBetStatus } from "../../lib/live-status";
 import { betsCardPayload, shareableBets, type BetCardGame } from "../../lib/share-card-build";
 import { seasonIdsForYear, seasonYearOf, sportOfSeasonId } from "../../lib/league";
+import { fetchBettingSheet } from "../../lib/betting-groups";
+import { fetchMyGroups } from "../../lib/groups";
+import { pairStatsFor } from "../../lib/tailing";
 import { fetchBetFormGames, fetchCurrentSeasonWeek } from "../../lib/queries";
 import { cumulativeUnits, formatRecord, tally, tallyBy } from "../../lib/records";
 import { fmtSpread, fmtTotal, lineForSide } from "../../lib/slate";
@@ -38,6 +42,17 @@ function fmtBetLine(b: BetRow): string {
 
 const abbrOf = (t: TeamRow | undefined): string =>
   t?.abbreviation ?? t?.school.replace(/[^A-Za-z]/g, "").slice(0, 4).toUpperCase() ?? "?";
+
+/* The three ways a bet can stand relative to the crowd, in the order that reads
+   as a story: what you opened, what you rode, what you opposed. Each carries a
+   hint, because "Origin" on its own does not say what is worth knowing about
+   it. `unclassified` is deliberately absent — a bet with no game or no side
+   (a future, a freeform row) is not in any market to be first in. */
+const RELATION_ROWS: ReadonlyArray<{ key: RelationRow["key"]; label: string; hint: string }> = [
+  { key: "origin", label: "You got there first", hint: "Nobody in the group was on it before you" },
+  { key: "tail", label: "You tailed", hint: "Same side, behind somebody else" },
+  { key: "fade", label: "You faded", hint: "Other side, behind somebody else" },
+];
 
 type LedgerTab = "bets" | "picks";
 
@@ -237,12 +252,48 @@ export default async function LedgerPage({
   const nflSplit = byLeague.get("nfl");
   const showSplit = cfbSplit !== undefined && nflSplit !== undefined;
 
-  // Reason-tag audit (spec §5.3): W-L, units, ROI, CLV by tag — most bettors
-  // have one profitable angle and four leaks. The ledger's marquee feature.
-  const byTag = tallyBy(graded, (b) => b.reason_tag);
-  const tagRows = REASON_TAGS.filter((tag) => byTag.has(tag))
-    .map((tag) => ({ tag, ...byTag.get(tag)! }))
-    .sort((a, b) => b.units - a.units);
+  // The audit spec §5.3 asks for — W-L, units, ROI and CLV by angle, because
+  // most bettors have one profitable angle and four leaks — now split by who
+  // you followed rather than by a tag you typed (LEDGER-1). Derived from
+  // arrival order inside each betting group by `src/lib/tailing.ts`, so it
+  // cannot be gamed and does not have to be asked for.
+  //
+  // Per group, never pooled: origination means "first in THIS group", so
+  // merging two crowds would change who was first and invent tails that never
+  // happened.
+  const auditGroups: AuditGroup[] = user
+    ? (
+        await Promise.all(
+          (await fetchMyGroups(supabase, user.id))
+            .filter((g) => g.kind === "betting")
+            .map(async (g) => {
+              const sheet = await fetchBettingSheet(supabase, g.id, seasonId);
+              const mine = sheet.bets.filter((b) => b.userId === user.id);
+              const byRelation = tallyBy(
+                mine.map((b) => ({
+                  relation: b.relation,
+                  result: b.result,
+                  units: b.units,
+                  payoutUnits: b.payoutUnits,
+                  clv: b.clv,
+                })),
+                (b) => b.relation,
+              );
+              const rows: RelationRow[] = RELATION_ROWS.filter(
+                (r) => (byRelation.get(r.key)?.decided ?? 0) > 0,
+              ).map((r) => ({ ...r, tally: byRelation.get(r.key)! }));
+              const pairs: PairRow[] = pairStatsFor(sheet.bets, user.id)
+                .map((p) => ({
+                  name: sheet.nameById.get(p.otherId) ?? "—",
+                  tailing: p.tailing,
+                  fading: p.fading,
+                }))
+                .filter((p) => p.tailing.decided + p.fading.decided > 0);
+              return { groupId: g.id, groupName: g.name, rows, pairs };
+            }),
+        )
+      ).filter((g) => g.rows.length > 0 || g.pairs.length > 0)
+    : [];
 
   // cumulative units, oldest → newest, for the season curve
   const curve = cumulativeUnits(
@@ -364,63 +415,8 @@ export default async function LedgerPage({
           </section>
         )}
 
-        {/* Reason-tag audit (spec §5.3) */}
-        {tagRows.length > 0 && (
-          <section className="card mb-6 overflow-x-auto">
-            <h2 className="border-b border-chalk/8 px-4 py-2.5 text-sm text-accent">
-              Where your edge actually is
-            </h2>
-            <table className="stats w-full text-sm">
-              <thead>
-                <tr className="text-left text-[10.5px] uppercase tracking-wider text-chalk/55">
-                  <th className="py-2 pl-4 pr-3 font-semibold">Tag</th>
-                  <th className="px-3 py-2 text-right font-semibold">Record</th>
-                  <th className="px-3 py-2 text-right font-semibold">Units</th>
-                  <th className="px-3 py-2 text-right font-semibold">ROI</th>
-                  <th className="py-2 pl-3 pr-4 text-right font-semibold">CLV</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tagRows.map((r) => (
-                  <tr key={r.tag} className="border-t border-chalk/5">
-                    <td className="py-2 pl-4 pr-3 font-sans text-chalk">
-                      {REASON_TAG_LABELS[r.tag]}
-                    </td>
-                    <td className="px-3 py-2 text-right text-chalk/80">{formatRecord(r)}</td>
-                    <td
-                      className={`px-3 py-2 text-right ${r.units > 0 ? "text-win" : r.units < 0 ? "text-loss" : ""}`}
-                    >
-                      {r.units >= 0 ? "+" : ""}
-                      {r.units.toFixed(1)}
-                    </td>
-                    <td className="px-3 py-2 text-right text-chalk/80">
-                      {r.roi === null ? "–" : `${(r.roi * 100).toFixed(0)}%`}
-                    </td>
-                    <td
-                      className={`py-2 pl-3 pr-4 text-right ${
-                        r.avgClv === null
-                          ? ""
-                          : r.avgClv > 0
-                            ? "text-win"
-                            : r.avgClv < 0
-                              ? "text-loss"
-                              : ""
-                      }`}
-                    >
-                      {r.avgClv === null
-                        ? "–"
-                        : `${r.avgClv > 0 ? "+" : ""}${r.avgClv.toFixed(2)}`}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="px-4 py-2 text-[10.5px] text-dim">
-              Positive CLV with a losing record is variance; negative CLV with a winning record
-              is luck on a timer. Trust the CLV column.
-            </p>
-          </section>
-        )}
+        <TailFadeAudit groups={auditGroups} />
+
 
         {/* Entry */}
         <section className="card mb-8 p-4">
@@ -434,7 +430,6 @@ export default async function LedgerPage({
             <thead>
               <tr className="border-b border-chalk/20 text-left text-xs uppercase text-chalk/55">
                 <th className="px-3 py-2">Bet</th>
-                <th className="px-3 py-2">Tag</th>
                 <th className="px-3 py-2">Confidence</th>
                 <th className="px-3 py-2 text-right">Line</th>
                 <th className="px-3 py-2 text-right">Units</th>
@@ -457,9 +452,6 @@ export default async function LedgerPage({
                   className={`border-b border-chalk/5 last:border-0 ${b.voided_at ? "opacity-40" : ""}`}
                 >
                   <td className="max-w-[16rem] truncate px-3 py-2 font-sans">{b.description}</td>
-                  <td className="px-3 py-2 text-xs text-chalk/60">
-                    {REASON_TAG_LABELS[b.reason_tag as keyof typeof REASON_TAG_LABELS] ?? b.reason_tag}
-                  </td>
                   <td className="px-3 py-2">
                     <RetagBetButton
                       betId={b.id}

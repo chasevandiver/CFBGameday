@@ -166,6 +166,109 @@ shipping it.
 
 ## Log
 
+### Aug 14 — A ticker that moves, no zoom, a slip you can read, and the Why field goes
+
+Four items from the same batch. UX-34, UX-35, UX-38, LEDGER-1; migration 0047.
+
+**The ticker was never a ticker.** `ScoreTicker.tsx:119` was a `flex` row with
+`overflow-x-auto` and `shrink-0` chips — a strip you had to swipe, which on a
+phone meant every game past the fourth was invisible unless you went looking.
+Now a CSS marquee: the track holds the chip list twice and travels exactly
+−50%, so the instant the first copy leaves the frame the second is in the
+identical position and the reset cannot be seen.
+
+Duration comes from the **measured** content width rather than from
+`games.length`. Chips are variable width — an NFL tag, a live dot, a
+four-letter abbreviation — so counting them would drift, and the point of
+measuring is a constant ~55 px/sec: a sixty-game Saturday travels further
+instead of blurring past twelve times faster than a five-game Tuesday.
+
+Paused on hover, on focus-within and while a finger is down, because every chip
+is a 44px link and a moving target is not a target. The duplicate copy is
+`aria-hidden` and untabbable, so a screen reader and the Tab key each walk the
+games once. Content narrower than the frame does not animate at all. Under
+`prefers-reduced-motion` the global clamp stops the animation and the viewport
+keeps `overflow-x: auto` — it degrades to precisely the strip it replaced, with
+the second copy hidden, since without motion that is just every score printed
+twice.
+
+**Zoom off, and it fails WCAG 1.4.4 knowingly.** Three changes, because none of
+them covers every surface: `maximumScale`/`userScalable` in the viewport, which
+the installed PWA honours and which is where this was reported;
+`touch-action: pan-x pan-y` for Android Chrome; and a `gesture*` preventDefault
+for Safari in a browser tab, which has ignored `user-scalable=no` since iOS 10.
+
+It is recorded as a residual in `docs/STATUS.md` §6 rather than left to be
+rediscovered and reverted. What makes it defensible is that the layout is fluid
+and reflows to the OS text size — nothing in the app is a fixed-width image of
+text — so a reader who needs larger type gets it from Settings. The
+`web-design-guidelines` review will flag this every time it runs, which is
+correct and is not a reason to stop running it.
+
+`globals.css` had carried the sentence *"Zoom itself is untouched — pinch still
+works, and nothing here disables it."* That is now false and is corrected in
+place.
+
+**The slip's transparency was a token-scope bug, not a styling choice.** It has
+no `backdrop-filter` at all: `globals.css:444-447` reserves blur for "the bars
+that genuinely have content scrolling underneath (nav, header, ticker)", and the
+slip — a panel fixed over the scrolling slate — was simply never counted. It
+also used `.card`, whose face is `--glass-surface` at 80%, and the comment at
+`:52-57` says in as many words that 80% was tuned for a *game card*, which has a
+controlled blurred aura behind it. The slip has neither an aura nor a blur, so a
+fifth of the cards scrolling underneath came straight through and the 11px type
+sat on top of moving scores.
+
+New `--glass-panel` (96% of the same `--surface`; fully opaque in light mode,
+where the missing 4% would be the page's own grey) and a `.panel` class with the
+card's border, radius and shadow plus a blur. Derived from an existing colour,
+which is the "extract tokens as named values first" rule rather than a new
+value. No sheen — it exists to make a large pane read as curved glass, and on a
+panel whose whole job is legibility it is one more thing between the reader and
+a number.
+
+**The Why field, and why the answer was already in the database.** The owner
+asked whether it was needed: *"I think it's only useful for tails or fades, but
+that should be automatic if betting with or against people in your betting
+groups."*
+
+That is right, and the automatic half has existed since betting groups shipped.
+`src/lib/tailing.ts` derives origin / tail / fade from the one fact nobody has
+to be asked for — who got their money down first on that game and market — and
+its docblock already argued the case: a stored pointer *"would only be set on
+the ones who used the Tail button, which would make the stats a measure of
+button usage rather than of who is worth following."* The required picker was
+asking people to self-report something the system could observe.
+
+So the picker comes out of the slip and the form, and the ledger's marquee
+section keeps its heading and changes its question: what you opened, what you
+tailed, what you faded — plus `pairStatsFor`'s "am I better off just copying
+Jeff?", which `tailing.ts:210-217` notes is not answerable from anyone's own
+record, because a source's record counts the bets you never saw in time to copy.
+
+**Per betting group, never pooled.** Origination means "first in *this* group",
+so merging two groups' bets into one crowd would change who was first and
+quietly invent tails that never happened. Each group gets its own block; a
+viewer in no betting group sees the section not render rather than an empty
+table. The ledger's per-row Tag column is dropped rather than replaced — a
+relation is per group, so one column could not say which group it meant.
+
+**The column stays, nullable (0047).** Dropping it would be tidier and is wrong
+twice: existing rows carry values that were true when they were entered, and
+`ledger/export/route.ts` ships `reason_tag` in the CSV, so removing it would
+silently change an export people may already hold copies of. The CHECK
+constraint needed no change — a CHECK passes on NULL by definition, so it keeps
+constraining the values that *are* written while permitting the absence the app
+now produces.
+
+**Testing.** 8 component tests (828 → 836) and 2 DB assertions (198 → 200), both
+checked failing without 0047. `docs/SPEC.md` §5.3 amended in three places.
+
+**Not measured, and worth saying:** the marquee's speed and the slip's contrast
+were reasoned to, not seen. jsdom has no layout, so the ticker's width
+measurement has no meaningful unit test and none was written rather than one
+that asserts zeroes. Both need a device pass.
+
 ### Aug 14 — The final card, the clipped name, and the ball on the home page
 
 Three owner reports from the same screen. NFL-20, NFL-21, UX-37.
