@@ -255,8 +255,15 @@ body {
    The original reason for the narrower rule survives unchanged: Safari holds a
    tap ~300ms to see whether a second one is coming (double-tap zoom), and on a
    board where the whole interaction is tapping in sequence that delay was most
-   of what "slow" meant. `manipulation` stays on the interactive elements
-   because it is the more specific promise of the two. */
+   of what "slow" meant.
+
+   The rule below is now strictly redundant, and saying so is worth more than
+   deleting it. Effective touch-action is the INTERSECTION down the ancestor
+   chain, so `pan-x pan-y` here has already removed pinch-zoom and no descendant
+   can add it back. The consequence is scope, and it is the real cost of UX-35:
+   a future surface that genuinely wants to be zoomable — a full-size crest, a
+   share-card preview, a chart — cannot opt in per-route. It would have to come
+   out of this rule. */
 html,
 body {
   touch-action: pan-x pan-y;
@@ -335,13 +342,24 @@ h2,
    and an 11px number. */
 .panel {
   background: var(--glass-panel);
-  backdrop-filter: blur(14px) saturate(1.15);
-  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  /* 12px, matching the `backdrop-blur-md` the nav, header and ticker already
+     use — a second blur radius would be a new value for no reason. */
+  backdrop-filter: blur(12px) saturate(1.15);
+  -webkit-backdrop-filter: blur(12px) saturate(1.15);
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow:
     inset 0 1px 0 var(--glass-edge),
     var(--shadow-card-hover);
+}
+
+/* Light mode's --glass-panel resolves to a fully opaque white, so the blur
+   composites a backdrop nothing can see — every frame the slate scrolls behind
+   it. Turned off rather than left as invisible work on the one theme where a
+   phone is most likely to be in a bright room and on battery. */
+html[data-theme="light"] .panel {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .card-hover:hover {
@@ -735,7 +753,13 @@ html[data-theme="light"] .field-strip {
    reader that read every score twice would be worse than one that cannot
    scroll. */
 .ticker-viewport {
-  overflow: hidden;
+  /* `clip`, not `hidden`. A `hidden` box is still a scroll CONTAINER — it just
+     has no scrollbar — so tabbing to a chip past the frame makes the browser
+     set scrollLeft on it. That offset persists and stacks with the animation's
+     own translate, and after one Tab pass the strip is misaligned with its
+     leading chips scrolled out of reach. `clip` is not a scroll container, and
+     mask-image applies to it identically. */
+  overflow: clip;
   mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent);
 }
 
@@ -769,7 +793,10 @@ html[data-theme="light"] .field-strip {
 
 @media (prefers-reduced-motion: reduce) {
   .ticker-viewport {
+    /* Swiping is the whole fallback here, so this one IS a scroll container
+       again — horizontally only, so a stray vertical gesture cannot offset it. */
     overflow-x: auto;
+    overflow-y: clip;
     mask-image: none;
   }
   .ticker-track {

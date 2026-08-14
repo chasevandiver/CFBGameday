@@ -72,20 +72,32 @@ export function TailFadeAudit({ groups }: { groups: AuditGroup[] }) {
   return (
     <>
       {groups.map((g) => (
-        <section key={g.groupId} className="card mb-6 overflow-x-auto">
+        <section key={g.groupId} className="card mb-6">
           <h2 className="border-b border-chalk/8 px-4 py-2.5 text-sm text-accent">
             Where your edge actually is
             {groups.length > 1 && <span className="text-dim"> · {g.groupName}</span>}
           </h2>
 
+          {/* tabIndex on the scroller, not on the section. Five columns at
+              text-sm do not fit a 360px phone, and with UX-35 the pinch-to-
+              zoom-out that used to be the escape hatch is gone — so a scroll
+              region with nothing focusable in it would be unreachable from a
+              keyboard entirely (2.1.1). This is the one place the zoom removal
+              did collateral damage, and it is fixed rather than accepted. */}
+          <div
+            className="scroll-thin overflow-x-auto"
+            tabIndex={0}
+            role="region"
+            aria-label={`Your record by how you came to the bet${groups.length > 1 ? ` — ${g.groupName}` : ""}`}
+          >
           <table className="stats w-full text-sm">
             <thead>
               <tr className="text-left text-[10.5px] uppercase tracking-wider text-chalk/55">
-                <th className="py-2 pl-4 pr-3 font-semibold">Your bets</th>
-                <th className="px-3 py-2 text-right font-semibold">Record</th>
-                <th className="px-3 py-2 text-right font-semibold">Units</th>
-                <th className="px-3 py-2 text-right font-semibold">ROI</th>
-                <th className="py-2 pl-3 pr-4 text-right font-semibold">CLV</th>
+                <th scope="col" className="py-2 pl-4 pr-3 font-semibold">Your bets</th>
+                <th scope="col" className="px-3 py-2 text-right font-semibold">Record</th>
+                <th scope="col" className="px-3 py-2 text-right font-semibold">Units</th>
+                <th scope="col" className="px-3 py-2 text-right font-semibold">ROI</th>
+                <th scope="col" className="py-2 pl-3 pr-4 text-right font-semibold">CLV</th>
               </tr>
             </thead>
             <tbody>
@@ -113,20 +125,27 @@ export function TailFadeAudit({ groups }: { groups: AuditGroup[] }) {
               ))}
             </tbody>
           </table>
+          </div>
 
           {g.pairs.length > 0 && (
             <>
               <h3 className="border-t border-chalk/8 px-4 py-2.5 text-[11px] uppercase tracking-wider text-chalk/55">
                 Riding them vs taking them on
               </h3>
+              <div
+                className="scroll-thin overflow-x-auto"
+                tabIndex={0}
+                role="region"
+                aria-label="Your record riding each member versus opposing them"
+              >
               <table className="stats w-full text-sm">
                 <thead>
                   <tr className="text-left text-[10.5px] uppercase tracking-wider text-chalk/55">
-                    <th className="py-2 pl-4 pr-3 font-semibold">Member</th>
-                    <th className="px-3 py-2 text-right font-semibold">Tailing</th>
-                    <th className="px-3 py-2 text-right font-semibold">Units</th>
-                    <th className="px-3 py-2 text-right font-semibold">Fading</th>
-                    <th className="py-2 pl-3 pr-4 text-right font-semibold">Units</th>
+                    <th scope="col" className="py-2 pl-4 pr-3 font-semibold">Member</th>
+                    <th scope="col" className="px-3 py-2 text-right font-semibold">Tailing</th>
+                    <th scope="col" className="px-3 py-2 text-right font-semibold">Units</th>
+                    <th scope="col" className="px-3 py-2 text-right font-semibold">Fading</th>
+                    <th scope="col" className="py-2 pl-3 pr-4 text-right font-semibold">Units</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -148,6 +167,7 @@ export function TailFadeAudit({ groups }: { groups: AuditGroup[] }) {
                   ))}
                 </tbody>
               </table>
+              </div>
             </>
           )}
 

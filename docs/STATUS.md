@@ -1840,6 +1840,26 @@ rather than a quarter linescore.
       caught a vacuous assertion of my own: "names the bet" passed pre-fix
       because the ATS chip renders the same string, so it is now scoped to the
       strip element.
+- [x] **UX-34a — three defects the design review caught in the marquee**,
+      2026-08-14, same day. Each was real and each would have shipped.
+      **(a) A mouse drag-off froze it permanently.** `onPointerUp` was on the
+      track; touch captures the pointer implicitly and a mouse does not, so
+      pressing a chip, dragging off the strip and releasing sent the `pointerup`
+      elsewhere, `held` never cleared and the ticker stayed paused for the rest
+      of the session. Now `setPointerCapture` on down plus `onLostPointerCapture`.
+      **(b) It measured on the game COUNT, so live chips outgrew the frame and
+      became unreachable.** Chip width moves a long way without the count
+      changing — "7:00 PM" becomes "1st 12:43", and each score adds glyphs to
+      both sides. A five-game strip that fitted before kickoff stayed `still`
+      once the clocks appeared, and since the track is then `width:100%` with
+      `shrink-0` children in a clipped viewport, the overflow had no animation
+      AND no swipe. A `ResizeObserver` on the measured copy replaces the count
+      dependency; it also fixes measuring before webfonts settle.
+      **(c) `overflow: hidden` made the viewport a scroll container**, so tabbing
+      to a chip past the frame set `scrollLeft` on it, and that offset stacked
+      with the animation's own transform — one Tab pass and the strip was
+      misaligned with its leading chips out of reach. `overflow: clip` is not a
+      scroll container and `mask-image` applies to it identically.
 - [x] **UX-34 — the ticker scrolls**, 2026-08-14. It was a static
       `overflow-x-auto` strip you had to swipe, so on a phone every game past
       the fourth was invisible unless you went looking. CSS marquee: the track
@@ -1910,6 +1930,37 @@ rather than a quarter linescore.
       rendered once for both callers. The two comments claiming the football is
       deliberately card-only (`GameCard.tsx:466`, `TeamLine.tsx:79-82`) are
       corrected. 3 tests.
+- [x] **UX-38a — what the design review found on the same screen**, 2026-08-14.
+      **The confirmation toast still carried the exact bug UX-38 fixed**: the
+      slip moved to `.panel` and the toast that replaces it in the same fixed
+      slot was left on `.card`, so the game cards still scrolled visibly through
+      it. Also, raising the panel's opacity is what exposed the remove-selection
+      icon at `text-chalk/30` — 2.5:1 dark, 1.9:1 light, under 1.4.11's 3:1 for
+      a non-text control — now `/55`. Two 36px targets (Clear, Text) were missed
+      when the rest of the row went to 44px. The text-share button was named
+      "Share this slip" while reading "Text", which is a 2.5.3 failure for voice
+      control. Errors on the slip and on both new destructive controls are now
+      `role="alert"`; a delete that silently fails is the worst case of that.
+      Both destructive controls were `text-chalk/40` — 3.4:1 dark, 2.5:1 light —
+      and a delete affordance has no business being the dimmest text in its row.
+      Both now carry the row's own text in their accessible name, so a screen
+      reader's button list is not twenty identical "Cancel this pick" entries.
+      **The one place UX-35 did collateral damage**, found here rather than
+      assumed: the new audit's five-column table needs horizontal scroll on a
+      phone, and pinch-to-zoom-out was the escape hatch that is now gone — a
+      scroll region with nothing focusable in it is unreachable from a keyboard
+      (2.1.1). Both tables are now `tabIndex={0}` labelled regions with
+      `scope="col"` headers.
+      Also: `.panel`'s blur dropped from 14px to the 12px the nav, header and
+      ticker already use (a second radius is a new value for nothing), and is
+      switched off entirely under the light theme, where `--glass-panel`
+      resolves to opaque white and the filter composites a backdrop nothing can
+      see on every scroll frame.
+      And the `SportToggle` was three raw `<a>` tags citing "the LedgerTabs
+      pattern" — which uses `next/link`. Every league switch was a full document
+      reload: white flash, ticker remounted, scroll position gone. On a page
+      whose governing rule is "never steal scroll position" that was the most
+      visible seam on the branch.
 - [x] **UX-38 — the bet slip is readable**, 2026-08-14. **Cause located:** the
       slip has no `backdrop-filter` at all. `globals.css:444-447` reserves blur
       for "the bars that genuinely have content scrolling underneath (nav,
@@ -2034,6 +2085,19 @@ here so they aren't rediscovered as bugs.
 - **The 2026 gate's week-1 lines are the fit set**, so t < 2 there is by
   construction. Out-of-sample evidence is the 2024–25 weeks 2–4 result, and
   going forward the weeks-2+ 2026 lines as they post.
+- **The light theme's `--accent` on `--accent-ink` is 3.83:1**, under 1.4.3's
+  4.5:1 for the 12px labels that use it. Pre-existing — it carries the slip's
+  primary action and the pick buttons — and UX-36's active segment is a new
+  instance of it. **Not changed here on purpose:** `--accent` is the product's
+  value language and lives in `docs/BRAND.md`; darkening it to ~`#8f6800`, or
+  setting light `--accent-ink` to `--text`, is a palette decision and DESIGN.md
+  §"no new colors" says to ask rather than pick silently. Owner call. · S
+- **`touch-action: pan-x pan-y` is app-wide, so nothing can opt back in.**
+  A consequence of UX-35 rather than a defect: effective touch-action is the
+  intersection down the ancestor chain, so a future surface that genuinely wants
+  to be zoomable — a full-size crest, a share-card preview, a chart — cannot
+  enable it per-route. It would have to come out of the `html, body` rule.
+  Recorded so that is a decision rather than a surprise.
 - **Zoom is disabled, and that fails WCAG 2.1 SC 1.4.4** (UX-35, owner request
   2026-08-14). Recorded here rather than left to be rediscovered as a bug and
   "fixed" back. What makes it defensible is that the layout is fluid and reflows

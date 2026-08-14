@@ -20,11 +20,18 @@ export function CancelPickButton({
   userId,
   gameId,
   market,
+  label,
 }: {
   groupId: string;
   userId: string;
   gameId: number;
   market: PickMarket;
+  /**
+   * Which pick, for the accessible name. This renders once per pick per member,
+   * so without it a screen reader hears twenty identical "Cancel this pick"
+   * buttons and cannot tell which one it is about to destroy.
+   */
+  label?: string;
 }) {
   const [armed, setArmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,14 +57,22 @@ export function CancelPickButton({
         disabled={pending}
         onClick={tap}
         onBlur={() => setArmed(false)}
-        aria-label={armed ? "Confirm cancelling this pick" : "Cancel this pick"}
+        aria-label={
+          armed
+            ? `Confirm cancelling ${label ?? "this pick"}`
+            : `Cancel ${label ?? "this pick"}`
+        }
         className={`-mx-2 inline-flex min-h-11 items-center rounded px-2 text-[10px] uppercase tracking-wider disabled:opacity-50 ${
-          armed ? "font-semibold text-loss ring-1 ring-loss/50" : "text-chalk/40 hover:text-loss"
+          armed ? "font-semibold text-loss ring-1 ring-loss/50" : "text-dim hover:text-loss"
         }`}
       >
         {pending ? "cancelling…" : armed ? "tap again" : "cancel"}
       </button>
-      {error && <span className="text-[10px] text-loss">{error}</span>}
+      {error && (
+        <span role="alert" className="text-[10px] text-loss">
+          {error}
+        </span>
+      )}
     </span>
   );
 }

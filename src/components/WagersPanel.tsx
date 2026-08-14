@@ -56,7 +56,7 @@ export function WagersPanel({
               }`}
             >
               <span className="min-w-0">
-                <span className="stat text-[10px] uppercase tracking-wider text-chalk/40">
+                <span className="stat text-[10px] uppercase tracking-wider text-dim">
                   {w.kind}
                 </span>
                 <span className="block truncate text-sm text-chalk">{w.what}</span>
@@ -66,7 +66,7 @@ export function WagersPanel({
                 </span>
               </span>
               <span className="shrink-0">
-                <DeleteWagerButton kind={w.kind} id={w.id} />
+                <DeleteWagerButton kind={w.kind} id={w.id} label={`${w.kind} — ${w.what}`} />
               </span>
             </li>
           ))}

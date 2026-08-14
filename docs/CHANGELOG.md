@@ -166,6 +166,93 @@ shipping it.
 
 ## Log
 
+### Aug 14 — What the design review caught, which was a lot
+
+`docs/DESIGN.md` §"Before saying it's done" asks for a `web-design-guidelines`
+pass over your own work, unprompted. Run over this branch it returned thirteen
+confirmed defects, and they were not nitpicks — three of them broke the ticker
+that had just been built, and one was the exact bug the bet-slip fix was
+supposed to have fixed. Recording them because the lesson is about the review,
+not the code: every one of these was invisible from reading the diff and from a
+green test suite.
+
+**The ticker had three, any one of which would have shipped.**
+
+A mouse drag-off froze it permanently. `onPointerUp` sat on the track; touch
+captures the pointer implicitly and a mouse does not, so press a chip, drag off
+the strip, release — the `pointerup` lands on some other element, `held` never
+clears, and the marquee is paused for the rest of the session. `setPointerCapture`
+on down, plus `onLostPointerCapture`.
+
+It re-measured on the game *count*, which is the wrong signal. Chip width moves
+a long way without the count changing: "7:00 PM" becomes "1st 12:43" at kickoff,
+and each score adds glyphs to both sides. So a five-game strip that measured as
+fitting before kickoff stayed `still` once the clocks appeared — and because the
+track is then `width: 100%` with `shrink-0` children inside a clipped viewport,
+the overflowing chips had no animation *and* no swipe. Unreachable. A
+`ResizeObserver` on the measured copy replaces the count, and incidentally fixes
+the narrower version of the same bug: measuring before webfonts settle.
+
+`overflow: hidden` made the viewport a scroll container. Hidden boxes are still
+programmatically scrollable, so tabbing to a chip past the frame set `scrollLeft`
+on it, and that offset stacked with the animation's own transform — one Tab pass
+and the strip was misaligned with its leading chips scrolled out of reach.
+`overflow: clip` is not a scroll container and `mask-image` applies identically.
+
+**The bet-slip fix had missed its own twin.** The slip moved to `.panel`; the
+confirmation toast that replaces it in the same fixed slot over the same
+scrolling slate was left on `.card`, at the same 80% that was reported as
+unreadable. Raising the panel's opacity also *exposed* a control that had been
+hiding in the murk: the remove-selection icon at `text-chalk/30` computes 2.5:1
+dark and 1.9:1 light, under 1.4.11's 3:1.
+
+**Both new destructive controls were the dimmest text in their rows** —
+`text-chalk/40`, 3.4:1 dark and 2.5:1 light — and both announced themselves
+identically to a screen reader, so a button list held twenty indistinguishable
+"Cancel this pick" entries with no way to tell which was about to be destroyed.
+Both now carry the row's own text in their name, and every async failure on the
+branch is `role="alert"`; a delete that fails silently is the worst case of it.
+
+**One place UX-35 did collateral damage, found rather than assumed.** The new
+tail/fade audit is a five-column table that needs horizontal scroll on a phone.
+Pinch-to-zoom-out used to be the escape hatch for exactly that, and this branch
+removed it — so a scroll region containing nothing focusable became unreachable
+from a keyboard (2.1.1). Both tables are now labelled `tabIndex={0}` regions.
+That is the shape of cost a knowingly-accepted a11y failure has: not the thing
+you accepted, but the thing that was quietly load-bearing for it.
+
+**And the most visible seam on the branch.** `SportToggle` was three raw `<a>`
+tags with a comment citing "the LedgerTabs pattern" — which uses `next/link`. So
+every league switch was a full document reload: white flash, ticker remounted,
+scroll position gone, client cache dropped, on the one page whose governing rule
+is *never steal scroll position*. The comment named the right pattern and the
+code did not implement it, which is the failure mode this repo keeps writing
+down.
+
+**Two things deliberately not fixed**, both recorded in `docs/STATUS.md` §6
+rather than decided unilaterally. Light mode's `--accent` on `--accent-ink` is
+3.83:1 and fails AA at 12px — pre-existing, carrying the slip's primary action
+and the pick buttons, and `--accent` is the product's value language out of
+`docs/BRAND.md`, so darkening it is a palette decision DESIGN.md says to ask
+about. And `touch-action: pan-x pan-y` is app-wide with no way for a descendant
+to opt back in, so a future zoomable surface would have to remove the rule.
+
+**Smaller, in passing:** `.panel`'s blur is 12px, matching the `backdrop-blur-md`
+the nav, header and ticker already use rather than introducing a second radius;
+and it is switched off entirely in light mode, where `--glass-panel` resolves to
+opaque white and the filter was compositing a backdrop nothing could see on
+every scroll frame.
+
+**A correction to my own comment.** `globals.css` claimed `touch-action:
+manipulation` on interactive elements was "the more specific promise of the
+two". It isn't — effective touch-action is the intersection down the ancestor
+chain, so `pan-x pan-y` on `html, body` had already removed pinch and that rule
+is now redundant. Kept, with the truth written next to it, because the redundancy
+is the thing worth knowing.
+
+**Not measured in a browser.** Every contrast ratio above is computed from the
+token values against the composited surfaces, not read off a rendered page.
+
 ### Aug 14 — Every score in the game, and a Live tab that spans both leagues
 
 SCORE-1 and UX-36; migration 0048. The last of the betting/game-card batch, and

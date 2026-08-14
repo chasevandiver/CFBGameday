@@ -20,10 +20,17 @@ import { adminDeleteBet, adminDeletePick } from "../app/actions/admin-wagers";
 export function DeleteWagerButton({
   kind,
   id,
+  label,
   onDone,
 }: {
   kind: "bet" | "pick";
   id: number;
+  /**
+   * What this row is, for the accessible name. Rendered once per row, so
+   * without it a screen reader's button list is twenty identical "Delete this
+   * bet" entries with no way to tell which one is about to be destroyed.
+   */
+  label?: string;
   onDone?: () => void;
 }) {
   const [armed, setArmed] = useState(false);
@@ -52,19 +59,28 @@ export function DeleteWagerButton({
         onClick={tap}
         onBlur={() => setArmed(false)}
         aria-label={
-          armed ? `Confirm deleting this ${kind} — this cannot be undone` : `Delete this ${kind}`
+          armed
+            ? `Confirm deleting ${label ?? `this ${kind}`} — this cannot be undone`
+            : `Delete ${label ?? `this ${kind}`}`
         }
         /* -mx-2 keeps the 44px target from widening the row it sits in, the
            same trick VoidBetButton uses (UX-08). */
+        /* text-dim, not chalk/40. At 12px on a card face /40 computes 3.4:1
+           dark and 2.5:1 light, under 1.4.3's 4.5:1 — and a delete affordance
+           has no business being the dimmest text in its row. */
         className={`-mx-2 inline-flex min-h-11 items-center rounded px-2 text-xs underline disabled:opacity-50 ${
           armed
             ? "font-semibold text-loss no-underline ring-1 ring-loss/50"
-            : "text-chalk/40 hover:text-loss"
+            : "text-dim hover:text-loss"
         }`}
       >
         {pending ? "deleting…" : armed ? "delete — tap again" : "delete"}
       </button>
-      {error && <span className="text-xs text-loss">{error}</span>}
+      {error && (
+        <span role="alert" className="text-xs text-loss">
+          {error}
+        </span>
+      )}
     </span>
   );
 }

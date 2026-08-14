@@ -107,7 +107,10 @@ export function BetSlip({
         aria-live="polite"
         className="fixed bottom-[calc(var(--bottom-nav-h)+env(safe-area-inset-bottom)+0.75rem)] right-4 md:bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 max-w-[calc(100vw-2rem)]"
       >
-        <div className="card flex items-center gap-2 px-3.5 py-2 text-sm">
+        {/* A panel for the same reason the slip is (UX-38): this replaces it in
+            the same fixed slot over the same scrolling slate. It was missed on
+            the first pass and kept the exact transparency that was reported. */}
+        <div className="panel flex items-center gap-2 px-3.5 py-2 text-sm">
           <Check size={15} strokeWidth={3} aria-hidden className="shrink-0 text-win" />
           <span className={demo ? "text-dim" : "text-win"}>
             {logged.length} {logged.length === 1 ? "bet" : "bets"}{" "}
@@ -253,7 +256,11 @@ export function BetSlip({
                     <button
                       onClick={() => remove(s.gameId, s.betType)}
                       aria-label={`Remove ${s.label} from bet slip`}
-                      className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-chalk/30 transition-colors hover:text-loss"
+                      /* /55, not /30. Against the panel's now-opaque face /30
+                         computes 2.5:1 dark and 1.9:1 light — under 1.4.11's
+                         3:1 for a non-text control. Raising the surface's
+                         opacity is what exposed this. */
+                      className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-chalk/55 transition-colors hover:text-loss"
                     >
                       <X size={14} aria-hidden />
                     </button>
@@ -278,12 +285,18 @@ export function BetSlip({
                 `src/lib/tailing.ts` derives them from who got their money down
                 first. The ledger's audit is rebuilt on that instead. */}
             <div className="flex flex-col gap-2 px-3.5 py-3">
-              {error && <p className="text-xs text-loss">{error}</p>}
+              {/* role=alert: a slip that silently fails to log is the one
+                  failure a screen-reader user most needs told about. */}
+              {error && (
+                <p role="alert" className="text-xs text-loss">
+                  {error}
+                </p>
+              )}
               <div className="flex items-center gap-2">
                 <button
                   onClick={clear}
                   disabled={pending}
-                  className="h-9 shrink-0 rounded-lg px-3 text-xs font-medium text-dim transition-colors hover:text-chalk disabled:opacity-50"
+                  className="h-11 shrink-0 rounded-lg px-3 text-xs font-medium text-dim transition-colors hover:text-chalk disabled:opacity-50"
                 >
                   Clear
                 </button>
@@ -296,8 +309,11 @@ export function BetSlip({
                       totalUnits,
                     )
                   }
-                  aria-label="Share this slip"
-                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-chalk/15 px-2.5 text-xs font-medium text-dim transition-colors hover:border-chalk/40 hover:text-chalk"
+                  /* The visible word is "Text", so the accessible name has to
+                     start with it — a voice-control user saying "Text" got
+                     nothing when this was "Share this slip" (2.5.3). */
+                  aria-label="Text this slip"
+                  className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-chalk/15 px-2.5 text-xs font-medium text-dim transition-colors hover:border-chalk/40 hover:text-chalk"
                 >
                   <Share size={13} aria-hidden />
                   {shareNote ?? "Text"}

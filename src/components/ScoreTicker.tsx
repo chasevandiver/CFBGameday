@@ -63,7 +63,6 @@ export function ScoreTicker({ demo }: { demo?: TickerData }) {
   const [still, setStill] = useState(true);
   const [held, setHeld] = useState(false);
   const [duration, setDuration] = useState(40);
-  const gameCount = data?.games.length ?? 0;
   useEffect(() => {
     const measure = () => {
       const track = trackRef.current;
@@ -82,10 +81,25 @@ export function ScoreTicker({ demo }: { demo?: TickerData }) {
       // a game at the far end comes round inside a commercial break.
       if (!fits) setDuration(Math.max(20, Math.round(contentWidth / 55)));
     };
+
+    /* A ResizeObserver, not a dependency on the game COUNT. Chip width moves a
+       long way without the count changing: "7:00 PM" becomes "1st 12:43" at
+       kickoff, and each score adds glyphs to both sides. A five-game strip
+       measured as fitting before kickoff would have stayed `still` once the
+       clocks appeared — and since the track is then `width:100%`, the chips
+       `shrink-0` and the viewport clipped, the overflow would have been
+       unreachable: no animation and no swipe. It also fixes the narrower
+       version of the same bug, measuring before webfonts settle. */
+    const copy = trackRef.current?.firstElementChild;
+    const ro = new ResizeObserver(measure);
+    if (copy) ro.observe(copy);
     measure();
     window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [gameCount]);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [data]);
 
   const isDemo = demo !== undefined;
   const mounted = useRef(true);
@@ -187,9 +201,17 @@ export function ScoreTicker({ demo }: { demo?: TickerData }) {
              Saturday would otherwise blur past at twelve times the pace of
              five on a Tuesday. */
           style={{ "--ticker-duration": `${duration}s` } as React.CSSProperties}
-          onPointerDown={() => setHeld(true)}
+          /* Pointer CAPTURE, not a bare pointerup. Touch captures implicitly so
+             it was fine; a mouse does not — press on a chip, drag off the strip,
+             release, and the pointerup targets something else, `held` never
+             clears, and the marquee is paused for the rest of the session. */
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            setHeld(true);
+          }}
           onPointerUp={() => setHeld(false)}
           onPointerCancel={() => setHeld(false)}
+          onLostPointerCapture={() => setHeld(false)}
         >
           {chips(false)}
           {!still && chips(true)}

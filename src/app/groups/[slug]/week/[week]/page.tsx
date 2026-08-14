@@ -272,6 +272,7 @@ export default async function GroupWeekPage({
                                 userId={p.user_id}
                                 gameId={p.game_id}
                                 market={p.market as PickMarket}
+                                label={pickText(p, gameById.get(p.game_id))}
                               />
                             )}
                           </span>

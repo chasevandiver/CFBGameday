@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDown, RefreshCw, Search, SearchX, Ticket, Users } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { onBetsChanged } from "../../lib/bets-changed";
 import { useFocusedGames, useStarred, useViewerTz } from "../../lib/client-store";
@@ -731,6 +732,14 @@ function absOr(v: number | null, fallback: number): number {
  * CFB | NFL, as links. A league switch replaces the whole slate — different
  * season row, different current week — so it goes through the server like the
  * ledger's tabs do, and Back returns to the other league.
+ *
+ * `next/link`, not a raw `<a>`. The comment above has always cited "the
+ * LedgerTabs pattern" and LedgerTabs uses `Link` — these were plain anchors,
+ * which meant every league switch was a full document reload: white flash, the
+ * ticker remounted, scroll position gone, client cache dropped. On a page whose
+ * governing rule is "never steal scroll position" that was the most visible
+ * seam on the screen. RSC navigation still re-runs the server component with
+ * its own current week, and Back still traverses.
  */
 function SportToggle({
   sport,
@@ -752,7 +761,7 @@ function SportToggle({
       {/* Live leads: on a Saturday it is the only one anybody wants, and it is
           the leftmost thumb reach. It spans both leagues and every week, so it
           is a peer of the two league tabs rather than a filter inside one. */}
-      <a
+      <Link
         href="/slate?sport=live"
         className={seg(live)}
         aria-current={live ? "page" : undefined}
@@ -767,21 +776,21 @@ function SportToggle({
           />
         )}
         Live
-      </a>
-      <a
+      </Link>
+      <Link
         href="/slate"
         className={seg(!live && sport === "cfb")}
         aria-current={!live && sport === "cfb" ? "page" : undefined}
       >
         CFB
-      </a>
-      <a
+      </Link>
+      <Link
         href="/slate?sport=nfl"
         className={seg(!live && sport === "nfl")}
         aria-current={!live && sport === "nfl" ? "page" : undefined}
       >
         NFL
-      </a>
+      </Link>
     </nav>
   );
 }
