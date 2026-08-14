@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDown, RefreshCw, Search, SearchX, Ticket, Users } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { onBetsChanged } from "../../lib/bets-changed";
 import { useFocusedGames, useStarred, useViewerTz } from "../../lib/client-store";
@@ -132,17 +133,30 @@ export function SlateView({
 
   const seasonType = data.seasonType;
   const sport = data.sport;
+  // UX-36: the cross-league Live view. `sport` still says which league the
+  // games were loaded under and is meaningless to display here, which is why
+  // the week selector, the day tabs and the conference filter all sit behind
+  // this flag.
+  const liveView = data.live === true;
   const refresh = useCallback(async (targetWeek: number, showSkeleton: boolean, st?: string) => {
     if (demo) return;
     if (showSkeleton) setLoading(true);
     const fetchStart = Date.now();
     try {
-      const res = await fetch(`/api/slate?week=${targetWeek}&st=${st ?? "regular"}&sport=${sport}`, {
-        cache: "no-store",
-      });
+      const res = await fetch(
+        liveView
+          ? "/api/slate?sport=live"
+          : `/api/slate?week=${targetWeek}&st=${st ?? "regular"}&sport=${sport}`,
+        { cache: "no-store" },
+      );
       if (res.ok) {
         const next = (await res.json()) as SlateData;
-        if (next.week === weekRef.current) {
+        /* The week guard drops a response for a week the reader has already
+           navigated away from. The Live view has no week to compare — its
+           `week` is a placeholder — so the guard would reject every poll and
+           the one view that must stay current would be the only one that never
+           updated. */
+        if (liveView || next.week === weekRef.current) {
           setData((cur) => ({
             ...next,
             games: next.games.map((g) => {
@@ -170,7 +184,7 @@ export function SlateView({
     } finally {
       if (showSkeleton) setLoading(false);
     }
-  }, [demo, sport]);
+  }, [demo, sport, liveView]);
 
   const handleGameUpdate = useCallback((row: GameRow) => {
     liveEventAt.current.set(row.id, Date.now());
@@ -438,24 +452,33 @@ export function SlateView({
           {/* Switching league is a full server refetch with its own current
               week, so these are links, not state (the LedgerTabs pattern) —
               and the demo holds one CFB week, so there they'd 404 the point. */}
-          {!demo && <SportToggle sport={sport} />}
-          <WeekSelect
-            week={week}
-            seasonType={seasonType}
-            sport={sport}
-            currentWeek={currentWeek}
-            minWeek={minWeek}
-            onChange={changeWeek}
-            disabled={demo}
-          />
+          {!demo && <SportToggle sport={sport} live={liveView} liveCount={liveCount} />}
+          {/* Neither control means anything across leagues and weeks (UX-36):
+              a week number describes one league's calendar, and a day tab on a
+              list that is by definition happening right now is a filter with
+              one value. They are hidden rather than disabled — a disabled
+              control still says "there is a choice here". */}
+          {!liveView && (
+            <>
+              <WeekSelect
+                week={week}
+                seasonType={seasonType}
+                sport={sport}
+                currentWeek={currentWeek}
+                minWeek={minWeek}
+                onChange={changeWeek}
+                disabled={demo}
+              />
 
-          {/* toggle buttons, not ARIA tabs — no tabpanel/arrow-key contract here */}
-          <div className="flex items-center gap-1" aria-label="Filter by day">
-            <DayTab label="All" active={day === "all"} onClick={() => setDay("all")} />
-            {dayTabs.map(({ key, label }) => (
-              <DayTab key={key} label={label} active={day === key} onClick={() => setDay(key)} />
-            ))}
-          </div>
+              {/* toggle buttons, not ARIA tabs — no tabpanel/arrow-key contract here */}
+              <div className="flex items-center gap-1" aria-label="Filter by day">
+                <DayTab label="All" active={day === "all"} onClick={() => setDay("all")} />
+                {dayTabs.map(({ key, label }) => (
+                  <DayTab key={key} label={label} active={day === key} onClick={() => setDay(key)} />
+                ))}
+              </div>
+            </>
+          )}
 
           <div className="ml-auto flex items-center gap-3">
             {liveCount > 0 && (
@@ -515,7 +538,12 @@ export function SlateView({
             value={conference}
             onChange={setConference}
             options={[
-              ["all", sport === "nfl" ? "All divisions" : "All conferences"],
+              [
+                "all",
+                // Across leagues the list mixes SEC with AFC West, and neither
+                // word covers both (UX-36).
+                liveView ? "All leagues" : sport === "nfl" ? "All divisions" : "All conferences",
+              ],
               ...conferences.map((c): [string, string] => [c, c]),
             ]}
           />
@@ -584,10 +612,20 @@ export function SlateView({
         {loading ? (
           <SkeletonSlate />
         ) : games.length === 0 ? (
-          <EmptyState
-            title={`No games on the board for week ${week} yet`}
-            hint="Games appear here once the week's schedule is posted — check back closer to kickoff."
-          />
+          liveView ? (
+            /* UX-36. The honest empty state for this view is "nothing is on",
+               which is true most of the week — not "the schedule hasn't been
+               posted", which would be wrong and alarming on a Tuesday. */
+            <EmptyState
+              title="Nothing is live right now"
+              hint="This view fills up the moment a game kicks off, in either league. Until then, CFB and NFL have the week's board."
+            />
+          ) : (
+            <EmptyState
+              title={`No games on the board for week ${week} yet`}
+              hint="Games appear here once the week's schedule is posted — check back closer to kickoff."
+            />
+          )
         ) : sorted.length === 0 ? (
           <EmptyState
             title="No games match your filters"
@@ -694,24 +732,65 @@ function absOr(v: number | null, fallback: number): number {
  * CFB | NFL, as links. A league switch replaces the whole slate — different
  * season row, different current week — so it goes through the server like the
  * ledger's tabs do, and Back returns to the other league.
+ *
+ * `next/link`, not a raw `<a>`. The comment above has always cited "the
+ * LedgerTabs pattern" and LedgerTabs uses `Link` — these were plain anchors,
+ * which meant every league switch was a full document reload: white flash, the
+ * ticker remounted, scroll position gone, client cache dropped. On a page whose
+ * governing rule is "never steal scroll position" that was the most visible
+ * seam on the screen. RSC navigation still re-runs the server component with
+ * its own current week, and Back still traverses.
  */
-function SportToggle({ sport }: { sport: "cfb" | "nfl" }) {
+function SportToggle({
+  sport,
+  live,
+  liveCount,
+}: {
+  sport: "cfb" | "nfl";
+  /** UX-36: the cross-league Live view is selected. */
+  live: boolean;
+  /** Live games in the CURRENT view, used only to badge the segment. */
+  liveCount: number;
+}) {
   const seg = (active: boolean) =>
-    `flex h-8 items-center rounded-lg px-3 text-xs font-semibold transition-colors ${
+    `flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors ${
       active ? "bg-accent text-accent-ink" : "text-dim hover:bg-surface hover:text-chalk"
     }`;
   return (
-    <nav aria-label="League" className="flex shrink-0 items-center gap-1">
-      <a href="/slate" className={seg(sport === "cfb")} aria-current={sport === "cfb" ? "page" : undefined}>
+    <nav aria-label="View" className="flex shrink-0 items-center gap-1">
+      {/* Live leads: on a Saturday it is the only one anybody wants, and it is
+          the leftmost thumb reach. It spans both leagues and every week, so it
+          is a peer of the two league tabs rather than a filter inside one. */}
+      <Link
+        href="/slate?sport=live"
+        className={seg(live)}
+        aria-current={live ? "page" : undefined}
+      >
+        {/* The dot is not decoration — it is what makes "Live" read as a state
+            rather than as a third league. It only pulses on games actually in
+            progress, and only where the count is known to be about this view. */}
+        {(live || liveCount > 0) && (
+          <span
+            aria-hidden
+            className={`live-dot inline-block h-1.5 w-1.5 rounded-full ${live ? "bg-accent-ink" : "bg-live"}`}
+          />
+        )}
+        Live
+      </Link>
+      <Link
+        href="/slate"
+        className={seg(!live && sport === "cfb")}
+        aria-current={!live && sport === "cfb" ? "page" : undefined}
+      >
         CFB
-      </a>
-      <a
+      </Link>
+      <Link
         href="/slate?sport=nfl"
-        className={seg(sport === "nfl")}
-        aria-current={sport === "nfl" ? "page" : undefined}
+        className={seg(!live && sport === "nfl")}
+        aria-current={!live && sport === "nfl" ? "page" : undefined}
       >
         NFL
-      </a>
+      </Link>
     </nav>
   );
 }

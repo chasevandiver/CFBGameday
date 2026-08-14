@@ -37,6 +37,29 @@ export interface TeamView {
 /** Rank to display on cards: the human poll when available, else the model's. */
 export const displayRank = (t: TeamView): number | null => t.pollRank ?? t.rank;
 
+/**
+ * The name to print for a team where there is room for more than the
+ * abbreviation (NFL-20).
+ *
+ * `school` holds whatever the league's feed calls the team, and the two feeds
+ * do not agree on scale. CFBD gives the school on its own — "Georgia",
+ * "Michigan" — while ESPN gives the full display name, "Jacksonville Jaguars",
+ * which is nearly three times as wide in the same slot. The game header sat a
+ * 48px mark beside a `1fr` column on a 390px phone and truncated it.
+ *
+ * `mascot` already carries the NFL nickname: `nfl-sync-reference.ts:64` writes
+ * ESPN's `name` ("Chiefs") there. So the short form was in the database the
+ * whole time and no column is needed — an earlier plan for a `short_display`
+ * migration was dropped once that was checked rather than assumed.
+ *
+ * CFB deliberately keeps `school`. There the mascot is a *different* word
+ * ("Bulldogs" for Georgia), not a shorter form of the same one, and nobody
+ * scanning a slate is looking for it.
+ */
+export function teamHeadline(t: TeamView, sport: Sport): string {
+  return sport === "nfl" && t.mascot ? t.mascot : t.school;
+}
+
 export interface LinePoint {
   t: string;
   v: number;
@@ -284,6 +307,17 @@ export interface SlateData {
    */
   linesAsOf: string | null;
   games: GameView[];
+  /**
+   * This is the cross-league Live view (UX-36), not one league's week.
+   *
+   * A flag rather than a third `Sport`, deliberately: `sport` is derived from
+   * the season id by `sportOfSeasonId` and must keep meaning exactly that, or
+   * every consumer that branches on it starts having to handle a value no
+   * season can produce. `seasonId` / `week` / `seasonType` still describe the
+   * bucket the games were loaded from and are meaningless to display here,
+   * which is why the view hides the week selector when this is set.
+   */
+  live?: boolean;
 }
 
 export const isLive = (g: GameView) => g.status === "in_progress";

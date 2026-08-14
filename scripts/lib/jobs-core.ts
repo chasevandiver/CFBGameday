@@ -11,8 +11,16 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cfbd, type CfbdScoreboardGame } from "../../src/lib/cfbd";
-import { espn, nflStoredWeek, parseEvent } from "../../src/lib/espn";
-import { nflTeamId } from "../../src/lib/league";
+import {
+  espn,
+  nflStoredWeek,
+  parseEvent,
+  parseScoringPlays,
+  pointsCovered,
+  type ScoringPlay,
+} from "../../src/lib/espn";
+import { nflTeamId, seasonYearOf } from "../../src/lib/league";
+import { cfbdScoringOffense, cfbdScoringPlays } from "../../src/lib/scoring";
 import { modelClv, roundClv, spreadClv, totalClv } from "../../src/lib/clv";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
 import { clockToSeconds, coverMargin, spreadCoverSide, totalCoverSide } from "../../src/lib/cover";
@@ -601,11 +609,48 @@ export async function applyScoreboard(
   // talking to Apple. notifyBadBeats never throws — see notify-jobs.ts.
   const pushed = await notifyBadBeats(db, pendingNotices);
 
+  // Settle whatever is finished on this board (GRADE-1). Before this, grading
+  // was scheduled-only — Sunday 13:00 UTC for CFB, Mon/Tue/Fri for the NFL —
+  // so a bet on a Saturday-night final stayed open on the ledger for days and
+  // the card had no result to show.
+  //
+  // Deliberately NOT gated on a status transition, even though `stored` makes
+  // one cheap to detect. The NFL's 10-second edge-function writer (migration
+  // 0044) can flip a game to final before this loop's next tick, and a
+  // transition-only trigger would then never fire for the league this was
+  // reported on. Every completed game on the board is offered instead, and
+  // `gradeGames` is idempotent — its queries all filter `result is null`, so
+  // the second and every later tick settle nothing and read almost nothing.
+  //
+  // Errors are swallowed on purpose: the scoreboard's job is scores, and a
+  // grading failure must not cost the slate its live layer. The scheduled pass
+  // is still the backstop and will report the same failure loudly.
+  const completedIds = active.filter((g) => g.status === "completed").map((g) => g.id);
+  let settled: Json | null = null;
+  try {
+    if (completedIds.length > 0) settled = await gradeGames(db, completedIds);
+  } catch (err) {
+    console.error(`scoreboard: inline grading failed: ${(err as Error).message}`);
+  }
+  const gradedCounts = settled as {
+    picksGraded: number;
+    betsGraded: number;
+    predictionsGraded: number;
+  } | null;
+  const gradedAnything =
+    gradedCounts !== null &&
+    (gradedCounts.picksGraded > 0 ||
+      gradedCounts.betsGraded > 0 ||
+      gradedCounts.predictionsGraded > 0);
+
   return {
     live_or_final: active.length,
     updated,
     flips: flipsLogged,
     ...(pushed.notified || pushed.errors ? { notified: pushed.notified, notify_errors: pushed.errors } : {}),
+    // Only when it did something: a tick that grades nothing is the normal
+    // case and should not add noise to every `job_runs.detail` row.
+    ...(gradedAnything ? { graded: gradedCounts } : {}),
   };
 }
 
@@ -977,20 +1022,66 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
  *
  * Grading covers BOTH season types — bowls, the CFP, and the NFL bracket all
  * settle — while the caller's ratings replay stays regular-season-only.
+ *
+ * Since GRADE-1 this is the **backstop**, not the only path: `gradeGames`
+ * settles a game from the live tick that saw it finish. This pass still runs
+ * on its cron and still catches everything, including games that finaled
+ * outside a scoreboard window and the dead-game voids, which no live tick does.
  */
 export async function gradeSeasonFinals(db: SupabaseClient, seasonId: number): Promise<Json> {
   const { data: gameRows, error: gamesErr } = await db
     .from("games")
-    .select("id, home_points, away_points, status, start_ts")
+    .select(SETTLE_COLS)
     .eq("season_id", seasonId);
   if (gamesErr) throw new Error(`grading: games read failed: ${gamesErr.message}`);
-  const allGames = (gameRows ?? []) as Array<{
-    id: number;
-    home_points: number | null;
-    away_points: number | null;
-    status: string;
-    start_ts: string | null;
-  }>;
+  return settleGames(db, (gameRows ?? []) as SettleGameRow[]);
+}
+
+/**
+ * Settle a named set of games, whatever season they belong to.
+ *
+ * This is `gradeSeasonFinals` narrowed to the games a live tick just looked at,
+ * and it exists because grading used to be scheduled-only: `applyScoreboard`
+ * wrote scores and touched no wager, so a Saturday-night final sat ungraded
+ * until `ratings-update` on Sunday (CFB) or `nfl-grade` on Monday. The ledger
+ * showed an open bet on a finished game for up to a week, and the slate card
+ * had no result to render.
+ *
+ * The two entry points share `settleGames` and both are idempotent — every
+ * query filters on `result is null` — so the scheduled pass stays the backstop
+ * and double-running costs nothing. Same shape as `voidWagersForGames`, for the
+ * same reason (P1-1).
+ */
+export async function gradeGames(db: SupabaseClient, gameIds: number[]): Promise<Json> {
+  if (gameIds.length === 0) return { picksGraded: 0, betsGraded: 0, predictionsGraded: 0, voided: 0 };
+  const { data: gameRows, error: gamesErr } = await db
+    .from("games")
+    .select(SETTLE_COLS)
+    .in("id", gameIds);
+  if (gamesErr) throw new Error(`grading: games read failed: ${gamesErr.message}`);
+  return settleGames(db, (gameRows ?? []) as SettleGameRow[]);
+}
+
+export const SETTLE_COLS = "id, home_points, away_points, status, start_ts";
+
+interface SettleGameRow {
+  id: number;
+  home_points: number | null;
+  away_points: number | null;
+  status: string;
+  start_ts: string | null;
+}
+
+/**
+ * The settlement body both entry points share.
+ *
+ * Order matters and is not the obvious one: the ungraded rows are read BEFORE
+ * the closing lines, so the snapshot read covers only the games that actually
+ * have something to settle. On the scheduled pass that is the same set it
+ * always was; on a live tick, where nearly every call finds nothing ungraded,
+ * it turns the expensive `line_snapshots` read into no query at all.
+ */
+async function settleGames(db: SupabaseClient, allGames: SettleGameRow[]): Promise<Json> {
   // What grading settles: finals of either season type, plus the dead games
   // League Rule #4 voids.
   const gradableFinals = allGames.filter(
@@ -1005,15 +1096,58 @@ export async function gradeSeasonFinals(db: SupabaseClient, seasonId: number): P
   let voided = 0;
   if (finalIds.length > 0) {
     const gameById = new Map(gradableFinals.map((g) => [g.id, g]));
-    // Chunked (PostgREST .in() is a URL; ~800 final ids by December) and
-    // THROWING: a swallowed read error here used to grade the week without
-    // CLV permanently, with the Action green (audit 05/N4).
+
+    // Only frozen rows, and only ones not yet graded: predictions is
+    // append-only history, and re-grading would rewrite a receipt. The two
+    // prediction fields written here didn't exist at freeze time; every number
+    // the model committed to stays exactly as it was stored.
+    const { data: predRows, error: predsErr } = await db
+      .from("predictions")
+      .select("id, game_id, edge, vegas_spread, close_spread")
+      .eq("frozen", true)
+      .in("game_id", finalIds)
+      // close_spread, not clv, marks "graded": a row priced without a line
+      // has clv null forever by construction, and keying the ungraded set on
+      // clv would re-fetch it every Sunday until January (audit 05/N11).
+      .is("close_spread", null);
+    if (predsErr) throw new Error(`grading: predictions read failed: ${predsErr.message}`);
+
+    const { data: pickRows, error: picksErr } = await db
+      .from("picks")
+      .select("id, game_id, market, side, line_at_pick, result")
+      .in("game_id", finalIds)
+      .is("result", null);
+    if (picksErr) throw new Error(`grading: picks read failed: ${picksErr.message}`);
+
+    const { data: betRows, error: betsErr } = await db
+      .from("bets")
+      .select("id, game_id, bet_type, side, line_taken, odds, units, result")
+      .in("game_id", finalIds)
+      .is("result", null)
+      .is("voided_at", null);
+    if (betsErr) throw new Error(`grading: bets read failed: ${betsErr.message}`);
+
+    const preds = predRows ?? [];
+    const picks = pickRows ?? [];
+    const bets = betRows ?? [];
+
+    // Closing lines only for the games carrying something ungraded. Chunked
+    // (PostgREST .in() is a URL; ~800 final ids by December) and THROWING: a
+    // swallowed read error here used to grade the week without CLV
+    // permanently, with the Action green (audit 05/N4).
+    const needClose = [
+      ...new Set([
+        ...preds.map((p) => p.game_id as number),
+        ...picks.map((p) => p.game_id as number),
+        ...bets.map((b) => b.game_id as number),
+      ]),
+    ];
     const snapsByGame = new Map<number, Snapshot[]>();
-    for (let i = 0; i < finalIds.length; i += 300) {
+    for (let i = 0; i < needClose.length; i += 300) {
       const { data: snaps, error: snapsErr } = await db
         .from("line_snapshots")
         .select(SNAPSHOT_COLS)
-        .in("game_id", finalIds.slice(i, i + 300));
+        .in("game_id", needClose.slice(i, i + 300));
       if (snapsErr) throw new Error(`grading: snapshots read failed: ${snapsErr.message}`);
       for (const s of (snaps ?? []) as Snapshot[]) {
         const arr = snapsByGame.get(s.game_id) ?? [];
@@ -1030,22 +1164,7 @@ export async function gradeSeasonFinals(db: SupabaseClient, seasonId: number): P
     // the ATS column can't carry the model's scoreboard on its own — CLV asks
     // the better question (did the market come to us after we committed?) and
     // converges on a single season where a win rate does not.
-    //
-    // Only frozen rows, and only ones not yet graded: predictions is
-    // append-only history, and re-grading would rewrite a receipt. The two
-    // prediction fields written here didn't exist at freeze time; every number
-    // the model committed to stays exactly as it was stored.
-    const { data: preds, error: predsErr } = await db
-      .from("predictions")
-      .select("id, game_id, edge, vegas_spread, close_spread")
-      .eq("frozen", true)
-      .in("game_id", finalIds)
-      // close_spread, not clv, marks "graded": a row priced without a line
-      // has clv null forever by construction, and keying the ungraded set on
-      // clv would re-fetch it every Sunday until January (audit 05/N11).
-      .is("close_spread", null);
-    if (predsErr) throw new Error(`grading: predictions read failed: ${predsErr.message}`);
-    for (const p of (preds ?? []) as Array<{
+    for (const p of preds as Array<{
       id: number;
       game_id: number;
       edge: number | null;
@@ -1072,13 +1191,7 @@ export async function gradeSeasonFinals(db: SupabaseClient, seasonId: number): P
       if (!error && clv !== null) predictionsGraded++;
     }
 
-    const { data: picks, error: picksErr } = await db
-      .from("picks")
-      .select("id, game_id, market, side, line_at_pick, result")
-      .in("game_id", finalIds)
-      .is("result", null);
-    if (picksErr) throw new Error(`grading: picks read failed: ${picksErr.message}`);
-    for (const p of picks ?? []) {
+    for (const p of picks) {
       const g = gameById.get(p.game_id)!;
       const line = Number(p.line_at_pick);
       const close = closing(p.game_id);
@@ -1105,14 +1218,7 @@ export async function gradeSeasonFinals(db: SupabaseClient, seasonId: number): P
       if (!error) picksGraded++;
     }
 
-    const { data: bets, error: betsErr } = await db
-      .from("bets")
-      .select("id, game_id, bet_type, side, line_taken, odds, units, result")
-      .in("game_id", finalIds)
-      .is("result", null)
-      .is("voided_at", null);
-    if (betsErr) throw new Error(`grading: bets read failed: ${betsErr.message}`);
-    for (const b of bets ?? []) {
+    for (const b of bets) {
       // A moneyline bet has no line to take, so `line_taken` being null is
       // normal for it rather than a reason to skip. It used to be caught by
       // this guard and sat ungraded forever, quietly missing from the ledger's
@@ -1188,6 +1294,217 @@ export async function gradeSeasonFinals(db: SupabaseClient, seasonId: number): P
   }
 
   return { picksGraded, betsGraded, predictionsGraded, voided };
+}
+
+/* ---- scoring timeline (SCORE-1) ---------------------------------------- */
+
+interface ScoringGame {
+  id: number;
+  home_points: number | null;
+  away_points: number | null;
+  home_team_id: number;
+  away_team_id: number;
+  week: number;
+  season_type: string;
+}
+
+/**
+ * Which games need their scoring summary re-read, and which do not.
+ *
+ * This is the entire cost control for the feature. `NFL-12` left the per-game
+ * ESPN `/summary` call as a decision owed on the grounds that one call per live
+ * game per tick is ~16x the single scoreboard call on a Sunday. It is only
+ * affordable because it does not have to be per tick: each stored row carries
+ * the running score after it, so the last row says how many points are already
+ * accounted for. If that equals the game's score, nothing has happened since
+ * the last read and there is nothing to fetch.
+ *
+ * ~1 call per SCORE rather than per tick. A 47-point game costs about a dozen
+ * calls across three hours instead of ~360.
+ *
+ * A game with no scoring rows and no points is skipped too — a scoreless first
+ * quarter is not a reason to poll.
+ */
+export function gamesNeedingScoring(
+  games: ScoringGame[],
+  coveredByGame: Map<number, number>,
+): ScoringGame[] {
+  return games.filter((g) => {
+    const scored = (g.home_points ?? 0) + (g.away_points ?? 0);
+    if (scored === 0) return false;
+    return scored > (coveredByGame.get(g.id) ?? 0);
+  });
+}
+
+/** Read how many points each game's stored timeline already accounts for. */
+async function coveredPointsByGame(
+  db: SupabaseClient,
+  gameIds: number[],
+): Promise<Map<number, number>> {
+  const out = new Map<number, number>();
+  if (gameIds.length === 0) return out;
+  const { data, error } = await db
+    .from("scoring_plays")
+    .select("game_id, sequence, home_points, away_points")
+    .in("game_id", gameIds)
+    .order("sequence", { ascending: true });
+  if (error) throw new Error(`scoring: read failed: ${error.message}`);
+  const byGame = new Map<number, Array<{ homePoints: number; awayPoints: number }>>();
+  for (const r of (data ?? []) as Array<{
+    game_id: number;
+    home_points: number;
+    away_points: number;
+  }>) {
+    const arr = byGame.get(r.game_id) ?? [];
+    arr.push({ homePoints: r.home_points, awayPoints: r.away_points });
+    byGame.set(r.game_id, arr);
+  }
+  for (const [id, plays] of byGame) out.set(id, pointsCovered(plays));
+  return out;
+}
+
+/** Upsert one game's timeline. Idempotent on (game_id, sequence). */
+async function writeScoringPlays(
+  db: SupabaseClient,
+  gameId: number,
+  plays: ScoringPlay[],
+  teamIdFor: (p: ScoringPlay, index: number) => number | null,
+  source: string,
+): Promise<number> {
+  if (plays.length === 0) return 0;
+  const rows = plays.map((p, i) => ({
+    game_id: gameId,
+    sequence: p.sequence,
+    period: p.period,
+    clock: p.clock,
+    scoring_team_id: teamIdFor(p, i),
+    play_type: p.playType,
+    play_text: p.text,
+    home_points: p.homePoints,
+    away_points: p.awayPoints,
+    source,
+  }));
+  const { error } = await db.from("scoring_plays").upsert(rows, { onConflict: "game_id,sequence" });
+  if (error) throw new Error(`scoring: write failed for game ${gameId}: ${error.message}`);
+  return rows.length;
+}
+
+/**
+ * NFL scoring timelines, from ESPN's per-game summary.
+ *
+ * One call per game that has scored since the last read — see
+ * `gamesNeedingScoring`. Errors on a single game are logged and skipped rather
+ * than thrown: a missing summary costs that game its timeline, and failing the
+ * whole job over it would cost every game its live score.
+ */
+export async function nflScoringJob(db: SupabaseClient, seasonId: number): Promise<Json> {
+  const { data, error } = await db
+    .from("games")
+    .select("id, home_points, away_points, home_team_id, away_team_id, week, season_type")
+    .eq("season_id", seasonId)
+    .in("status", ["in_progress", "final"]);
+  if (error) throw new Error(`scoring: games read failed: ${error.message}`);
+  const games = (data ?? []) as ScoringGame[];
+
+  const covered = await coveredPointsByGame(db, games.map((g) => g.id));
+  const todo = gamesNeedingScoring(games, covered);
+  if (todo.length === 0) return { games: 0, plays: 0 };
+
+  let written = 0;
+  let failed = 0;
+  for (const g of todo) {
+    try {
+      const summary = await espn.summary(g.id);
+      const plays = parseScoringPlays(summary);
+      written += await writeScoringPlays(
+        db,
+        g.id,
+        plays,
+        // ESPN ids are pre-offset on the play; the stored team id is not.
+        (p) => (p.espnTeamId === null ? null : nflTeamId(p.espnTeamId)),
+        "espn",
+      );
+    } catch (err) {
+      failed++;
+      console.error(`scoring: game ${g.id} failed: ${(err as Error).message}`);
+    }
+  }
+  return { games: todo.length, plays: written, ...(failed ? { failed } : {}) };
+}
+
+/**
+ * CFB scoring timelines, from CFBD's week-scoped plays route.
+ *
+ * The shape is forced by the feed: CFBD has no per-game plays endpoint, so one
+ * call returns every play of every FBS game in the week and the scoring rows
+ * are filtered out of it. That is a multi-MB response for a few dozen rows, and
+ * it is why this belongs on a slow cadence rather than on the 30-second tick.
+ *
+ * One call per WEEK that has games needing an update, not per game — so a
+ * fifteen-game Saturday afternoon costs exactly one call, and the arithmetic
+ * gets better as the slate gets busier.
+ *
+ * CFBD names the scoring team as a school string rather than an id, so it is
+ * matched against the game's own two teams. A name that matches neither leaves
+ * the crest off the row rather than dropping it — the play text is the feature.
+ */
+export async function cfbScoringJob(db: SupabaseClient, seasonId: number): Promise<Json> {
+  const { data, error } = await db
+    .from("games")
+    .select("id, home_points, away_points, home_team_id, away_team_id, week, season_type")
+    .eq("season_id", seasonId)
+    .in("status", ["in_progress", "final"]);
+  if (error) throw new Error(`scoring: games read failed: ${error.message}`);
+  const games = (data ?? []) as ScoringGame[];
+
+  const covered = await coveredPointsByGame(db, games.map((g) => g.id));
+  const todo = gamesNeedingScoring(games, covered);
+  if (todo.length === 0) return { games: 0, plays: 0, calls: 0 };
+
+  const teamIds = [...new Set(todo.flatMap((g) => [g.home_team_id, g.away_team_id]))];
+  const { data: teamRows } = await db.from("teams").select("id, school").in("id", teamIds);
+  const schoolById = new Map(
+    ((teamRows ?? []) as Array<{ id: number; school: string }>).map((t) => [t.id, t.school]),
+  );
+
+  // One call per (week, season_type) bucket, not per game.
+  const buckets = new Map<string, { week: number; seasonType: string; games: ScoringGame[] }>();
+  for (const g of todo) {
+    const key = `${g.week}:${g.season_type}`;
+    const b = buckets.get(key) ?? { week: g.week, seasonType: g.season_type, games: [] };
+    b.games.push(g);
+    buckets.set(key, b);
+  }
+
+  let written = 0;
+  let calls = 0;
+  for (const b of buckets.values()) {
+    const plays = await cfbd.plays(seasonYearOf(seasonId), {
+      week: b.week,
+      seasonType: b.seasonType,
+    });
+    calls++;
+    for (const g of b.games) {
+      const scoring = cfbdScoringPlays(plays, g.id);
+      const offenses = cfbdScoringOffense(plays, g.id);
+      const home = schoolById.get(g.home_team_id) ?? null;
+      const away = schoolById.get(g.away_team_id) ?? null;
+      written += await writeScoringPlays(
+        db,
+        g.id,
+        scoring,
+        (_p, i) => {
+          const school = offenses[i];
+          if (!school) return null;
+          if (home !== null && school === home) return g.home_team_id;
+          if (away !== null && school === away) return g.away_team_id;
+          return null;
+        },
+        "cfbd",
+      );
+    }
+  }
+  return { games: todo.length, plays: written, calls };
 }
 
 /**

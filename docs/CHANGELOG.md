@@ -166,6 +166,524 @@ shipping it.
 
 ## Log
 
+### Aug 14 — What the design review caught, which was a lot
+
+`docs/DESIGN.md` §"Before saying it's done" asks for a `web-design-guidelines`
+pass over your own work, unprompted. Run over this branch it returned thirteen
+confirmed defects, and they were not nitpicks — three of them broke the ticker
+that had just been built, and one was the exact bug the bet-slip fix was
+supposed to have fixed. Recording them because the lesson is about the review,
+not the code: every one of these was invisible from reading the diff and from a
+green test suite.
+
+**The ticker had three, any one of which would have shipped.**
+
+A mouse drag-off froze it permanently. `onPointerUp` sat on the track; touch
+captures the pointer implicitly and a mouse does not, so press a chip, drag off
+the strip, release — the `pointerup` lands on some other element, `held` never
+clears, and the marquee is paused for the rest of the session. `setPointerCapture`
+on down, plus `onLostPointerCapture`.
+
+It re-measured on the game *count*, which is the wrong signal. Chip width moves
+a long way without the count changing: "7:00 PM" becomes "1st 12:43" at kickoff,
+and each score adds glyphs to both sides. So a five-game strip that measured as
+fitting before kickoff stayed `still` once the clocks appeared — and because the
+track is then `width: 100%` with `shrink-0` children inside a clipped viewport,
+the overflowing chips had no animation *and* no swipe. Unreachable. A
+`ResizeObserver` on the measured copy replaces the count, and incidentally fixes
+the narrower version of the same bug: measuring before webfonts settle.
+
+`overflow: hidden` made the viewport a scroll container. Hidden boxes are still
+programmatically scrollable, so tabbing to a chip past the frame set `scrollLeft`
+on it, and that offset stacked with the animation's own transform — one Tab pass
+and the strip was misaligned with its leading chips scrolled out of reach.
+`overflow: clip` is not a scroll container and `mask-image` applies identically.
+
+**The bet-slip fix had missed its own twin.** The slip moved to `.panel`; the
+confirmation toast that replaces it in the same fixed slot over the same
+scrolling slate was left on `.card`, at the same 80% that was reported as
+unreadable. Raising the panel's opacity also *exposed* a control that had been
+hiding in the murk: the remove-selection icon at `text-chalk/30` computes 2.5:1
+dark and 1.9:1 light, under 1.4.11's 3:1.
+
+**Both new destructive controls were the dimmest text in their rows** —
+`text-chalk/40`, 3.4:1 dark and 2.5:1 light — and both announced themselves
+identically to a screen reader, so a button list held twenty indistinguishable
+"Cancel this pick" entries with no way to tell which was about to be destroyed.
+Both now carry the row's own text in their name, and every async failure on the
+branch is `role="alert"`; a delete that fails silently is the worst case of it.
+
+**One place UX-35 did collateral damage, found rather than assumed.** The new
+tail/fade audit is a five-column table that needs horizontal scroll on a phone.
+Pinch-to-zoom-out used to be the escape hatch for exactly that, and this branch
+removed it — so a scroll region containing nothing focusable became unreachable
+from a keyboard (2.1.1). Both tables are now labelled `tabIndex={0}` regions.
+That is the shape of cost a knowingly-accepted a11y failure has: not the thing
+you accepted, but the thing that was quietly load-bearing for it.
+
+**And the most visible seam on the branch.** `SportToggle` was three raw `<a>`
+tags with a comment citing "the LedgerTabs pattern" — which uses `next/link`. So
+every league switch was a full document reload: white flash, ticker remounted,
+scroll position gone, client cache dropped, on the one page whose governing rule
+is *never steal scroll position*. The comment named the right pattern and the
+code did not implement it, which is the failure mode this repo keeps writing
+down.
+
+**Two things deliberately not fixed**, both recorded in `docs/STATUS.md` §6
+rather than decided unilaterally. Light mode's `--accent` on `--accent-ink` is
+3.83:1 and fails AA at 12px — pre-existing, carrying the slip's primary action
+and the pick buttons, and `--accent` is the product's value language out of
+`docs/BRAND.md`, so darkening it is a palette decision DESIGN.md says to ask
+about. And `touch-action: pan-x pan-y` is app-wide with no way for a descendant
+to opt back in, so a future zoomable surface would have to remove the rule.
+
+**Smaller, in passing:** `.panel`'s blur is 12px, matching the `backdrop-blur-md`
+the nav, header and ticker already use rather than introducing a second radius;
+and it is switched off entirely in light mode, where `--glass-panel` resolves to
+opaque white and the filter was compositing a backdrop nothing could see on
+every scroll frame.
+
+**A correction to my own comment.** `globals.css` claimed `touch-action:
+manipulation` on interactive elements was "the more specific promise of the
+two". It isn't — effective touch-action is the intersection down the ancestor
+chain, so `pan-x pan-y` on `html, body` had already removed pinch and that rule
+is now redundant. Kept, with the truth written next to it, because the redundancy
+is the thing worth knowing.
+
+**Not measured in a browser.** Every contrast ratio above is computed from the
+token values against the composited surfaces, not read off a rendered page.
+
+### Aug 14 — Every score in the game, and a Live tab that spans both leagues
+
+SCORE-1 and UX-36; migration 0048. The last of the betting/game-card batch, and
+the only two that were features rather than defects.
+
+**What did not exist.** Asked for "the individual scores in that game… for all
+scores in that game", and the honest starting position was: nothing. No `plays`,
+`drives`, `scoring_plays` or linescore table; neither API client parsed any; and
+`games` carries only the *current* live state, every field of which is a moving
+value. Worse — `current_situation` and `last_play` are deliberately NULLED the
+moment a game goes final (0007's header comment), so postgame there was no play
+text in the database at all. `cover_flips` (0026) was the only per-event table
+and it is a Q4+ betting-verdict log. `scoring_plays` is the first table in this
+project that records what happened *during* a game rather than what is true
+about it now.
+
+**Two decisions inside the schema that are easy to get wrong.**
+
+Order is the feed's array index, not the clock and not the feed's play id. A
+game clock counts down, resets every quarter and stops; a touchdown and its
+extra point are routinely stamped at the same second. Nothing about a clock can
+order a timeline.
+
+The running score is stored per row rather than accumulated at read time. These
+look equivalent and are not: a feed occasionally reports a score whose play we
+never captured, and a browser-side running total would then be wrong for every
+row *below* the gap rather than for the one row that is missing.
+
+**The cost control is the whole feature.** `NFL-12` left ESPN's per-game
+`/summary` as a decision owed, on the grounds that one call per live game per
+tick is ~16× the single scoreboard call on an NFL Sunday. That arithmetic is
+right and it is also avoidable: because each stored row carries the score after
+it, the timeline itself reports how many points are already accounted for. The
+call happens only when the scoreboard has moved past that number — **~1 call per
+score, not per tick**. A 47-point game costs about a dozen calls across three
+hours instead of roughly 360. `gamesNeedingScoring` is six tests on its own,
+because if it ever stops being right the answer is an invisible order-of-
+magnitude increase in a free feed's traffic.
+
+**CFB's shape is forced by CFBD, and the cost is stated rather than buried.**
+There is no per-game plays route, so one call returns every play of every FBS
+game in the week and the scoring rows are filtered out of it. That is one call
+*per week* — a fifteen-game afternoon costs exactly one, and the arithmetic
+improves as the slate gets busier — but it is a multi-MB response for a few
+dozen rows, which is why both jobs ride a 3-minute tick inside the scoreboard
+loop rather than the 30-second one. If the payload or the live lag proves
+unworkable on the first real Saturday, the fallback is `/drives`: far lighter,
+gives the scoring drive and its result, and gives up the player names that were
+the point of the request. Either outcome gets a decisions-table row. **Not
+measurable before Aug 29** — there is no live CFB game until then.
+
+Two smaller absences the CFBD side has to absorb: it publishes no play *type* at
+all (which is why the column is nullable — `live-play.ts` solved the same
+absence for `last_play`), and it names the scoring team as a school string
+rather than an id, matched against the game's own two teams. A name matching
+neither leaves the crest off the row rather than dropping it. The play text is
+the feature.
+
+**The Live tab, and the query that was not written.** The obvious implementation
+is one cross-league query on `status = 'in_progress'`. It is wrong, and
+expensively so: half of `fetchSlateView` is enrichment keyed to a single season
+— ratings, poll ranks, SP+/FPI/Elo, season ATS records — so a cross-league query
+would have to fork every one of them, and the same game would then render
+differently on the Live tab than on its own league's tab. That drift is the
+failure this codebase keeps recording.
+
+Instead: find the live game ids first (one indexed read — 0044 added
+`games_sport_status_start` for almost exactly this predicate), resolve their
+distinct (season, week, season_type) buckets, and load each through the ordinary
+path. Usually one bucket, two when an NFL Sunday overlaps a CFB Saturday night.
+Every card is then identical to the card its league's tab would draw.
+
+**Buckets rather than "each league's current week"**, which is simpler and
+drops games. The NFL pointer rolls forward while Monday Night Football is still
+being played, so a viewer with money on MNF would find the Live tab empty at
+precisely the moment it matters most. Reading the buckets off the live rows
+cannot make that mistake.
+
+One consequence worth recording: the refresh poller's week guard — which drops a
+response for a week the reader has navigated away from — has to be skipped here.
+The Live view has no week to compare, so the guard would reject every poll and
+the one view that must stay current would be the only one that never updated.
+
+**A test helper moved into the shim, and why.** `public.expect_denied` now lives
+in `00_shim.sql`, shared by two suites. It takes the message it expects, because
+a helper that treats *any* error as a refusal reports PASS when the object under
+test does not exist — verified earlier the same day, when four authorization
+assertions passed on "function admin_remove_pick does not exist". A
+missing-object error is now reported as vacuous rather than absorbed, which is
+what makes "checked failing against the pre-fix schema" mean anything.
+
+**Testing.** 25 new (836 → 861) and 5 DB assertions (200 → 205), the latter
+checked failing without 0048. One of the new tests was wrong on its first run —
+it asserted an empty result for a board where a game genuinely had scored — and
+the code was right; recorded because the fix was to the assertion, not the
+implementation.
+
+**Not verified against live data.** Both ingest paths are pinned against
+fixtures shaped from the feeds' documented responses, not against a capture from
+a live game. The NFL side can be proved this week against a preseason final; the
+CFB side has nothing to run against until Aug 29.
+
+### Aug 14 — A ticker that moves, no zoom, a slip you can read, and the Why field goes
+
+Four items from the same batch. UX-34, UX-35, UX-38, LEDGER-1; migration 0047.
+
+**The ticker was never a ticker.** `ScoreTicker.tsx:119` was a `flex` row with
+`overflow-x-auto` and `shrink-0` chips — a strip you had to swipe, which on a
+phone meant every game past the fourth was invisible unless you went looking.
+Now a CSS marquee: the track holds the chip list twice and travels exactly
+−50%, so the instant the first copy leaves the frame the second is in the
+identical position and the reset cannot be seen.
+
+Duration comes from the **measured** content width rather than from
+`games.length`. Chips are variable width — an NFL tag, a live dot, a
+four-letter abbreviation — so counting them would drift, and the point of
+measuring is a constant ~55 px/sec: a sixty-game Saturday travels further
+instead of blurring past twelve times faster than a five-game Tuesday.
+
+Paused on hover, on focus-within and while a finger is down, because every chip
+is a 44px link and a moving target is not a target. The duplicate copy is
+`aria-hidden` and untabbable, so a screen reader and the Tab key each walk the
+games once. Content narrower than the frame does not animate at all. Under
+`prefers-reduced-motion` the global clamp stops the animation and the viewport
+keeps `overflow-x: auto` — it degrades to precisely the strip it replaced, with
+the second copy hidden, since without motion that is just every score printed
+twice.
+
+**Zoom off, and it fails WCAG 1.4.4 knowingly.** Three changes, because none of
+them covers every surface: `maximumScale`/`userScalable` in the viewport, which
+the installed PWA honours and which is where this was reported;
+`touch-action: pan-x pan-y` for Android Chrome; and a `gesture*` preventDefault
+for Safari in a browser tab, which has ignored `user-scalable=no` since iOS 10.
+
+It is recorded as a residual in `docs/STATUS.md` §6 rather than left to be
+rediscovered and reverted. What makes it defensible is that the layout is fluid
+and reflows to the OS text size — nothing in the app is a fixed-width image of
+text — so a reader who needs larger type gets it from Settings. The
+`web-design-guidelines` review will flag this every time it runs, which is
+correct and is not a reason to stop running it.
+
+`globals.css` had carried the sentence *"Zoom itself is untouched — pinch still
+works, and nothing here disables it."* That is now false and is corrected in
+place.
+
+**The slip's transparency was a token-scope bug, not a styling choice.** It has
+no `backdrop-filter` at all: `globals.css:444-447` reserves blur for "the bars
+that genuinely have content scrolling underneath (nav, header, ticker)", and the
+slip — a panel fixed over the scrolling slate — was simply never counted. It
+also used `.card`, whose face is `--glass-surface` at 80%, and the comment at
+`:52-57` says in as many words that 80% was tuned for a *game card*, which has a
+controlled blurred aura behind it. The slip has neither an aura nor a blur, so a
+fifth of the cards scrolling underneath came straight through and the 11px type
+sat on top of moving scores.
+
+New `--glass-panel` (96% of the same `--surface`; fully opaque in light mode,
+where the missing 4% would be the page's own grey) and a `.panel` class with the
+card's border, radius and shadow plus a blur. Derived from an existing colour,
+which is the "extract tokens as named values first" rule rather than a new
+value. No sheen — it exists to make a large pane read as curved glass, and on a
+panel whose whole job is legibility it is one more thing between the reader and
+a number.
+
+**The Why field, and why the answer was already in the database.** The owner
+asked whether it was needed: *"I think it's only useful for tails or fades, but
+that should be automatic if betting with or against people in your betting
+groups."*
+
+That is right, and the automatic half has existed since betting groups shipped.
+`src/lib/tailing.ts` derives origin / tail / fade from the one fact nobody has
+to be asked for — who got their money down first on that game and market — and
+its docblock already argued the case: a stored pointer *"would only be set on
+the ones who used the Tail button, which would make the stats a measure of
+button usage rather than of who is worth following."* The required picker was
+asking people to self-report something the system could observe.
+
+So the picker comes out of the slip and the form, and the ledger's marquee
+section keeps its heading and changes its question: what you opened, what you
+tailed, what you faded — plus `pairStatsFor`'s "am I better off just copying
+Jeff?", which `tailing.ts:210-217` notes is not answerable from anyone's own
+record, because a source's record counts the bets you never saw in time to copy.
+
+**Per betting group, never pooled.** Origination means "first in *this* group",
+so merging two groups' bets into one crowd would change who was first and
+quietly invent tails that never happened. Each group gets its own block; a
+viewer in no betting group sees the section not render rather than an empty
+table. The ledger's per-row Tag column is dropped rather than replaced — a
+relation is per group, so one column could not say which group it meant.
+
+**The column stays, nullable (0047).** Dropping it would be tidier and is wrong
+twice: existing rows carry values that were true when they were entered, and
+`ledger/export/route.ts` ships `reason_tag` in the CSV, so removing it would
+silently change an export people may already hold copies of. The CHECK
+constraint needed no change — a CHECK passes on NULL by definition, so it keeps
+constraining the values that *are* written while permitting the absence the app
+now produces.
+
+**Testing.** 8 component tests (828 → 836) and 2 DB assertions (198 → 200), both
+checked failing without 0047. `docs/SPEC.md` §5.3 amended in three places.
+
+**Not measured, and worth saying:** the marquee's speed and the slip's contrast
+were reasoned to, not seen. jsdom has no layout, so the ticker's width
+measurement has no meaningful unit test and none was written rather than one
+that asserts zeroes. Both need a device pass.
+
+### Aug 14 — The final card, the clipped name, and the ball on the home page
+
+Three owner reports from the same screen. NFL-20, NFL-21, UX-37.
+
+**"The nfl game cards get cut off when you click into them on the team names."**
+`GameHeader.tsx:368` was `truncate` on `{team.school}` in a `1fr` column beside
+a 48px mark. The cause is that `school` means different things in the two feeds:
+CFBD gives the school alone — "Georgia" — and ESPN gives the full display name,
+"Jacksonville Jaguars", nearly three times as wide in the same slot.
+
+The plan for this was a `teams.short_display` column and a re-sync. Checking
+rather than assuming killed it: `nfl-sync-reference.ts:64` already writes ESPN's
+`name` ("Chiefs") into `teams.mascot`, and `mascot` is already on `TeamView`.
+The short form had been in the database since the NFL shipped. So the fix is one
+function, `teamHeadline(team, sport)`, and no migration. CFB deliberately keeps
+`school` — there the mascot is a *different* word, not a shorter form of the
+same one, and nobody scanning a slate is looking for "Bulldogs".
+
+`truncate` also became a two-line clamp, same reasoning as NFL-9(c)'s last-play
+box. The min-height is in `lh` rather than pixels because the header steps from
+`text-lg` to `text-xl` at `sm` and a pixel value would be right at one
+breakpoint and wrong at the other.
+
+Found beside it: the Systems section is `card overflow-hidden` with no inner
+`overflow-x-auto`, where the Market section directly above it has had one all
+along. A table wider than the phone was clipped rather than scrollable.
+
+**"For the NFL game that went final there's nothing that says Lost, Won or
+Pushed."** Two independent causes, both read off the routing rather than
+guessed.
+
+A final renders `FinalFooter`, which builds chips from `myPicks`, ATS, O/U and
+the model — and never reads `myBets`. `PregameFooter` *does* have settled-bet
+chips, behind `settled = live || final`. But a final never renders that footer,
+so the `final` half of that condition has been unreachable since it was written,
+and the comment beside it described behaviour the routing prevents. That comment
+is the reason nobody looked, and it is corrected in place rather than deleted.
+
+Separately, the cover strip — the big word across the top, which is what the
+request meant by "a bigger tab at the top like the demo of live games" — was
+gated on `live && a pick`. A bet never produced one and a final never did.
+
+The strip now runs on finals and reads a bet first, matching `tintFor`'s
+ordering: real money is the louder fact. Won / Lost / Push through the existing
+`.cover-covering / -losing / -push` tiers, so no new colour, size or radius
+enters the system — `.cover-word` was already the broadcast score-bug idiom the
+request was asking for.
+
+The grader-first precedence rule had been hand-written in three places with the
+same comment each time; it is now one `settledResult()`. It is load-bearing in
+both directions. The grader settles types a score cannot — `team_total`,
+`first_half` and `future` are entered by hand — so for those the stored result
+is the only answer. And until the grader runs, recomputing from the final score
+is the only thing that can answer at all. **That second half is what the NFL
+exposed:** `nfl-grade` runs Mon/Tue/Fri, so a Sunday final carries `result:
+null` for the whole afternoon. GRADE-1 shortens that window to a scoreboard
+tick; this makes the card readable even when it hasn't closed yet.
+
+**"The Home Screen should also have who has possession of the ball like the
+slate shows."** A rendering gap, not a data gap — `fetchHomeData` goes through
+`fetchSlateView`, so `possession` was already on the hub's `GameView`. The
+football lived in two places the hub cannot reach: inside `GameCard`'s own
+`right` override, and inside `FieldStrip`, which the hub's `compact` mode drops
+on purpose (a 12px playing field in every row of a list reads as decoration).
+It is a `hasBall` prop on the shared `TeamScoreLine` now, drawn once for both
+callers, and the two comments asserting the football is deliberately card-only
+are corrected.
+
+**Testing.** 18 new (810 → 828). Nine of NFL-21's twelve were checked failing
+against the shipped code first; the other three are negative controls that must
+pass either way — a live card still says "Covering" and not "Won", a voided bet
+still says nothing, and a game you had no position on still shows no verdict.
+
+One of those controls caught a bad assertion of my own. "Names the bet the
+verdict is about" passed against the pre-fix code, because the ATS chip renders
+the same string `KC -3` and an unscoped text query cannot tell them apart. It is
+now scoped to the strip element. Same failure shape as the DB-assertion defect
+recorded below on the same day: a check that reports success without having
+tested the thing it names.
+
+**Not seen rendered.** These were verified by test and by reading, not on a
+device. The device pass is `NFL-3`, still open.
+
+### Aug 14 — Admin cancellation, and the test runner that had been dead for a day
+
+Owner request: *"There needs to be a way to fully cancel bets before and after
+they kickoff and finish as someone with admin power. I'm doing test bets so i
+want to be able to cancel them. The voided bets still sit in the ledger. The
+betting and pickem groups also need to have an admin cancel pick option."*
+Tracked as ADM-1 and ADM-2; migration 0046.
+
+**Why voiding was the wrong tool, in the owner's own sentence.** `voidBet` has
+existed since 0001 and does not solve this: a voided bet is still a row, drawn
+at 40% opacity in the ledger forever. Voiding is correct for a bet that was
+really placed and then taken back — it is a fact about the week. It is wrong for
+a test row that should never have existed.
+
+**The append-only exception, narrowed rather than waived.** `0001:210` opens the
+bets table with *"Append-only ledger: no deletes; voided_at instead (Honest Note
+#5)"*, and `docs/SPEC.md` §5.3 says the same. Hard delete was an explicit owner
+decision against that. Rather than quietly break the invariant, it was
+rewritten: every deletion copies the whole row into a deny-all `deleted_wagers`
+archive *before* removing it, so the rule goes from "nothing is ever removed" to
+"nothing is removed without a record". Any deleted row can be reconstructed by
+hand, which is the property the original rule existed to protect.
+
+That guarantee lives entirely in the ORDER of three statements — read, archive,
+delete — which is exactly the kind of thing a later refactor folds into one
+round trip for tidiness. So it is asserted directly: force the archive write to
+fail, and the bet must still be there.
+
+An archive table rather than a third status, deliberately. A status is what
+`voided_at` already is, and the complaint is that voided rows still show up. A
+third state would need filtering at every one of the ledger's tallies, and one
+missed filter puts test bets back in the units curve.
+
+**Two admin powers, not one.** ADM-1 is a *site* admin (`profiles.is_admin`)
+deleting a bet through the service role. ADM-2 is a *group* admin cancelling a
+member's pick through a new `admin_remove_pick` RPC. `admin_remove_pick`
+deliberately refuses a site admin: `is_admin` is a platform role, and letting it
+reach into a pool's picks would make every group's board editable by someone who
+is not in it. The two powers stop in different places on purpose.
+
+`remove_pick` could not be reused for ADM-2 in two independent ways. It deletes
+`user_id = auth.uid()`, so an admin calling it removes their **own** pick and
+reports one row happily; and it raises at kickoff (`0038:62-64`), which is the
+case an admin most needs. Betting-group admins get no power over a member's
+*bet* — a bet is one row in that person's own ledger, and a group is a lens on
+it rather than its owner.
+
+**A defect in the tests, found by the test of the tests.** Every new DB
+assertion is supposed to be checked failing against the pre-fix schema. Doing
+that here found that the refusal helper passed on *any* error: with 0046
+removed, all four "cannot cancel someone else's pick" assertions reported PASS
+on `function admin_remove_pick does not exist`, having proved exactly nothing
+about authorization. Each refusal now names the message it expects, and a
+missing-object error (42883 / 42P01) is reported as **vacuous** rather than
+absorbed as a pass. This is the same failure shape the repo keeps finding: a
+path that reports success without having verified the thing its caller believes
+it verified.
+
+**`npm run db:test` had not run a single assertion since 0043 landed.** That is
+how the above got noticed. 0043 and 0044 open with `create extension if not
+exists pg_cron`, which is Supabase-provisioned and not installable into a stock
+Postgres, so the runner aborted on migration 43 of 45 — and because it failed
+with "extension pg_cron is not available", it read as a broken *environment*
+rather than a broken *tool*. `scripts/db-test.sh` now writes inert `pg_cron` and
+`pg_net` stubs into the installation's extension directory when the real ones
+are missing, and removes them on exit. The stubs record a scheduled job and
+never run it; a test cluster that started making outbound HTTP calls on a timer
+would be a defect of its own. If it cannot write the stubs it **exits 1 naming
+the problem**, rather than skipping migrations and reporting a green run over
+reduced coverage.
+
+Consequence worth stating plainly: `docs/STATUS.md` §1's "163 DB assertions,
+run in-session against a real Postgres 16 cluster" was honest when written and
+has been unverifiable since 0043. Today's measured number is **198**.
+
+**Testing.** 24 DB assertions (174 → 198), 9 unit tests (801 → 810). The unit
+tests mock the two Supabase clients at the module boundary, because the action
+calls `createClient()` for cookies and `createServiceClient()` for env keys and
+neither exists in a test process.
+
+**Not verified from here:** the delete against a real test bet in the live
+database. That needs production.
+
+### Aug 14 — Grading happens when the game ends (GRADE-1)
+
+Owner question, from the betting/game-card batch: *"When a game goes final does
+it grade as soon as its final?"* It did not, and the honest answer explained a
+second item in the same list.
+
+**What was actually true.** `applyScoreboard` — the write half both leagues'
+live boards share — wrote status, points, period, clock, cover flips and bad-beat
+pushes, and touched **no `picks` or `bets` row anywhere in it**. Grading lived
+only in `gradeSeasonFinals`, reached from `ratings-update` on the Sunday
+13:00 UTC cron and `nfl-grade` on Mon/Tue/Fri. So a bet on a Saturday-night
+final sat open on the ledger for up to a week. It also meant the slate's final
+card had no `bet.result` to render, which is most of the reason the "an NFL
+final says nothing about my bet" report looked like a rendering bug.
+
+**The shape.** `gradeGames(db, gameIds)` is `gradeSeasonFinals` narrowed to a
+named set of games; both delegate to a shared `settleGames`. The scheduled pass
+stays and is now explicitly the backstop — it still catches the two things a
+live tick cannot: a game that finaled outside a scoreboard cron window, and the
+dead-game League Rule #4 voids. This is the same shared-function-plus-backstop
+arrangement P1-1 built for `voidWagersForGames`, chosen for the same reason.
+
+**The design decision worth recording: not gated on a status transition.**
+Detecting one is cheap — `applyScoreboard` already reads the stored rows to diff
+against. It was rejected because the NFL's 10-second edge function (migration
+0044) writes finals straight to Postgres on its own pg_cron schedule, so by the
+time the Actions loop next ticks, the stored row already reads `final` and there
+is no transition left to see. A transition-only trigger would have worked
+perfectly for CFB and never once fired for the NFL — the league the defect was
+reported on. Every completed game on the board is offered to the grader instead,
+and idempotency does the rest: every query filters `result is null`, so the
+second and every later tick settle nothing.
+
+**One ordering change that is not cosmetic.** `settleGames` now reads the
+ungraded predictions, picks and bets *before* the closing lines, and fetches
+`line_snapshots` only for the games those rows actually name. Under the old
+order, a live tick would have re-read snapshots for every final on the board
+every 30 seconds for the length of a Saturday. The test counts the reads rather
+than trusting the reasoning: after the first pass settles everything, the second
+issues zero snapshot queries.
+
+**Failures are swallowed and logged, deliberately.** The scoreboard's job is
+scores. A grading error must not cost the slate its live layer, and the
+scheduled pass will report the same failure loudly on its own run. Asserted:
+with the bets read forced to fail, the tick still writes the final score.
+
+**Testing.** 10 new tests, 791 → **801**. They run against a new in-memory
+PostgREST stand-in, `scripts/lib/fake-supabase.ts`, because every interesting
+property here is at the database seam — which rows a query claims, which it
+skips, whether a second run finds anything left — and no pure-function test can
+reach any of it. It is not a Postgres emulator and says so; RLS, triggers and
+grants remain the DB assertions' job.
+
+*(Two stale test counts were found while writing this: `§1` of `docs/STATUS.md`
+said 659 and the NFL-9 row said 698, against 791 actual. The new number is
+measured.)*
+
+**Not verified against a live game**, and there is none to use — the first
+honest proof is `NFL-4`, the watched TNF settlement on Sep 10.
+
 ### Aug 14 — The image share, and a confidence tier to organise it
 
 Owner request: an image of your bets you would actually post, sorted by

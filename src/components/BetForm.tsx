@@ -5,8 +5,6 @@ import { logBet } from "../app/actions/bets";
 import {
   CONFIDENCE_TIERS,
   CONFIDENCE_TIER_LABELS,
-  REASON_TAGS,
-  REASON_TAG_LABELS,
 } from "../lib/db-types";
 
 const BET_TYPES = [
@@ -169,21 +167,16 @@ export function BetForm({ seasonId, games = [] }: { seasonId: number; games?: Be
             className={input}
           />
         </Field>
-        <Field label="Why" htmlFor="bet-reason">
-          <select id="bet-reason" name="reason_tag" required className={input} defaultValue="">
-            <option value="" disabled>
-              Reason tag…
-            </option>
-            {REASON_TAGS.map((tag) => (
-              <option key={tag} value={tag}>
-                {REASON_TAG_LABELS[tag]}
-              </option>
-            ))}
-          </select>
-        </Field>
-        {/* Conviction, not reason: "Why" is the audit tag and this is how
-            strongly. Defaults to the neutral rung so the field is skippable —
-            it only earns its place on the card when someone reaches for it. */}
+        {/* The required "Why" reason-tag picker stood here (LEDGER-1). Two of
+            its eight values, tail and fade, are facts the database already
+            knows — `src/lib/tailing.ts` derives them from arrival order — and
+            the other six were a self-report standing between a person and
+            logging a bet. The ledger's audit is rebuilt on the derived
+            relation, which answers the same question without asking it. */}
+        {/* Conviction, which is a different thing from reason and is the one
+            worth keeping: how strongly, not why. Defaults to the neutral rung
+            so the field is skippable — it only earns its place on the card
+            when someone reaches for it. */}
         <Field label="Confidence" htmlFor="bet-confidence">
           <select
             id="bet-confidence"

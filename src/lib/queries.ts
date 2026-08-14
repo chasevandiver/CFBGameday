@@ -577,6 +577,108 @@ export async function fetchSlateView(
   return { seasonId, sport: sportOfSeasonId(seasonId), week, seasonType, fetchedAt, linesAsOf, games: views };
 }
 
+/**
+ * Every live game, both leagues, one list (UX-36).
+ *
+ * Owner request 2026-08-14: "The slate should have a live games option to show
+ * all of the live games as well as the options to view just cfb or just nfl."
+ * There was no live filter of any kind before this — only a count pill in the
+ * control bar and a "Live" section that appears solely when the sort is by
+ * kickoff.
+ *
+ * ## Built out of `fetchSlateView`, not beside it
+ *
+ * The obvious implementation is one query over `status = 'in_progress'` across
+ * both seasons. It is wrong, and expensively so: half of `fetchSlateView` is
+ * enrichment keyed to a single season — ratings, poll ranks, SP+/FPI/Elo,
+ * season ATS records — and a cross-league query would have to fork every one of
+ * those. A card assembled that way would drift from the same card on the CFB
+ * tab, which is the failure this codebase keeps recording.
+ *
+ * So the live game ids are found first (one cheap indexed read — 0044 added
+ * `games_sport_status_start` for a predicate almost exactly like this one),
+ * their distinct (season, week, season_type) buckets resolved, and each bucket
+ * loaded through the ordinary path and filtered to what is live. Usually one
+ * bucket, two on an NFL Sunday overlapping a CFB Saturday night. Every card is
+ * then byte-for-byte the card its own league's tab would render.
+ *
+ * ## Why buckets rather than "the current week"
+ *
+ * Asking each league's pointer for its current week is simpler and drops games.
+ * The NFL pointer rolls forward while Monday Night Football is still being
+ * played, so a viewer with money on MNF would find the Live tab empty at
+ * exactly the moment it matters most. Reading the buckets off the live rows
+ * themselves cannot make that mistake.
+ */
+export async function fetchLiveSlate(
+  supabase: SupabaseClient,
+  year: number,
+  userId: string | null,
+  groupId: string | null = null,
+  bettingGroupId: string | null = null,
+): Promise<SlateData> {
+  const fetchedAt = new Date().toISOString();
+  const seasonIds = seasonIdsForYear(year);
+  const empty: SlateData = {
+    seasonId: seasonIds[0],
+    sport: "cfb",
+    week: 0,
+    seasonType: "regular",
+    fetchedAt,
+    linesAsOf: null,
+    games: [],
+    live: true,
+  };
+
+  const { data: liveRows, error } = await supabase
+    .from("games")
+    .select("season_id, week, season_type")
+    .in("season_id", seasonIds)
+    .eq("status", "in_progress");
+  if (error) throw error;
+  if (!liveRows || liveRows.length === 0) return empty;
+
+  const buckets = new Map<string, { seasonId: number; week: number; seasonType: SeasonType }>();
+  for (const r of liveRows as Array<{ season_id: number; week: number; season_type: string }>) {
+    buckets.set(`${r.season_id}:${r.week}:${r.season_type}`, {
+      seasonId: r.season_id,
+      week: r.week,
+      seasonType: r.season_type as SeasonType,
+    });
+  }
+
+  const slates = await Promise.all(
+    [...buckets.values()].map((b) =>
+      fetchSlateView(
+        supabase,
+        b.seasonId,
+        b.week,
+        userId,
+        b.seasonType,
+        // A pick'em group belongs to one league; handing its id to the other
+        // league's bucket would return nothing and cost a round trip, so it is
+        // only passed where it can apply.
+        sportOfSeasonId(b.seasonId) === "cfb" ? groupId : null,
+        bettingGroupId,
+      ),
+    ),
+  );
+
+  const games = slates
+    .flatMap((s) => s.games)
+    .filter((g) => g.status === "in_progress")
+    .sort((a, b) => (a.startTs ?? "").localeCompare(b.startTs ?? ""));
+
+  let linesAsOf: string | null = null;
+  for (const s of slates) {
+    if (s.linesAsOf !== null && (linesAsOf === null || s.linesAsOf > linesAsOf)) {
+      linesAsOf = s.linesAsOf;
+    }
+  }
+
+  return { ...empty, linesAsOf, games };
+}
+
 export interface TeamAtsSummary {
   ats: { w: number; l: number; p: number };
   homeAts: { w: number; l: number; p: number };

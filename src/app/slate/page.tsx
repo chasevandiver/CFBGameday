@@ -2,7 +2,8 @@ import { cookies } from "next/headers";
 import { AppNav } from "../../components/AppNav";
 import { SlateView } from "../../components/slate/SlateView";
 import { ACTIVE_GROUP_COOKIE, activeOfKind, resolveActiveGroup } from "../../lib/groups";
-import { fetchCurrentSeasonWeek, fetchSlateView } from "../../lib/queries";
+import { seasonYearOf } from "../../lib/league";
+import { fetchCurrentSeasonWeek, fetchLiveSlate, fetchSlateView } from "../../lib/queries";
 import { createClient } from "../../lib/supabase/server";
 import { isValidWeek } from "../../lib/week-range";
 
@@ -21,7 +22,10 @@ export default async function SlatePage({
   } = await supabase.auth.getUser();
 
   const { week: weekParam, st: stParam, g: groupParam, sport: sportParam } = await searchParams;
-  // Anything that isn't exactly the other league is the default league.
+  // Three views now (UX-36): `live` spans both leagues and every week, the
+  // other two are one league's week. Anything unrecognised is the default
+  // league, as before.
+  const liveView = sportParam === "live";
   const sport = sportParam === "nfl" ? ("nfl" as const) : ("cfb" as const);
   const { seasonId, week: currentWeek, seasonType, minWeek } = await fetchCurrentSeasonWeek(
     supabase,
@@ -68,15 +72,23 @@ export default async function SlatePage({
   const bettingGroup = activeOfKind(mine, "betting", remembered);
 
   const [initial, favRes] = await Promise.all([
-    fetchSlateView(
-      supabase,
-      seasonId,
-      week,
-      user?.id ?? null,
-      st,
-      pickemGroup?.id ?? null,
-      bettingGroup?.id ?? null,
-    ),
+    liveView
+      ? fetchLiveSlate(
+          supabase,
+          seasonYearOf(seasonId),
+          user?.id ?? null,
+          pickemGroup?.id ?? null,
+          bettingGroup?.id ?? null,
+        )
+      : fetchSlateView(
+          supabase,
+          seasonId,
+          week,
+          user?.id ?? null,
+          st,
+          pickemGroup?.id ?? null,
+          bettingGroup?.id ?? null,
+        ),
     user
       ? supabase.from("profiles").select("favorite_team_ids, display_name").eq("id", user.id).maybeSingle()
       : Promise.resolve({ data: null }),

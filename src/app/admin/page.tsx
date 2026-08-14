@@ -4,6 +4,7 @@ import { AdjustmentsPanel, type AdjustmentView } from "../../components/Adjustme
 import { AppNav } from "../../components/AppNav";
 import { GameStatusPanel, type AdminGameView } from "../../components/GameStatusPanel";
 import { InviteForm } from "../../components/InviteForm";
+import { WagersPanel, type AdminWagerView } from "../../components/WagersPanel";
 import {
   NotificationsPanel,
   type AudienceOption,
@@ -58,6 +59,9 @@ export default async function AdminPage() {
     { data: notifySettings },
     { data: notifySends },
     { data: groupRows },
+    { data: recentBets, count: betCount },
+    { data: recentPicks, count: pickCount },
+    { data: profileRows },
     adminGames,
   ] = await Promise.all([
       service.from("invite_allowlist").select("email").order("created_at"),
@@ -85,6 +89,21 @@ export default async function AdminPage() {
         .order("sent_at", { ascending: false })
         .limit(20),
       service.from("groups").select("id, name").order("name"),
+      // ADM-1's reach: every user's rows, not just the operator's. `bets` is
+      // world-readable under RLS but `picks` is not (0021), and both are read
+      // through the service client for one consistent story behind the
+      // is_admin gate above — same reasoning as job_runs.
+      service
+        .from("bets")
+        .select("id, user_id, description, placed_at, result, voided_at", { count: "exact" })
+        .order("placed_at", { ascending: false })
+        .limit(20),
+      service
+        .from("picks")
+        .select("id, user_id, game_id, market, side, locked_at, result", { count: "exact" })
+        .order("locked_at", { ascending: false })
+        .limit(20),
+      service.from("profiles").select("id, display_name"),
       // Unfiltered by status on purpose: dead games have to be listed so they
       // can be restored (P1-1).
       fetchAdminGames(supabase, seasonId),
@@ -174,6 +193,66 @@ export default async function AdminPage() {
       (t) => [t.id, t.abbreviation ?? t.school],
     ),
   );
+  // ADM-1's list. Bets and picks are interleaved by time so the operator sees
+  // "what did I just do" rather than two lists to reconcile. Picks borrow the
+  // same abbrById the void control built — a pick with no matching game (a
+  // different season, say) still renders, labelled by id, because a row you
+  // cannot name is exactly the kind you most want to be able to delete.
+  const nameById = new Map(
+    ((profileRows ?? []) as Array<{ id: string; display_name: string | null }>).map((p) => [
+      p.id,
+      p.display_name ?? "unknown",
+    ]),
+  );
+  const gameById = new Map(adminGames.map((g) => [g.id, g]));
+  const gameLabel = (id: number): string => {
+    const g = gameById.get(id);
+    if (!g) return `game ${id}`;
+    return `${abbrById.get(g.away_team_id) ?? `#${g.away_team_id}`} @ ${abbrById.get(g.home_team_id) ?? `#${g.home_team_id}`}`;
+  };
+  const stamp = (iso: string | null): string =>
+    iso ? kickHeading(iso, DEFAULT_TZ) : "unknown time";
+
+  const wagerRows: AdminWagerView[] = [
+    ...((recentBets ?? []) as Array<{
+      id: number;
+      user_id: string;
+      description: string;
+      placed_at: string;
+      result: string | null;
+      voided_at: string | null;
+    }>).map((b) => ({
+      id: b.id,
+      kind: "bet" as const,
+      who: nameById.get(b.user_id) ?? "unknown",
+      what: b.description,
+      when: stamp(b.placed_at),
+      at: b.placed_at,
+      result: b.voided_at ? "void" : b.result,
+      voided: b.voided_at !== null,
+    })),
+    ...((recentPicks ?? []) as Array<{
+      id: number;
+      user_id: string;
+      game_id: number;
+      market: string;
+      side: string;
+      locked_at: string | null;
+      result: string | null;
+    }>).map((p) => ({
+      id: p.id,
+      kind: "pick" as const,
+      who: nameById.get(p.user_id) ?? "unknown",
+      what: `${gameLabel(p.game_id)} — ${p.market} ${p.side}`,
+      when: stamp(p.locked_at),
+      at: p.locked_at ?? "",
+      result: p.result,
+      voided: p.result === "void",
+    })),
+  ]
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .slice(0, 20);
+
   const { open: openGames, dead: deadGames } = partitionAdminGames(adminGames);
   const toGameView = (g: (typeof adminGames)[number]): AdminGameView => ({
     id: g.id,
@@ -270,6 +349,8 @@ export default async function AdminPage() {
           audiences={audiences}
           configured={pushConfigured()}
         />
+
+        <WagersPanel wagers={wagerRows} total={(betCount ?? 0) + (pickCount ?? 0)} />
 
         <section className="card mb-4 p-4">
           <h2 className="mb-1 text-sm text-accent">Game status</h2>

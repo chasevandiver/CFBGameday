@@ -49,11 +49,94 @@ mkdir -p "$TMP/data" "$TMP/sock"
 [ -n "$RUNAS" ] && chown -R "$RUNAS" "$TMP/data" "$TMP/sock" "$TMP/pg.log"
 
 run() { if [ -n "$RUNAS" ]; then su "$RUNAS" -c "$1"; else sh -c "$1"; fi; }
+
+# --- pg_cron / pg_net stand-ins ---------------------------------------------
+# 0043 and 0044 open with `create extension if not exists pg_cron` (and pg_net),
+# and neither ships with stock Postgres — they are Supabase-provisioned. So
+# from the day 0043 landed, this runner aborted on migration 43 of 45 and NOT
+# ONE assertion ran. `npm run db:test` looked like a broken environment rather
+# than a broken tool, which is why it sat.
+#
+# CREATE EXTENSION reads the installation's sharedir and PG16 has no override
+# for it, so the only way to satisfy those two lines offline is to put a stub
+# control file there. It is written only if the real extension is absent, and
+# removed on exit.
+#
+# The stubs are deliberately inert: cron.schedule records the job and never
+# runs it, net.http_post returns an id and sends nothing. That is the right
+# fidelity — what these suites verify is the SCHEMA the migrations build, and a
+# test cluster that started making outbound HTTP calls on a timer would be a
+# defect in its own right.
+EXTDIR="$("$PGBIN/pg_config" --sharedir 2>/dev/null)/extension"
+STUBBED=()
+stub_extension() {
+  local name="$1" schema="$2" body="$3"
+  [ -f "$EXTDIR/$name.control" ] && return 0
+  if [ ! -w "$EXTDIR" ]; then
+    echo "-- cannot stub $name: $EXTDIR is not writable." >&2
+    echo "-- Install $name, or run this as a user who can write there." >&2
+    echo "-- Refusing to skip migrations silently — 0043/0044 need it." >&2
+    exit 1
+  fi
+  printf "comment = 'offline stub'\ndefault_version = '1.0'\nrelocatable = false\nschema = %s\n" \
+    "$schema" > "$EXTDIR/$name.control"
+  printf '%s\n' "$body" > "$EXTDIR/$name--1.0.sql"
+  STUBBED+=("$name")
+}
+
 cleanup() {
   run "$PGBIN/pg_ctl -D $TMP/data -m immediate stop" >/dev/null 2>&1 || true
+  for e in ${STUBBED+"${STUBBED[@]}"}; do
+    rm -f "$EXTDIR/$e.control" "$EXTDIR/$e--1.0.sql"
+  done
   rm -rf "$TMP"
 }
 trap cleanup EXIT
+
+stub_extension pg_cron cron "
+create table job (
+  jobid    bigserial primary key,
+  schedule text,
+  command  text,
+  jobname  text unique
+);
+create table job_run_details (
+  jobid    bigint,
+  runid    bigserial primary key,
+  status   text,
+  end_time timestamptz
+);
+create function schedule(job_name text, schedule text, command text) returns bigint
+language sql as \$\$
+  insert into cron.job (jobname, schedule, command) values (job_name, schedule, command)
+  returning jobid;
+\$\$;
+create function schedule(schedule text, command text) returns bigint
+language sql as \$\$
+  insert into cron.job (jobname, schedule, command) values (schedule, schedule, command)
+  returning jobid;
+\$\$;
+-- Raises when the job is absent, which is what the migrations' exception
+-- handlers are written against (0044:43-48 relies on it).
+create function unschedule(job_name text) returns boolean
+language plpgsql as \$\$
+declare n integer;
+begin
+  delete from cron.job where jobname = job_name;
+  get diagnostics n = row_count;
+  if n = 0 then raise exception 'could not find valid entry for job %', job_name; end if;
+  return true;
+end;
+\$\$;
+"
+
+stub_extension pg_net net "
+create function http_post(url text, body jsonb default '{}'::jsonb,
+                          params jsonb default '{}'::jsonb,
+                          headers jsonb default '{}'::jsonb,
+                          timeout_milliseconds integer default 5000) returns bigint
+language sql as \$\$ select 0::bigint \$\$;
+"
 
 run "$PGBIN/initdb -U postgres -A trust -D $TMP/data" >/dev/null
 run "$PGBIN/pg_ctl -D $TMP/data -o '-k $TMP/sock -c listen_addresses=\"\"' -l $TMP/pg.log -w start" >/dev/null

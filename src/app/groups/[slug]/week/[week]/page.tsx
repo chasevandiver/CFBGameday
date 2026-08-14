@@ -6,7 +6,9 @@ import {
   MatchupCard,
   type MatchupPick,
 } from "../../../../../components/group/MatchupCard";
+import { CancelPickButton } from "../../../../../components/group/CancelPickButton";
 import type { CoverFlipRow, PickRow } from "../../../../../lib/db-types";
+import type { PickMarket } from "../../../../../lib/grade";
 import { fetchGroupMembers, fetchGroupWeek, groupLeague, resolveActiveGroup } from "../../../../../lib/groups";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../../../lib/queries";
 import { EMPTY_TALLY, formatRecord, tallyBy } from "../../../../../lib/records";
@@ -252,13 +254,26 @@ export default async function GroupWeekPage({
                           <span className="stat min-w-0 truncate text-sm text-chalk">
                             {pickText(p, gameById.get(p.game_id))}
                           </span>
-                          <span className="shrink-0">
+                          <span className="flex shrink-0 items-center gap-2">
                             {counts(p) ? (
                               <ResultText p={p} />
                             ) : (
                               <span className="stat text-[10px] uppercase tracking-wider text-chalk/40">
                                 not in play
                               </span>
+                            )}
+                            {/* ADM-2. Group admins only, and with no kickoff
+                                gate — a pick that has to be cancelled after
+                                the game started is the whole reason the RPC
+                                exists (remove_pick raises there). */}
+                            {active.role === "admin" && (
+                              <CancelPickButton
+                                groupId={active.id}
+                                userId={p.user_id}
+                                gameId={p.game_id}
+                                market={p.market as PickMarket}
+                                label={pickText(p, gameById.get(p.game_id))}
+                              />
                             )}
                           </span>
                         </li>

@@ -7,13 +7,16 @@
 import { cfbdCallCount } from "../src/lib/cfbd";
 import { createServiceClient } from "../src/lib/supabase/service";
 import {
+  cfbScoringJob,
   freezeGroupWeeksJob,
   freezeJob,
   gradeSeasonFinals,
+  nflScoringJob,
   logCfbdCalls,
   ratingsUpdateJob,
   recordJobRun,
   scoreboardJob,
+  SEASON,
   syncRankingsJob,
   syncSystemsJob,
   watchdogJob,
@@ -43,6 +46,12 @@ async function main() {
     // NFL settlement: the ratings replay stays CFB-only, but an NFL final
     // grades picks/bets and CLV with the identical shared machinery.
     "nfl-grade": (db: Parameters<typeof gradeSeasonFinals>[0]) => gradeSeasonFinals(db, NFL_SEASON),
+    // SCORE-1: the scoring timeline, one job per league because the two feeds
+    // are shaped differently — ESPN publishes a ready-made summary per game,
+    // CFBD publishes a whole week of plays and expects you to filter. Both are
+    // gated on the score having moved, so an idle run costs no external call.
+    "nfl-scoring": (db: Parameters<typeof nflScoringJob>[0]) => nflScoringJob(db, NFL_SEASON),
+    "cfb-scoring": (db: Parameters<typeof cfbScoringJob>[0]) => cfbScoringJob(db, SEASON),
   } as const;
   const job = jobs[task as keyof typeof jobs];
   if (!job) throw new Error(`unknown task "${task}" (${Object.keys(jobs).join("|")})`);

@@ -441,10 +441,104 @@ function hexColor(c: string | null | undefined): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// Scoring plays (SCORE-1)
+// ---------------------------------------------------------------------------
+
+/** The subset of ESPN's `/summary` response this reads. */
+export interface EspnSummary {
+  scoringPlays?: Array<{
+    id?: string | null;
+    type?: { text?: string | null } | null;
+    text?: string | null;
+    period?: { number?: number | null } | null;
+    clock?: { displayValue?: string | null } | null;
+    team?: { id?: string | null } | null;
+    awayScore?: number | null;
+    homeScore?: number | null;
+  } | null> | null;
+}
+
+/** One score, feed-agnostic — the same shape CFBD's plays route reduces to. */
+export interface ScoringPlay {
+  /** Feed order, not a clock: clocks run backwards, reset and stop. */
+  sequence: number;
+  period: number | null;
+  clock: string | null;
+  /** ESPN team id, pre-offset. Null when the feed omits it (some safeties). */
+  espnTeamId: number | null;
+  playType: string | null;
+  text: string;
+  homePoints: number;
+  awayPoints: number;
+}
+
+/**
+ * Pull the scoring summary out of a `/summary?event=` response.
+ *
+ * Order comes from the array, deliberately. ESPN's own `id` is a play id whose
+ * ordering is not guaranteed to be monotonic across a game, and the clock
+ * cannot order anything — it counts down, resets each quarter, and two scores
+ * can share a value (a touchdown and its extra point are frequently both
+ * stamped at the same second).
+ *
+ * A play with no text is dropped rather than stored blank: the text IS the
+ * feature, and a row that renders as an empty line beside a score is worse
+ * than a gap. Scores default to 0 rather than being dropped, because 0 is a
+ * real score at the start of a game and the alternative is losing the opening
+ * touchdown of every shutout.
+ */
+export function parseScoringPlays(summary: EspnSummary): ScoringPlay[] {
+  const out: ScoringPlay[] = [];
+  const plays = summary.scoringPlays ?? [];
+  for (let i = 0; i < plays.length; i++) {
+    const p = plays[i];
+    if (!p) continue;
+    const text = (p.text ?? "").trim();
+    if (!text) continue;
+    const teamId = p.team?.id === undefined || p.team?.id === null ? null : Number(p.team.id);
+    out.push({
+      sequence: i,
+      period: p.period?.number ?? null,
+      clock: p.clock?.displayValue ?? null,
+      espnTeamId: teamId !== null && Number.isFinite(teamId) ? teamId : null,
+      playType: p.type?.text ?? null,
+      text,
+      homePoints: p.homeScore ?? 0,
+      awayPoints: p.awayScore ?? 0,
+    });
+  }
+  return out;
+}
+
+/**
+ * Total points accounted for by a scoring list — the score-change gate.
+ *
+ * NFL-12 left the per-game `/summary` call as a decision owed, on the grounds
+ * that one call per live game per tick is ~16x the single scoreboard call on a
+ * Sunday. This is what makes it affordable: the summary is fetched only when
+ * the game's stored score exceeds what the stored plays add up to, which is
+ * ~1 call per SCORE rather than one per tick. A 47-point game costs about a
+ * dozen calls across three hours.
+ *
+ * Reads the last row rather than summing, because each row already carries the
+ * running score after it — summing would double-count.
+ */
+export function pointsCovered(plays: Array<{ homePoints: number; awayPoints: number }>): number {
+  const last = plays[plays.length - 1];
+  return last ? last.homePoints + last.awayPoints : 0;
+}
+
+// ---------------------------------------------------------------------------
 // Endpoints
 // ---------------------------------------------------------------------------
 
 export const espn = {
+  /**
+   * One game's detail, for the scoring summary (SCORE-1). Costs one call per
+   * game, so callers gate it on the score having changed — see `pointsCovered`.
+   */
+  summary: (eventId: number) => get<EspnSummary>("summary", { event: eventId }),
+
   /**
    * One week's board (schedule + live state + odds). `dates` pins the season
    * year so historical/forward weeks resolve; omit all options for ESPN's

@@ -109,3 +109,32 @@ describe("TeamScoreLine", () => {
     expect(screen.getByText("odds")).toBeTruthy();
   });
 });
+
+/**
+ * UX-37 — the football moved into this component so the home hub gets it.
+ *
+ * The hub had `possession` on its `GameView` all along (`fetchHomeData` goes
+ * through `fetchSlateView`), but the marker lived in the card's own `right`
+ * override and inside `FieldStrip`, which the hub's `compact` mode drops. So a
+ * live row on the home page showed the down, the distance and the last play and
+ * never said who had the ball.
+ */
+describe("possession", () => {
+  it("draws the football for the side with the ball", () => {
+    render(<TeamScoreLine team={team()} score={14} showScore hasBall />);
+    expect(screen.getByLabelText("Memphis has possession")).toBeTruthy();
+  });
+
+  it("draws nothing for the side without it", () => {
+    render(<TeamScoreLine team={team()} score={14} showScore />);
+    expect(screen.queryByLabelText("Memphis has possession")).toBeNull();
+  });
+
+  /* It rides alongside the score rather than replacing anything, so a row does
+     not change width when possession changes hands — the no-layout-shift rule
+     applies to a marker that appears and disappears every drive. */
+  it("keeps the score beside it", () => {
+    render(<TeamScoreLine team={team()} score={14} showScore hasBall />);
+    expect(screen.getByText("14")).toBeTruthy();
+  });
+});

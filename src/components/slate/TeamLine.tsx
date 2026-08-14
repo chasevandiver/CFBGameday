@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { displayRank, type TeamView } from "../../lib/slate";
+import { Football } from "./LiveSituation";
 import { TeamMark } from "./TeamMark";
 
 /**
@@ -78,10 +79,16 @@ export function TeamRecord({ team }: { team: TeamView }) {
  * smallest thing on it.
  *
  * So the construction lives here rather than inside `GameCard`, and both use
- * it. What stays in the card is what only the card has: the star button, the
- * possession football and the score-flash animation — all passed through
- * `trailing` and `scoreSlot` rather than pulled in here, since none of them
- * belong on a server-rendered hub.
+ * it. What stays in the card is what only the card has: the star button and the
+ * score-flash animation, passed through `trailing` and `right`.
+ *
+ * The possession football used to be on that list, and no longer is (UX-37).
+ * The hub had the data all along — `fetchHomeData` goes through
+ * `fetchSlateView`, so `possession` is on its `GameView` too — but the football
+ * lived inside the card's own `right` override and inside `FieldStrip`, which
+ * `compact` mode drops. So a live row on the home page gave the down, the
+ * distance and the last play and never said who had the ball. It is a prop
+ * here now, rendered in one place for both callers.
  */
 export function TeamScoreLine({
   team,
@@ -91,6 +98,7 @@ export function TeamScoreLine({
   showRecord = true,
   trailing,
   right,
+  hasBall = false,
 }: {
   team: TeamView;
   /** Null renders 0 — a live game with no score yet is 0, not blank. */
@@ -108,6 +116,8 @@ export function TeamScoreLine({
    * omitting it gives the plain score, which is what the hub wants.
    */
   right?: ReactNode;
+  /** This side has the ball. Only meaningful while a game is live (UX-37). */
+  hasBall?: boolean;
 }) {
   const rank = displayRank(team);
   return (
@@ -136,6 +146,7 @@ export function TeamScoreLine({
         )}
         {trailing}
       </div>
+      {hasBall && <Football label={`${team.school} has possession`} />}
       {right ??
         (showScore && (
           <span

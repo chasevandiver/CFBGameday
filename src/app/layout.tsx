@@ -58,6 +58,34 @@ export const viewport: Viewport = {
   /* Required for env(safe-area-inset-*) to report anything but 0 — the bottom
      nav and the bet slip both sit in the home-indicator zone. */
   viewportFit: "cover",
+  /* UX-35 — zoom off, owner request 2026-08-14 ("Pinch to zoom makes the site
+     look weird on the web app. Let's take out zooming entirely.").
+
+     ## This fails WCAG 2.1 SC 1.4.4, knowingly
+
+     It is recorded as a residual in docs/STATUS.md §6 rather than left for
+     someone to rediscover as a bug and "fix" back. The mitigation that makes it
+     defensible is that the layout is already fluid and reflows to the OS text
+     size — nothing here is a fixed-width image of text — so a reader who needs
+     larger type gets it from Settings rather than from pinching. If that ever
+     stops being true, this comes out.
+
+     ## Why three changes and not one
+
+     None of these covers every surface on its own:
+       - `userScalable` / `maximumScale` are honoured by the INSTALLED PWA,
+         which is where the problem was reported, and by Android Chrome.
+       - Safari in a browser tab has ignored `user-scalable=no` since iOS 10;
+         `touch-action` in globals.css and the gesture handler below are what
+         reach it.
+     `width` and `initialScale` are stated explicitly rather than left to
+     Next's defaults: they are the values the scale limits are relative to, and
+     leaving them implicit here would make this block read as if it only half
+     applied. */
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
   themeColor: [
     // The app's own dark ground, not the icon's: a media query cannot know
     // whether the reader has picked the Field theme, so this tracks the
@@ -70,6 +98,18 @@ export const viewport: Viewport = {
 
 /* Runs before paint so a saved theme never flashes the default one first. */
 const themeInit = `(function(){try{var t=localStorage.getItem("slate-theme");if(t==="light"||t==="field")document.documentElement.dataset.theme=t}catch(e){}})()`;
+
+/* UX-35's Safari half. `user-scalable=no` in the viewport meta is honoured by
+   the installed PWA but ignored by Safari in a browser tab, where pinch is
+   delivered as the non-standard `gesture*` events — so refusing those is the
+   only way to reach it. `passive: false` is required or preventDefault is
+   dropped on the floor.
+
+   Deliberately narrow: it cancels the pinch gesture and nothing else. Scroll,
+   tap and swipe never produce a `gesturestart`, so none of them are touched.
+   Guarded on the event existing at all, so it is inert on every browser that
+   is not WebKit rather than throwing there. */
+const zoomOff = `(function(){if(!("ongesturestart" in window))return;var s=function(e){e.preventDefault()};["gesturestart","gesturechange","gestureend"].forEach(function(n){document.addEventListener(n,s,{passive:false})})})()`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
@@ -92,6 +132,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="min-h-full flex flex-col">
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
+        <script dangerouslySetInnerHTML={{ __html: zoomOff }} />
         {children}
         {/* pb clears the fixed bottom nav on mobile */}
         <footer className="mx-auto w-full max-w-7xl px-4 pb-20 pt-6 text-center text-[11px] leading-relaxed text-chalk/40 sm:pb-6">

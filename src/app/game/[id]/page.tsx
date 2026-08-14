@@ -6,6 +6,9 @@ import { AppNav } from "../../../components/AppNav";
 import { GameHeader } from "../../../components/game/GameHeader";
 import { MovementChart } from "../../../components/game/MovementChart";
 import { ConsensusChip, EdgeChip } from "../../../components/slate/chips";
+import { DeleteWagerButton } from "../../../components/DeleteWagerButton";
+import { ScoringTimeline } from "../../../components/game/ScoringTimeline";
+import type { ScoringPlayRow } from "../../../lib/scoring";
 import { VoidBetButton } from "../../../components/VoidBetButton";
 import { Sparkline } from "../../../components/slate/Sparkline";
 import type {
@@ -110,6 +113,13 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     data: { user },
   } = await supabase.auth.getUser();
 
+  // ADM-1: decides whether the delete control draws. Not a boundary — the
+  // action re-checks is_admin server-side before it touches anything.
+  const { data: me } = user
+    ? await supabase.from("profiles").select("is_admin").eq("id", user.id).maybeSingle()
+    : { data: null };
+  const isAdmin = me?.is_admin === true;
+
   const { data: game } = await supabase
     .from("games")
     .select("*")
@@ -117,7 +127,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     .maybeSingle<GameRow>();
   if (!game) notFound();
 
-  const [teamsRes, linesRes, predRes, picksRes, betsRes, profilesRes, weatherRes, questionsRes, pollsRes, systemsRes, rivalryRes] = await Promise.all([
+  const [teamsRes, linesRes, predRes, picksRes, scoringRes, betsRes, profilesRes, weatherRes, questionsRes, pollsRes, systemsRes, rivalryRes] = await Promise.all([
     supabase.from("teams").select("*").in("id", [game.home_team_id, game.away_team_id]),
     supabase.from("line_snapshots").select("*").eq("game_id", gameId),
     supabase
@@ -127,6 +137,13 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
       .order("created_at", { ascending: false })
       .limit(5),
     supabase.from("picks").select("*").eq("game_id", gameId),
+    // SCORE-1. Public read (0048), so this loads signed-out too — a scoring
+    // summary is no more private than the score it adds up to.
+    supabase
+      .from("scoring_plays")
+      .select("*")
+      .eq("game_id", gameId)
+      .order("sequence", { ascending: true }),
     user
       ? supabase
           .from("bets")
@@ -188,6 +205,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     prediction = { ...prediction, total: null, home_score: null, away_score: null };
   }
   const picks = (picksRes.data ?? []) as PickRow[]; // crew picks are never hidden (0010)
+  const scoringPlays = (scoringRes.data ?? []) as ScoringPlayRow[];
   const profiles = new Map(
     ((profilesRes.data ?? []) as Array<Pick<ProfileRow, "id" | "display_name">>).map((p) => [
       p.id,
@@ -557,17 +575,22 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                     {/* A settled bet is history — voiding is only for a bet
                         that hasn't been graded yet (the trigger refuses it
                         anyway; no point offering the button). */}
-                    {!b.result && (
-                      <span className="ml-auto">
-                        <VoidBetButton betId={b.id} />
-                      </span>
-                    )}
+                    <span className="ml-auto flex items-center gap-2">
+                      {!b.result && <VoidBetButton betId={b.id} />}
+                      {/* Unlike the void, this IS offered on a settled bet —
+                          a graded test row is the one that needs removing. */}
+                      {isAdmin && <DeleteWagerButton kind="bet" id={b.id} />}
+                    </span>
                   </li>
                 );
               })}
             </ul>
           )}
         </section>
+
+        {/* How the score got there (SCORE-1). Above the market because the
+            game is what the page is about; the numbers explain it. */}
+        <ScoringTimeline plays={scoringPlays} home={home} away={away} />
 
         {/* Odds table */}
         <section className="card mt-4 overflow-hidden">
@@ -699,6 +722,10 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
         {systemRows.length > 0 && (
           <section className="card mt-4 overflow-hidden">
             <h2 className="border-b border-chalk/8 px-4 py-2.5 text-sm text-accent">Systems</h2>
+            {/* NFL-20, found beside it: the card is overflow-hidden, so a table
+                wider than the phone was clipped rather than scrollable. The
+                Market section above has had this wrapper all along. */}
+            <div className="scroll-thin overflow-x-auto">
             <table className="stats w-full border-collapse text-sm">
               <thead>
                 <tr className="text-left text-[10.5px] uppercase tracking-wider text-chalk/55">
@@ -739,6 +766,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                 )}
               </tbody>
             </table>
+            </div>
             <p className="px-4 py-2 text-[10.5px] text-dim">
               SP+ and FPI are points better than an average FBS team on a neutral field, the
               same scale our rating uses, so they read against each other directly. Elo is not —

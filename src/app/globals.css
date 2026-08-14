@@ -56,6 +56,13 @@
      face lands on the same colour over a plain background and the difference
      is entirely in what it transmits. */
   --glass-surface: color-mix(in srgb, var(--surface) 80%, transparent);
+  /* A floating panel, not a card (UX-38). The bet slip is the one .card that
+     hangs over a scrolling slate with no aura behind it and no backdrop-filter,
+     so the 80% above — a value tuned for a card sitting on its own controlled
+     wash — let the game cards underneath bleed straight through, and the 11px
+     type on the slip became unreadable. Derived from the same --surface, so
+     this is a named step on an existing colour rather than a new one. */
+  --glass-panel: color-mix(in srgb, var(--surface) 96%, transparent);
   --glass-edge: rgba(244, 236, 220, 0.16);
   --glass-bar: color-mix(in srgb, var(--bg) 72%, transparent);
   /* The sheen down the face of the glass. Same white the specular edge uses,
@@ -108,6 +115,10 @@ html[data-theme="light"] {
   /* Glass on a light ground needs a more opaque card and a brighter edge, or
      the aura reads as a stain rather than a glow. */
   --glass-surface: color-mix(in srgb, var(--surface) 92%, transparent);
+  /* Light mode's surface is pure white, so the panel goes fully opaque: at 96%
+     the 4% showing through is the page's own #f2f3f6, which is enough to grey
+     the slip's text against it. */
+  --glass-panel: var(--surface);
   --glass-edge: rgba(255, 255, 255, 0.85);
   --glass-bar: color-mix(in srgb, var(--bg) 80%, transparent);
   /* On white the sheen would be invisible anyway; the light ground separates
@@ -151,6 +162,7 @@ html[data-theme="field"] {
   --edge-c: #e8b93d;
 
   --glass-surface: color-mix(in srgb, var(--surface) 80%, transparent);
+  --glass-panel: color-mix(in srgb, var(--surface) 96%, transparent);
   --glass-edge: rgba(244, 239, 226, 0.16);
   /* Navigation and headers are field green, not the page's near-black (§5) —
      which is what keeps the header a surface rather than a hole. */
@@ -230,10 +242,33 @@ body {
   }
 }
 
-/* No 300ms wait between the tap and the pick. Safari holds a tap to see
-   whether a second one is coming (double-tap zoom); on a board where the whole
-   interaction is tapping in sequence that delay is most of what "slow" meant.
-   Zoom itself is untouched — pinch still works, and nothing here disables it. */
+/* Zoom is off (UX-35), and the comment that used to sit here said the opposite.
+   It read "Zoom itself is untouched — pinch still works, and nothing here
+   disables it", which was true while this rule covered only interactive
+   elements and stopped being true with the block below.
+
+   `pan-x pan-y` says: scroll in both directions, no pinch. That is the half
+   that reaches Android Chrome. The installed PWA is covered by the viewport
+   meta and Safari-in-a-tab by the gesture handler — see the note in
+   `layout.tsx` for why all three are needed, and what the choice costs.
+
+   The original reason for the narrower rule survives unchanged: Safari holds a
+   tap ~300ms to see whether a second one is coming (double-tap zoom), and on a
+   board where the whole interaction is tapping in sequence that delay was most
+   of what "slow" meant.
+
+   The rule below is now strictly redundant, and saying so is worth more than
+   deleting it. Effective touch-action is the INTERSECTION down the ancestor
+   chain, so `pan-x pan-y` here has already removed pinch-zoom and no descendant
+   can add it back. The consequence is scope, and it is the real cost of UX-35:
+   a future surface that genuinely wants to be zoomable — a full-size crest, a
+   share-card preview, a chart — cannot opt in per-route. It would have to come
+   out of this rule. */
+html,
+body {
+  touch-action: pan-x pan-y;
+}
+
 button,
 a,
 [role="button"],
@@ -292,6 +327,41 @@ h2,
     var(--shadow-card);
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
+/* A floating panel: the card's border, radius and shadow, on a face you can
+   actually read text against (UX-38).
+
+   Two differences from .card, both because of where it sits. The face is
+   --glass-panel rather than --glass-surface, and there is a backdrop-filter —
+   which globals.css otherwise reserves for "the bars that genuinely have
+   content scrolling underneath (nav, header, ticker)". The bet slip belongs on
+   that list and was never counted: it is fixed over the slate, and the cards
+   moving behind it were showing through at 20%.
+
+   No sheen. The sheen exists to make a large pane read as curved glass; on a
+   panel whose whole job is legibility it is one more thing between the reader
+   and an 11px number. */
+.panel {
+  background: var(--glass-panel);
+  /* 12px, matching the `backdrop-blur-md` the nav, header and ticker already
+     use — a second blur radius would be a new value for no reason. */
+  backdrop-filter: blur(12px) saturate(1.15);
+  -webkit-backdrop-filter: blur(12px) saturate(1.15);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow:
+    inset 0 1px 0 var(--glass-edge),
+    var(--shadow-card-hover);
+}
+
+/* Light mode's --glass-panel resolves to a fully opaque white, so the blur
+   composites a backdrop nothing can see — every frame the slate scrolls behind
+   it. Turned off rather than left as invisible work on the one theme where a
+   phone is most likely to be in a bright room and on battery. */
+html[data-theme="light"] .panel {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 .card-hover:hover {
   border-color: var(--line-strong);
   box-shadow: var(--shadow-card-hover);
@@ -659,6 +729,108 @@ html[data-theme="light"] .field-strip {
   font-size: 11px;
   line-height: 15px;
   color: var(--text-dim);
+}
+
+/* The ticker scrolls (UX-34).
+   It was a static `overflow-x-auto` strip you had to swipe, which on a phone
+   meant the games past the fourth were invisible unless you went looking — and
+   a scoreboard ticker that does not move does not read as a ticker at all.
+
+   The track holds the chip list TWICE and travels exactly -50%, so the moment
+   the first copy leaves the frame the second is in the identical position and
+   the reset is invisible. Duration is set inline from the measured content
+   width, which keeps the speed constant in px/sec whether there are five games
+   on a Tuesday or sixty on a Saturday.
+
+   Paused on hover, on focus-within and while a finger is down: every chip is a
+   44px link and a moving target is not a target. `mask-image` fades both edges
+   so a chip enters and leaves rather than being guillotined by the border.
+
+   Under prefers-reduced-motion the global clamp at the bottom of this file
+   stops the animation, and `.ticker-track` keeps `overflow-x: auto` — so it
+   degrades to precisely the swipeable strip it replaced, with no extra rules.
+   The duplicate copy is hidden from assistive tech, not from layout: a screen
+   reader that read every score twice would be worse than one that cannot
+   scroll. */
+.ticker-viewport {
+  /* `clip`, not `hidden`. A `hidden` box is still a scroll CONTAINER — it just
+     has no scrollbar — so tabbing to a chip past the frame makes the browser
+     set scrollLeft on it. That offset persists and stacks with the animation's
+     own translate, and after one Tab pass the strip is misaligned with its
+     leading chips scrolled out of reach. `clip` is not a scroll container, and
+     mask-image applies to it identically. */
+  overflow: clip;
+  mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+}
+
+.ticker-track {
+  display: flex;
+  width: max-content;
+  animation: ticker-scroll var(--ticker-duration, 40s) linear infinite;
+}
+
+.ticker-viewport:hover .ticker-track,
+.ticker-viewport:focus-within .ticker-track,
+.ticker-track[data-held="1"] {
+  animation-play-state: paused;
+}
+
+/* Not enough content to fill the frame: nothing to scroll past, so it sits
+   still rather than sliding a three-game Tuesday around for no reason. */
+.ticker-track[data-still="1"] {
+  animation: none;
+  width: 100%;
+}
+
+@keyframes ticker-scroll {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-viewport {
+    /* Swiping is the whole fallback here, so this one IS a scroll container
+       again — horizontally only, so a stray vertical gesture cannot offset it. */
+    overflow-x: auto;
+    overflow-y: clip;
+    mask-image: none;
+  }
+  .ticker-track {
+    width: auto;
+  }
+  /* The second copy exists only to make the wrap seamless. With no animation
+     it is just every score printed twice, so it goes. */
+  .ticker-track > :nth-child(2) {
+    display: none;
+  }
+}
+
+/* Team name in the game header. Same reasoning as .last-play above, applied to
+   a string that is long for a different reason: NFL-20. `school` is "Georgia"
+   from CFBD and "Jacksonville Jaguars" from ESPN, and the header sits a 48px
+   mark beside a 1fr column — so it was `truncate`, and on a phone the NFL name
+   was cut in half. `teamHeadline()` shortens the NFL side to the nickname;
+   this lets whatever is left wrap rather than clip.
+
+   min-height in `lh` so it is exactly two lines at whatever size the breakpoint
+   is using — the header steps from text-lg to text-xl at sm, and a pixel value
+   would be right at one of them and wrong at the other. Browsers without `lh`
+   (pre-16.4 Safari) ignore the min-height and the box simply sizes to content:
+   one line for most teams, two for the long ones. That degrades to a header
+   that can change height between two different games, never within one, so
+   nothing shifts while a score updates. */
+.team-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  min-height: 2lh;
 }
 
 /* ---- Motion ---------------------------------------------------------- */
