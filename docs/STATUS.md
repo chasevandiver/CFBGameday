@@ -1047,14 +1047,30 @@ is stored on the bet, not chosen at share time; a *lean* is the bottom rung of
 one ladder, not a separate unstaked object; the tier is editable until kickoff
 and frozen after; pick'em picks get no tier; the group variant shares the
 viewer's own bets, not the whole sheet.
-- [ ] **SHARE-1** Three design directions at 1080×1350 in `public/design/`
+- [x] **SHARE-1** Design directions at 1080×1350 in `public/design/`
       (`share-card-a|b|c.html`), per DESIGN.md exploration mode. Built
       flexbox-only with no grid and no `gap`, because the winner has to survive
       being ported into a `next/og` ImageResponse and satori renders a narrower
       CSS subset than a browser. Rendered and checked at full size, including
       the two hard cases — Miami (OH) at Western Michigan, and a futures bet
-      with no game, no logos and no kickoff. **Awaiting an owner decision;
-      nothing below starts until one direction wins.** · S
+      with no game, no logos and no kickoff. **Done 2026-08-14. Owner chose a
+      hybrid, `share-card-d.html` "The Sheet"** — B's row engine and its aligned
+      Plex Mono column, A's tier headings printed in full but only on a tier
+      *change*, and C's hero made conditional: the panel appears iff exactly one
+      bet sits alone at the highest tier, so it can never promote an arbitrary
+      row. All four hero states are rendered in that file, and rendering them is
+      what earned its keep — three separate layout bugs were only visible at
+      full size: A overflowed the frame by ~275px and clipped two bets and its
+      footer, B's stub stretched and left a 200px hole, and D's single-bet hero
+      ballooned into an empty green slab. The last two are one problem — a fixed
+      1350px canvas holding a variable-length list — and are fixed by one
+      self-scaling `filler` that collapses to nothing on a dense card and
+      carries the S at 6% opacity on a sparse one.
+      **One correction to the approved plan, on the record:** the plan had a
+      single-bet card return no hero. That contradicted the rule it sat beside
+      (a lone bet *is* alone at the highest tier) and rendered as one thin row
+      on an empty card. The special case is gone; the rule is now one sentence
+      with no exceptions. · S
 - [ ] **SHARE-2** `bets.confidence` — migration, six-value check constraint,
       default `'bet'` so existing rows backfill to the neutral rung. Amend
       `enforce_bet_void_only()` (migration 0013) to whitelist a confidence-only

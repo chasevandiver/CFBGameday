@@ -52,11 +52,35 @@ footer .dep { color: var(--edge); }
     they are for. Nothing here is app code and nothing here ships.
   </p>
 
-  <h3>Share card — awaiting a decision <span style="color:var(--accent);font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.12em">· live round</span></h3>
+  <h3>Share card — <span style="color:var(--win);font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.12em">D chosen</span></h3>
   <p class="sub">
-    Three directions for the <b>image share</b> — the thing a user posts to a
+    Directions for the <b>image share</b> — the thing a user posts to a
     timeline. 1080×1350 (4:5), sorted by confidence tier then kickoff, titled
     <code>&lt;display_name&gt; Bets</code>.
+    <b>Start at D</b> — it is what ships. A/B/C are the first round, kept as the
+    record.
+  </p>
+
+  <ol style="margin-bottom:4px">
+    <li><a class="card" href="./share-card-d.html" style="border-color:rgba(232,185,61,.4)">
+      <span class="k">Share D · chosen</span>
+      <h2>The Sheet</h2>
+      <p class="d">
+        A hybrid, because each of the first three had a weakness another already
+        solved. <b>B's row engine</b> and its aligned Plex Mono column.
+        <b>A's tier headings</b>, printed in full but only when the tier
+        <i>changes</i> — so “Bet of the Afternoon Slate” survives at a third of
+        A's vertical cost. <b>C's hero</b>, but conditional: the panel appears
+        iff exactly one bet sits alone at the highest tier, so it can never
+        promote an arbitrary row.
+      </p>
+      <p class="axes">all four hero states rendered · one alone → hero · tie → none · all one tier → none · single bet → hero</p>
+      <p class="rb">two fixes found by rendering it: the single-bet hero <b>stretched into an empty slab</b>, and a sparse card left a 470px hole — both solved by one self-scaling <code>filler</code> that puts the S in whatever space is left</p>
+    </a></li>
+  </ol>
+
+  <p class="sub" style="border-left:2px solid var(--line);padding-left:12px;margin-top:18px">
+    <b>The first round — superseded, kept as the record.</b>
   </p>
   <p class="sub">
     Two things make this round different. First, the palette is
