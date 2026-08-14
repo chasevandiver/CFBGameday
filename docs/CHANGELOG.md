@@ -166,6 +166,66 @@ shipping it.
 
 ## Log
 
+### Aug 14 — Grading happens when the game ends (GRADE-1)
+
+Owner question, from the betting/game-card batch: *"When a game goes final does
+it grade as soon as its final?"* It did not, and the honest answer explained a
+second item in the same list.
+
+**What was actually true.** `applyScoreboard` — the write half both leagues'
+live boards share — wrote status, points, period, clock, cover flips and bad-beat
+pushes, and touched **no `picks` or `bets` row anywhere in it**. Grading lived
+only in `gradeSeasonFinals`, reached from `ratings-update` on the Sunday
+13:00 UTC cron and `nfl-grade` on Mon/Tue/Fri. So a bet on a Saturday-night
+final sat open on the ledger for up to a week. It also meant the slate's final
+card had no `bet.result` to render, which is most of the reason the "an NFL
+final says nothing about my bet" report looked like a rendering bug.
+
+**The shape.** `gradeGames(db, gameIds)` is `gradeSeasonFinals` narrowed to a
+named set of games; both delegate to a shared `settleGames`. The scheduled pass
+stays and is now explicitly the backstop — it still catches the two things a
+live tick cannot: a game that finaled outside a scoreboard cron window, and the
+dead-game League Rule #4 voids. This is the same shared-function-plus-backstop
+arrangement P1-1 built for `voidWagersForGames`, chosen for the same reason.
+
+**The design decision worth recording: not gated on a status transition.**
+Detecting one is cheap — `applyScoreboard` already reads the stored rows to diff
+against. It was rejected because the NFL's 10-second edge function (migration
+0044) writes finals straight to Postgres on its own pg_cron schedule, so by the
+time the Actions loop next ticks, the stored row already reads `final` and there
+is no transition left to see. A transition-only trigger would have worked
+perfectly for CFB and never once fired for the NFL — the league the defect was
+reported on. Every completed game on the board is offered to the grader instead,
+and idempotency does the rest: every query filters `result is null`, so the
+second and every later tick settle nothing.
+
+**One ordering change that is not cosmetic.** `settleGames` now reads the
+ungraded predictions, picks and bets *before* the closing lines, and fetches
+`line_snapshots` only for the games those rows actually name. Under the old
+order, a live tick would have re-read snapshots for every final on the board
+every 30 seconds for the length of a Saturday. The test counts the reads rather
+than trusting the reasoning: after the first pass settles everything, the second
+issues zero snapshot queries.
+
+**Failures are swallowed and logged, deliberately.** The scoreboard's job is
+scores. A grading error must not cost the slate its live layer, and the
+scheduled pass will report the same failure loudly on its own run. Asserted:
+with the bets read forced to fail, the tick still writes the final score.
+
+**Testing.** 10 new tests, 791 → **801**. They run against a new in-memory
+PostgREST stand-in, `scripts/lib/fake-supabase.ts`, because every interesting
+property here is at the database seam — which rows a query claims, which it
+skips, whether a second run finds anything left — and no pure-function test can
+reach any of it. It is not a Postgres emulator and says so; RLS, triggers and
+grants remain the DB assertions' job.
+
+*(Two stale test counts were found while writing this: `§1` of `docs/STATUS.md`
+said 659 and the NFL-9 row said 698, against 791 actual. The new number is
+measured.)*
+
+**Not verified against a live game**, and there is none to use — the first
+honest proof is `NFL-4`, the watched TNF settlement on Sep 10.
+
 ### Aug 14 — The image share, and a confidence tier to organise it
 
 Owner request: an image of your bets you would actually post, sorted by

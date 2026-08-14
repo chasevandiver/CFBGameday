@@ -601,11 +601,48 @@ export async function applyScoreboard(
   // talking to Apple. notifyBadBeats never throws — see notify-jobs.ts.
   const pushed = await notifyBadBeats(db, pendingNotices);
 
+  // Settle whatever is finished on this board (GRADE-1). Before this, grading
+  // was scheduled-only — Sunday 13:00 UTC for CFB, Mon/Tue/Fri for the NFL —
+  // so a bet on a Saturday-night final stayed open on the ledger for days and
+  // the card had no result to show.
+  //
+  // Deliberately NOT gated on a status transition, even though `stored` makes
+  // one cheap to detect. The NFL's 10-second edge-function writer (migration
+  // 0044) can flip a game to final before this loop's next tick, and a
+  // transition-only trigger would then never fire for the league this was
+  // reported on. Every completed game on the board is offered instead, and
+  // `gradeGames` is idempotent — its queries all filter `result is null`, so
+  // the second and every later tick settle nothing and read almost nothing.
+  //
+  // Errors are swallowed on purpose: the scoreboard's job is scores, and a
+  // grading failure must not cost the slate its live layer. The scheduled pass
+  // is still the backstop and will report the same failure loudly.
+  const completedIds = active.filter((g) => g.status === "completed").map((g) => g.id);
+  let settled: Json | null = null;
+  try {
+    if (completedIds.length > 0) settled = await gradeGames(db, completedIds);
+  } catch (err) {
+    console.error(`scoreboard: inline grading failed: ${(err as Error).message}`);
+  }
+  const gradedCounts = settled as {
+    picksGraded: number;
+    betsGraded: number;
+    predictionsGraded: number;
+  } | null;
+  const gradedAnything =
+    gradedCounts !== null &&
+    (gradedCounts.picksGraded > 0 ||
+      gradedCounts.betsGraded > 0 ||
+      gradedCounts.predictionsGraded > 0);
+
   return {
     live_or_final: active.length,
     updated,
     flips: flipsLogged,
     ...(pushed.notified || pushed.errors ? { notified: pushed.notified, notify_errors: pushed.errors } : {}),
+    // Only when it did something: a tick that grades nothing is the normal
+    // case and should not add noise to every `job_runs.detail` row.
+    ...(gradedAnything ? { graded: gradedCounts } : {}),
   };
 }
 
@@ -977,20 +1014,66 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
  *
  * Grading covers BOTH season types — bowls, the CFP, and the NFL bracket all
  * settle — while the caller's ratings replay stays regular-season-only.
+ *
+ * Since GRADE-1 this is the **backstop**, not the only path: `gradeGames`
+ * settles a game from the live tick that saw it finish. This pass still runs
+ * on its cron and still catches everything, including games that finaled
+ * outside a scoreboard window and the dead-game voids, which no live tick does.
  */
 export async function gradeSeasonFinals(db: SupabaseClient, seasonId: number): Promise<Json> {
   const { data: gameRows, error: gamesErr } = await db
     .from("games")
-    .select("id, home_points, away_points, status, start_ts")
+    .select(SETTLE_COLS)
     .eq("season_id", seasonId);
   if (gamesErr) throw new Error(`grading: games read failed: ${gamesErr.message}`);
-  const allGames = (gameRows ?? []) as Array<{
-    id: number;
-    home_points: number | null;
-    away_points: number | null;
-    status: string;
-    start_ts: string | null;
-  }>;
+  return settleGames(db, (gameRows ?? []) as SettleGameRow[]);
+}
+
+/**
+ * Settle a named set of games, whatever season they belong to.
+ *
+ * This is `gradeSeasonFinals` narrowed to the games a live tick just looked at,
+ * and it exists because grading used to be scheduled-only: `applyScoreboard`
+ * wrote scores and touched no wager, so a Saturday-night final sat ungraded
+ * until `ratings-update` on Sunday (CFB) or `nfl-grade` on Monday. The ledger
+ * showed an open bet on a finished game for up to a week, and the slate card
+ * had no result to render.
+ *
+ * The two entry points share `settleGames` and both are idempotent — every
+ * query filters on `result is null` — so the scheduled pass stays the backstop
+ * and double-running costs nothing. Same shape as `voidWagersForGames`, for the
+ * same reason (P1-1).
+ */
+export async function gradeGames(db: SupabaseClient, gameIds: number[]): Promise<Json> {
+  if (gameIds.length === 0) return { picksGraded: 0, betsGraded: 0, predictionsGraded: 0, voided: 0 };
+  const { data: gameRows, error: gamesErr } = await db
+    .from("games")
+    .select(SETTLE_COLS)
+    .in("id", gameIds);
+  if (gamesErr) throw new Error(`grading: games read failed: ${gamesErr.message}`);
+  return settleGames(db, (gameRows ?? []) as SettleGameRow[]);
+}
+
+export const SETTLE_COLS = "id, home_points, away_points, status, start_ts";
+
+interface SettleGameRow {
+  id: number;
+  home_points: number | null;
+  away_points: number | null;
+  status: string;
+  start_ts: string | null;
+}
+
+/**
+ * The settlement body both entry points share.
+ *
+ * Order matters and is not the obvious one: the ungraded rows are read BEFORE
+ * the closing lines, so the snapshot read covers only the games that actually
+ * have something to settle. On the scheduled pass that is the same set it
+ * always was; on a live tick, where nearly every call finds nothing ungraded,
+ * it turns the expensive `line_snapshots` read into no query at all.
+ */
+async function settleGames(db: SupabaseClient, allGames: SettleGameRow[]): Promise<Json> {
   // What grading settles: finals of either season type, plus the dead games
   // League Rule #4 voids.
   const gradableFinals = allGames.filter(
@@ -1005,15 +1088,58 @@ export async function gradeSeasonFinals(db: SupabaseClient, seasonId: number): P
   let voided = 0;
   if (finalIds.length > 0) {
     const gameById = new Map(gradableFinals.map((g) => [g.id, g]));
-    // Chunked (PostgREST .in() is a URL; ~800 final ids by December) and
-    // THROWING: a swallowed read error here used to grade the week without
-    // CLV permanently, with the Action green (audit 05/N4).
+
+    // Only frozen rows, and only ones not yet graded: predictions is
+    // append-only history, and re-grading would rewrite a receipt. The two
+    // prediction fields written here didn't exist at freeze time; every number
+    // the model committed to stays exactly as it was stored.
+    const { data: predRows, error: predsErr } = await db
+      .from("predictions")
+      .select("id, game_id, edge, vegas_spread, close_spread")
+      .eq("frozen", true)
+      .in("game_id", finalIds)
+      // close_spread, not clv, marks "graded": a row priced without a line
+      // has clv null forever by construction, and keying the ungraded set on
+      // clv would re-fetch it every Sunday until January (audit 05/N11).
+      .is("close_spread", null);
+    if (predsErr) throw new Error(`grading: predictions read failed: ${predsErr.message}`);
+
+    const { data: pickRows, error: picksErr } = await db
+      .from("picks")
+      .select("id, game_id, market, side, line_at_pick, result")
+      .in("game_id", finalIds)
+      .is("result", null);
+    if (picksErr) throw new Error(`grading: picks read failed: ${picksErr.message}`);
+
+    const { data: betRows, error: betsErr } = await db
+      .from("bets")
+      .select("id, game_id, bet_type, side, line_taken, odds, units, result")
+      .in("game_id", finalIds)
+      .is("result", null)
+      .is("voided_at", null);
+    if (betsErr) throw new Error(`grading: bets read failed: ${betsErr.message}`);
+
+    const preds = predRows ?? [];
+    const picks = pickRows ?? [];
+    const bets = betRows ?? [];
+
+    // Closing lines only for the games carrying something ungraded. Chunked
+    // (PostgREST .in() is a URL; ~800 final ids by December) and THROWING: a
+    // swallowed read error here used to grade the week without CLV
+    // permanently, with the Action green (audit 05/N4).
+    const needClose = [
+      ...new Set([
+        ...preds.map((p) => p.game_id as number),
+        ...picks.map((p) => p.game_id as number),
+        ...bets.map((b) => b.game_id as number),
+      ]),
+    ];
     const snapsByGame = new Map<number, Snapshot[]>();
-    for (let i = 0; i < finalIds.length; i += 300) {
+    for (let i = 0; i < needClose.length; i += 300) {
       const { data: snaps, error: snapsErr } = await db
         .from("line_snapshots")
         .select(SNAPSHOT_COLS)
-        .in("game_id", finalIds.slice(i, i + 300));
+        .in("game_id", needClose.slice(i, i + 300));
       if (snapsErr) throw new Error(`grading: snapshots read failed: ${snapsErr.message}`);
       for (const s of (snaps ?? []) as Snapshot[]) {
         const arr = snapsByGame.get(s.game_id) ?? [];
@@ -1030,22 +1156,7 @@ export async function gradeSeasonFinals(db: SupabaseClient, seasonId: number): P
     // the ATS column can't carry the model's scoreboard on its own — CLV asks
     // the better question (did the market come to us after we committed?) and
     // converges on a single season where a win rate does not.
-    //
-    // Only frozen rows, and only ones not yet graded: predictions is
-    // append-only history, and re-grading would rewrite a receipt. The two
-    // prediction fields written here didn't exist at freeze time; every number
-    // the model committed to stays exactly as it was stored.
-    const { data: preds, error: predsErr } = await db
-      .from("predictions")
-      .select("id, game_id, edge, vegas_spread, close_spread")
-      .eq("frozen", true)
-      .in("game_id", finalIds)
-      // close_spread, not clv, marks "graded": a row priced without a line
-      // has clv null forever by construction, and keying the ungraded set on
-      // clv would re-fetch it every Sunday until January (audit 05/N11).
-      .is("close_spread", null);
-    if (predsErr) throw new Error(`grading: predictions read failed: ${predsErr.message}`);
-    for (const p of (preds ?? []) as Array<{
+    for (const p of preds as Array<{
       id: number;
       game_id: number;
       edge: number | null;
@@ -1072,13 +1183,7 @@ export async function gradeSeasonFinals(db: SupabaseClient, seasonId: number): P
       if (!error && clv !== null) predictionsGraded++;
     }
 
-    const { data: picks, error: picksErr } = await db
-      .from("picks")
-      .select("id, game_id, market, side, line_at_pick, result")
-      .in("game_id", finalIds)
-      .is("result", null);
-    if (picksErr) throw new Error(`grading: picks read failed: ${picksErr.message}`);
-    for (const p of picks ?? []) {
+    for (const p of picks) {
       const g = gameById.get(p.game_id)!;
       const line = Number(p.line_at_pick);
       const close = closing(p.game_id);
@@ -1105,14 +1210,7 @@ export async function gradeSeasonFinals(db: SupabaseClient, seasonId: number): P
       if (!error) picksGraded++;
     }
 
-    const { data: bets, error: betsErr } = await db
-      .from("bets")
-      .select("id, game_id, bet_type, side, line_taken, odds, units, result")
-      .in("game_id", finalIds)
-      .is("result", null)
-      .is("voided_at", null);
-    if (betsErr) throw new Error(`grading: bets read failed: ${betsErr.message}`);
-    for (const b of bets ?? []) {
+    for (const b of bets) {
       // A moneyline bet has no line to take, so `line_taken` being null is
       // normal for it rather than a reason to skip. It used to be caught by
       // this guard and sat ungraded forever, quietly missing from the ledger's

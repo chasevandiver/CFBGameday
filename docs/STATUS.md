@@ -1680,6 +1680,93 @@ Built on `claude/nfl-scores-lines-l4bhio`; the design and its evidence are in
       (`set_group_week_config`, deliberate) and the model never sees the NFL
       at all. CFB untouched: no CFB row carries the type.
 
+**Betting / game-card batch** — ten items reported by the owner 2026-08-14 while
+running test bets against live NFL preseason games. Built on
+`claude/betting-game-card-updates-iticrj`. Three scope calls were made by the
+owner before any code: **hard delete** for admin bet cancellation, **auto
+tail/fade only** replacing the Why field, and the **full scoring timeline**
+rather than a quarter linescore.
+- [x] **GRADE-1 — a game now grades on the tick that sees it finish.** Owner
+      question 2026-08-14 ("when a game goes final does it grade as soon as its
+      final?"). **The answer was no**, and it was the cause of a second reported
+      item: grading ran only from `ratings-update` (Sunday 13:00 UTC) and
+      `nfl-grade` (Mon/Tue/Fri 13:30), while `applyScoreboard` wrote scores and
+      touched no `picks` or `bets` row at all. A bet on a Saturday-night final
+      stayed open on the ledger for up to a week, and the slate card had no
+      result to render — which is most of why NFL-21 below looked broken.
+      `gradeGames(db, gameIds)` is `gradeSeasonFinals` narrowed to a named set;
+      both share `settleGames`, the same shared-function-plus-backstop shape
+      P1-1 used for `voidWagersForGames`. The scheduled pass still runs and
+      still catches the two things a live tick cannot: a game that finaled
+      outside a scoreboard window, and the dead-game Rule #4 voids.
+      **Deliberately not gated on a status transition**, though `stored` makes
+      one cheap to detect. The NFL's 10-second edge function (0044) writes
+      finals straight to Postgres, so by the next Actions tick the stored row
+      already says `final` and there is no transition left — a transition-only
+      trigger would have missed the league this was reported on. Every completed
+      game on the board is offered instead; `gradeGames` filters `result is
+      null` throughout, so later ticks settle nothing.
+      **One ordering change that is not cosmetic:** the ungraded reads now come
+      *before* the closing-line read, so `line_snapshots` is fetched only for
+      games that actually have something to settle. Under the old order a live
+      tick would have re-read snapshots for every final on the board every 30
+      seconds all afternoon. Asserted directly — the test counts the reads.
+      Grading errors are swallowed and logged: the scoreboard's job is scores,
+      and a grading failure must not cost the slate its live layer. Asserted.
+      10 new tests (**801 total**) on a new in-memory PostgREST stand-in
+      (`scripts/lib/fake-supabase.ts`), because every interesting property here
+      is at the database seam and no pure-function test can reach it. *(The
+      test count in §1 and in NFL-9 had drifted — 659 and 698 — against 791
+      before this change. 801 is measured, not carried.)*
+      **Residual, recorded not queued:** the scoreboard loop only runs inside
+      its cron windows (`jobs.yml:164-187`), so a game finaling outside one
+      still waits for the scheduled backstop. The windows cover every kickoff
+      slot, so this buys nothing today; closing it would need a standalone
+      frequent `grade-finals` task.
+      **Not verified from here:** no live game to watch it against. The honest
+      proof is `NFL-4` — the first settlement watched, TNF Sep 10.
+- [ ] **ADM-1** Site admin can delete a bet at any point in its life, including
+      after grading. Migration 0046 archives the row into `deleted_wagers`
+      first, because `0001:210` states an append-only ledger and hard delete is
+      a deliberate exception to it, not an oversight. · in progress
+- [ ] **ADM-2** Group admins can cancel a member's pick, before or after
+      kickoff. Needs a new `admin_remove_pick` RPC — `remove_pick`
+      (`0038:66-70`) is hard-scoped to `auth.uid()` and raises on kickoff.
+      **Deliberate boundary:** betting-group admins get no power over a member's
+      *bet*; a bet is one row in that person's own ledger, and a group is a lens
+      on it rather than its owner. ADM-1 covers test cleanup there. · in progress
+- [ ] **NFL-20** The game page truncates NFL team names — `GameHeader.tsx:368`
+      is `truncate` on `team.school`, which is "Georgia" for CFB and
+      "Jacksonville Jaguars" for the NFL. Also the Systems section
+      (`game/[id]/page.tsx:700`) is `overflow-hidden` with no inner
+      `overflow-x-auto`, where the Market section above it has one.
+- [ ] **NFL-21** A final card says nothing about your bet. **Two causes, both
+      confirmed by reading the routing:** a final renders `FinalFooter`, which
+      never reads `game.myBets`; and `PregameFooter`'s settled-bet chips sit
+      behind `settled = live || final` whose `final` half is **unreachable**,
+      because a final card never renders that footer. The comment at `:865-869`
+      describes behaviour the routing prevents. Separately, the big top strip is
+      gated on `live && a pick`, so a bet never triggers it in any state.
+- [ ] **UX-34** The ticker does not scroll — `ScoreTicker.tsx:119` is a static
+      `overflow-x-auto` strip with no animation.
+- [ ] **UX-35** Remove pinch zoom. Owner request; see §6 for the accessibility
+      residual this deliberately accepts.
+- [ ] **UX-36** A Live option on the slate, alongside CFB and NFL. There is no
+      live filter today — only a count pill and a section that appears when the
+      sort is by kickoff.
+- [ ] **UX-37** Possession on the home hub. A rendering gap, not a data gap:
+      `game.possession` is already on the hub's `GameView`, but `compact` mode
+      skips `FieldStrip`, which is the only thing that owns the football.
+- [ ] **UX-38 / LEDGER-1** The bet slip is too transparent to read, and the Why
+      field goes. The slip is the one `.card` floating over scrolling content
+      with neither an aura behind it nor a `backdrop-filter`, on an
+      `--glass-surface` tuned at 80% for game cards. `reason_tag` is replaced by
+      the derived tail/fade relation `src/lib/tailing.ts` already computes.
+- [ ] **SCORE-1** The scoring timeline, both leagues. Net-new everywhere: no
+      plays, drives or linescore data exists, neither API client parses any, and
+      `last_play` is **nulled the moment a game goes final**, so postgame there
+      is no play text left at all.
+
 ---
 
 ## 5. Not built, by choice
