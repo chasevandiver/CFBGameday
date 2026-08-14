@@ -1,4 +1,5 @@
 import { AppNav } from "../components/AppNav";
+import { HomeAutoRefresh } from "../components/home/HomeAutoRefresh";
 import { HomeDashboard } from "../components/home/HomeHub";
 import { fetchHomeData } from "../lib/home";
 import { createClient } from "../lib/supabase/server";
@@ -37,12 +38,20 @@ export default async function HomePage() {
   } = await supabase.auth.getUser();
   const data = await fetchHomeData(supabase, user?.id ?? null);
 
+  // Kickoff inside six hours counts as imminent, matching the slate's window.
+  // "Now" is the payload's own stamp, not `Date.now()` — deterministic per
+  // render, and the slate reads its `fetchedAt` the same way.
+  const imminent =
+    data.firstKick !== null &&
+    Date.parse(data.firstKick) - Date.parse(data.fetchedAt) < 6 * 3600_000;
+
   return (
     <>
       <AppNav />
       <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
         <HomeDashboard data={data} signedIn={!!user} />
       </main>
+      <HomeAutoRefresh live={data.liveCount > 0} imminent={imminent} />
     </>
   );
 }

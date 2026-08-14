@@ -17,6 +17,7 @@ import { modelClv, roundClv, spreadClv, totalClv } from "../../src/lib/clv";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
 import { clockToSeconds, coverMargin, spreadCoverSide, totalCoverSide } from "../../src/lib/cover";
 import { gradePick, type PickMarket } from "../../src/lib/grade";
+import { keepLastPlay } from "../../src/lib/live-play";
 import { notifyBadBeats, notifyWatchdog, type FlipNotice } from "./notify-jobs";
 import { buildTeamNameIndex } from "../../src/lib/rankings";
 import { fetchCurrentSlate } from "../../src/lib/season";
@@ -366,7 +367,13 @@ export function scoreboardPatch(
     current_clock: g.clock,
     // nulled once final so finished games never show a stale down-and-distance
     current_situation: inProgress ? g.situation : null,
-    last_play: inProgress ? (g.lastPlay ?? null) : null,
+    /* A TV timeout is not a play, and it must not erase the one that is.
+       Almost every score is followed straight away by one, so the plays this
+       used to overwrite were the field goal, the extra point and the
+       touchdown — the only ones anybody was reading. Keeping the stored value
+       also means the diff below sees no change, so nothing fans out over
+       realtime for a play that did not happen. */
+    last_play: inProgress ? keepLastPlay(g.lastPlay, stored?.last_play, g.lastPlayType) : null,
     possession:
       inProgress && (g.possession === "home" || g.possession === "away") ? g.possession : null,
     // null TV from the board never clobbers a stored assignment
@@ -483,6 +490,7 @@ export async function nflScoreboardJob(db: SupabaseClient): Promise<Json> {
         clock: g.clock,
         situation: g.situation,
         lastPlay: g.lastPlay,
+        lastPlayType: g.lastPlayType,
         possession: g.possession,
         homeTeam: { id: nflTeamId(g.homeEspnId), name: g.homeAbbr ?? "", points: g.homePoints },
         awayTeam: { id: nflTeamId(g.awayEspnId), name: g.awayAbbr ?? "", points: g.awayPoints },

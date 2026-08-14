@@ -2,6 +2,7 @@ import { ArrowRight, ClipboardList, Ticket, Tv, Users } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { LiveBadge, LiveStatusChip, PickedChip, ResultChip } from "../slate/chips";
+import { LiveSituation } from "../slate/LiveSituation";
 import { TeamScoreLine } from "../slate/TeamLine";
 import { StatTile } from "../StatTile";
 import { UnitsCurve } from "../UnitsCurve";
@@ -266,6 +267,11 @@ export function PositionRow({
               dimmed={final && h < a}
             />
           </div>
+          {/* The same block the slate card shows, minus the field strip: a row
+              on this page used to stop at "Q3 · 8:42" while the same game one
+              tap away gave the down, the spot and the play. The data was
+              already on the GameView; only the slate rendered it. */}
+          {live && <LiveSituation game={game} compact />}
         </MaybeLink>
 
         <ul className="border-t border-chalk/8">

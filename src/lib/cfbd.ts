@@ -296,6 +296,12 @@ export interface CfbdScoreboardGame {
   clock: string | null;
   situation: string | null;
   lastPlay: string | null;
+  /**
+   * The feed's own classification of `lastPlay`, when it has one. CFBD does
+   * not; ESPN's `lastPlay.type.text` rides here so `isRealPlay` can tell a
+   * snap from a TV timeout without pattern-matching English.
+   */
+  lastPlayType?: string | null;
   possession: string | null;
   homeTeam: { id: number; name: string; points: number | null };
   awayTeam: { id: number; name: string; points: number | null };

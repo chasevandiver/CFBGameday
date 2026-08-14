@@ -678,6 +678,7 @@ export function demoHomeData(now: number): HomeData {
     seasonId: DEMO_SEASON,
     week: DEMO_WEEK,
     seasonType: "regular",
+    fetchedAt: new Date(now).toISOString(),
     firstKick,
     liveCount: games.filter((g) => g.status === "in_progress").length,
     weekGameCount: games.length,

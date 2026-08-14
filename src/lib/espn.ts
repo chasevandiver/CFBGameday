@@ -129,7 +129,7 @@ export interface EspnEvent {
       shortDownDistanceText?: string | null;
       possessionText?: string | null;
       possession?: string | null; // ESPN team id of the team with the ball
-      lastPlay?: { text?: string | null } | null;
+      lastPlay?: { text?: string | null; type?: { text?: string | null } | null } | null;
     } | null;
     odds?: EspnOdds[] | null;
     competitors: EspnCompetitor[];
@@ -218,6 +218,8 @@ export interface NflScoreboardGame {
   clock: string | null;
   situation: string | null;
   lastPlay: string | null;
+  /** ESPN's own classification — "Rush", "Official Timeout", "End Period". */
+  lastPlayType: string | null;
   possession: "home" | "away" | null;
   /** Raw ESPN team ids — callers offset with nflTeamId() before storing */
   homeEspnId: number;
@@ -388,6 +390,7 @@ export function parseEvent(event: EspnEvent): NflScoreboardGame {
        renders the down and distance. */
     situation: inProgress ? (sit?.downDistanceText ?? sit?.shortDownDistanceText ?? null) : null,
     lastPlay: inProgress ? (sit?.lastPlay?.text ?? null) : null,
+    lastPlayType: inProgress ? (sit?.lastPlay?.type?.text ?? null) : null,
     possession,
     homeEspnId: Number(home?.team.id ?? 0),
     awayEspnId: Number(away?.team.id ?? 0),

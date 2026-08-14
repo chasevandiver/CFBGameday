@@ -166,6 +166,133 @@ shipping it.
 
 ## Log
 
+### Aug 14 (night, later) — The timeout ate the touchdown
+
+Owner report, two complaints that turned out to be one bug: every TV timeout
+replaced the last play with `Official Timeout at 11:36.`, and made field goals
+and extra points never seemed to show up.
+
+ESPN's `situation.lastPlay` is whatever happened most recently, and a good deal
+of that is not football — `Official Timeout at 11:36.`, `Timeout #2 by DET at
+01:21.`, `Two-Minute Warning`, end of quarter. Each one overwrote the stored
+play. And because a TV timeout follows almost every score, **the plays it
+replaced were the field goal, the extra point and the touchdown**: the ones
+worth reading were precisely the ones structurally most likely to be erased,
+usually within seconds of happening.
+
+It cannot be filtered in the UI. By the time a card renders, the real play is
+already gone from the database — the fix has to be in the writer, which is the
+only place that can see both the incoming play and the one it would replace.
+`src/lib/live-play.ts` sits in the shared `scoreboardPatch`, so CFB gets it
+through the same door, and is mirrored into the edge function (standalone Deno,
+no imports from `src/`).
+
+Two signals, in order of trust: ESPN's `lastPlay.type.text`, a small controlled
+vocabulary confirmed against the live feed (`Rush`, `Pass Reception`,
+`Pass Incompletion`, `Penalty`, `Fumble Recovery (Own)`, `Field Goal Missed`,
+`Two-minute warning`, `Official Timeout`); failing that, an anchored text
+pattern, because CFBD supplies no type at all. Anchored matters — a play that
+merely mentions a timeout afterwards is still a play, which a naive
+`includes("Timeout")` would throw away.
+
+**The list is a deny-list, so it fails open.** An unrecognised play type is
+treated as a play and shows up, rather than a new ESPN string silently deleting
+plays from every card. Penalties count as plays; a flag on the field is exactly
+what a glance wants explained. Keeping the stored value also means the diff sees
+no change, so nothing fans out over realtime for a play that did not happen.
+
+Every string in the 10 tests was captured from the live feed rather than
+invented. Verified in production on function v4, with cache-busted reads —
+earlier polling had been quietly serving cached responses and showing a frozen
+value, which looked exactly like a broken writer:
+
+| ESPN said | database held |
+|---|---|
+| `Timeout #1 by SF at 00:30.` | `(Shotgun) A.Martinez pass incomplete short right to S.McCormick.` |
+| `Official Timeout at 09:56.` | `(Shotgun) A.O'Connell pass incomplete deep left to P.Dorsett.` |
+
+Two for two, none copied.
+
+**And the field goals do reach the card — confirmed, after a second look.**
+The first six minutes of sampling caught only a `Field Goal Missed`, which was
+not enough to answer it, so this was written down as owed rather than claimed.
+A longer pass caught two made kicks in one window, both ESPN type
+`Field Goal Good`, both stored verbatim:
+
+```
+TEN @ SF   J.Slye 55 yard field goal is GOOD, Center-M.Cox, Holder-T.Townsend.
+IND @ NE   S.Shrader 61 yard field goal is GOOD, Center-L.Rhodes, Holder-R.Sanchez.
+```
+
+The type is not on the deny-list, so the fail-open rule keeps it, and NFL-11
+means the block still renders once the score clears the down and distance. Two
+bugs were hiding them, both now fixed; an extra point was not separately
+observed, but it is the same code path.
+
+What was never a bug: the kickoff after a score is itself a real play and
+legitimately replaces the scoring play twenty to forty seconds later, so a made
+kick is visible for a few ticks rather than indefinitely. Making scoring
+*persist* would be a new feature with a new column, logged as NFL-18 and not
+built.
+
+### Aug 14 (night) — Ten seconds, for a third of the price, and a home page that moves
+
+Three things, one of them a number worth keeping.
+
+**The live pull runs at 10s now and costs less than the 30s one did.** 0043
+fired every 30 seconds year-round and let the edge function decide whether
+there was anything to do. That decision was correct but arrived too late to
+matter: an "idle" tick still costs an Edge Function Invocation, and those are
+metered — Free plan, 500,000/month. 30s year-round is ~87,700 a month, ~18% of
+the quota, essentially all of it spent on nights with no football.
+
+So the gate moved out of the function and into the cron command. pg_cron still
+ticks every 10 seconds — a tick is a local query and costs no invocation — but
+`net.http_post` now sits behind a `where exists (...)` copy of the idle
+predicate. Invocations happen only while a game is live or about to be:
+
+| | invocations/mo | % of free quota |
+|---|---|---|
+| 30s year-round (0043) | ~87,700 | ~18% |
+| 10s, gated (0044) | ~31,300 | ~6% |
+
+**The short-circuit was proved before applying, and the obvious test for it is
+wrong.** `select 1/0 where exists (select 1 where false)` raises
+division_by_zero — which looks like proof the target list is always evaluated,
+and is nothing of the kind: `1/0` is a constant expression folded at *plan*
+time. A VOLATILE function is never folded, so the test has to use one.
+`nextval()` behind a false `where exists` came back with `is_called` still
+false; behind the real predicate, it fired. That is the whole basis of the cost
+saving, so it was worth two queries to not take on faith.
+
+Two things came along because 10s makes them matter. The gate query gets
+`games_sport_status_start` rather than seq-scanning every stored game six times
+a minute. And `cron-log-purge`, because pg_cron writes a `job_run_details` row
+for every tick whether the gate opens or not — ~712 bytes each, ~187 MB a month
+at 10s, against a 500 MB Free-plan database, and nothing purges it by default.
+It would have filled the disk before November.
+
+**CFB is not in this lane, and was not in 0043 either.** Worth stating plainly
+because the shorthand "the 30-second refresh" has been hiding it: the edge
+function is `.eq("sport","nfl")` against ESPN's NFL board. CFB live scores come
+only from `scoreboardJob` → CFBD → the GitHub Actions loop — the scheduler that
+stalled on Aug 13 and is the entire reason this lane was built. Week 0 is Aug
+29. Two real blockers, recorded as NFL-15: `games.id` for CFB rows is a CFBD id
+and there is no ESPN id column to join a college board on, and the CFBD route
+is metered at 30,000/month, where a 10s pull over a 14-hour Saturday is ~5,000
+calls a Saturday.
+
+**The home hub never refreshed at all.** Worse than the slate's bug, which at
+least polled: `/` is a server component top to bottom, so it rendered once and
+sat there until you navigated. `HomeAutoRefresh` drives `router.refresh()` off
+the same `useLiveRefresh` — the server render re-runs in place, scroll and
+client state kept, and no `/api/home` route duplicating `fetchHomeData`'s
+queries. And it never showed the down, the spot or the last play, though
+`fetchHomeData` goes through `fetchSlateView` and had all three on the
+`GameView` the whole time — only the slate drew them. `LiveSituation` is now
+its own module used by both, `compact` on the hub because a 12px playing field
+in every row of a list is decoration.
+
 ### Aug 14 (later still) — The touchdown was the one play guaranteed not to render
 
 Owner report: the slate cards don't show what the touchdown play was.

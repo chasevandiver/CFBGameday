@@ -20,6 +20,7 @@ const empty = (over: Partial<HomeData> = {}): HomeData => ({
   seasonId: 2026,
   week: 12,
   seasonType: "regular",
+  fetchedAt: new Date(NOW).toISOString(),
   firstKick: null,
   liveCount: 0,
   weekGameCount: 58,

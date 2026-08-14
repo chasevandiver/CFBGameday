@@ -1277,6 +1277,107 @@ Built on `claude/nfl-scores-lines-l4bhio`; the design and its evidence are in
       as situation-without-football, the degraded state NFL-5 already
       recorded. The deployed v2 had drifted from the repo copy in two comment
       lines only; v3 is the repo file verbatim.
+- [x] **NFL-16** A TV timeout erased the play it interrupted. Owner report
+      2026-08-14 ("any tv timeout it says Official Timeout with the time
+      remaining… also I don't think made Field Goals or extra points are
+      working"). ESPN's `situation.lastPlay` is whatever happened most
+      recently, and a lot of that is not football — `Official Timeout at
+      11:36.`, `Timeout #2 by DET at 01:21.`, `Two-Minute Warning`. Each
+      overwrote the stored play, and since a TV timeout follows almost every
+      score, **the plays it replaced were the field goal, the extra point and
+      the touchdown** — the only ones anyone reads. Cannot be filtered in the
+      UI: by render time the real play is gone from the database.
+      `src/lib/live-play.ts` (`isRealPlay`/`keepLastPlay`) is used by the
+      shared `scoreboardPatch`, so CFB gets it too, and mirrored into the edge
+      function (standalone Deno, cannot import from `src/`). Two signals:
+      ESPN's `lastPlay.type.text` when present, else an anchored text pattern
+      for CFBD, which supplies no type. **Deny-list, so it fails open** — an
+      unrecognised type is a play and shows up rather than vanishing.
+      Penalties count as plays; they explain a flag. Keeping the stored value
+      also means the diff sees no change, so nothing fans out over realtime
+      for a play that did not happen. 10 tests, every string captured from the
+      live feed rather than invented. **Verified in production** (function
+      v4): two distinct non-play moments observed with cache-busted reads —
+      `Timeout #1 by SF` and `Official Timeout at 09:56` — and in both the
+      database held the real play instead. 0 copied.
+- [x] **NFL-17** Made field goals reach the card — **confirmed live
+      2026-08-14 ~02:33 UTC**, which is what the owner could not tell ("can't
+      see for sure though"). Two made kicks caught in the same window, both
+      ESPN type `Field Goal Good`, both stored verbatim:
+      `J.Slye 55 yard field goal is GOOD, Center-M.Cox, Holder-T.Townsend.`
+      (TEN@SF) and `S.Shrader 61 yard field goal is GOOD, Center-L.Rhodes,
+      Holder-R.Sanchez.` (IND@NE). The type is not in the deny-list, so
+      NFL-16's fail-open rule keeps it, and NFL-11 means the block renders
+      even once the score clears the down and distance. An extra point was not
+      separately observed, but it is the same code path and the same scoring
+      type family. What was never a bug: the kickoff after a score is itself a
+      real play and legitimately replaces the scoring play after ~20–40s, so a
+      made kick is visible for a few ticks rather than indefinitely. If
+      scoring plays should *persist* instead of scrolling past, that is a
+      separate feature (a remembered last-score line) needing a column —
+      NFL-18.
+- [ ] **NFL-18** Deferred, not started: a remembered "last score" line, so a
+      touchdown or field goal stays on the card until the next one instead of
+      being replaced by the kickoff ~30s later. Needs a column
+      (`last_score_play`) and a writer rule. Only worth building if the owner
+      wants scoring to persist; the current behaviour is correct, just
+      transient. · owner decision
+- [x] **NFL-14** The home hub, owner report 2026-08-14 ("the home page is
+      having the same refresh problem and doesn't show the down and distance
+      or last play like it does on the slate"). Two defects, both worse than
+      the slate's were. **(a) `/` never refreshed at all** — it is a server
+      component top to bottom with no poll and no realtime, so it rendered
+      once and sat there until you navigated; the ticker in the nav was the
+      only live thing on the page. `HomeAutoRefresh` (client, renders nothing)
+      drives `router.refresh()` off the same `useLiveRefresh` the slate and
+      ticker use, which re-runs the server render in place — scroll and client
+      state kept, and no `/api/home` duplicating `fetchHomeData`'s queries.
+      Live 30s, imminent 60s, otherwise 300s, plus the wake handler, which is
+      the tier that actually matters on an idle hub. **(b) The situation was
+      never rendered** even though the data was already on the `GameView`:
+      `fetchHomeData` goes through `fetchSlateView`, so `situation`,
+      `lastPlay` and `possession` were all present and only the slate drew
+      them. `LiveSituation` extracted from `GameCard.tsx` to its own module
+      and used by both, with `compact` dropping the field strip — a 12px
+      playing field in every row of a list reads as decoration. Also adds
+      `HomeData.fetchedAt` so the imminent check has a deterministic "now"
+      (`Date.now()` during render trips `react-hooks/purity`, and the slate
+      already carries the same field for the same reason). Checked rendered at
+      1024 and 390.
+- [x] **NFL-13** The live pull at 10s, gated — owner request 2026-08-14 after
+      being shown the invocation arithmetic. Migration 0044, **applied
+      2026-08-14 ~02:04 UTC**. 0043 fired every 30s year-round and let the
+      function decide; that decision was correct but too late, because an
+      "idle" tick still costs a metered Edge Function Invocation (~87,700/mo,
+      ~18% of the Free plan's 500,000). The gate moves into the cron command:
+      pg_cron still ticks every 10s (free — it is a local query) but
+      `net.http_post` sits behind a `where exists (...)` copy of the idle
+      predicate, so the function is invoked only while a game is live or
+      imminent. **~31,300/mo, ~6% of quota — three times fresher at a third
+      of the cost.** The short-circuit was proved before applying, with a
+      volatile function rather than a constant: `nextval()` behind a false
+      `where exists` was not called (`is_called` false), and was called when
+      the predicate held. *(The obvious `select 1/0 where exists (select 1
+      where false)` test is worthless here — constant folding raises at plan
+      time, which says nothing about a VOLATILE function.)* Verified live:
+      6.1 ticks/min, 0 failures, clocks advancing. Also adds
+      `games_sport_status_start` (the gate runs every 10s forever) and a
+      `cron-log-purge` job — pg_cron writes a `job_run_details` row per tick
+      regardless of the gate, ~712 bytes each, which at 10s is ~187 MB/month
+      against a 500 MB Free-plan database and nothing purges it by default.
+      Two days' retention is ~12 MB.
+- [ ] **NFL-15** CFB has no database-side live pull. **The answer to "are you
+      including nfl and cfb games" is no, and it was no in 0043 too.** The
+      edge function is `.eq("sport","nfl")` against ESPN's NFL board; CFB live
+      scores come only from `scoreboardJob` → CFBD → the GitHub Actions loop,
+      i.e. the scheduler that stalled on 2026-08-13 and is the entire reason
+      this lane exists. Week 0 is Aug 29. Two blockers, both real: `games.id`
+      for CFB rows is a **CFBD** id and there is no ESPN id column
+      (confirmed — no `espn`/`source`/`external` column on `games`), so an
+      ESPN college board cannot be joined without building a mapping; and the
+      CFBD route is metered (Tier 2, 30,000/month), where a 10s pull over a
+      14-hour Saturday is ~5,000 calls a Saturday and would eat the budget the
+      rest of the ingest chain runs on. · owner decision + build
 - [x] **NFL-11** The touchdown was the one play guaranteed not to render.
       Owner report 2026-08-14 ("on the last play on the slate cards, it
       doesn't show what the touchdown play was"). `LiveSituation` opened with
