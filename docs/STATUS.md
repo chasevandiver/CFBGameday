@@ -406,7 +406,26 @@ is the same seam `SCHED-1` sat in.
       `${{ secrets.… }}`. Cheapest item on this list by some distance.
       **Do it before Week 0**: it is the alerting channel P1-8 concluded was
       needed. · XS
-- [ ] **NFL-22 — the watchdog is blind to the NFL, including to NFL liveness.**
+- [x] **NFL-22 — the watchdog is blind to the NFL, including to NFL liveness.**
+      Fixed 2026-08-14. Both gates now read `seasonIdsForYear(SEASON)` — the
+      helper that already existed for exactly this — and four NFL jobs joined
+      the verdict: `nfl-sync-games` (30 h), `nfl-refresh-lines` (26 h),
+      `nfl-lines-close` and `nfl-grade` (80 h).
+      **Why those two get 80 h and the notify jobs could not get a horizon at
+      all**: the NFL ingest jobs are *chained onto their CFB counterparts* in
+      the `Run job` case, so they fire daily year-round with no offseason
+      silence to tolerate, and the two with their own crons have a widest real
+      gap of 72 h (Fri→Mon for grading, Mon→Thu for the close pass). 80 leaves
+      Actions' 5–30 min lag room without blunting the check. All four record an
+      `ok` run when they no-op, which is what makes an absence check mean
+      anything for them.
+      The new fields are **optional**, so the change cannot make a caller that
+      never read the NFL start going red — asserted. `detail` now also reports
+      `leagues`, because before this the CFB-only gate and a correct one looked
+      identical from outside. 6 new tests, 43 in the file.
+      *(Still not watched: the `scoreboard-loop-nfl` idle marker. It is an
+      `idleSkip` bookkeeping row rather than a job, and `scoreboard-loop` itself
+      is already checked.)*
       `watchdogVerdict` checks `refresh-lines`, `sync-games`, `scoreboard-loop`,
       `notify-picks-due`, `notify-log-bets` and nothing else; the live
       `detail.checked` confirms it. None of `nfl-sync-games`,

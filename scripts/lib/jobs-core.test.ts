@@ -246,6 +246,50 @@ describe("watchdogVerdict (audit 07/OPS-1c)", () => {
     const missed = { ...fresh, picksDue: 2, logBets: 9 * 24 };
     expect(watchdogVerdict(missed, false, true)[0]).toMatch(/notify-log-bets/);
   });
+
+  // NFL-22. None of the NFL jobs was watched at all until 2026-08-14: the
+  // verdict checked five CFB jobs and the live `detail.checked` proved it.
+  describe("the NFL lane", () => {
+    const nflFresh = { nflSyncGames: 2, nflRefreshLines: 2, nflLinesClose: 2, nflGrade: 2 };
+
+    it("is quiet when the NFL jobs are fresh", () => {
+      expect(watchdogVerdict({ ...fresh, ...nflFresh }, false)).toEqual([]);
+    });
+
+    it("says nothing about NFL jobs a caller does not pass", () => {
+      // The fields are optional, so the CFB-only callers that existed before
+      // this change cannot start going red because of a league they never read.
+      expect(watchdogVerdict(fresh, false)).toEqual([]);
+    });
+
+    it("flags each NFL job independently", () => {
+      const cases: Array<[keyof typeof nflFresh, number, RegExp]> = [
+        ["nflSyncGames", 31, /nfl-sync-games/],
+        ["nflRefreshLines", 40, /nfl-refresh-lines/],
+        ["nflLinesClose", 90, /nfl-lines-close/],
+        ["nflGrade", 90, /nfl-grade/],
+      ];
+      for (const [key, age, pattern] of cases) {
+        const problems = watchdogVerdict({ ...fresh, ...nflFresh, [key]: age }, false);
+        expect(problems).toHaveLength(1);
+        expect(problems[0]).toMatch(pattern);
+      }
+    });
+
+    it("tolerates the 72h gaps the multi-day crons actually have", () => {
+      // nfl-grade runs Mon/Tue/Fri and nfl-lines-close Sun/Mon/Thu/Sat, so
+      // three days between successes is normal, not a fault. A threshold set
+      // at "weekly-ish" would have cried every Thursday.
+      const gap = { ...fresh, ...nflFresh, nflGrade: 73, nflLinesClose: 73 };
+      expect(watchdogVerdict(gap, false)).toEqual([]);
+    });
+
+    it("a never-run NFL job trips its threshold", () => {
+      expect(watchdogVerdict({ ...fresh, nflSyncGames: Infinity }, false)[0]).toMatch(
+        /nfl-sync-games/,
+      );
+    });
+  });
 });
 
 describe("detectCoverFlips — bad beats and backdoor covers (audit 10/G9)", () => {

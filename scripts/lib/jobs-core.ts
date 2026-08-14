@@ -19,7 +19,7 @@ import {
   pointsCovered,
   type ScoringPlay,
 } from "../../src/lib/espn";
-import { nflTeamId, seasonYearOf } from "../../src/lib/league";
+import { nflTeamId, seasonIdsForYear, seasonYearOf } from "../../src/lib/league";
 import { cfbdScoringOffense, cfbdScoringPlays } from "../../src/lib/scoring";
 import { modelClv, roundClv, spreadClv, totalClv } from "../../src/lib/clv";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
@@ -200,6 +200,11 @@ export function watchdogVerdict(
     scoreboard: number;
     picksDue?: number;
     logBets?: number;
+    /** NFL-22. Optional so a caller that omits them is simply not checked. */
+    nflSyncGames?: number;
+    nflRefreshLines?: number;
+    nflLinesClose?: number;
+    nflGrade?: number;
   },
   gameLive: boolean,
   /** Any scheduled game inside the next week. Gates the weekly notify jobs. */
@@ -228,6 +233,28 @@ export function watchdogVerdict(
   if (gamesThisWeek && (agesH.logBets ?? 0) > WEEKLY)
     problems.push(`notify-log-bets: games this week and no successful run in ${Math.round(agesH.logBets!)}h`);
 
+  // The NFL lane (NFL-22). Until 2026-08-14 none of it was watched at all, so
+  // any of these could stop and nothing would go red.
+  //
+  // These get plain hour horizons where the notify jobs above could not, and
+  // the reason is worth stating: both NFL ingest jobs are *chained onto their
+  // CFB counterparts* in the `Run job` case, so they fire daily all year and
+  // there is no eight-month offseason silence to tolerate. `nfl-grade` and
+  // `nfl-lines-close` have crons of their own whose widest gap is 72 hours
+  // (Fri→Mon for grading, Mon→Thu for the close pass), so 80 leaves room for
+  // Actions' 5–30 minute lag without blunting the check. Both jobs record an
+  // `ok` run when they no-op — `{"skipped": "no_kicks_in_window"}` is still a
+  // success — which is what makes an absence check meaningful for them.
+  const NFL_MULTI_DAY = 80;
+  if ((agesH.nflSyncGames ?? 0) > 30)
+    problems.push(`nfl-sync-games: no successful run in ${Math.round(agesH.nflSyncGames!)}h`);
+  if ((agesH.nflRefreshLines ?? 0) > 26)
+    problems.push(`nfl-refresh-lines: no successful run in ${Math.round(agesH.nflRefreshLines!)}h`);
+  if ((agesH.nflLinesClose ?? 0) > NFL_MULTI_DAY)
+    problems.push(`nfl-lines-close: no successful run in ${Math.round(agesH.nflLinesClose!)}h`);
+  if ((agesH.nflGrade ?? 0) > NFL_MULTI_DAY)
+    problems.push(`nfl-grade: no successful run in ${Math.round(agesH.nflGrade!)}h`);
+
   return problems;
 }
 
@@ -244,17 +271,26 @@ export async function watchdogJob(db: SupabaseClient): Promise<Json> {
       .maybeSingle();
     return data ? (now - Date.parse((data as { started_at: string }).started_at)) / 3600_000 : Infinity;
   };
+  // BOTH leagues (NFL-22). These two gates were `.eq("season_id", SEASON)` —
+  // CFB only — until 2026-08-14, and that was the expensive half of the NFL
+  // blind spot. The scoreboard freshness check below only arms when a game is
+  // live, so a CFB-only gate meant the check that exists to catch a dead live
+  // layer was switched off for the entire NFL preseason (the only football
+  // being played at the time) and would have been off again for every NFL-only
+  // Sunday of the autumn. `seasonIdsForYear` is the existing helper for exactly
+  // this read — one year, both leagues.
+  const seasons = seasonIdsForYear(SEASON);
   const { data: live } = await db
     .from("games")
     .select("id")
-    .eq("season_id", SEASON)
+    .in("season_id", seasons)
     .eq("status", "in_progress")
     .limit(1);
 
   const { data: upcoming } = await db
     .from("games")
     .select("id")
-    .eq("season_id", SEASON)
+    .in("season_id", seasons)
     .gte("start_ts", new Date(now).toISOString())
     .lte("start_ts", new Date(now + 7 * 24 * 3600_000).toISOString())
     .limit(1);
@@ -266,6 +302,10 @@ export async function watchdogJob(db: SupabaseClient): Promise<Json> {
       scoreboard: await lastOkAgeH("scoreboard-loop"),
       picksDue: await lastOkAgeH("notify-picks-due"),
       logBets: await lastOkAgeH("notify-log-bets"),
+      nflSyncGames: await lastOkAgeH("nfl-sync-games"),
+      nflRefreshLines: await lastOkAgeH("nfl-refresh-lines"),
+      nflLinesClose: await lastOkAgeH("nfl-lines-close"),
+      nflGrade: await lastOkAgeH("nfl-grade"),
     },
     (live ?? []).length > 0,
     (upcoming ?? []).length > 0,
@@ -287,7 +327,14 @@ export async function watchdogJob(db: SupabaseClient): Promise<Json> {
       "scoreboard-loop",
       "notify-picks-due",
       "notify-log-bets",
+      "nfl-sync-games",
+      "nfl-refresh-lines",
+      "nfl-lines-close",
+      "nfl-grade",
     ],
+    // Reported so `job_runs.detail` says which league the liveness gate was
+    // reading. Before NFL-22 it silently said "CFB" and looked identical.
+    leagues: seasons,
     ok: true,
   };
 }
