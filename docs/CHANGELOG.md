@@ -166,6 +166,39 @@ shipping it.
 
 ## Log
 
+### Aug 14 (later) — `Number(null)` is 0, and week 0 is a real week
+
+Found while verifying the deploy above against production, not by looking for
+it. `/api/slate?sport=nfl` came back `week 0`, `seasonType regular`, **0
+games** — with five NFL preseason games live at that moment.
+
+The route read `Number(request.nextUrl.searchParams.get("week"))`.
+`URLSearchParams.get` returns `null` for an absent param, `Number(null)` is
+`0`, and week 0 is a genuinely addressable week here (`MIN_WEEK` — the last
+Saturday of August, SPEC §249). So `isValidWeek(0)` was correctly `true`, and
+the route concluded the caller had explicitly asked for week 0. `hasWeek` then
+also pinned `st` to `regular`, which is the second half of the wrong answer.
+
+`parseWeekParam` was written for precisely this — it checks `null`,
+`undefined` and `""` before touching `Number` — and had **no callers** in the
+codebase. The route uses it now.
+
+Two things kept this invisible. `SlateView.refresh` always sends an explicit
+`week=`, so the slate's own polling never took this path; and on the CFB side
+week 0 is populated, so a bare `/api/slate` returned the eight Aug 29 games
+and looked entirely reasonable. It took a league with no week 0, queried bare,
+while games were live.
+
+The seven page routes that call `isValidWeek` take their week from
+`searchParams` destructuring, where an absent param is `undefined` and
+`Number(undefined)` is `NaN` — correctly rejected. None of them carried this
+bug. They do still read `Number(raw)`, so a literal empty `?week=` would parse
+as 0; no known link produces one, and it is recorded in `docs/STATUS.md`
+rather than fixed on spec.
+
+New `src/lib/week-range.test.ts`, 5 tests, with absent-vs-zero as a named
+regression case.
+
 ### Aug 14 — The scoreboard nobody was allowed to just leave open
 
 Owner report, watching NFL preseason on an iPad: *"it doesn't look like the

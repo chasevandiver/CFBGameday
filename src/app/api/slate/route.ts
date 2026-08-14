@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { ACTIVE_GROUP_COOKIE, activeOfKind, resolveActiveGroup } from "../../../lib/groups";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../lib/queries";
 import { createClient } from "../../../lib/supabase/server";
-import { isValidWeek } from "../../../lib/week-range";
+import { parseWeekParam } from "../../../lib/week-range";
 
 export const dynamic = "force-dynamic";
 
@@ -22,8 +22,18 @@ export async function GET(request: NextRequest) {
   const sport = request.nextUrl.searchParams.get("sport") === "nfl" ? "nfl" : "cfb";
   const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(supabase, sport);
   const stParam = request.nextUrl.searchParams.get("st");
-  const weekParam = Number(request.nextUrl.searchParams.get("week"));
-  const hasWeek = isValidWeek(weekParam);
+  /* `parseWeekParam`, not `Number(...)`. A missing `?week=` reads back as
+     `null`, `Number(null)` is `0`, and Week 0 is a real addressable week
+     (`MIN_WEEK`, the last Saturday of August) — so `isValidWeek` said yes and
+     every parameterless call to this route served week 0 of the regular
+     season instead of the current one. On the CFB side that returned the
+     eight week-0 games and looked plausible; on the NFL side, which has no
+     week 0, it returned an empty slate while five preseason games were live.
+     `parseWeekParam` exists for exactly this and handles absent separately
+     from zero. The slate's own poller always sends a week, which is why this
+     survived: it only ever showed up on a bare request. */
+  const weekParam = parseWeekParam(request.nextUrl.searchParams.get("week"));
+  const hasWeek = weekParam !== null;
   const week = hasWeek ? weekParam : currentWeek;
   const st =
     stParam === "postseason" || stParam === "regular" || stParam === "preseason"
