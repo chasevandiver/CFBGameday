@@ -1105,10 +1105,25 @@ viewer's own bets, not the whole sheet.
       throwaway Postgres 16 cluster with those two migrations excluded. **0043
       and 0044 have therefore never been exercised by `db:test` in this
       environment** — worth knowing before trusting a green run. · M
-- [ ] **SHARE-3** `src/lib/share-card.ts` — the pure module: sort (tier desc,
-      then kickoff asc, nulls last, stable), tier grouping, the broadcast-window
-      headline off the existing `kickSlot()`, the row cap. Test-pinned, the same
-      way `share-text.ts` is. · M
+- [x] **SHARE-3** Done 2026-08-14. `src/lib/share-card.ts` — pure, no React, no
+      I/O, pinned by 27 tests in `share-card.test.ts`, exactly as
+      `share-text.ts` is. `sortForCard` (tier desc, then kickoff asc, unscheduled
+      to the bottom **of its own tier** rather than of the card, ties keeping
+      input order), `heroBet`, `groupByTier`, `tierHeadline`, `capForCard`,
+      `formatUnits`/`formatOdds`.
+      Three decisions worth not rediscovering later. **`capForCard` sorts before
+      it cuts** — the other order would drop by placement time and could bin the
+      Bet of the Year to keep a lean. **The `slate` tier groups by broadcast
+      window, not just by tier** — two slate bets in different windows are
+      genuinely different sections ("Bet of the Afternoon Slate" vs "…Primetime
+      Slate"), and kickoff order already clusters them so nothing fragments.
+      **The superlatives stay singular over several rows** because they are
+      titles, not categories; only `bet` and `lean` pluralise.
+      `formatUnits` always prints one decimal — `2u` over `1.5u` puts the
+      decimal points out of register and undoes the only reason this is an
+      image rather than text. `formatOdds` uses U+2212; **satori draws tofu
+      rather than falling back**, so SHARE-5 has to confirm that glyph on the
+      subset that actually ships, not on the family. · M
 - [ ] **SHARE-4** Team identity on a slip selection. `SlipSelection` carries no
       abbr/logo/colour today and `SharePick.homeAbbr/awayAbbr` are set to `""`
       on every slip and ledger path — so no share payload can reach a logo. Fill
