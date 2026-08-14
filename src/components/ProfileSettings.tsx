@@ -3,8 +3,9 @@
 import { Star } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, useTransition } from "react";
-import { toggleFavoriteTeam, updateDisplayName } from "../app/actions/profile";
+import { toggleFavoriteTeam, updateDisplayName, updateTimezone } from "../app/actions/profile";
 import { createClient } from "../lib/supabase/client";
+import { TIMEZONES } from "../lib/kick";
 
 export interface FavTeam {
   id: number;
@@ -17,10 +18,12 @@ export function ProfileSettings({
   displayName,
   favoriteIds,
   teams,
+  timezone,
 }: {
   displayName: string;
   favoriteIds: number[];
   teams: FavTeam[];
+  timezone: string;
 }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
@@ -45,6 +48,14 @@ export function ProfileSettings({
       setMessage(null);
       const res = await updateDisplayName(formData);
       setMessage(res.ok ? "Saved" : (res.message ?? "Something went wrong"));
+    });
+
+  const saveTz = (formData: FormData) =>
+    startTransition(async () => {
+      setMessage(null);
+      const res = await updateTimezone(formData);
+      setMessage(res.ok ? "Saved" : (res.message ?? "Something went wrong"));
+      router.refresh();
     });
 
   const toggle = (teamId: number) =>
@@ -81,6 +92,33 @@ export function ProfileSettings({
           </button>
         </form>
         <p className="mt-2 text-xs text-dim">This is the name on your group leaderboards.</p>
+      </section>
+
+      {/* UX-25. Server-side rather than sniffed from the browser: kickoff
+          labels and the ledger's "today" are rendered on the server, so a
+          client-side guess cannot reach them. Submits on change — a Save
+          button beside a single select is a step nobody needs. */}
+      <section className="card p-4">
+        <h2 className="mb-1 text-sm text-accent">Time zone</h2>
+        <p className="mb-3 text-xs text-dim">
+          Kickoff times and the ledger&apos;s &ldquo;today&rdquo; use this. Central if you
+          never touch it.
+        </p>
+        <form action={saveTz}>
+          <select
+            name="timezone"
+            defaultValue={timezone}
+            aria-label="Time zone"
+            onChange={(e) => e.currentTarget.form?.requestSubmit()}
+            className={`min-h-11 w-full ${input}`}
+          >
+            {TIMEZONES.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </form>
       </section>
 
       <section className="card p-4">

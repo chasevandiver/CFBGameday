@@ -902,9 +902,15 @@ Two items remain open; the closed ones are kept for the record.
       `coalesce(…, false)`; `authenticated` loses the column and keeps
       `id, display_name, favorite_team_ids, timezone, created_at`. EXECUTE is
       granted to `authenticated` and revoked from `anon`.
-      **It was nine call sites, not six.** This row and §8 both said six; two
+      **It was ten call sites, not six.** This row and §8 both said six; two
       more were single-line reads on `/ledger` and `/game/[id]` that a
-      multi-line grep missed, and a ninth was `actions/push.ts`. All nine now go
+      multi-line grep missed, a ninth was `actions/push.ts`, and **a tenth was
+      found the next day on `/me`** — `select("display_name,
+      favorite_team_ids, is_admin")`, a name inside a multi-column list, which
+      no search for `select("is_admin")` will ever return. Left as it was, 0050
+      would have made `/me` throw rather than degrade: the count being wrong
+      was not a bookkeeping detail, it was a missed site that would have broken
+      a page. All nine now go
       through one `src/lib/admin.ts` — `isCurrentUserAdmin` plus a `requireAdmin`
       for the five server actions that had the same three-step check
       copy-pasted with only the refusal wording different. Nine copies of an
@@ -1658,7 +1664,14 @@ viewer's own bets, not the whole sheet.
 
 - [ ] **UX-06 (residue)** Sub-4.5 tokens: light `chalk/50–55` table headers,
       dark `/35–/45` decorative labels, edge-on-card — needs a rendered pass · S–M
-- [ ] **UX-21** Ledger "today" keyed to CT for non-CT bettors · S
+- [x] **UX-21** Ledger "today" keyed to CT for non-CT bettors. Fixed
+      2026-08-14 with UX-25, because they are one concern: the ledger now reads
+      the viewer's stored zone. The bug it closes is narrow and real — a bet
+      placed 10pm Pacific falls on the next Central day, so a Pacific reader
+      opening the app after a late West Coast game saw an empty "today" and a
+      day record that had already rolled over. Four sites: the day label, the
+      `dayKey` the share card groups on, and the bet form's kickoff labels.
+      `DEFAULT_TZ` no longer appears in the file.
 - [x] **UX-24** Fixed 2026-08-13, and it was **three call sites, not one** —
       the week page plus both render sites on `/game` (`game/[id]/page.tsx:81`,
       rendered at `:399` and `:453`). The bug is home-side only: `fmtSpread`
@@ -1669,7 +1682,28 @@ viewer's own bets, not the whole sheet.
       through, and the next caller gets it for free. 1 test, both sides plus a
       stringly-typed total. See 05:N12 for the same question settled for the
       arithmetic path.
-- [ ] **UX-25** `profiles.timezone` surfaced on `/me` and used server-side · S–M
+- [x] **UX-25** `profiles.timezone` surfaced on `/me` and used server-side.
+      Done 2026-08-14. A select on `/me` that submits on change, plus
+      `updateTimezone`; 0013 already granted UPDATE on the column, so no
+      migration.
+      **Server-side rather than sniffed from the browser**, which is the whole
+      point: kickoff labels and the ledger's "today" are rendered on the server,
+      and a client-side guess cannot reach them without a round trip the page
+      does not otherwise need.
+      **A curated list, not `Intl.supportedValuesOf("timeZone")`** — ~400
+      entries is a worse control on a phone and ships the whole table for a
+      setting most people never open. Seven zones, including Hawaii and Alaska
+      because the product has games in both (Stanford at Hawai'i is on the Week
+      0 board) and Arizona separately because it does not observe DST.
+      **The list is the validation.** `updateTimezone` refuses anything not in
+      it, so an arbitrary string cannot reach `Intl.DateTimeFormat` and turn a
+      preference into a self-inflicted outage on every page that prints a
+      kickoff. `tzOf` falls back to Central for the null case, which is every
+      existing reader.
+      **Not seen rendered** — `/me` redirects signed-out and there is no signed-in
+      session available here. The control is a `select` in the existing card and
+      `input` token, so it inherits the house form styling rather than
+      introducing any.
 - [x] **UX-27** Fixed 2026-08-13. `error.tsx` now renders `<AppNav />` like
       `not-found.tsx` and `loading.tsx` do — nav is not in the root layout
       (`layout.tsx:74-104`), every page mounts its own, and a boundary that

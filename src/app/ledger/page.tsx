@@ -12,7 +12,7 @@ import { UnitsCurve } from "../../components/UnitsCurve";
 import { VoidBetButton } from "../../components/VoidBetButton";
 import { TailFadeAudit, type AuditGroup, type PairRow, type RelationRow } from "../../components/TailFadeAudit";
 import { type BetRow, type TeamRow } from "../../lib/db-types";
-import { kickParts, tzLabel, DEFAULT_TZ } from "../../lib/kick";
+import { kickParts, tzLabel, tzOf } from "../../lib/kick";
 import { statusForBet, type LiveBetStatus } from "../../lib/live-status";
 import { betsCardPayload, shareableBets, type BetCardGame } from "../../lib/share-card-build";
 import { seasonIdsForYear, seasonYearOf, sportOfSeasonId } from "../../lib/league";
@@ -99,6 +99,17 @@ export default async function LedgerPage({
   // lookup is skipped rather than run against a null id.
   const isAdmin = user ? await isCurrentUserAdmin(supabase) : false;
 
+  // UX-21/UX-25. "Today" on a ledger is the bettor's today, not Central's. A
+  // bet placed 10pm Pacific lands on the next Central day, so a Pacific reader
+  // opening the app after a late West Coast game saw an empty "today" and a
+  // day record that had already rolled over. Rendered server-side, so the
+  // stored preference is the only thing that can answer — `tzOf` falls back to
+  // Central for anyone who has never set one, which is every existing reader.
+  const { data: tzRow } = user
+    ? await supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle()
+    : { data: null };
+  const tz = tzOf(tzRow?.timezone);
+
   // No user → no ledger, without leaning on a "" uuid cast that only returns
   // empty because the cast error is swallowed (audit 06/SEC-09).
   const [{ data }, { data: weekGames }] = await Promise.all([
@@ -131,10 +142,10 @@ export default async function LedgerPage({
   const formGames: BetFormGame[] = gameRows.map((g) => {
     const homeAbbr = abbrOf(teamById.get(g.home_team_id));
     const awayAbbr = abbrOf(teamById.get(g.away_team_id));
-    const kick = g.start_ts ? kickParts(g.start_ts, DEFAULT_TZ) : null;
+    const kick = g.start_ts ? kickParts(g.start_ts, tz) : null;
     return {
       id: g.id,
-      label: `${awayAbbr} @ ${homeAbbr}${kick ? ` · ${kick.day} ${kick.time} ${tzLabel(DEFAULT_TZ)}` : ""}`,
+      label: `${awayAbbr} @ ${homeAbbr}${kick ? ` · ${kick.day} ${kick.time} ${tzLabel(tz)}` : ""}`,
       homeAbbr,
       awayAbbr,
     };
@@ -195,7 +206,7 @@ export default async function LedgerPage({
     b.result === null && b.voided_at === null && !(b.game_id !== null && kickedOff.get(b.game_id));
 
   const dayLabel = new Intl.DateTimeFormat("en-US", {
-    timeZone: DEFAULT_TZ,
+    timeZone: tz,
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -304,7 +315,7 @@ export default async function LedgerPage({
   // modes, different ledger. Today's bets are the ones placed today — a bet
   // has a placed_at of its own, unlike a pick, which is tied to a kickoff.
   const dayKey = (iso: string) =>
-    new Intl.DateTimeFormat("en-CA", { timeZone: DEFAULT_TZ }).format(new Date(iso));
+    new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date(iso));
   const todayKey = dayKey(new Date().toISOString());
   const todayBets = bets.filter((b) => dayKey(b.placed_at) === todayKey);
   const gradedToday = todayBets
