@@ -166,6 +166,89 @@ shipping it.
 
 ## Log
 
+### Aug 14 — Admin cancellation, and the test runner that had been dead for a day
+
+Owner request: *"There needs to be a way to fully cancel bets before and after
+they kickoff and finish as someone with admin power. I'm doing test bets so i
+want to be able to cancel them. The voided bets still sit in the ledger. The
+betting and pickem groups also need to have an admin cancel pick option."*
+Tracked as ADM-1 and ADM-2; migration 0046.
+
+**Why voiding was the wrong tool, in the owner's own sentence.** `voidBet` has
+existed since 0001 and does not solve this: a voided bet is still a row, drawn
+at 40% opacity in the ledger forever. Voiding is correct for a bet that was
+really placed and then taken back — it is a fact about the week. It is wrong for
+a test row that should never have existed.
+
+**The append-only exception, narrowed rather than waived.** `0001:210` opens the
+bets table with *"Append-only ledger: no deletes; voided_at instead (Honest Note
+#5)"*, and `docs/SPEC.md` §5.3 says the same. Hard delete was an explicit owner
+decision against that. Rather than quietly break the invariant, it was
+rewritten: every deletion copies the whole row into a deny-all `deleted_wagers`
+archive *before* removing it, so the rule goes from "nothing is ever removed" to
+"nothing is removed without a record". Any deleted row can be reconstructed by
+hand, which is the property the original rule existed to protect.
+
+That guarantee lives entirely in the ORDER of three statements — read, archive,
+delete — which is exactly the kind of thing a later refactor folds into one
+round trip for tidiness. So it is asserted directly: force the archive write to
+fail, and the bet must still be there.
+
+An archive table rather than a third status, deliberately. A status is what
+`voided_at` already is, and the complaint is that voided rows still show up. A
+third state would need filtering at every one of the ledger's tallies, and one
+missed filter puts test bets back in the units curve.
+
+**Two admin powers, not one.** ADM-1 is a *site* admin (`profiles.is_admin`)
+deleting a bet through the service role. ADM-2 is a *group* admin cancelling a
+member's pick through a new `admin_remove_pick` RPC. `admin_remove_pick`
+deliberately refuses a site admin: `is_admin` is a platform role, and letting it
+reach into a pool's picks would make every group's board editable by someone who
+is not in it. The two powers stop in different places on purpose.
+
+`remove_pick` could not be reused for ADM-2 in two independent ways. It deletes
+`user_id = auth.uid()`, so an admin calling it removes their **own** pick and
+reports one row happily; and it raises at kickoff (`0038:62-64`), which is the
+case an admin most needs. Betting-group admins get no power over a member's
+*bet* — a bet is one row in that person's own ledger, and a group is a lens on
+it rather than its owner.
+
+**A defect in the tests, found by the test of the tests.** Every new DB
+assertion is supposed to be checked failing against the pre-fix schema. Doing
+that here found that the refusal helper passed on *any* error: with 0046
+removed, all four "cannot cancel someone else's pick" assertions reported PASS
+on `function admin_remove_pick does not exist`, having proved exactly nothing
+about authorization. Each refusal now names the message it expects, and a
+missing-object error (42883 / 42P01) is reported as **vacuous** rather than
+absorbed as a pass. This is the same failure shape the repo keeps finding: a
+path that reports success without having verified the thing its caller believes
+it verified.
+
+**`npm run db:test` had not run a single assertion since 0043 landed.** That is
+how the above got noticed. 0043 and 0044 open with `create extension if not
+exists pg_cron`, which is Supabase-provisioned and not installable into a stock
+Postgres, so the runner aborted on migration 43 of 45 — and because it failed
+with "extension pg_cron is not available", it read as a broken *environment*
+rather than a broken *tool*. `scripts/db-test.sh` now writes inert `pg_cron` and
+`pg_net` stubs into the installation's extension directory when the real ones
+are missing, and removes them on exit. The stubs record a scheduled job and
+never run it; a test cluster that started making outbound HTTP calls on a timer
+would be a defect of its own. If it cannot write the stubs it **exits 1 naming
+the problem**, rather than skipping migrations and reporting a green run over
+reduced coverage.
+
+Consequence worth stating plainly: `docs/STATUS.md` §1's "163 DB assertions,
+run in-session against a real Postgres 16 cluster" was honest when written and
+has been unverifiable since 0043. Today's measured number is **198**.
+
+**Testing.** 24 DB assertions (174 → 198), 9 unit tests (801 → 810). The unit
+tests mock the two Supabase clients at the module boundary, because the action
+calls `createClient()` for cookies and `createServiceClient()` for env keys and
+neither exists in a test process.
+
+**Not verified from here:** the delete against a real test bet in the live
+database. That needs production.
+
 ### Aug 14 — Grading happens when the game ends (GRADE-1)
 
 Owner question, from the betting/game-card batch: *"When a game goes final does

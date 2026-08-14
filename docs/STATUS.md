@@ -1725,16 +1725,70 @@ rather than a quarter linescore.
       frequent `grade-finals` task.
       **Not verified from here:** no live game to watch it against. The honest
       proof is `NFL-4` — the first settlement watched, TNF Sep 10.
-- [ ] **ADM-1** Site admin can delete a bet at any point in its life, including
-      after grading. Migration 0046 archives the row into `deleted_wagers`
-      first, because `0001:210` states an append-only ledger and hard delete is
-      a deliberate exception to it, not an oversight. · in progress
-- [ ] **ADM-2** Group admins can cancel a member's pick, before or after
-      kickoff. Needs a new `admin_remove_pick` RPC — `remove_pick`
-      (`0038:66-70`) is hard-scoped to `auth.uid()` and raises on kickoff.
+- [x] **ADM-1 — a site admin can delete a bet outright**, 2026-08-14, migration
+      **0046**. Voiding was the wrong tool and the owner said so: a voided bet
+      is still a row, rendered at 40% opacity in the ledger forever
+      (`ledger/page.tsx:445`). Voiding is right for a bet really placed and
+      taken back; it is wrong for a test row that should never have existed.
+      **This is a deliberate exception to a stated invariant.** `0001:210` opens
+      the table with "Append-only ledger: no deletes; voided_at instead (Honest
+      Note #5)" and `docs/SPEC.md` §5.3 agrees. Rather than waive it, it is
+      narrowed: every deletion copies the whole row into a deny-all
+      `deleted_wagers` archive **first**, so the guarantee moves from "nothing
+      is ever removed" to "nothing is removed without a record", and any row can
+      be reconstructed by hand. The ordering is the entire basis for the
+      exception, so it is asserted directly — with the archive write forced to
+      fail, the bet must still be there.
+      Service-role write behind `requireAdmin`, for the reason `setGameStatus`
+      uses one (`games.ts:55-58`): DELETE is revoked from both API roles
+      (`0001:360`) and opening a delete policy on the ledger would hand every
+      signed-in user a power only an admin should have. **No status or kickoff
+      gate** — deleting a *graded* bet is the central case, and it is the one
+      `voidBet` provably cannot reach (the 0045 trigger raises on any update
+      where `old.result is not null`). Surfaced on the ledger, the game page,
+      and a new **Wagers** panel on `/admin`, which is the only one that reaches
+      another user's rows. The panel is capped at 20 and says so rather than
+      truncating silently.
+      Also corrected: the ledger's own footer said bets "can be voided, never
+      deleted", which this makes false. It now says an admin can, and that the
+      removal is itself recorded.
+- [x] **ADM-2 — group admins can cancel a member's pick**, 2026-08-14,
+      migration **0046**. `remove_pick` could not be reused, in two independent
+      ways: it deletes `user_id = auth.uid()`, so an admin calling it removes
+      their **own** pick and reports one row happily; and it raises at kickoff
+      (`0038:62-64`), which is the case an admin most needs. New
+      `admin_remove_pick`, shaped after `remove_group_member` (`0038:114`), the
+      repo's existing admin-acts-on-another-member RPC. Archives into
+      `deleted_wagers` too. Zero rows stays a success, matching `remove_pick`
+      and for the reason `0038:24-30` gives.
+      Gated on `is_group_admin(p_group_id)`, **not** on `is_admin`: a site admin
+      has no standing inside a group they are not in, and reaching into a pool's
+      picks with a platform role would make every group's board editable by an
+      outsider. A site admin who needs that uses ADM-1's `/admin` panel.
+      Control lives on the week page's **By person** view, the only surface that
+      renders other people's picks itemised and attributable.
       **Deliberate boundary:** betting-group admins get no power over a member's
-      *bet*; a bet is one row in that person's own ledger, and a group is a lens
-      on it rather than its owner. ADM-1 covers test cleanup there. · in progress
+      *bet*. A bet is one row in that person's own ledger and units record; a
+      group is a lens on it rather than its owner (`tailing.ts:4-5`,
+      `0027:1-36`). ADM-1 covers test cleanup there.
+      **24 DB assertions, 174 → 198**, each checked failing against the pre-fix
+      schema. That check found a real defect in the assertions themselves: the
+      refusal helper passed on *any* error, so with 0046 removed all four
+      "cannot cancel" assertions reported PASS on *"function admin_remove_pick
+      does not exist"* — proving nothing about authorization. Each refusal now
+      names the message it expects, and a missing-object error is reported as
+      vacuous rather than absorbed. 9 unit tests, 801 → 810.
+      **`npm run db:test` had been dead since 0043** and this is how it was
+      found. 0043/0044 open with `create extension if not exists pg_cron`, which
+      is Supabase-provisioned and not installable locally, so the runner aborted
+      on migration 43 of 45 and **not one assertion ran** — it looked like a
+      broken environment rather than a broken tool, which is why it sat. The
+      runner now installs inert `pg_cron`/`pg_net` stubs when the real ones are
+      absent, and refuses loudly rather than skipping migrations, if it cannot.
+      §1's "163 DB assertions" was honest when written and has been
+      unverifiable since 0043; 198 is measured today.
+      **Not verified from here:** the delete against a real test bet in the live
+      database, which needs production.
 - [ ] **NFL-20** The game page truncates NFL team names — `GameHeader.tsx:368`
       is `truncate` on `team.school`, which is "Georgia" for CFB and
       "Jacksonville Jaguars" for the NFL. Also the Systems section

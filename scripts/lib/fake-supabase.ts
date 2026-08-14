@@ -5,9 +5,9 @@
  * the database seam — which rows a query claims, which it skips, and whether a
  * second run finds anything left to do. A pure-function test cannot reach any
  * of that, and the real client needs a server. This covers the handful of chain
- * shapes those two functions actually use and nothing else: `select` with
- * `eq` / `in` / `is` filters, `update` (optionally followed by `select`),
- * `insert`, and `maybeSingle`.
+ * shapes the jobs and the admin actions actually use and nothing else: `select`
+ * with `eq` / `in` / `is` filters, `update` and `delete` (either optionally
+ * followed by `select`), `insert`, and `maybeSingle`.
  *
  * It is deliberately NOT a Postgres emulator. RLS, triggers, constraints and
  * grants are the DB assertions' job (`supabase/tests/`, `npm run db:test`) —
@@ -24,7 +24,7 @@ interface Result {
   error: { message: string; code?: string } | null;
 }
 
-type Mode = "select" | "update" | "insert";
+type Mode = "select" | "update" | "insert" | "delete";
 
 class FakeQuery implements PromiseLike<Result> {
   private filters: Array<(r: FakeRow) => boolean> = [];
@@ -71,6 +71,11 @@ class FakeQuery implements PromiseLike<Result> {
     return this;
   }
 
+  delete(): this {
+    this.mode = "delete";
+    return this;
+  }
+
   maybeSingle(): this {
     this.single = true;
     return this;
@@ -97,6 +102,12 @@ class FakeQuery implements PromiseLike<Result> {
     if (this.mode === "update") {
       for (const r of matched) Object.assign(r, this.patch);
       return { data: matched.map((r) => ({ ...r })), error: null };
+    }
+
+    if (this.mode === "delete") {
+      const gone = matched.map((r) => ({ ...r }));
+      for (const r of matched) rows.splice(rows.indexOf(r), 1);
+      return { data: gone, error: null };
     }
 
     this.db.reads.set(this.table, (this.db.reads.get(this.table) ?? 0) + 1);

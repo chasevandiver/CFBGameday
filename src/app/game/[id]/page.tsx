@@ -6,6 +6,7 @@ import { AppNav } from "../../../components/AppNav";
 import { GameHeader } from "../../../components/game/GameHeader";
 import { MovementChart } from "../../../components/game/MovementChart";
 import { ConsensusChip, EdgeChip } from "../../../components/slate/chips";
+import { DeleteWagerButton } from "../../../components/DeleteWagerButton";
 import { VoidBetButton } from "../../../components/VoidBetButton";
 import { Sparkline } from "../../../components/slate/Sparkline";
 import type {
@@ -109,6 +110,13 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // ADM-1: decides whether the delete control draws. Not a boundary — the
+  // action re-checks is_admin server-side before it touches anything.
+  const { data: me } = user
+    ? await supabase.from("profiles").select("is_admin").eq("id", user.id).maybeSingle()
+    : { data: null };
+  const isAdmin = me?.is_admin === true;
 
   const { data: game } = await supabase
     .from("games")
@@ -557,11 +565,12 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                     {/* A settled bet is history — voiding is only for a bet
                         that hasn't been graded yet (the trigger refuses it
                         anyway; no point offering the button). */}
-                    {!b.result && (
-                      <span className="ml-auto">
-                        <VoidBetButton betId={b.id} />
-                      </span>
-                    )}
+                    <span className="ml-auto flex items-center gap-2">
+                      {!b.result && <VoidBetButton betId={b.id} />}
+                      {/* Unlike the void, this IS offered on a settled bet —
+                          a graded test row is the one that needs removing. */}
+                      {isAdmin && <DeleteWagerButton kind="bet" id={b.id} />}
+                    </span>
                   </li>
                 );
               })}

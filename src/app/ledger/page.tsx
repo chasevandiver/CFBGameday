@@ -4,6 +4,7 @@ import { PicksTab } from "./PicksTab";
 import { BetForm, type BetFormGame } from "../../components/BetForm";
 import { LiveStatusChip } from "../../components/slate/chips";
 import { ShareButton } from "../../components/ShareButton";
+import { DeleteWagerButton } from "../../components/DeleteWagerButton";
 import { RetagBetButton } from "../../components/RetagBetButton";
 import { ShareImageButton } from "../../components/ShareImageButton";
 import { StatTile } from "../../components/StatTile";
@@ -73,6 +74,17 @@ export default async function LedgerPage({
       </>
     );
   }
+
+  // ADM-1: whether the delete control renders. Not a security boundary — the
+  // action re-checks `is_admin` on the server before it touches anything, and
+  // the read here only decides what to draw. Same single-row lookup
+  // `admin/page.tsx:36-46` uses.
+  // Signed-out readers reach this branch with an empty bet list (below), so the
+  // lookup is skipped rather than run against a null id.
+  const { data: me } = user
+    ? await supabase.from("profiles").select("is_admin").eq("id", user.id).maybeSingle()
+    : { data: null };
+  const isAdmin = me?.is_admin === true;
 
   // No user → no ledger, without leaning on a "" uuid cast that only returns
   // empty because the cast error is swallowed (audit 06/SEC-09).
@@ -475,8 +487,12 @@ export default async function LedgerPage({
                         );
                       })()}
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
                     {!b.voided_at && !b.result && <VoidBetButton betId={b.id} />}
+                    {/* ADM-1. Admin-only, and in every state — a graded or
+                        voided test bet is exactly the row that needs removing,
+                        which is why this is not gated the way the void is. */}
+                    {isAdmin && <DeleteWagerButton kind="bet" id={b.id} />}
                   </td>
                 </tr>
               ))}
@@ -484,7 +500,11 @@ export default async function LedgerPage({
           </table>
         </section>
         <p className="mt-3 text-xs text-chalk/50">
-          The ledger is append-only — bets can be voided, never deleted. It is yours alone, and it
+          {/* ADM-1 made the old sentence ("never deleted") false. An admin can
+              delete, and the honest version says who and says the deletion is
+              still recorded — that is what 0046's archive is for. */}
+          The ledger is append-only for you — bets can be voided, never deleted. An admin can
+          remove one outright, and that removal is itself recorded. It is yours alone, and it
           is only money: pool picks live under{" "}
           <Link href="/ledger?tab=picks" className="text-accent underline-offset-2 hover:underline">
             Group picks
