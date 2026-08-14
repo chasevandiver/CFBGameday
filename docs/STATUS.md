@@ -441,26 +441,48 @@ is the same seam `SCHED-1` sat in.
       `NFL-6` records "watchdog rows for NFL job ages" as deferred, which is the
       cheap half; this gate is the half that matters and was not written down
       anywhere. · S–M
-- [ ] **NFL-23 — four of the seven finished preseason games never got a line at
-      all**, and the close-pass cron set has a hole at the 23:00–23:30 UTC kick
-      slot. Proved on rows rather than by reading crons: the Aug 7 Hall of Fame
-      game and the three Thursday 23:00/23:30 games carry **zero
-      `line_snapshots`, ever**; the three that kicked Fri 00:00/01:00 UTC each
-      got one 15–16 minutes before kickoff, which is the `45 23 * * 0,1,4,6`
-      cron working exactly as designed. The games that kicked *before* it fired
-      got nothing, and `nfl-refresh-lines --burst` filters `start_ts > now()`, so
-      a late run cannot pick them up afterwards.
-      **Scope past the preseason**, by kickoff slot against a 100-minute burst
-      window: 30 of 49 preseason games and 40 of 272 regular-season games sit
-      outside every close pass. The regular-season set is the one to price:
-      **six international games** (Sun 13:30/14:30 UTC, before the earliest
-      Sunday cron at 16:20), Thanksgiving (4), Christmas (3), the two late-season
-      Saturday games, and the week-1 opener. *(The 24 games showing Sun 05:00 UTC
-      are TBD placeholders — week 18 plus flex — that `nfl-sync-games` firms up
-      daily. Not a hole yet, and worth re-running this check in December rather
-      than acting on it now.)*
-      Consequence is `closing_line` null → **no CLV**, and for a game with no
-      snapshot at all there is no line on the card to bet against either. · S
+- [x] **NFL-23 — the close-pass crons missed the slot the preseason kicks in.**
+      Fixed 2026-08-14. Seven cron entries added and `45 23 * * 0,1,4,6` widened
+      to `* * *`; every addition closes a named slot that exists in `games`, and
+      the set was verified by query rather than by reading it — coverage goes
+      from 29 of 49 preseason and 39 of 272 regular-season games *uncovered* to
+      **zero**, excluding 24 rows stamped Sun 05:00 UTC that are week-18 and
+      flex placeholders rather than real times.
+      The tell: preseason kicks at 23:00 and 23:30 UTC, i.e. **before** the
+      23:45 pass, and `--burst` filters `start_ts > now()`, so a game that has
+      already kicked can never be picked up afterwards.
+      **Two corrections to how this row was first written, both mine.**
+      *(a) The counts were 30 and 40.* My coverage query did day-of-week
+      arithmetic without wrapping the week, so a Saturday-night cron was scored
+      as not covering a Sunday-morning kick. Redone with minutes-mod-10080: 29
+      and 39. The shape of the finding survived; two of its numbers did not,
+      which is why they are restated here rather than quietly edited.
+      *(b) "Four games never got a line at all" was true and misleading.* Those
+      four have zero snapshots, but the daily non-burst chain
+      (`refresh-lines → nfl-refresh-lines`) had run exactly once at that point
+      and skipped, so the absence is mostly a one-day-old-wiring artifact. The
+      chain snapshots the whole earliest unplayed week twice a day — the 08-14
+      12:41 run wrote 10 rows covering tonight's kicks — so upcoming games do
+      get a line. **What these crons actually buy is a capture near kickoff**,
+      i.e. a real close and therefore real CLV, not the difference between a
+      line and no line. Recorded because the stronger claim reached a commit
+      message. · S
+- [x] **OPS-19 — every idle skip reached `job_runs` as the same flat "idle".**
+      Found and fixed 2026-08-14 while trying to explain why `nfl-refresh-lines`
+      reported `idle` 35 minutes before a kickoff. `idleSkip` returned a bare
+      boolean and both callers turned it into `{"skipped": "idle"}`, so the row
+      a human reads could not tell **`next_game_gt_7d`** — a correct offseason
+      no-op — from **`no_scheduled_games`**, which during a bootstrap is a real
+      fault wearing a green run. The console log had always distinguished them;
+      nothing that survives the run did.
+      Now returns the reason string, still truthy, so every call site is
+      unchanged (`scoreboard-loop`'s `cfbIdle && nflIdle` included). 1 new test
+      asserting the two reasons differ, and the two existing `toBe(true)`
+      assertions tightened to name their reason.
+      *(This did not explain the 23:25 run — that window has manual runs
+      interleaved with scheduled ones and I could not attribute it honestly.
+      The observability gap is real and fixed on its own merits; the anomaly is
+      left unexplained rather than given a story.)* · S
 - [ ] **NFL-24 — `NFL-4`'s verification plan does not match the stored kickoff.**
       That row says "TNF Sep 10 — close pass at 23:45 UTC Thu". The stored
       week-1 opener (Seattle–New England) is `2026-09-10 00:20 UTC`, which is a

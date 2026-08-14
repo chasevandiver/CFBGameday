@@ -42,9 +42,13 @@ async function run(
   let week = weekArg > -1 ? Number(process.argv[weekArg + 1]) : undefined;
   let seasonType: "preseason" | "regular" | "postseason" = "regular";
 
-  if (db && (await idleSkip(db, { job, season: NFL_SEASON, horizonDays: envDays("LINES_IDLE_DAYS", 7) }))) {
-    return { skipped: "idle" };
-  }
+  // The reason, not a flat "idle" — see idle.ts. An NFL run reporting `idle`
+  // 35 minutes before kickoff on 2026-08-13 is what surfaced this, and the
+  // detail was too coarse to say which of the two states it had hit.
+  const idle = db
+    ? await idleSkip(db, { job, season: NFL_SEASON, horizonDays: envDays("LINES_IDLE_DAYS", 7) })
+    : false;
+  if (idle) return { skipped: idle };
 
   // In burst mode the kick window comes FIRST: no games inside it means no
   // fetch at all (the CFB version fetches before filtering; free API or not,

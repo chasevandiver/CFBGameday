@@ -64,7 +64,11 @@ describe("idleSkip", () => {
   it("skips in early August, when the opener is three weeks out", async () => {
     // the actual case this exists for: Aug 6, first game Aug 29
     const db = stubDb({ next: { start_ts: "2026-08-29T16:00:00Z" } });
-    expect(await idleSkip(db, { ...opts, now: NOW })).toBe(true);
+    // Returns the REASON, not a bare true: job_runs.detail rendered every skip
+    // as a flat "idle", which made a correct offseason no-op and a season with
+    // nothing ingested the same green row. Still truthy, so call sites are
+    // unchanged.
+    expect(await idleSkip(db, { ...opts, now: NOW })).toBe("next_game_gt_7d");
   });
 
   it("runs once the opener comes inside the horizon", async () => {
@@ -84,8 +88,21 @@ describe("idleSkip", () => {
 
   it("skips an empty schedule by default but runs it for the bootstrap job", async () => {
     const db = stubDb({ next: null });
-    expect(await idleSkip(db, { ...opts, now: NOW })).toBe(true);
+    expect(await idleSkip(db, { ...opts, now: NOW })).toBe("no_scheduled_games");
     expect(await idleSkip(db, { ...opts, now: NOW, whenNoGames: "run" })).toBe(false);
+  });
+
+  it("distinguishes the two skip reasons, which used to look identical", async () => {
+    // The whole point of returning a string. "the opener is in three weeks" is
+    // a correct no-op; "this season has no games at all" during a bootstrap is
+    // a fault. Both used to reach job_runs.detail as {"skipped": "idle"}.
+    const far = stubDb({ next: { start_ts: "2026-08-29T16:00:00Z" } });
+    const empty = stubDb({ next: null });
+    const a = await idleSkip(far, { ...opts, now: NOW });
+    const b = await idleSkip(empty, { ...opts, now: NOW });
+    expect(a).toBeTruthy();
+    expect(b).toBeTruthy();
+    expect(a).not.toBe(b);
   });
 
   it("honors IDLE_OVERRIDE without even querying", async () => {

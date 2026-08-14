@@ -195,14 +195,26 @@ switched off, and it will switch off again for every NFL-only Sunday in the
 autumn. `NFL-6` had already recorded the missing NFL job-age rows; this gate is
 the more expensive half and was written down nowhere.
 
-**Four of seven finished preseason games never got a line.** Proved on rows, not
-inferred from cron strings: the Hall of Fame game and the three Thursday
+**The close-pass crons missed the slot the preseason kicks in.** Proved on rows,
+not inferred from cron strings: the Hall of Fame game and the three Thursday
 23:00/23:30 UTC kicks carry zero `line_snapshots` ever, while the three that
 kicked at Fri 00:00/01:00 each got one 15–16 minutes out — the `45 23 * * …`
 cron working exactly as designed for the slot it was written for. Extending the
-check across the stored schedule: 30 of 49 preseason and 40 of 272
+check across the stored schedule: 29 of 49 preseason and 39 of 272
 regular-season games sit outside any close pass, including all six international
 games and the week-1 opener. No close means no CLV.
+
+**Two numbers in the paragraph above were wrong when first written, and one
+framing was.** The counts were published as 30 and 40: the coverage query did
+day-of-week arithmetic without wrapping the week, so a Saturday-night cron
+scored as not covering a Sunday-morning kickoff. Redone modulo 10080 minutes,
+it is 29 and 39. And "four games never got a line at all" is true but reads as
+worse than it is — the daily non-burst chain had run once and skipped at that
+point, and it snapshots the whole earliest unplayed week twice a day, so
+upcoming games do get a line. What the crons buy is a capture *near kickoff* —
+a real close, and therefore real CLV — not the difference between a line and
+none. Both corrections are in the `NFL-23` row, which is where someone reading
+the tracker will hit them.
 
 **Method note, since it is the transferable part.** Every one of these needed
 the live database and `jobs.yml` read *together*. The test suite is green (861
