@@ -1,7 +1,7 @@
 import { AppNav } from "../components/AppNav";
 import { HomeAutoRefresh } from "../components/home/HomeAutoRefresh";
 import { HomeDashboard } from "../components/home/HomeHub";
-import { fetchHomeData } from "../lib/home";
+import { fetchHomeData, homeRefreshTier } from "../lib/home";
 import { createClient } from "../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -38,12 +38,11 @@ export default async function HomePage() {
   } = await supabase.auth.getUser();
   const data = await fetchHomeData(supabase, user?.id ?? null);
 
-  // Kickoff inside six hours counts as imminent, matching the slate's window.
-  // "Now" is the payload's own stamp, not `Date.now()` — deterministic per
-  // render, and the slate reads its `fetchedAt` the same way.
-  const imminent =
-    data.firstKick !== null &&
-    Date.parse(data.firstKick) - Date.parse(data.fetchedAt) < 6 * 3600_000;
+  /* Decided from the positions on the page, not from the CFB week. This used
+     to read `data.liveCount > 0`, which counts CFB games only — so with the
+     college season still fifteen days out, a live NFL game the viewer had
+     money on left the hub on its five-minute idle tier. See homeRefreshTier. */
+  const { live, imminent } = homeRefreshTier(data);
 
   return (
     <>
@@ -51,7 +50,7 @@ export default async function HomePage() {
       <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
         <HomeDashboard data={data} signedIn={!!user} />
       </main>
-      <HomeAutoRefresh live={data.liveCount > 0} imminent={imminent} />
+      <HomeAutoRefresh live={live} imminent={imminent} />
     </>
   );
 }
