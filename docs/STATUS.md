@@ -1216,20 +1216,21 @@ Built on `claude/nfl-scores-lines-l4bhio`; the design and its evidence are in
       browsing (January; stored weeks 1–4 exist now), NFL venues + weather
       (existing `weatherJob` machinery, needs offset venue rows + coords),
       watchdog rows for NFL job ages, NFL demo data.
-- [ ] **NFL-8** The 30-second live pull, owner decision 2026-08-14 ("the
-      site should be pulling from espn on a 30 second refresh" — relaying
-      scores through a session or through GitHub Actions alone is the wrong
-      shape, proved twice tonight: Actions stalled entirely from 23:47 with
-      five preseason games live, and the coverage windows had gaps besides).
-      The fix is the database pulling for itself: edge function
-      `supabase/functions/nfl-scoreboard/index.ts` (DEPLOYED, version 2,
-      no-op-diffed writes, idle gate) invoked by pg_cron + pg_net every 30s.
-      **One step remains, owner-run: execute migration 0043
-      (`supabase/migrations/0043_nfl_live_pull.sql`) in the Supabase SQL
-      editor** — the in-session permission layer declined to schedule a
-      recurring job itself. The moment it runs, live scores flow with no
-      Actions and no session involved. The Actions loop stays as a second
-      writer; both diff, so they coexist. · 2 min
+- [x] **NFL-8** The 30-second live pull, owner decision 2026-08-14 ("the
+      site should be pulling from espn on a 30 second refresh"). **Done and
+      verified live 2026-08-14 ~00:40 UTC, owner-approved execution.** Edge
+      function `supabase/functions/nfl-scoreboard/index.ts` (deployed v2,
+      no-op-diffed writes, idle gate, verify_jwt off by design) invoked by
+      pg_cron job 1 (`nfl-scoreboard-30s`, '30 seconds') via pg_net —
+      migration 0043, applied. Evidence: 3/3 cron runs succeeded in the first
+      90 seconds, all five live preseason games advanced past the last
+      manually-bridged values with no session or Actions writer running
+      (Actions had been stalled since 23:47), and two consecutive production
+      API reads showed independent movement (ARI@LV Q2 11:20 → 10:00). The
+      live path no longer depends on GitHub Actions or any session; the
+      Actions loop remains a coexisting second writer. Context worth keeping:
+      the same night surfaced the two Actions window gaps (fixed, #65) and an
+      Actions outage — the reason this lane exists.
 - [x] **NFL-7** Preseason, owner request 2026-08-13 ("Can we add preseason
       too?"). `preseason` is a third season_type on the NFL side only: stored
       1:1 from ESPN (weeks 1–4, week 1 the Hall of Fame game), no schema
