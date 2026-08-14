@@ -187,6 +187,20 @@ unchanged: `set_group_week_config` still rejects the season type, so no
 pick'em board can be hung on an exhibition, and the model never sees the
 NFL at all.
 
+**Found live, fixed the same hour: two scoreboard coverage gaps.** The
+opening preseason kicks (23:00 UTC Thursday) sat dark because every
+scoreboard window started at the following midnight — built for
+regular-season TNF at 00:15, never for a 7pm-ET weeknight kick. The
+Black Friday game (20:00 UTC) sat in the same hole. New window
+`0 20-23 * * 4,5`; the first stranded hour was bridged by hand through
+the same write path the loop uses. And the Phase-2 table's "widen the
+post-midnight windows" row turned out to be planned but never applied —
+the SNF/MNF and TNF windows still ended at 03:00, whose last 63-minute
+launch dies ~04:03 while winter night games run past 04:15. Now `0-5`
+Mon/Tue and `0-4` Fri/Sat, as the plan always said. The jobs-yml test
+holds strings consistent; it cannot know a kickoff calendar — coverage
+gaps only surface against real games, which is what tonight was for.
+
 ### Aug 13 (later still) — The NFL, as a second seasons row
 
 The site carries both leagues now: NFL scores and lines on the slate behind a

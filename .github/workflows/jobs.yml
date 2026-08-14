@@ -163,15 +163,22 @@ on:
     # harmless (the scoreboard writes are no-op-diffed) but not "seamless".
     - cron: "0 15-23 * * 6"
     - cron: "0 0-5 * * 0"
-    - cron: "0 0-3 * * 5,6"
+    - cron: "0 0-4 * * 5,6"
     # Sunday/Monday slates (Week 1 is Labor Day weekend; there are real games
     # both nights, and none of the windows above covers them). idleSkip's
     # 2-day horizon exits these launches in under a minute on the ~13 weeks a
     # year with no Sun/Mon game, so the coverage is nearly free.
     - cron: "0 16-23 * * 0,1"
-    - cron: "0 0-3 * * 1,2"
+    - cron: "0 0-5 * * 1,2"
     # Tue/Wed-night MACtion (November) — same near-free idle exit off-season.
     - cron: "0 0-4 * * 3,4"
+    # NFL Thu/Fri evenings, pre-midnight UTC: preseason weeknight games kick
+    # 23:00 UTC (7pm ET) and the Black Friday game kicks 20:00 UTC — every
+    # window above starts at the following midnight, so the first hours of
+    # those games went unpolled (found live, preseason week 2's opening
+    # kicks). Regular-season TNF at 00:15 UTC was never affected. Near-free
+    # off those nights: idleSkip exits when neither league has a game close.
+    - cron: "0 20-23 * * 4,5"
     # P2-10 insurance against a kickoff that moves earlier than any wave we
     # planned for. The Saturday board starts at 15:00 UTC above, which assumes
     # nothing kicks before ~10am ET; a rescheduled or weather-moved opener that
@@ -252,7 +259,7 @@ jobs:
             "0 9 * * *") echo "task=sync-games" >> "$GITHUB_OUTPUT" ;;
             "0 15 * * 6"|"0 18 * * 6"|"0 22 * * 4,5") echo "task=notify-picks-due" >> "$GITHUB_OUTPUT" ;;
             "45 15 * * 6"|"15 19 * * 6"|"15 23 * * 6") echo "task=notify-log-bets" >> "$GITHUB_OUTPUT" ;;
-            "0 15-23 * * 6"|"0 0-5 * * 0"|"0 0-3 * * 5,6"|"0 16-23 * * 0,1"|"0 0-3 * * 1,2"|"0 0-4 * * 3,4"|"0 10-14 * * 6") echo "task=scoreboard-loop" >> "$GITHUB_OUTPUT" ;;
+            "0 15-23 * * 6"|"0 0-5 * * 0"|"0 0-4 * * 5,6"|"0 16-23 * * 0,1"|"0 0-5 * * 1,2"|"0 0-4 * * 3,4"|"0 10-14 * * 6"|"0 20-23 * * 4,5") echo "task=scoreboard-loop" >> "$GITHUB_OUTPUT" ;;
             "0 10 * * 6") echo "task=weather" >> "$GITHUB_OUTPUT" ;;
             "0 13 * * 0") echo "task=ratings-update" >> "$GITHUB_OUTPUT" ;;
             "30 13 * * 1,2,5") echo "task=nfl-grade" >> "$GITHUB_OUTPUT" ;;
