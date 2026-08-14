@@ -46,9 +46,15 @@ export default async function SlatePage({
           : seasonType;
   const week =
     st === "postseason"
-      ? seasonType === "postseason"
-        ? currentWeek
-        : 1
+      ? // NFL-6: the round is the week, so an explicit `?week=` has to win here.
+        // Without this, `?st=post&week=3` opened on Wild Card and every round
+        // link pointed at the same page — the client selector said "Conference"
+        // only because it had been clicked, never because it was asked for.
+        hasWeekParam
+        ? parsed
+        : seasonType === "postseason"
+          ? currentWeek
+          : 1
       : st === "preseason"
         ? hasWeekParam
           ? parsed

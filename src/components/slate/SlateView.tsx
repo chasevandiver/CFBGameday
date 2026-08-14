@@ -3,6 +3,7 @@
 import { ChevronDown, RefreshCw, Search, SearchX, Ticket, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import type { SeasonType } from "../../lib/season";
+import { NFL_PLAYOFF_ROUNDS } from "../../lib/week-range";
 import { onBetsChanged } from "../../lib/bets-changed";
 import { useFocusedGames, useStarred, useViewerTz } from "../../lib/client-store";
 import type { GameRow } from "../../lib/db-types";
@@ -256,13 +257,21 @@ export function SlateView({
     [refresh, seasonType],
   );
 
-  const changeWeek = (sel: number | "post" | `pre-${number}`) => {
+  const changeWeek = (sel: number | "post" | `pre-${number}` | `post-${number}`) => {
     // Every other week is a fetch, and the demo has nothing to fetch — changing
     // week would empty the grid and leave it that way.
     if (demo) return;
     const pre = typeof sel === "string" && sel.startsWith("pre-");
-    const post = sel === "post";
-    const w = post ? 1 : pre ? Number((sel as string).slice(4)) : (sel as number);
+    // "post" is CFB's single bowls entry; "post-N" is an NFL round (NFL-6).
+    const postRound = typeof sel === "string" && sel.startsWith("post-");
+    const post = sel === "post" || postRound;
+    const w = postRound
+      ? Number((sel as string).slice(5))
+      : sel === "post"
+        ? 1
+        : pre
+          ? Number((sel as string).slice(4))
+          : (sel as number);
     const st = post ? "postseason" : pre ? "preseason" : "regular";
     if (w === week && st === seasonType) return;
     weekRef.current = w;
@@ -322,7 +331,14 @@ export function SlateView({
     for (const k of ["st", "week", "conf", "tv", "spread", "ranked", "mine", "bets", "picks", "sort", "q", "day"]) {
       sp.delete(k);
     }
-    if (seasonType === "postseason") sp.set("st", "post");
+    if (seasonType === "postseason") {
+      sp.set("st", "post");
+      // NFL-6: the round IS the week, so omitting it made every round share one
+      // URL — unlinkable, and Back skipped straight past them because the
+      // history entry never differed. CFB's postseason is a single bucket, so
+      // its URLs are left exactly as they were.
+      if (sport === "nfl") sp.set("week", String(week));
+    }
     else if (seasonType === "preseason") {
       sp.set("st", "pre");
       sp.set("week", String(week));
@@ -377,7 +393,9 @@ export function SlateView({
       // Absent `week` means the current week — the effect above omits it in
       // exactly that case, so the inverse has to restore it.
       const raw = sp.get("week");
-      const w = raw === null ? currentWeek : Number(raw);
+      // Absent `week` means the current week in the regular season, but round 1
+      // in the postseason — the writer above omits it for CFB bowls.
+      const w = raw !== null ? Number(raw) : st === "postseason" ? 1 : currentWeek;
       if (!Number.isFinite(w)) return;
       if (w === weekRef.current && st === seasonType) return;
       fromPopRef.current = true;
@@ -922,7 +940,7 @@ function WeekSelect({
   currentWeek: number;
   /** 0 when the season has a Week 0 — the last Saturday of August. */
   minWeek?: number;
-  onChange: (w: number | "post" | `pre-${number}`) => void;
+  onChange: (w: number | "post" | `pre-${number}` | `post-${number}`) => void;
   /** The demo holds one week. A control that changes nothing is worse than none. */
   disabled?: boolean;
 }) {
@@ -931,15 +949,25 @@ function WeekSelect({
     <label className="relative shrink-0">
       <span className="sr-only">Week</span>
       <select
-        value={seasonType === "postseason" ? "post" : seasonType === "preseason" ? `pre-${week}` : week}
+        value={
+          seasonType === "postseason"
+            ? sport === "nfl"
+              ? `post-${week}`
+              : "post"
+            : seasonType === "preseason"
+              ? `pre-${week}`
+              : week
+        }
         disabled={disabled}
         onChange={(e) =>
           onChange(
             e.target.value === "post"
               ? "post"
-              : e.target.value.startsWith("pre-")
-                ? (e.target.value as `pre-${number}`)
-                : Number(e.target.value),
+              : e.target.value.startsWith("post-")
+                ? (e.target.value as `post-${number}`)
+                : e.target.value.startsWith("pre-")
+                  ? (e.target.value as `pre-${number}`)
+                  : Number(e.target.value),
           )
         }
         className="display h-8 appearance-none rounded-lg border border-chalk/12 bg-surface pl-3 pr-8 text-base text-chalk focus:border-accent/60 focus:outline-none disabled:opacity-60"
@@ -958,7 +986,20 @@ function WeekSelect({
             {w === currentWeek && seasonType === "regular" ? " ·" : ""}
           </option>
         ))}
-        <option value="post">{sport === "nfl" ? "Playoffs" : "Bowls & CFP"}</option>
+        {/* NFL-6: the four rounds are separate weeks in the table (stored 1-4,
+            Pro Bowl dropped), so a single "Playoffs" option could neither say
+            which round you were on nor reach the other three. CFB keeps one
+            entry — its postseason is a month of bowls, not four rounds. */}
+        {sport === "nfl" ? (
+          NFL_PLAYOFF_ROUNDS.map((r) => (
+            <option key={`post-${r.week}`} value={`post-${r.week}`}>
+              {r.label}
+              {r.week === currentWeek && seasonType === "postseason" ? " ·" : ""}
+            </option>
+          ))
+        ) : (
+          <option value="post">Bowls &amp; CFP</option>
+        )}
       </select>
       <ChevronDown
         size={14}

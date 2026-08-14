@@ -1875,10 +1875,34 @@ are `src/lib/league.ts`'s offset scheme doing its job.
       the ball at 2nd & 5, which is exactly the synthesized fixture's mapping
       to `"away"`. The kickoff gap renders as situation-without-football —
       degraded, not wrong — and needs nothing.
-- [ ] **NFL-6** Deferred, recorded: playoff-round labels + postseason week
-      browsing (January; stored weeks 1–4 exist now), NFL venues + weather
-      (existing `weatherJob` machinery, needs offset venue rows + coords),
-      watchdog rows for NFL job ages, NFL demo data.
+- [ ] **NFL-6 — three of its four parts are now done; the fourth is blocked on
+      a feed.** Reduced 2026-08-14 rather than closed.
+      **Playoff-round labels + postseason week browsing — done.** The selector
+      offered one "Playoffs" entry, which could neither say which round you were
+      on nor reach the other three. Now Wild Card / Divisional / Conference /
+      Super Bowl, from `NFL_PLAYOFF_ROUNDS` in `week-range.ts` — **stored**
+      numbering, not ESPN's, which puts the Pro Bowl at 4 and the Super Bowl at
+      5. Getting that backwards would label the championship "Pro Bowl" in
+      January. 4 tests, one of which fails if anyone widens the list.
+      CFB is deliberately untouched: its postseason is a month of bowls, not
+      four rounds, so it keeps one entry and its URLs are byte-identical.
+      **Two bugs the browser found and the tests could not**, both in the same
+      class — green types, green suite, wrong page. (a) Every round shared one
+      URL, because the query-string writer only emitted `week` for preseason and
+      regular; rounds were unlinkable and Back skipped straight past them.
+      (b) With that fixed, `?st=post&week=3` still opened on Wild Card, because
+      the *server* discarded an explicit week for the postseason — so a round
+      was reachable by clicking and never by linking. Both fixed and re-verified:
+      all four rounds deep-link, `?st=post` alone still lands on Wild Card, and
+      CFB's `?st=post` is unchanged.
+      **Watchdog rows — done** as `NFL-22`.
+      **NFL venues — done** as `NFL-25`.
+      **Still open: NFL weather, and NFL demo data.** Weather is not deferred
+      by choice any more — it is blocked. ESPN's scoreboard venue carries no
+      coordinates and `weatherJob` needs `latitude`/`longitude`, so this wants a
+      second source (a static 32-stadium table is the obvious one, and is
+      editorial data of the same kind as `NFL_DIVISIONS`). Demo data is
+      unstarted. · S–M
 - [x] **NFL-8** The 30-second live pull, owner decision 2026-08-14 ("the
       site should be pulling from espn on a 30 second refresh"). **Done and
       verified live 2026-08-14 ~00:40 UTC, owner-approved execution.** Edge
