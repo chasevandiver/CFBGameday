@@ -49,6 +49,7 @@ import {
 import { clockTime, tzLabel, DEFAULT_TZ } from "../../../lib/kick";
 import { createClient } from "../../../lib/supabase/server";
 import { hasCalibratedTotals } from "../../../model/ratings";
+import { isCurrentUserAdmin } from "../../../lib/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -115,10 +116,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
 
   // ADM-1: decides whether the delete control draws. Not a boundary — the
   // action re-checks is_admin server-side before it touches anything.
-  const { data: me } = user
-    ? await supabase.from("profiles").select("is_admin").eq("id", user.id).maybeSingle()
-    : { data: null };
-  const isAdmin = me?.is_admin === true;
+  const isAdmin = user ? await isCurrentUserAdmin(supabase) : false;
 
   const { data: game } = await supabase
     .from("games")

@@ -23,6 +23,7 @@ import { fetchBetFormGames, fetchCurrentSeasonWeek } from "../../lib/queries";
 import { cumulativeUnits, formatRecord, tally, tallyBy } from "../../lib/records";
 import { fmtSpread, fmtTotal, lineForSide } from "../../lib/slate";
 import { createClient } from "../../lib/supabase/server";
+import { isCurrentUserAdmin } from "../../lib/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -96,10 +97,7 @@ export default async function LedgerPage({
   // `admin/page.tsx:36-46` uses.
   // Signed-out readers reach this branch with an empty bet list (below), so the
   // lookup is skipped rather than run against a null id.
-  const { data: me } = user
-    ? await supabase.from("profiles").select("is_admin").eq("id", user.id).maybeSingle()
-    : { data: null };
-  const isAdmin = me?.is_admin === true;
+  const isAdmin = user ? await isCurrentUserAdmin(supabase) : false;
 
   // No user → no ledger, without leaning on a "" uuid cast that only returns
   // empty because the cast error is swallowed (audit 06/SEC-09).

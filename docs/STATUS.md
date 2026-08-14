@@ -896,7 +896,38 @@ Two items remain open; the closed ones are kept for the record.
       "graded after kickoff" on a game with no kickoff left to come, and now
       says "never played — no closing line" via `isDeadStatus`
       (`receipts/page.tsx`). The settle-or-not decision stays open. · S
-- [ ] **SEC-08b — `profiles.is_admin` is still readable by any signed-in user.**
+- [x] **SEC-08b — `profiles.is_admin` is still readable by any signed-in user.**
+      Closed 2026-08-14, migration **0050**. `is_current_user_admin()` is
+      SECURITY DEFINER, STABLE, `search_path = ''`, returns
+      `coalesce(…, false)`; `authenticated` loses the column and keeps
+      `id, display_name, favorite_team_ids, timezone, created_at`. EXECUTE is
+      granted to `authenticated` and revoked from `anon`.
+      **It was nine call sites, not six.** This row and §8 both said six; two
+      more were single-line reads on `/ledger` and `/game/[id]` that a
+      multi-line grep missed, and a ninth was `actions/push.ts`. All nine now go
+      through one `src/lib/admin.ts` — `isCurrentUserAdmin` plus a `requireAdmin`
+      for the five server actions that had the same three-step check
+      copy-pasted with only the refusal wording different. Nine copies of an
+      authorization check is nine chances to get one backwards, which is the
+      same argument `records.ts` won.
+      **Fails closed at two layers, deliberately.** `lib/admin.ts` turns any RPC
+      error into `false`, and the function's own `coalesce` would return false
+      if it were reachable — a signed-out caller is *denied outright* rather
+      than answered, because EXECUTE is revoked from `anon`. Every call site
+      guards on a user first so nothing takes that path; it is asserted anyway,
+      because "fails closed" should be a property of the database rather than an
+      emergent one.
+      **The old test caught it, which is the point.** `profiles.sql` carried an
+      assertion that a signed-in member *can* read `is_admin` — correct and
+      deliberate under 0040, and the first thing to go red here. Replaced by its
+      inverse, with the reason recorded in place rather than deleted. 11 new DB
+      assertions, 225 total. The `admin-wagers` mock needed its `rpc` stub
+      taught to answer, or four "an admin can do X" tests would have gone green
+      by denying everyone.
+      *(Not applied to the live project. **Apply order matters**: 0050 revokes a
+      column the currently-deployed code still SELECTs, so applying it before
+      this branch deploys would 403 every admin gate. Same trap 0039/0040/0041
+      had, recorded in §1.)* · done
       The half of P2-2/SEC-08 that migration 0040 deliberately did not close.
       **Given a box 2026-08-14: it was described as "still queued below" in the
       P2-5… P2-2 row and in §8, and it was not below.** By this file's own rule —

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "../../lib/supabase/server";
 import { createServiceClient } from "../../lib/supabase/service";
 import { type NotificationKind, fill, pushConfigured, sendToUser } from "../../lib/push";
+import { isCurrentUserAdmin } from "../../lib/admin";
 
 export interface PushResult {
   ok: boolean;
@@ -24,12 +25,7 @@ async function currentAdmin() {
   const user = await currentUser();
   if (!user) return null;
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("profiles")
-    .select("is_admin")
-    .eq("id", user.id)
-    .maybeSingle();
-  return data?.is_admin ? user : null;
+  return (await isCurrentUserAdmin(supabase)) ? user : null;
 }
 
 export interface SubscriptionInput {

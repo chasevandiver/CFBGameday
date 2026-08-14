@@ -4,6 +4,7 @@ import { ShieldCheck, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createClient } from "../lib/supabase/client";
+import { isCurrentUserAdmin } from "../lib/admin";
 
 /**
  * Session-aware nav button: signed-out visitors get "Sign in" (the site is
@@ -26,12 +27,11 @@ export function AuthButton() {
         if (alive) setState("out");
         return;
       }
-      const { data: profile } = await db
-        .from("profiles")
-        .select("is_admin")
-        .eq("id", id)
-        .maybeSingle();
-      if (alive) setState(profile?.is_admin ? "admin" : "member");
+      // 0050 took is_admin off the authenticated column grant, so this asks
+      // the definer function instead of reading the row. Nav chrome only —
+      // every admin surface re-checks server-side.
+      const admin = await isCurrentUserAdmin(db);
+      if (alive) setState(admin ? "admin" : "member");
     });
     return () => {
       alive = false;

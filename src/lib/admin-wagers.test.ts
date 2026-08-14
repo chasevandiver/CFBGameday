@@ -25,7 +25,16 @@ vi.mock("./supabase/server", () => ({
   createClient: async () => ({
     auth: { getUser: async () => ({ data: { user: signedInAs ? { id: signedInAs } : null } }) },
     from: (t: string) => db.from(t),
-    rpc: async () => ({ data: null, error: null }),
+    // SEC-08b: the admin gate is `is_current_user_admin()` now, not a SELECT on
+    // profiles — 0050 revoked the column from `authenticated`. This stub answers
+    // it from the same seeded rows the old read used, so the admin and
+    // non-admin cases below still mean what they did. A blanket
+    // `{data: null}` would deny everyone and turn the four "an admin can do X"
+    // tests green-by-accident in the failing direction.
+    rpc: async (fn: string) =>
+      fn === "is_current_user_admin"
+        ? { data: signedInAs === admin, error: null }
+        : { data: null, error: null },
   }),
 }));
 
