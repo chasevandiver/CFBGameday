@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { REASON_TAGS } from "../../lib/db-types";
+import { CONFIDENCE_TIERS, REASON_TAGS, type ConfidenceTier } from "../../lib/db-types";
 import { homeLineForSide } from "../../lib/slate";
 import { createClient } from "../../lib/supabase/server";
 
@@ -95,6 +95,7 @@ export interface SlipBetInput {
   odds: number;
   units: number;
   description: string;
+  confidence: string;
 }
 
 /** Log every selection on the bet slip in one shot (one ledger row each). */
@@ -123,6 +124,10 @@ export async function logSlipBets(
     if (!Number.isFinite(b.odds)) return { ok: false, message: "Bad odds" };
     if (b.line !== null && !Number.isFinite(b.line)) return { ok: false, message: "Bad line" };
     if (!b.description.trim()) return { ok: false, message: "Bad selection" };
+    // The check constraint would catch this too, but a rejected insert here
+    // would fail the whole slip on one bad tier rather than naming it.
+    if (!CONFIDENCE_TIERS.includes(b.confidence as ConfidenceTier))
+      return { ok: false, message: "Bad confidence tier" };
   }
 
   const gameIds = [...new Set(bets.map((b) => b.gameId))];
@@ -144,6 +149,7 @@ export async function logSlipBets(
       odds: b.odds,
       units: b.units,
       reason_tag: reasonTag,
+      confidence: b.confidence,
     })),
   );
 

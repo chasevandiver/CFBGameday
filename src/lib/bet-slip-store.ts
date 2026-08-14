@@ -8,6 +8,8 @@
  */
 
 import { useCallback, useSyncExternalStore } from "react";
+import type { ConfidenceTier } from "./db-types";
+import type { ShareCardTeam } from "./share-card";
 
 export type SlipBetType = "spread" | "total" | "moneyline";
 export type SlipSide = "home" | "away" | "over" | "under";
@@ -26,6 +28,22 @@ export interface SlipSelection {
   odds: number;
   /** ISO kickoff, so a shared slip can be grouped by the clock. Null = TBD. */
   kickTs: string | null;
+  /**
+   * Both sides' identity, carried so the image share can draw logos.
+   *
+   * The text share never needed this — it renders `label` and `matchup`, which
+   * is why `SharePick.homeAbbr/awayAbbr` are set to `""` on every slip and
+   * ledger path today. An image does need it, and the two places a selection
+   * is built already hold the `GameView`, so it costs nothing to carry.
+   */
+  away: ShareCardTeam;
+  home: ShareCardTeam;
+  /**
+   * Conviction, set on the slip before the bet exists. Defaults to the neutral
+   * rung; `logSlipBets` writes it through to `bets.confidence`, after which
+   * migration 0045's trigger owns it until kickoff.
+   */
+  tier: ConfidenceTier;
   /**
    * Set when the selection came from a Tail button: whose bet it copies.
    * Drives the slip's reason tag, which is what makes "is tailing actually
@@ -66,12 +84,21 @@ export function useBetSlip() {
     emit();
   }, []);
 
+  // Retagging on the slip is a plain edit — the pre-kickoff freeze in 0045
+  // only governs a bet that has already been logged, and nothing here has.
+  const setTier = useCallback((gameId: number, betType: SlipBetType, tier: ConfidenceTier) => {
+    selections = selections.map((s) =>
+      s.gameId === gameId && s.betType === betType ? { ...s, tier } : s,
+    );
+    emit();
+  }, []);
+
   const clear = useCallback(() => {
     selections = [];
     emit();
   }, []);
 
-  return { slip, toggle, remove, clear };
+  return { slip, toggle, remove, setTier, clear };
 }
 
 export function inSlip(

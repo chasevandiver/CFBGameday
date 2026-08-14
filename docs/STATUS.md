@@ -1124,10 +1124,22 @@ viewer's own bets, not the whole sheet.
       image rather than text. `formatOdds` uses U+2212; **satori draws tofu
       rather than falling back**, so SHARE-5 has to confirm that glyph on the
       subset that actually ships, not on the family. · M
-- [ ] **SHARE-4** Team identity on a slip selection. `SlipSelection` carries no
-      abbr/logo/colour today and `SharePick.homeAbbr/awayAbbr` are set to `""`
-      on every slip and ledger path — so no share payload can reach a logo. Fill
-      them at the two construction sites that already hold the `GameView`. · S
+- [x] **SHARE-4** Done 2026-08-14. `SlipSelection` now carries `away`/`home`
+      (abbr, logo, colour) and `tier`, filled at the two construction sites that
+      already hold the `GameView` — `GameCard`'s `sel()` and `SheetLine`'s
+      `selectionFor()`. `logSlipBets` validates the tier against
+      `CONFIDENCE_TIERS` before the insert rather than letting the check
+      constraint reject the batch, so one bad tier names itself instead of
+      failing the whole slip. A `setTier` action on the store; retagging on the
+      slip is a plain edit because 0045's freeze only governs a logged bet.
+      **A tail inherits the number, not the conviction** — how strongly someone
+      else liked it is their read, so a tailed selection starts at the neutral
+      rung.
+      **`league` deliberately not added to `SlipSelection`.** `GameView` carries
+      no `sport`, and `slate.ts` says league is "derived from the season id,
+      never guessed" — so the card builder derives it once via the existing
+      `sportOfSeasonId()`. That is exactly as correct as the existing logging,
+      which already writes a whole slip under one season. · S
 - [ ] **SHARE-5** `POST /api/share-card` — `ImageResponse` on the node runtime,
       session-gated, zod-validated. POST rather than GET because the bet slip
       shares selections that do not exist in the database yet. Brand fonts must

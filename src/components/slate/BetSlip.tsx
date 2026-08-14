@@ -165,6 +165,7 @@ export function BetSlip({
           odds: s.odds,
           units: unitsFor(slipKey(s)),
           description: s.description,
+          confidence: s.tier,
         })),
       );
       if (!res.ok) {
