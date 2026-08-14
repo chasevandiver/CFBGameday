@@ -1277,6 +1277,42 @@ Built on `claude/nfl-scores-lines-l4bhio`; the design and its evidence are in
       as situation-without-football, the degraded state NFL-5 already
       recorded. The deployed v2 had drifted from the repo copy in two comment
       lines only; v3 is the repo file verbatim.
+- [x] **NFL-16** A TV timeout erased the play it interrupted. Owner report
+      2026-08-14 ("any tv timeout it says Official Timeout with the time
+      remaining… also I don't think made Field Goals or extra points are
+      working"). ESPN's `situation.lastPlay` is whatever happened most
+      recently, and a lot of that is not football — `Official Timeout at
+      11:36.`, `Timeout #2 by DET at 01:21.`, `Two-Minute Warning`. Each
+      overwrote the stored play, and since a TV timeout follows almost every
+      score, **the plays it replaced were the field goal, the extra point and
+      the touchdown** — the only ones anyone reads. Cannot be filtered in the
+      UI: by render time the real play is gone from the database.
+      `src/lib/live-play.ts` (`isRealPlay`/`keepLastPlay`) is used by the
+      shared `scoreboardPatch`, so CFB gets it too, and mirrored into the edge
+      function (standalone Deno, cannot import from `src/`). Two signals:
+      ESPN's `lastPlay.type.text` when present, else an anchored text pattern
+      for CFBD, which supplies no type. **Deny-list, so it fails open** — an
+      unrecognised type is a play and shows up rather than vanishing.
+      Penalties count as plays; they explain a flag. Keeping the stored value
+      also means the diff sees no change, so nothing fans out over realtime
+      for a play that did not happen. 10 tests, every string captured from the
+      live feed rather than invented. **Verified in production** (function
+      v4): two distinct non-play moments observed with cache-busted reads —
+      `Timeout #1 by SF` and `Official Timeout at 09:56` — and in both the
+      database held the real play instead. 0 copied.
+- [ ] **NFL-17** Made field goals and extra points — reported as "can't see
+      for sure", and not directly confirmed either way. Three things would
+      have hidden them and two are now fixed: NFL-11 blanked the whole
+      situation block during the dead-ball stretch right after a score, which
+      is exactly when a PAT shows; NFL-16 let the following TV timeout
+      overwrite the scoring play. The third is not a bug — the kickoff after a
+      score is itself a real play and legitimately replaces the scoring play
+      after ~20–40s, so a scoring play is visible for a few ticks, not
+      indefinitely. Sampling across ~6 minutes of live preseason caught
+      `Field Goal Missed` but no made kick, so end-to-end confirmation is
+      owed on the next live window. If scoring plays should *persist* rather
+      than scroll past, that is a separate feature (a remembered last-score
+      line) and needs a column. · watch, then owner decision
 - [x] **NFL-14** The home hub, owner report 2026-08-14 ("the home page is
       having the same refresh problem and doesn't show the down and distance
       or last play like it does on the slate"). Two defects, both worse than

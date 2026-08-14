@@ -1,11 +1,16 @@
-// NFL live-score pull — the database's own 30-second refresh.
+// NFL live-score pull — the database's own 10-second refresh.
 //
-// Invoked by pg_cron + pg_net every 30 seconds (migration 0043). Fetches
-// ESPN's public scoreboard and patches the live columns of stored NFL games,
-// mirroring scripts/lib/jobs-core.ts applyScoreboard: only rows whose live
-// state actually changed are written, so realtime fan-out stays no-op-diffed.
-// An idle gate runs first — no live or imminent NFL game means no ESPN call
-// and no writes, so the year-round schedule costs one cheap query per tick.
+// Invoked by pg_cron + pg_net every 10 seconds (migration 0044, which replaced
+// 0043's 30s). Fetches ESPN's public scoreboard and patches the live columns
+// of stored NFL games, mirroring scripts/lib/jobs-core.ts applyScoreboard:
+// only rows whose live state actually changed are written, so realtime fan-out
+// stays no-op-diffed.
+//
+// 0044 moved the real gate into the cron command — `net.http_post` sits behind
+// a `where exists (...)`, so this function is invoked only while a game is
+// live or imminent and an idle night costs no invocation at all. The idle gate
+// below stays as defence in depth, since the function remains publicly
+// invokable.
 //
 // verify_jwt is OFF deliberately: the function takes no input, reads only
 // ESPN's public feed, writes only via its own server-side service key, and
@@ -19,6 +24,34 @@
 // source of truth — redeploy after editing.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+
+/* Mirror of src/lib/live-play.ts — see there for why. A TV timeout is not a
+   play and must not erase the one that is; almost every score is followed
+   straight away by one, so the plays this used to overwrite were the field
+   goal, the extra point and the touchdown. Deny-list, so an unrecognised type
+   counts as a play and shows up rather than vanishing. This file is standalone
+   Deno and cannot import from src/, so the list is duplicated deliberately;
+   the unit tests over there cover the shared logic. */
+const NON_PLAY_TYPES = new Set([
+  "official timeout",
+  "timeout",
+  "two-minute warning",
+  "two minute warning",
+  "end period",
+  "end of period",
+  "end of half",
+  "end of game",
+  "end of regulation",
+  "coin toss",
+]);
+const NON_PLAY_TEXT =
+  /^\s*(official\s+timeout|timeout\s*#?\d*(\s+by\b)?|two[-\s]minute\s+warning|end\s+(of\s+)?(the\s+)?(\d+(st|nd|rd|th)\s+)?(quarter|period|half|game|regulation)|coin\s+toss)\b/i;
+
+function isRealPlay(text: string | null, type: string | null): boolean {
+  if (!text || !text.trim()) return false;
+  if (type && type.trim()) return !NON_PLAY_TYPES.has(type.trim().toLowerCase());
+  return !NON_PLAY_TEXT.test(text);
+}
 
 type Patch = {
   status: string;
@@ -59,6 +92,8 @@ Deno.serve(async () => {
   const board = await res.json();
 
   const patches = new Map<number, Patch>();
+  // the raw play + its ESPN type, kept aside so the stored row can win below
+  const plays = new Map<number, { text: string | null; type: string | null }>();
   for (const e of board.events ?? []) {
     const c = e.competitions?.[0];
     if (!c) continue;
@@ -95,6 +130,10 @@ Deno.serve(async () => {
               : null
           : null,
     });
+    plays.set(Number(e.id), {
+      text: inP ? (sit.lastPlay?.text ?? null) : null,
+      type: inP ? (sit.lastPlay?.type?.text ?? null) : null,
+    });
   }
   if (patches.size === 0) return new Response("no active espn games", { status: 200 });
 
@@ -112,7 +151,13 @@ Deno.serve(async () => {
   const lines: string[] = [];
   let updated = 0;
   for (const row of stored ?? []) {
-    const p = patches.get(row.id)!;
+    const p = { ...patches.get(row.id)! };
+    // A timeout keeps whatever real play is already stored, so the diff below
+    // sees no change and nothing fans out for a play that did not happen.
+    const lp = plays.get(row.id);
+    if (p.status === "in_progress" && lp && !isRealPlay(lp.text, lp.type)) {
+      p.last_play = row.last_play;
+    }
     const same = (Object.keys(p) as Array<keyof Patch>).every(
       (k) => (row as any)[k] === p[k],
     );

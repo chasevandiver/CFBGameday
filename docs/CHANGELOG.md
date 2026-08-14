@@ -166,6 +166,62 @@ shipping it.
 
 ## Log
 
+### Aug 14 (night, later) — The timeout ate the touchdown
+
+Owner report, two complaints that turned out to be one bug: every TV timeout
+replaced the last play with `Official Timeout at 11:36.`, and made field goals
+and extra points never seemed to show up.
+
+ESPN's `situation.lastPlay` is whatever happened most recently, and a good deal
+of that is not football — `Official Timeout at 11:36.`, `Timeout #2 by DET at
+01:21.`, `Two-Minute Warning`, end of quarter. Each one overwrote the stored
+play. And because a TV timeout follows almost every score, **the plays it
+replaced were the field goal, the extra point and the touchdown**: the ones
+worth reading were precisely the ones structurally most likely to be erased,
+usually within seconds of happening.
+
+It cannot be filtered in the UI. By the time a card renders, the real play is
+already gone from the database — the fix has to be in the writer, which is the
+only place that can see both the incoming play and the one it would replace.
+`src/lib/live-play.ts` sits in the shared `scoreboardPatch`, so CFB gets it
+through the same door, and is mirrored into the edge function (standalone Deno,
+no imports from `src/`).
+
+Two signals, in order of trust: ESPN's `lastPlay.type.text`, a small controlled
+vocabulary confirmed against the live feed (`Rush`, `Pass Reception`,
+`Pass Incompletion`, `Penalty`, `Fumble Recovery (Own)`, `Field Goal Missed`,
+`Two-minute warning`, `Official Timeout`); failing that, an anchored text
+pattern, because CFBD supplies no type at all. Anchored matters — a play that
+merely mentions a timeout afterwards is still a play, which a naive
+`includes("Timeout")` would throw away.
+
+**The list is a deny-list, so it fails open.** An unrecognised play type is
+treated as a play and shows up, rather than a new ESPN string silently deleting
+plays from every card. Penalties count as plays; a flag on the field is exactly
+what a glance wants explained. Keeping the stored value also means the diff sees
+no change, so nothing fans out over realtime for a play that did not happen.
+
+Every string in the 10 tests was captured from the live feed rather than
+invented. Verified in production on function v4, with cache-busted reads —
+earlier polling had been quietly serving cached responses and showing a frozen
+value, which looked exactly like a broken writer:
+
+| ESPN said | database held |
+|---|---|
+| `Timeout #1 by SF at 00:30.` | `(Shotgun) A.Martinez pass incomplete short right to S.McCormick.` |
+| `Official Timeout at 09:56.` | `(Shotgun) A.O'Connell pass incomplete deep left to P.Dorsett.` |
+
+Two for two, none copied.
+
+**On the field goals, honestly: not confirmed either way.** Two of the three
+things that would hide them are now fixed (this, and NFL-11's blanked block
+during the dead-ball stretch right after a score). The third is not a bug — the
+kickoff that follows a score is itself a real play and legitimately replaces the
+scoring play after twenty to forty seconds, so a made kick is visible for a few
+ticks rather than indefinitely. Six minutes of live sampling caught a
+`Field Goal Missed` and no made kick, so end-to-end confirmation is owed on the
+next live window (NFL-17).
+
 ### Aug 14 (night) — Ten seconds, for a third of the price, and a home page that moves
 
 Three things, one of them a number worth keeping.
