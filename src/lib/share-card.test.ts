@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ConfidenceTier } from "./db-types";
 import {
+  CARD_H,
   MAX_CARD_BETS,
+  buildCardModel,
+  cardMetrics,
   capForCard,
   formatOdds,
   formatUnits,
@@ -257,5 +260,90 @@ describe("sanitizeForCard", () => {
 describe("slotOf", () => {
   it("is null without a kickoff, which is how a future reaches the card", () => {
     expect(slotOf(at("bet", null))).toBeNull();
+  });
+});
+
+describe("cardMetrics", () => {
+  // The sizes the original card was designed at, against a rendered mockup of
+  // a *full* card. Every other count scales up from here, so if this drifts the
+  // dense card drifts with it.
+  it("reproduces the original sizes at a full twelve rows", () => {
+    const m = cardMetrics(12, 1, false);
+    expect(m).toMatchObject({
+      rowH: 86,
+      crest: 52,
+      pick: 36,
+      matchup: 21,
+      units: 33,
+      sub: 20,
+      panel: false,
+    });
+  });
+
+  it("scales a short slip up instead of leaving it in the corner", () => {
+    // The bug this exists for: two bets rendered at twelve-bet sizes.
+    const two = cardMetrics(2, 1, false);
+    const full = cardMetrics(12, 1, false);
+    expect(two.rowH).toBeGreaterThan(full.rowH * 2);
+    expect(two.pick).toBeGreaterThan(full.pick);
+    expect(two.crest).toBeGreaterThan(full.crest);
+  });
+
+  it("draws panels only for a slip short enough to need them", () => {
+    expect(cardMetrics(1, 1, false).panel).toBe(true);
+    expect(cardMetrics(3, 1, false).panel).toBe(true);
+    expect(cardMetrics(4, 1, false).panel).toBe(false);
+    expect(cardMetrics(12, 1, false).panel).toBe(false);
+    // A hero already carries the card, so its rows stay bare lines.
+    expect(cardMetrics(2, 1, true).panel).toBe(false);
+  });
+
+  it("keeps a bare-line pick small enough that the longest one cannot wrap", () => {
+    // "OSU win total o10.5" is the longest pick the product builds. A bare row
+    // has a fixed height, so a wrap there overflows silently.
+    const longest = "OSU win total o10.5".length;
+    for (const rows of [4, 5, 6, 7, 8, 10, 12]) {
+      const m = cardMetrics(rows, 1, false);
+      const available = 968 - (m.crestSlot + 22) - m.numsW;
+      expect(longest * 0.55 * m.pick).toBeLessThan(available);
+    }
+  });
+
+  // The tightest case the cap permits is twelve bets with one promoted to the
+  // hero and several tier headings. This test found a 6px overrun from
+  // rounding, then a 250px one from a row floor that could not fit that case at
+  // all — which is why the model now drops rows into "+N more" rather than
+  // shrinking them until they technically fit.
+  it("never lets the rows overflow the canvas, at any count the cap allows", () => {
+    const tiers: ConfidenceTier[] = ["century", "year", "day", "slate", "bet", "lean"];
+    for (let total = 1; total <= MAX_CARD_BETS; total++) {
+      for (const spread of [1, 3, 6]) {
+        const bets = Array.from({ length: total }, (_, i) =>
+          at(tiers[i % spread], `2026-09-12T${String(10 + (i % 12)).padStart(2, "0")}:00:00Z`, `b${i}`),
+        );
+        const model = buildCardModel({
+          title: "T",
+          subtitle: "S",
+          bets,
+          overflow: 0,
+        });
+        const rows = model.groups.reduce((n, g) => n + g.bets.length, 0);
+        const m = cardMetrics(rows, model.groups.length, !!model.hero);
+        const used =
+          145 +
+          97 +
+          (model.hero ? 325 : 0) +
+          (rows > 0 ? 26 + model.groups.length * 46 + rows * (m.rowH + m.panelGap) : 0);
+        const label = `total=${total} spread=${spread} rows=${rows} hero=${!!model.hero}`;
+        expect(used, label).toBeLessThanOrEqual(CARD_H);
+        // Nothing is silently lost: whatever did not fit is on the card as "+N".
+        expect(rows + (model.hero ? 1 : 0) + model.overflow, label).toBe(total);
+      }
+    }
+  });
+
+  it("drops the watermark rather than drawing a sliver of it", () => {
+    expect(cardMetrics(12, 1, false).markH).toBe(0);
+    expect(cardMetrics(2, 1, false).markH).toBeGreaterThan(120);
   });
 });

@@ -68,12 +68,24 @@ export function shareCardFonts(): Promise<CardFont[]> {
  * so a probe of an internal address fails silently and looks like a broken
  * logo. So the fetch happens here, ahead of render, against an allowlist.
  *
- * Every logo in the database comes from ESPN's CDN — CFBD serves ESPN college
- * URLs (`scripts/sync-reference.ts`) and the NFL ingest reads them straight off
- * ESPN (`src/lib/espn.ts`). Anything else degrades to the monogram rather than
- * being fetched.
+ * These are the hosts `teams.logo_url` actually uses, counted in production
+ * rather than inferred:
+ *
+ *   cdn.collegefootballdata.com   264 rows, every CFB team
+ *   a.espncdn.com                  32 rows, every NFL team
+ *
+ * Both https. The first shipped without `cdn.collegefootballdata.com` on this
+ * list, which silently sent all 264 college teams to the monogram fallback —
+ * the failure mode is invisible by design, so it took a real card to notice.
+ * The mistake was reading `demo-data.ts`, which is the one place in the repo
+ * that builds an espncdn URL, and assuming the ingest did the same; CFBD serves
+ * its own CDN (`scripts/sync-reference.ts`), and only the NFL path reads ESPN
+ * (`src/lib/espn.ts`).
+ *
+ * If a third source ever appears, this list is what to update — re-count the
+ * hosts, do not guess them.
  */
-const LOGO_HOSTS = [".espncdn.com", ".espn.com"];
+const LOGO_HOSTS = [".espncdn.com", ".espn.com", ".collegefootballdata.com"];
 
 export function isAllowedLogoUrl(url: string): boolean {
   try {

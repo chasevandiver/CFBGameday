@@ -1034,6 +1034,36 @@ silent about the wiring, which is the gap that let it sit for a day.
 - [ ] **UX-14** Groups first-run pointer on the slate — pairs with G10, needs a
       live active-group cookie flow to test · S
 
+**SHARE-8 — fixed 2026-08-14, from the first real card the owner shared.**
+Four defects, none of which any test or synthetic render had caught, because
+every one of them needed production data or a real bet count:
+- [x] **Logos never drew.** The SSRF allowlist was `.espncdn.com` only, so all
+      **264 CFB teams** fell to the monogram — the failure is invisible by
+      design, so it read as deliberate. `teams.logo_url` is
+      `cdn.collegefootballdata.com` for college and `a.espncdn.com` for the 32
+      NFL teams; both https, both counted in production rather than inferred.
+      The mistake was reading `demo-data.ts` — the one file that builds an
+      espncdn URL — and assuming the ingest matched. Pinned by
+      `share-card-assets.test.ts`, including domain-boundary impostors.
+- [x] **Two bets rendered at twelve-bet sizes**, leaving two thin lines above
+      900px of nothing. Row height, crest, and every type size now scale with
+      the row count (`cardMetrics`), and a slip of three or fewer draws its rows
+      as **panels** — the hero's own material language, so nothing new is
+      invented. A full twelve-row card still reproduces the original numbers
+      exactly, and that is pinned by a test.
+- [x] **Paired crests overlapped into the text.** The overlap suited artwork
+      with transparent padding; CFBD's logos fill their square, so UNC sat half
+      behind TCU. Side by side with a gap now, and the slot is `2.14 ×` the
+      crest — the hero carried the old width too, which put Georgia's mark on
+      the matchup line.
+- [x] **Twelve bets with a hero did not fit at all** — found by a test written
+      during the fix, not by the card. 325px of hero plus tier headings leaves
+      665px for eleven rows. The model now trims to what fits at a legible
+      minimum and reports the rest through the existing `+N more`, rather than
+      shrinking until it technically fits. An exhaustive test walks 1–12 bets ×
+      3 tier spreads and asserts both that the rows fit **and** that nothing is
+      silently lost.
+
 **Share image** — owner request 2026-08-14, pulled forward. A second share
 option beside the existing text share: a 1080×1350 card of a user's bets,
 sorted by confidence tier then kickoff, titled `<display_name> Bets`, shareable
