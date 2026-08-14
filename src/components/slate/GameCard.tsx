@@ -555,7 +555,8 @@ function LiveSituation({ game }: { game: GameView }) {
             )}
             <span className="font-medium text-dim">
               {" "}
-              at {sit.sideToken} {sit.yardLine}
+              at {sit.sideToken ? `${sit.sideToken} ` : ""}
+              {sit.yardLine}
             </span>
           </span>
         ) : game.situation ? (
@@ -568,7 +569,12 @@ function LiveSituation({ game }: { game: GameView }) {
       </div>
       {pos && <FieldStrip game={game} pos={pos} redZone={redZone} />}
       {game.lastPlay && (
-        <p className="mt-1.5 truncate text-[11px] leading-snug text-dim">
+        /* Two lines, and the box is two lines tall whether or not it needs
+           them — a one-line play must not make the card shorter than its
+           neighbours and then grow on the next snap (DESIGN.md: no layout
+           shift on updates). It was one truncated line, which cut nearly
+           every real play description in half. */
+        <p className="last-play">
           <span className="stat mr-1 text-[9px] font-semibold uppercase tracking-widest text-chalk/55">
             Last
           </span>

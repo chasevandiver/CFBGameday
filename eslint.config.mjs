@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Deno, not Next: `Deno.serve`, `npm:` specifiers, and ESPN's untyped
+    // scoreboard JSON. It ships to Supabase, never through this build, and it
+    // has been failing `npm run lint` — and therefore CI — since it landed
+    // with NFL-8 (#66).
+    "supabase/functions/**",
   ]),
 ]);
 

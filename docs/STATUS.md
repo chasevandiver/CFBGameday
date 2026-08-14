@@ -1231,6 +1231,43 @@ Built on `claude/nfl-scores-lines-l4bhio`; the design and its evidence are in
       Actions loop remains a coexisting second writer. Context worth keeping:
       the same night surfaced the two Actions window gaps (fixed, #65) and an
       Actions outage — the reason this lane exists.
+- [x] **NFL-9** The scoreboard left open, owner report 2026-08-14 ("it doesn't
+      look like the nfl scoreboard is refreshing on its own — I have to leave
+      the page and go to a different tab on the site to get it to refresh…
+      also the place they're on the field with the football isn't showing on
+      the game card like the cfb demo. Also the last play is getting cut off").
+      Three defects on one screen, all client-side — the database was current
+      each time, which is what navigating away and back proved.
+      **(a) The poll could not survive a tab going away.** `setInterval` gated
+      on `visibilityState`, with nothing that refreshes on the way back in, so
+      a throttled or frozen timer resumed armed for a full fresh period; and
+      the slate slowed to 180s whenever the realtime channel said
+      `SUBSCRIBED`, which is what a socket that died on sleep also says. New
+      `src/lib/use-live-refresh.ts` decides on the wall clock and refreshes on
+      `visibilitychange` / `focus` / `pageshow` / `online`; both `SlateView`
+      and `ScoreTicker` ride it. Cadence no longer reads the channel status:
+      live 30s (matching 0043's ESPN pull), imminent 60s, else 120s.
+      **(b) The field strip never rendered for the NFL** because `parseEvent`
+      stored `shortDownDistanceText` ("2nd & 10"), which carries no spot —
+      NFL-5 checked that field and recorded the consequence without connecting
+      it to the feature. Now `downDistanceText` first in both writers, with
+      the short form as the kickoff fallback; `parseSituation` also takes
+      ESPN's token-less midfield form ("at 50") and `fieldPosition` accepts it
+      only at the 50.
+      **(c) The last play was one truncated line**, cutting ~half of a real
+      play description; now a two-line clamp in a fixed two-line box, so no
+      card changes height between snaps.
+      15 new tests (698 total), lint/tsc/build clean, rendered and checked at
+      1024×768 and 390×844. **`supabase/functions/**` moved to eslint's
+      globalIgnores** — it is Deno, and it had been failing `npm run lint`,
+      and therefore CI, since #66.
+- [ ] **NFL-9b** Redeploy the edge function so the live pull writes the long
+      situation string. `supabase/functions/nfl-scoreboard/index.ts` is source
+      of truth in the repo but ships to Supabase separately (NFL-8), so until
+      it is redeployed pg_cron keeps writing `shortDownDistanceText` and NFL
+      cards keep showing the down without the field strip. The Actions loop
+      carries the fix on the next code deploy. · owner-approved production
+      write, ~5 min
 - [x] **NFL-7** Preseason, owner request 2026-08-13 ("Can we add preseason
       too?"). `preseason` is a third season_type on the NFL side only: stored
       1:1 from ESPN (weeks 1–4, week 1 the Hall of Fame game), no schema
