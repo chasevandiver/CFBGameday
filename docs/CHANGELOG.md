@@ -166,6 +166,59 @@ shipping it.
 
 ## Log
 
+### Aug 14 — The NFL lane audited against the live database, and a push channel that never worked
+
+No code shipped here. This is a reconciliation pass: `docs/STATUS.md` had the
+NFL recorded as built and largely verified, and the preseason has since put a
+week of real traffic through it, so the question was whether "we added the NFL"
+and "the NFL works" are the same claim. They are not. Six findings, all in
+§2.1d, and the two that matter are not NFL problems in their consequence.
+
+**The scheduled push cannot send, and never could.** `jobs.yml` passes five
+secrets to every job and none is a VAPID key, so `pushConfigured()` is false in
+every Actions run. The live evidence was sitting in `job_runs` the whole time:
+`notify-picks-due` on 08-13 returned `{"skipped":"no vapid keys"}`. What makes
+this worth its own entry is what it takes down with it — `notifyWatchdog` opens
+with the same guard, so **OPS-2 is inert**. OPS-2 was built three days ago
+*because* P1-8 found nine delivered failure emails and zero opened; the
+replacement channel has never been able to fire. PUSH-3 and PUSH-9 are not
+wrong: the iPhone test went through Vercel, where the keys exist. Nothing ever
+exercised the Actions environment. That is SCHED-1's shape exactly — both sides
+of a seam verified, the seam itself never crossed — and it is now the third
+finding to come out of that same gap.
+
+**The watchdog's liveness gate is CFB-only.** Both `games` queries inside
+`watchdogJob` filter `season_id = SEASON`, so the scoreboard freshness check
+only arms when a *CFB* game is live. Through the entire NFL preseason — the only
+football being played — the check designed to catch a dead live layer has been
+switched off, and it will switch off again for every NFL-only Sunday in the
+autumn. `NFL-6` had already recorded the missing NFL job-age rows; this gate is
+the more expensive half and was written down nowhere.
+
+**Four of seven finished preseason games never got a line.** Proved on rows, not
+inferred from cron strings: the Hall of Fame game and the three Thursday
+23:00/23:30 UTC kicks carry zero `line_snapshots` ever, while the three that
+kicked at Fri 00:00/01:00 each got one 15–16 minutes out — the `45 23 * * …`
+cron working exactly as designed for the slot it was written for. Extending the
+check across the stored schedule: 30 of 49 preseason and 40 of 272
+regular-season games sit outside any close pass, including all six international
+games and the week-1 opener. No close means no CLV.
+
+**Method note, since it is the transferable part.** Every one of these needed
+the live database and `jobs.yml` read *together*. The test suite is green (861
+tests, 63 files, re-run here), the code is correct in isolation, and each
+finding lives in the wiring between a scheduler and a thing it is supposed to
+drive. `jobs-yml.test.ts` already guards one direction of that seam — every cron
+resolves to a task — and would not have caught any of these.
+
+**What went the other way.** League isolation held up under the same scrutiny:
+`fetchCurrentSeasonWeek` takes a `sport` and filters on it, so the two
+`is_current` season rows never collide, and NFL teams carrying
+`classification = 'nfl'` fall out of `/standings`' FBS filter without that page
+knowing the NFL exists. Reference data is complete — 32 teams, none missing a
+logo, division, colour, abbreviation or classification. The offset id scheme in
+`src/lib/league.ts` is doing what it was designed to do.
+
 ### Aug 14 — What the design review caught, which was a lot
 
 `docs/DESIGN.md` §"Before saying it's done" asks for a `web-design-guidelines`

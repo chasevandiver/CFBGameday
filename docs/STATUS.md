@@ -3,20 +3,31 @@
 **The one file that answers "what's left."** Reconciled 2026-08-13 against the
 code on `claude/status-md-tasks-ivmbtb`. Week 0 is **Sat Aug 29** — 16 days.
 
-**As of 2026-08-13, §2 has no code or docs work left in it.** Everything still
-unchecked below is either owner-run (P1-8, 09:P-16 — P1-9b closed the same
-day), a dispatch
-(`--tune-fcs`, `observe-scoreboard`, Q8), or a dated watch. That is the whole
-remaining blocking list.
+**That was true on 2026-08-13 and stopped being true on 08-14**, when reading
+the live database against `jobs.yml` turned up six things in the NFL lane — §2.1d.
+Two of them are launch-relevant and neither is NFL-specific in its consequence:
+the scheduled push **cannot send at all** (`PUSH-11`, which takes OPS-2 down
+with it), and the watchdog's liveness gate is CFB-only (`NFL-22`), so it is
+switched off during exactly the weeks the NFL is the only football being played.
+Everything else still unchecked in §2 is owner-run (09:P-16), a dispatch
+(`--tune-fcs`, `observe-scoreboard`, Q8), or a dated watch.
+*(The original sentence here read "**As of 2026-08-13, §2 has no code or docs
+work left in it**" and is kept as what was believed, not deleted — it was
+accurate against the code and wrong about the scheduler, which is the third time
+that seam has produced a finding: SCHED-1, P1-9b, and now PUSH-11.)*
 
 **§4 was opened early, 2026-08-13, by owner decision** — the post-launch queue
 is marked "deliberately not before Aug 29" and eleven rows were pulled forward
 anyway because §2 had nothing buildable left. Landed: the four security rows
 (P2-5, SEC-01, SEC-02, P2-2/SEC-08) as migrations 0038–0040, five UX rows, and
-five ops/data-quality rows including migration 0041. **Migrations 0038–0041 are
-in the repo and proved against a local Postgres; they have NOT been applied to
-the live project** — that is a production write on new schema and it is the
-owner's call. Nothing in the app requires them until they are.
+five ops/data-quality rows including migration 0041. **Migrations 0038–0041 were
+applied to the live project on 2026-08-13**, in order and after the build
+carrying their dependent code deployed — see the Database row in §1 for what was
+verified afterwards and why the ordering was load-bearing. *(This paragraph said
+they had "NOT been applied" until 2026-08-14; it was written before the apply and
+never updated. The Database row was right the whole time — when a §-header
+paragraph and a §1 row disagree, the row is reconciled and the paragraph is
+prose.)*
 **Nine tracked rows described their own defect wrongly**, and in four cases the
 wrong detail changed the fix. Each correction is in the row.
 
@@ -50,7 +61,7 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
+| **Build** | **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
 | **Scheduler** | 111 completed runs. Reds to date: one watchdog firing correctly on a cold `job_runs` table, and runs #107–109 — the backup verification sequence, each a real defect, all closed. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
@@ -218,10 +229,12 @@ watches, plus two migrations to apply.
       the fault it is reporting — asserted in a test, along with the admin
       audience and the no-admins/no-keys/switched-off paths. 8 tests.
       **Explicitly not a replacement for P1-9b**, and the code says so.
-- [ ] **P1-8** Check the inbox: a watchdog failure email fired Aug 10 — did it
-      arrive? **The single highest-value 2 minutes left on this list.** It is
-      now the primary alerting channel, and an unverified failure channel is no
-      failure channel. · human
+- [x] **P1-8 — the original row, superseded by the answer above.** This is the
+      question; the ticked row three above it is the answer, recorded 2026-08-13
+      (the Aug 10 email arrived, and eight others did too, all unread). The box
+      should have been checked in that commit and was not — ticked 2026-08-14 on
+      re-reading, with the duplicate left in place rather than deleted so the
+      question it asked stays legible. · human, done
 - [x] **P0-4** Run 2026-08-12: `ratings` **138** rows, all week 0, all
       `2026.2.0` (expected ~136 ✓, and it confirms the four-versions-behind
       row above); `team_hfa` **138**; `line_snapshots` **808**. Also
@@ -342,6 +355,93 @@ watches, plus two migrations to apply.
       way bash reads it and asserts every cron resolves to a task, every task
       has a command, and no two tasks claim one cron string. Verified against
       the pre-fix file: 6 orphan crons before, 0 after.
+
+### 2.1d Found in the NFL lane, 2026-08-14
+
+The NFL preseason has been running for a week, which makes it the first real
+traffic any of this machinery has carried. Everything below was found by reading
+the live database and `jobs.yml` together, not by reading either alone — which
+is the same seam `SCHED-1` sat in.
+
+- [ ] **PUSH-11 — the scheduled push cannot send, and never could.**
+      `jobs.yml`'s `env:` block passes five secrets and **none of them is a VAPID
+      key**, so `pushConfigured()` (`src/lib/push.ts:58`) is false in every
+      Actions run. Live proof, not inference: `notify-picks-due` on 08-13 22:36
+      returned `{"skipped":"no vapid keys"}`.
+      **This takes OPS-2 down with it.** `notifyWatchdog` opens with
+      `if (problems.length === 0 || !pushConfigured()) return {notified: 0,
+      errors: 0}` (`notify-jobs.ts:370`) — so the watchdog's phone buzz, the
+      thing built *because* nine failure emails went unread, silently sends
+      nothing and reports success. OPS-2 has never had a chance to fire (the one
+      red watchdog run is 08-10, three days before it shipped) and could not have
+      if it had.
+      **PUSH-3/PUSH-9 are not wrong.** The iPhone test went through the Vercel
+      app, where the keys *are* set; nothing ever exercised the Actions
+      environment. Exactly SCHED-1's shape — a path verified end to end on both
+      sides of a seam nobody crossed.
+      Fix is three lines of `env:` plus the owner creating
+      `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` as
+      Actions secrets; the code already fails soft without them. Not applied here
+      — it is a production scheduler change and the secrets are the owner's to
+      mint. **Do this before Week 0**: it is the alerting channel P1-8 concluded
+      was needed. · S + owner
+- [ ] **NFL-22 — the watchdog is blind to the NFL, including to NFL liveness.**
+      `watchdogVerdict` checks `refresh-lines`, `sync-games`, `scoreboard-loop`,
+      `notify-picks-due`, `notify-log-bets` and nothing else; the live
+      `detail.checked` confirms it. None of `nfl-sync-games`,
+      `nfl-refresh-lines`, `nfl-lines-close` or `nfl-grade` is watched, so any
+      of them can go silent without a red run.
+      **The worse half is not the missing rows.** Both gates inside
+      `watchdogJob` are `.eq("season_id", SEASON)` — CFB only
+      (`jobs-core.ts:247-260`). The scoreboard check only fires when a **CFB**
+      game is live, so through the whole NFL preseason — the only football being
+      played right now — the freshness check that exists to catch a dead live
+      layer is switched off. It will be switched off again for every NFL-only
+      Sunday of the regular season.
+      `NFL-6` records "watchdog rows for NFL job ages" as deferred, which is the
+      cheap half; this gate is the half that matters and was not written down
+      anywhere. · S–M
+- [ ] **NFL-23 — four of the seven finished preseason games never got a line at
+      all**, and the close-pass cron set has a hole at the 23:00–23:30 UTC kick
+      slot. Proved on rows rather than by reading crons: the Aug 7 Hall of Fame
+      game and the three Thursday 23:00/23:30 games carry **zero
+      `line_snapshots`, ever**; the three that kicked Fri 00:00/01:00 UTC each
+      got one 15–16 minutes before kickoff, which is the `45 23 * * 0,1,4,6`
+      cron working exactly as designed. The games that kicked *before* it fired
+      got nothing, and `nfl-refresh-lines --burst` filters `start_ts > now()`, so
+      a late run cannot pick them up afterwards.
+      **Scope past the preseason**, by kickoff slot against a 100-minute burst
+      window: 30 of 49 preseason games and 40 of 272 regular-season games sit
+      outside every close pass. The regular-season set is the one to price:
+      **six international games** (Sun 13:30/14:30 UTC, before the earliest
+      Sunday cron at 16:20), Thanksgiving (4), Christmas (3), the two late-season
+      Saturday games, and the week-1 opener. *(The 24 games showing Sun 05:00 UTC
+      are TBD placeholders — week 18 plus flex — that `nfl-sync-games` firms up
+      daily. Not a hole yet, and worth re-running this check in December rather
+      than acting on it now.)*
+      Consequence is `closing_line` null → **no CLV**, and for a game with no
+      snapshot at all there is no line on the card to bet against either. · S
+- [ ] **NFL-24 — `NFL-4`'s verification plan does not match the stored kickoff.**
+      That row says "TNF Sep 10 — close pass at 23:45 UTC Thu". The stored
+      week-1 opener (Seattle–New England) is `2026-09-10 00:20 UTC`, which is a
+      *Thursday* in UTC and Wednesday 20:20 ET — so a Thursday 23:45 cron lands
+      roughly 23 hours after it, and no cron in the set precedes it. Either the
+      ingested date is a day off or the row is; both are checkable against ESPN
+      in a minute and exactly one of them needs changing. Until then the opener
+      is in NFL-23's uncovered set. · XS
+- [ ] **SCORE-1 (residue) — the scoring timeline has never seen a live game.**
+      `scoring_plays` is empty for **both** leagues. Not a defect: SCORE-1
+      merged 08-14 16:17 and the only NFL live window so far closed 08-14 04:00,
+      so the 78-tick loop that ran through it was running the previous code. It
+      means the job, its ESPN summary parsing and its `gamesNeedingScoring` gate
+      are unobserved against real rows — the same status `observe-scoreboard`
+      has for CFB, and with the same remedy: watch one, once. · watch
+- [ ] **NFL-25 — no NFL venues, so no venue line on the card.** Zero rows with
+      `id >= 100000` in `venues` and zero NFL games with a `venue_id`. `NFL-6`
+      records the *weather* consequence; the game page's venue line is the half
+      that was not written down. Reference data is otherwise complete — 32
+      teams, none missing logo, division, colour, abbreviation or
+      classification. · S
 
 ### 2.2 This week (Aug 14–18)
 
@@ -564,6 +664,23 @@ One sitting, ~2 h. Each is a doc edit, not a code change.
 
 ### 2.5 The hard dates
 
+**The NFL preseason is a live rehearsal for Week 0, and it is free.** Noted
+2026-08-14. Every launch-critical path except the model is shared between the
+two leagues — ingest, line snapshots, the close pass, the live scoreboard,
+`GRADE-1`'s grade-on-final-tick, CLV, the ledger, the slate cards, the scoring
+timeline — and the NFL is playing real games *now* while CFB has none until the
+29th. Three slates remain before Week 0: **tonight through Aug 16** (10 games),
+**Aug 20–24** (16), and **Aug 27–29** (16, the last of which overlaps Week 0
+itself). This is strictly better evidence than the scratch-week dispatch below,
+for the reason the `observe-scoreboard` row already gives: liveness is only
+measurable over a live game, once, unrepeatably. The never-observed paths to
+watch are `SCORE-1`'s timeline, `GRADE-1` settling on the tick that sees a
+final, the NFL close pass (NFL-23), and 0044's 10-second pull.
+
+- [ ] **Tonight, Aug 14–16** — 🏈 First rehearsal, and the cheapest one: 10
+      preseason games, first kick 23:00 UTC. Watch `scoring_plays` go non-zero,
+      a bet grade inside a tick of the final, and whether the 23:00 kicks get a
+      snapshot (they will not — that is NFL-23, and this is the confirmation).
 - [ ] **Aug 20** — `preseason-refresh` starts going **red** on decline
       (`jobs.yml:221`). Watch it. Also: `refresh-lines` leaves its idle guard
       ~Aug 22 (`LINES_IDLE_DAYS` 7) — first snapshots since spring.
@@ -687,6 +804,17 @@ Two items remain open; the closed ones are kept for the record.
       "graded after kickoff" on a game with no kickoff left to come, and now
       says "never played — no closing line" via `isDeadStatus`
       (`receipts/page.tsx`). The settle-or-not decision stays open. · S
+- [ ] **SEC-08b — `profiles.is_admin` is still readable by any signed-in user.**
+      The half of P2-2/SEC-08 that migration 0040 deliberately did not close.
+      **Given a box 2026-08-14: it was described as "still queued below" in the
+      P2-5… P2-2 row and in §8, and it was not below.** By this file's own rule —
+      if it isn't here it isn't queued — it was untracked for a day, which is the
+      failure mode the rule exists to prevent. The work is unchanged from the
+      scope stated in P2-2: a security-definer `is_current_user_admin()` plus six
+      call sites moved onto it (`AuthButton.tsx:30`, `admin/page.tsx:41`, four
+      server actions), then drop `is_admin` from the `authenticated` column grant.
+      Not launch work — knowing who the admins are is not a capability, and the
+      signed-out half (the one an anonymous scraper could reach) is closed. · S–M
 - [x] **P2-5** Fixed 2026-08-13, migration **0038**. `remove_pick` now opens
       with the same `is_group_member` guard `make_pick` has carried since
       `0021:162`, so being removed from a group stops your writes in both
@@ -709,8 +837,9 @@ Two items remain open; the closed ones are kept for the record.
       only. `is_admin` is still readable by any *signed-in* user, because
       hiding it needs a security-definer `is_current_user_admin()` and six call
       sites moved onto it (`AuthButton.tsx:30`, `admin/page.tsx:41`, four server
-      actions) — worth doing, larger than this row, still queued below. 5 DB
-      assertions.
+      actions) — worth doing, larger than this row, **tracked as `SEC-08b`
+      above** (it said "still queued below" for a day while being queued
+      nowhere). 5 DB assertions.
 - [x] **SEC-02** Fixed 2026-08-13, migration **0038**. `join_group`'s
       `on conflict … do update set removed_at = null` discarded the `'member'`
       in its VALUES list, so the role survived untouched and an admin removed by
@@ -1386,6 +1515,45 @@ viewer's own bets, not the whole sheet.
 make"; BRAND.md §17 has required the identity carry both leagues since v1.0).
 Built on `claude/nfl-scores-lines-l4bhio`; the design and its evidence are in
 `docs/CHANGELOG.md` (Aug 13, "The NFL, as a second seasons row").
+
+**Where the NFL stands against CFB, minus the model** — audited against the live
+database 2026-08-14, because "we added the NFL" and "the NFL works" are different
+claims and only the first had evidence. League isolation is the part that came
+out cleanest: `fetchCurrentSeasonWeek` takes a `sport` and filters on it, so the
+two `is_current` season rows never collide; NFL teams carry
+`classification = 'nfl'`, so `/standings`' `classification = 'fbs'` filter
+excludes them without needing to know the NFL exists. Neither was luck — both
+are `src/lib/league.ts`'s offset scheme doing its job.
+
+| Capability | CFB | NFL | |
+|---|---|---|---|
+| Schedule ingest | `sync-games`, CFBD, 09:00 daily | `nfl-sync-games`, ESPN, chained onto the same cron | ✅ 321 games |
+| Team reference | `sync-reference` | `nfl-sync-reference` (dispatch-only) | ✅ 32/32 complete |
+| Venues + weather | ✅ | ❌ zero rows | NFL-25 / NFL-6 |
+| Lines, display refresh | `refresh-lines` 12:00/22:00 | chained onto it | ✅ |
+| Lines, close pass | 5 crons | 3 crons, with holes | ⚠️ NFL-23 |
+| True opening line | first-snapshot proxy | the book's own `open.line` | 🟢 NFL is better |
+| Live scores | CFBD via the Actions loop | 0044 edge function, 10s from Postgres | 🟢 NFL is better |
+| Down/distance + last play | ❌ | ✅ | NFL only |
+| Scoring timeline | `cfb-scoring` | `nfl-scoring` | ⚠️ neither observed |
+| Grading + CLV | Sunday + `GRADE-1` live | Mon/Tue/Fri + `GRADE-1` live | ✅ `nfl-grade` graded 2 bets |
+| Bets / ledger / slate / home | ✅ | ✅ sport-aware | ✅ |
+| Pick'em boards | ✅ | regular season only | deliberate |
+| Model, receipts, edges, ratings, rankings | ✅ | ❌ | by design |
+| Recap, standings | ✅ | ❌ | see below |
+| Watchdog | 5 jobs | none | ⚠️ NFL-22 |
+| Push | league-agnostic | league-agnostic | ⚠️ inert everywhere, PUSH-11 |
+| Demo data | ✅ | ❌ | NFL-6 |
+
+- [ ] **NFL-26 — decision owed: do `/recap` and `/standings` ever carry the
+      NFL?** Both are CFB-only today and neither was a decision — `/recap` reads
+      the CFB season pointer and `/standings` filters `classification = 'fbs'`,
+      so the NFL falls out of both without anyone choosing it. The division data
+      to do standings properly is already there (`teams.conference` holds
+      "AFC West" and friends, which is what makes the slate's conference filter
+      and the groups' conference mode work). Recording it as a question rather
+      than queueing a build: "the NFL is scores, lines and bets, not a second
+      league to follow" is a perfectly good answer and costs nothing. · owner
 - [x] **NFL-1** The whole build: `src/lib/espn.ts` + fixture-pinned odds
       parsing, migration 0042 (sport columns, one-current-per-sport,
       `groups.leagues`), the three ingest CLIs + cron wiring, `?sport=` slate
@@ -2258,6 +2426,7 @@ UX-08 targets (star, pin, bet-chip `X` — they sit in ~30px stacked rows, so a
 44px target would overlap its sibling and that needs a layout change seen on a
 device), `backtest.ts` metering (needs Supabase secrets in a workflow that runs
 on every model PR), the `game/[id]` teams query (two rows, no win), P2-2's
-signed-in half (needs an `is_current_user_admin()` RPC and six call sites), and
+signed-in half (needs an `is_current_user_admin()` RPC and six call sites — now
+tracked as `SEC-08b` in §4, which is where it should have been from the start), and
 the existing six-character join codes (regenerating invalidates codes already
 sent to the crew).
