@@ -26,6 +26,7 @@ import {
   formatOdds,
   formatUnits,
   sanitizeForCard,
+  titleFontSize,
   type CardMetrics,
   type CardModel,
   type RenderBet,
@@ -492,10 +493,13 @@ export function ShareCard({ model, logos }: { model: CardModel; logos: Logos }) 
           <div
             style={{
               fontFamily: DISPLAY,
-              fontSize: 58,
+              // Shrinks to stay on one line: a wrapped title makes the header
+              // taller than the row budget assumes.
+              fontSize: titleFontSize(model.title),
               lineHeight: 1.02,
               color: BRAND.chalk,
               textTransform: "uppercase",
+              whiteSpace: "nowrap",
               display: "flex",
             }}
           >

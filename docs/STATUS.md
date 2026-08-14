@@ -1034,6 +1034,20 @@ silent about the wiring, which is the gap that let it sit for a day.
 - [ ] **UX-14** Groups first-run pointer on the slate — pairs with G10, needs a
       live active-group cookie flow to test · S
 
+- [x] **SHARE-9** The card title is possessive — `<display_name>’s Bets`, owner
+      request 2026-08-14. Typographic apostrophe, not the ASCII one; all four
+      committed fonts carry U+2019, which was already established when
+      `sanitizeForCard` was written. A name ending in "s" still takes `’s`.
+      The signed-out fallback stays "My Bets" rather than "My’s Bets".
+      Rendering it turned up the part that was not obvious: the longer title
+      **wrapped to two lines**, and the header is not a fixed-height block, so
+      `HEAD_H` — which the whole row budget is computed from — quietly became
+      wrong and a full slip could have pushed the footer off. `titleFontSize`
+      scales the title to stay on one line. Its width budget is **860px, not the
+      968px content width**, because the S stamp sits in the same row and a
+      `nowrap` title runs *under* it rather than shrinking; the first advance
+      estimate (0.62em) was also low and was corrected to 0.66 off the render.
+
 **SHARE-8 — fixed 2026-08-14, from the first real card the owner shared.**
 Four defects, none of which any test or synthetic render had caught, because
 every one of them needed production data or a real bet count:

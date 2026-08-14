@@ -14,6 +14,7 @@ import {
   slotOf,
   sortForCard,
   tierHeadline,
+  titleFontSize,
   totalUnits,
   type ShareCardBet,
 } from "./share-card";
@@ -345,5 +346,28 @@ describe("cardMetrics", () => {
   it("drops the watermark rather than drawing a sliver of it", () => {
     expect(cardMetrics(12, 1, false).markH).toBe(0);
     expect(cardMetrics(2, 1, false).markH).toBeGreaterThan(120);
+  });
+});
+
+describe("titleFontSize", () => {
+  it("leaves a normal name at full size", () => {
+    expect(titleFontSize("chasevandiver’s Bets")).toBe(58);
+  });
+
+  // A wrapped title makes the header taller than the row budget assumes, and a
+  // nowrap one that is too wide runs under the S stamp instead of shrinking.
+  it("shrinks a long name enough to clear the brand stamp", () => {
+    const longest = `${"x".repeat(24)}’s Bets`;
+    const size = titleFontSize(longest);
+    expect(size).toBeLessThan(58);
+    expect(longest.length * 0.66 * size).toBeLessThanOrEqual(860);
+  });
+
+  it("never shrinks past readable", () => {
+    expect(titleFontSize("x".repeat(200))).toBe(34);
+  });
+
+  it("handles an empty title without dividing by zero", () => {
+    expect(titleFontSize("")).toBe(58);
   });
 });
