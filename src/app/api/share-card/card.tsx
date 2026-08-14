@@ -22,9 +22,11 @@
 import { BRAND } from "../../../lib/brand";
 import { SLATE_MARK_ASPECT, SLATE_MARK_DATA_URI } from "../../../lib/brand-mark-data";
 import {
+  cardMetrics,
   formatOdds,
   formatUnits,
   sanitizeForCard,
+  type CardMetrics,
   type CardModel,
   type RenderBet,
   type ShareCardTeam,
@@ -114,14 +116,14 @@ function Crest({
   team,
   logos,
   size,
-  back,
+  gap,
 }: {
   team: ShareCardTeam | null;
   logos: Logos;
   size: number;
-  back?: boolean;
+  gap?: boolean;
 }) {
-  const overlap = back ? { marginLeft: -Math.round(size * 0.29) } : {};
+  const overlap = gap ? { marginLeft: Math.round(size * 0.14) } : {};
   const data = team?.logo ? logos.get(team.logo) : undefined;
   if (data) {
     return (
@@ -159,6 +161,13 @@ function Crest({
  * render of this card actually did — so the slot takes the S instead. It keeps
  * its width either way, because the picks below it have to stay left-aligned
  * down the card.
+ *
+ * They sit side by side with a small gap rather than overlapping. The first
+ * version tucked the home crest under the away one, which looks right for
+ * artwork with transparent padding and wrong for everything else: CFBD's
+ * college logos fill their square, so UNC's monogram came out half-hidden
+ * behind TCU's. Two filled monogram discs collide the same way. A gap is
+ * duller and always legible.
  */
 function Crests({
   bet,
@@ -188,7 +197,7 @@ function Crests({
       ) : (
         <>
           <Crest team={bet.away} logos={logos} size={size} />
-          {bet.home ? <Crest team={bet.home} logos={logos} size={size} back /> : null}
+          {bet.home ? <Crest team={bet.home} logos={logos} size={size} gap /> : null}
         </>
       )}
     </div>
@@ -259,7 +268,10 @@ function Hero({
           {bet.heading}
         </div>
         <div style={{ display: "flex", flexDirection: "row", alignItems: "center", marginTop: 22 }}>
-          <Crests bet={bet} logos={logos} size={110} width={196} marginRight={28} />
+          {/* 2.14x the crest, the same side-by-side arithmetic the rows use.
+              The first version carried the old overlap width here and the home
+              crest sat on top of the matchup line. */}
+          <Crests bet={bet} logos={logos} size={110} width={Math.round(110 * 2.14)} marginRight={28} />
           <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
             <div
               style={{
@@ -358,16 +370,41 @@ function TierHeading({ heading, lean }: { heading: string; lean: boolean }) {
   );
 }
 
-function Row({ bet, logos }: { bet: RenderBet; logos: Logos }) {
+function Row({ bet, logos, m }: { bet: RenderBet; logos: Logos; m: CardMetrics }) {
   return (
-    <div style={{ display: "flex", flexDirection: "row", alignItems: "center", height: 86 }}>
-      <Crests bet={bet} logos={logos} size={52} width={86} marginRight={22} />
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "row",
+        alignItems: "center",
+        height: m.rowH,
+        // A surface, but only on a card short enough to need one. Same raised
+        // green and radius as the hero, so this is the existing material
+        // language rather than a second one.
+        ...(m.panel
+          ? {
+              background: BRAND.raisedGreen,
+              borderRadius: 10,
+              paddingLeft: 28,
+              paddingRight: 28,
+              marginBottom: m.panelGap,
+            }
+          : {}),
+      }}
+    >
+      <Crests
+        bet={bet}
+        logos={logos}
+        size={m.crest}
+        width={m.crestSlot}
+        marginRight={22}
+      />
       <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
         <div
           style={{
             fontFamily: BODY,
             fontWeight: 700,
-            fontSize: 36,
+            fontSize: m.pick,
             lineHeight: 1.05,
             color: BRAND.chalk,
             display: "flex",
@@ -375,20 +412,27 @@ function Row({ bet, logos }: { bet: RenderBet; logos: Logos }) {
         >
           {sanitizeForCard(bet.pick)}
         </div>
-        <div style={{ fontFamily: BODY, fontSize: 21, color: DIM, marginTop: 6, display: "flex" }}>
+        <div
+          style={{ fontFamily: BODY, fontSize: m.matchup, color: DIM, marginTop: 6, display: "flex" }}
+        >
           {sanitizeForCard(bet.matchup)}
         </div>
       </div>
       {/* Fixed width, and every stake printed to one decimal: the column that
           registers is the entire argument for shipping an image over text. */}
       <div
-        style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", width: 178 }}
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-end",
+          width: m.numsW,
+        }}
       >
         <div
           style={{
             fontFamily: NUM,
             fontWeight: 500,
-            fontSize: 33,
+            fontSize: m.units,
             color: BRAND.gold,
             display: "flex",
           }}
@@ -399,11 +443,12 @@ function Row({ bet, logos }: { bet: RenderBet; logos: Logos }) {
           style={{
             fontFamily: NUM,
             fontWeight: 500,
-            fontSize: 20,
+            fontSize: m.sub,
             color: DIM,
             marginTop: 6,
             letterSpacing: "0.04em",
             display: "flex",
+            whiteSpace: "nowrap",
           }}
         >
           {formatOdds(bet.odds)} · {bet.kickShort}
@@ -415,30 +460,11 @@ function Row({ bet, logos }: { bet: RenderBet; logos: Logos }) {
 
 /* ── the card ─────────────────────────────────────────────────────────────── */
 
-/**
- * Rough heights, used only to size the decorative watermark.
- *
- * The filler is `flex: 1` with `overflow: hidden`, so an estimate that runs
- * long is clipped and one that runs short only leaves more air. Nothing about
- * the layout depends on these being exact — they exist so a sparse card gets a
- * large mark and a dense one gets none at all.
- */
-const HEAD_H = 145;
-const HERO_H = 325;
-const FOOT_H = 97;
-const HEADING_H = 46;
-const ROW_H = 86;
-const MAX_MARK_H = 300;
-const FILLER_PAD = 80;
-
 export function ShareCard({ model, logos }: { model: CardModel; logos: Logos }) {
   const rows = model.groups.reduce((n, g) => n + g.bets.length, 0);
-  const used =
-    HEAD_H +
-    (model.hero ? HERO_H : 0) +
-    (rows > 0 ? 26 + model.groups.length * HEADING_H + rows * ROW_H : 0) +
-    FOOT_H;
-  const markH = Math.max(0, Math.min(MAX_MARK_H, CARD_HEIGHT - used - FILLER_PAD));
+  // Row size, type size and the watermark all come from the row count — a
+  // two-bet slip is the common case and must not render at seven-bet sizes.
+  const m = cardMetrics(rows, model.groups.length, !!model.hero);
 
   return (
     <div
@@ -501,6 +527,55 @@ export function ShareCard({ model, logos }: { model: CardModel; logos: Logos }) 
         />
       </div>
 
+      {/* One centred region between the header and the footer.
+          Leftover space is the normal case here — a fixed canvas holding a
+          variable-length list, and the list is usually short. The first version
+          stacked the content at the top and dumped the slack underneath, which
+          on a real two-bet slip read as a card that had failed to load. Now the
+          slack is split above and below, and the S sits *behind* the content
+          rather than in the hole below it, so the space reads as ground (§23)
+          instead of as absence. On a full card the region fills and both
+          effects vanish on their own. */}
+      <div
+        style={{
+          position: "relative",
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          // Centred. An earlier pass top-aligned this because centring thin
+          // rows opened a gap under the header that read as a rendering fault
+          // — but sparse cards draw panels now, and a panel has enough weight
+          // to sit in the middle of a poster. On a full card the slack is
+          // small and centring is indistinguishable from top-aligning.
+          justifyContent: "center",
+        }}
+      >
+        {m.markH > 0 ? (
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              width: "100%",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              overflow: "hidden",
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={SLATE_MARK_DATA_URI}
+              height={m.markH}
+              width={Math.round(m.markH * SLATE_MARK_ASPECT)}
+              alt=""
+              style={{ opacity: 0.06, display: "flex" }}
+            />
+          </div>
+        ) : null}
+
       {model.hero ? <Hero bet={model.hero} logos={logos} solo={rows === 0} /> : null}
 
       {rows > 0 ? (
@@ -521,10 +596,10 @@ export function ShareCard({ model, logos }: { model: CardModel; logos: Logos }) 
               <TierHeading heading={g.heading} lean={g.lean} />
               {g.bets.map((b, i) => (
                 <div key={b.key} style={{ display: "flex", flexDirection: "column" }}>
-                  {i > 0 ? (
+                  {i > 0 && !m.panel ? (
                     <div style={{ height: 1, background: ROW_RULE, display: "flex" }} />
                   ) : null}
-                  <Row bet={b} logos={logos} />
+                  <Row bet={b} logos={logos} m={m} />
                 </div>
               ))}
             </div>
@@ -532,29 +607,7 @@ export function ShareCard({ model, logos }: { model: CardModel; logos: Logos }) 
         </div>
       ) : null}
 
-      {/* Leftover space is the normal case on a fixed canvas holding a variable
-          list — one bet leaves ~800px of it. Left empty the card reads as
-          broken, so the S fills it at 6% and it reads as negative space (§23). */}
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          overflow: "hidden",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        {markH > 0 ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={SLATE_MARK_DATA_URI}
-            height={markH}
-            width={Math.round(markH * SLATE_MARK_ASPECT)}
-            alt=""
-            style={{ opacity: 0.06, display: "flex" }}
-          />
-        ) : null}
+
       </div>
 
       <div

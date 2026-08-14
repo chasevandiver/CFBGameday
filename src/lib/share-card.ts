@@ -248,6 +248,139 @@ export function sanitizeForCard(text: string): string {
   return GLYPH_SUBSTITUTIONS.reduce((s, [from, to]) => s.replace(from, to), text);
 }
 
+/* ── how big everything is ────────────────────────────────────────────────── */
+
+/** The fixed canvas, and the blocks whose height does not depend on the rows. */
+export const CARD_H = 1350;
+const HEAD_H = 145;
+const FOOT_H = 97;
+const HERO_H = 325;
+const HEADING_H = 46;
+const ROWS_MARGIN = 26;
+const FILLER_PAD = 80;
+
+/**
+ * The shortest a row may be and still be read on a phone.
+ *
+ * Twelve bets was measured on a card with one heading and no hero. Add a hero
+ * (325px, about five rows) and several tier headings and the same twelve no
+ * longer fit — so something has to give, and it is the row *count*, not the row
+ * height. Shrinking to fit produces a card nobody can read and does not admit
+ * it; dropping the tail produces one that says "+3 more".
+ */
+const MIN_ROW_H = 72;
+
+/** How many rows fit above the footer once the hero and headings are paid for. */
+export function rowsThatFit(groupCount: number, hasHero: boolean): number {
+  const chrome = HEAD_H + FOOT_H + (hasHero ? HERO_H : 0);
+  const forRows = CARD_H - chrome - ROWS_MARGIN - groupCount * HEADING_H;
+  return Math.max(1, Math.floor(forRows / MIN_ROW_H));
+}
+
+export interface CardMetrics {
+  rowH: number;
+  crest: number;
+  pick: number;
+  matchup: number;
+  units: number;
+  sub: number;
+  /** Width of the two-crest slot, so every pick starts at the same x. */
+  crestSlot: number;
+  /** Width of the right-hand number column, the one that has to register. */
+  numsW: number;
+  /** Height of the watermark that absorbs whatever is left. 0 = none. */
+  markH: number;
+  /**
+   * Draw each row as a raised panel instead of a bare line.
+   *
+   * A one-to-three bet slip is the common case and the hardest to compose: at
+   * row heights the seven-bet card was designed for, two bets are two thin
+   * lines under 900px of nothing, which is what a real shared card looked
+   * like. Giving those rows a surface is what fills the canvas — it is the
+   * hero's own material language (§13–15) applied to a row, so nothing new is
+   * invented, and it switches off the moment there is enough content to carry
+   * the card on its own.
+   */
+  panel: boolean;
+  /** Gap between panels; 0 when rows are bare lines. */
+  panelGap: number;
+}
+
+const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(n)));
+
+/**
+ * Row size as a function of how many rows there are.
+ *
+ * The first version of this card was sized for a seven-bet Saturday and used
+ * those numbers no matter what, so a real two-bet slip came out as two small
+ * rows above 900px of nothing. A share card is a fixed canvas holding a
+ * variable-length list, and the list is usually *short* — so the type has to
+ * grow into the space rather than the space being left over.
+ *
+ * Everything derives from `rowH`, and the ratios are set so that a *full*
+ * twelve-row card reproduces the original numbers exactly — rowH 86 → crest 52,
+ * pick 36, matchup 21, units 33, sub 20. That is deliberate and it is pinned by
+ * a test: those sizes were designed against a rendered mockup of a full card,
+ * and they should not drift because the sparse case got fixed. Every count
+ * below twelve now scales up from there, which is the actual change.
+ */
+export function cardMetrics(rowCount: number, groupCount: number, hasHero: boolean): CardMetrics {
+  const chrome = HEAD_H + FOOT_H + (hasHero ? HERO_H : 0);
+  const forRows = CARD_H - chrome - (rowCount > 0 ? ROWS_MARGIN + groupCount * HEADING_H : 0);
+
+  const panel = rowCount > 0 && rowCount <= 3 && !hasHero;
+  const panelGap = panel ? 18 : 0;
+
+  // The floor is legibility, and it is enforced rather than negotiated: when
+  // the rows will not fit at MIN_ROW_H, `rowsThatFit` drops the extras into the
+  // "+N more" line instead of shrinking everything until it technically fits.
+  // The ceiling stops a short slip from stretching into bands of empty green;
+  // panels get a taller one because a surface can carry height that a bare line
+  // cannot.
+  // Floor, not round. Rounding up is only half a pixel per row, but twelve rows
+  // of it overran the canvas by 6px and pushed the footer off the bottom — the
+  // overflow test below is what found it.
+  const rowH =
+    rowCount > 0
+      ? clamp(Math.floor(forRows / rowCount) - panelGap, MIN_ROW_H, panel ? 300 : 152)
+      : 0;
+
+  const used =
+    chrome +
+    (rowCount > 0
+      ? ROWS_MARGIN + groupCount * HEADING_H + rowCount * (rowH + panelGap)
+      : 0);
+  // The ceilings are geometry, not taste. A row is
+  //   crestSlot + gutter + pick + numbers
+  // across 968px, and the longest pick the product builds is 19 characters
+  // ("OSU win total o10.5"). On a bare line that fits 19 characters of Archivo
+  // bold at 48px and not at 52, and going past it makes long picks wrap, which
+  // silently breaks the fixed row height.
+  //
+  // A panel lifts the ceiling because it removes the consequence: it is tall
+  // enough for two lines, so a long pick wrapping inside one is fine. That is
+  // what lets a two-bet card set its picks at 72px instead of 48 — the panel
+  // has to be filled by its contents or it is just a bigger empty box.
+  const crest = panel ? clamp(rowH * 0.5, 44, 130) : clamp(rowH * 0.6, 44, 96);
+  const sub = clamp(rowH * 0.235, 18, panel ? 32 : 28);
+  return {
+    rowH,
+    crest,
+    pick: clamp(rowH * 0.42, 32, panel ? 72 : 48),
+    matchup: clamp(rowH * 0.245, 19, panel ? 34 : 28),
+    units: clamp(rowH * (panel ? 0.32 : 0.385), 30, panel ? 72 : 54),
+    sub,
+    // Side by side plus the gap in Crests, not the old overlap.
+    crestSlot: Math.round(crest * 2.14),
+    numsW: Math.round(sub * 8.2),
+    // Below ~120px the mark is a sliver nobody reads as a mark, so it is
+    // dropped rather than drawn two pixels tall.
+    markH: CARD_H - used - FILLER_PAD < 120 ? 0 : clamp(Math.min(CARD_H - used - FILLER_PAD, 420), 0, 420),
+    panel,
+    panelGap,
+  };
+}
+
 /* ── the render model ─────────────────────────────────────────────────────── */
 
 /** A bet plus the strings the layout needs and the domain model does not store. */
@@ -294,17 +427,32 @@ export function buildCardModel(payload: ShareCardPayload, tz: string = DEFAULT_T
   const hero = heroBet(sorted);
   const rest = hero ? sorted.filter((b) => b.key !== hero.key) : sorted;
 
+  // Trim to what fits legibly. The group count feeds back into the budget, so
+  // this is done against the grouping of the trimmed list, not the full one —
+  // dropping rows can drop a heading with them and free up more space.
+  let kept = rest;
+  let groups = groupByTier(kept);
+  for (let i = 0; i < 4; i++) {
+    const fits = rowsThatFit(groups.length, !!hero);
+    if (kept.length <= fits) break;
+    kept = kept.slice(0, fits);
+    groups = groupByTier(kept);
+  }
+  const dropped = rest.length - kept.length;
+
   return {
     title: payload.title,
     subtitle: payload.subtitle,
     hero: hero ? { ...render(hero), heading: tierHeadline(hero, 1) } : null,
-    groups: groupByTier(rest).map((g) => ({
+    groups: groups.map((g) => ({
       heading: g.heading,
       lean: g.tier === "lean",
       bets: g.bets.map(render),
     })),
+    // The footer still counts every bet that was handed in; `overflow` is what
+    // the card admits it could not draw.
     count: payload.bets.length,
     units: totalUnits(payload.bets),
-    overflow: payload.overflow,
+    overflow: payload.overflow + dropped,
   };
 }
