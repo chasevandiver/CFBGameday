@@ -1,7 +1,6 @@
 "use client";
 
 import { ChevronDown, RefreshCw, Search, SearchX, Ticket, Users } from "lucide-react";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { onBetsChanged } from "../../lib/bets-changed";
 import { useFocusedGames, useStarred, useViewerTz } from "../../lib/client-store";
@@ -272,11 +271,36 @@ export function SlateView({
     void refresh(w, true, st);
   };
 
-  // mirror week + filters into the query string (replaceState — no history spam)
+  /* Mirror week + filters into the query string (replaceState — no history spam).
+   *
+   * Starts from the URL that is actually there and edits only the keys this
+   * component owns. It used to build a fresh `URLSearchParams()` and overwrite
+   * the whole string, which silently destroyed every param it did not know
+   * about — and one of those is `sport`, which belongs to the SERVER, not to
+   * this component.
+   *
+   * That was invisible while the league toggle was a plain `<a>`: a full page
+   * load meant this effect only ever ran after the server had already resolved
+   * the league, so it re-derived the right value. The moment the toggle became
+   * a `<Link>` (a soft navigation, made to stop the full reload stealing scroll
+   * position), this started racing that navigation and winning — tapping NFL
+   * went to `/slate?sport=nfl` and was immediately rewritten to `/slate?week=0`,
+   * snapping straight back to CFB. Tapping Live was worse: `sport=live` was not
+   * in the reconstruction at all, so it was stripped every single time.
+   *
+   * Preserving rather than reconstructing fixes both, and fixes the same bug
+   * for `?g=<group>` (a shared sheet link) which was also being eaten. The
+   * `sport === "nfl"` special case is gone because nothing needs to re-add a
+   * param that was never removed.
+   */
   useEffect(() => {
     if (!urlReady.current) return;
-    const sp = new URLSearchParams();
-    if (sport === "nfl") sp.set("sport", "nfl");
+    const sp = new URLSearchParams(window.location.search);
+    // Every key below is re-decided from state on each run, so each one is
+    // cleared first — otherwise a filter turned OFF would keep its stale value.
+    for (const k of ["st", "week", "conf", "tv", "spread", "ranked", "mine", "bets", "picks", "sort", "q", "day"]) {
+      sp.delete(k);
+    }
     if (seasonType === "postseason") sp.set("st", "post");
     else if (seasonType === "preseason") {
       sp.set("st", "pre");
@@ -293,7 +317,13 @@ export function SlateView({
     if (query.trim()) sp.set("q", query.trim());
     if (day !== "all") sp.set("day", day);
     const qs = sp.toString();
-    window.history.replaceState(null, "", qs ? `/slate?${qs}` : "/slate");
+    const next = qs ? `/slate?${qs}` : "/slate";
+    // No-op writes are not free here: a replaceState during a pending soft
+    // navigation is what desynced the router in the first place, so the cheapest
+    // way not to interfere is not to write when nothing changed.
+    if (next !== window.location.pathname + window.location.search) {
+      window.history.replaceState(null, "", next);
+    }
   }, [week, seasonType, sport, currentWeek, conference, network, spreadRange, rankedOnly, betsOnly, picksOnly, sort, query, day]);
 
   /* ---- derived --------------------------------------------------------- */
@@ -733,13 +763,25 @@ function absOr(v: number | null, fallback: number): number {
  * season row, different current week — so it goes through the server like the
  * ledger's tabs do, and Back returns to the other league.
  *
- * `next/link`, not a raw `<a>`. The comment above has always cited "the
- * LedgerTabs pattern" and LedgerTabs uses `Link` — these were plain anchors,
- * which meant every league switch was a full document reload: white flash, the
- * ticker remounted, scroll position gone, client cache dropped. On a page whose
- * governing rule is "never steal scroll position" that was the most visible
- * seam on the screen. RSC navigation still re-runs the server component with
- * its own current week, and Back still traverses.
+ * ## Plain `<a>`, deliberately. Do not "fix" this to `next/link`.
+ *
+ * It was changed to `<Link>` once, to remove the full-reload seam a design
+ * review flagged, and that broke the control outright — verified in a browser,
+ * which is how it should have been checked the first time. Two independent
+ * reasons, either one fatal:
+ *
+ *   1. `SlateView` seeds its state with `useState(initial)`, which reads its
+ *      argument only on first mount. A soft navigation REUSES the component, so
+ *      the URL changed to `?sport=nfl` and the slate kept rendering CFB. Keying
+ *      the component to force a remount was tried and did not resolve it.
+ *   2. The URL-mirroring effect below `replaceState`s on its own schedule, and
+ *      under a soft navigation that races the router rather than following it.
+ *
+ * A full page load makes both moot: everything remounts with the server's
+ * answer. The seam is real and is the accepted cost until `SlateView` derives
+ * its data from props instead of owning a copy — which is a rewrite of its
+ * state machine (poll merge, realtime merge, stale-week guard), not a one-line
+ * swap. Tracked as UX-36b.
  */
 function SportToggle({
   sport,
@@ -752,8 +794,14 @@ function SportToggle({
   /** Live games in the CURRENT view, used only to badge the segment. */
   liveCount: number;
 }) {
+  /* 44px of finger, 32px of ink. The segment reads at h-8 like the rest of the
+     control bar, and the padding + negative margin grow the hit area outward
+     into the bar's own py-2.5 without moving anything — the same trick
+     VoidBetButton and DeleteWagerButton use for DESIGN.md's 44px rule (UX-08).
+     A three-segment control at 32px tall is a genuinely hard target on a phone,
+     and this one is the first thing a thumb reaches for. */
   const seg = (active: boolean) =>
-    `flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors ${
+    `flex min-h-11 -my-1.5 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors ${
       active ? "bg-accent text-accent-ink" : "text-dim hover:bg-surface hover:text-chalk"
     }`;
   return (
@@ -761,7 +809,7 @@ function SportToggle({
       {/* Live leads: on a Saturday it is the only one anybody wants, and it is
           the leftmost thumb reach. It spans both leagues and every week, so it
           is a peer of the two league tabs rather than a filter inside one. */}
-      <Link
+      <a
         href="/slate?sport=live"
         className={seg(live)}
         aria-current={live ? "page" : undefined}
@@ -776,21 +824,21 @@ function SportToggle({
           />
         )}
         Live
-      </Link>
-      <Link
+      </a>
+      <a
         href="/slate"
         className={seg(!live && sport === "cfb")}
         aria-current={!live && sport === "cfb" ? "page" : undefined}
       >
         CFB
-      </Link>
-      <Link
+      </a>
+      <a
         href="/slate?sport=nfl"
         className={seg(!live && sport === "nfl")}
         aria-current={!live && sport === "nfl" ? "page" : undefined}
       >
         NFL
-      </Link>
+      </a>
     </nav>
   );
 }

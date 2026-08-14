@@ -1895,6 +1895,46 @@ rather than a quarter linescore.
       Settings. If that stops being true, this comes out. **Owner-verifiable
       only on a device**: the installed PWA and Safari-in-a-tab behave
       differently and only one honours the meta tag.
+- [x] **UX-36b — the league toggle did not work, and I broke it**, 2026-08-14,
+      owner report ("It's not letting me click on live cfb or nfl on the slate
+      page"). **Reproduced in a real browser, which is how it should have been
+      checked the first time:** tapping NFL went to `/slate?sport=nfl` and was
+      immediately rewritten to `/slate?week=0`, snapping back to CFB. Tapping
+      Live was worse — `sport=live` was stripped every time.
+      **Cause, and it was mine.** UX-38a swapped the toggle from `<a>` to
+      `next/link` to remove a full-reload seam a design review flagged. That
+      turned a hard navigation into a soft one, and two latent defects that a
+      page reload had always hidden became live:
+      **(a) The URL-mirroring effect rebuilt the entire query string** from
+      client state and `replaceState`d it, destroying every param it did not
+      personally manage. `sport` belongs to the SERVER. Under a hard load the
+      effect only ever ran after the server had resolved the league, so it
+      re-derived the right value; under a soft nav it raced the router and won.
+      **(b) `SlateView` seeds state with `useState(initial)`,** which reads its
+      argument only on first mount — and a soft navigation reuses the component,
+      so even with the URL correct the slate kept rendering the old league.
+      Keying the component to force a remount was tried and did not resolve it.
+      **Fixed by reverting the toggle to `<a>`** and keeping two real repairs the
+      investigation produced: the mirroring effect now *preserves* the URL and
+      edits only its own keys (which also stops it eating `?g=<group>` on a
+      shared sheet link, and is what makes `sport=live` survive at all), and it
+      no longer writes when nothing changed. The segments also went from 32px to
+      a 44px hit area — DESIGN.md's rule, and on a phone a three-segment control
+      at 32px is genuinely hard to hit, which is likely part of what "not letting
+      me click" felt like.
+      **The seam is the accepted cost** until `SlateView` derives its data from
+      props instead of owning a copy — a rewrite of its state machine (poll
+      merge, realtime merge, stale-week guard), not a one-line swap. The
+      `<a>` carries a DO-NOT-CHANGE comment saying so.
+      **Verified by driving Chromium at the real app**: tap NFL → 16 games, Pre
+      2; tap Live → the empty state across both leagues; tap CFB → 8 games, Week
+      0; 44px targets; no JS errors. **No test guards this**, deliberately
+      stated: the failure only exists in a browser, which is exactly why 861
+      passing tests, a clean build and a design review all missed it.
+      **Found while looking, not yet fixed:** the *slate cards* still truncate
+      long NFL names ("Tampa Bay Buc…"). NFL-20 fixed the game-page header only.
+      `teamHeadline` would fix it, but `TeamView` carries no sport, so it needs
+      that field threaded through the mapper. · S
 - [x] **UX-36 — Live · CFB · NFL**, 2026-08-14. There was no live filter of any
       kind before this: only a count pill in the control bar and a "Live"
       section that appears solely when the sort is by kickoff. `?sport=live` is
