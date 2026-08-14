@@ -30,7 +30,7 @@ import type {
 
 // Consensus math lives in ./consensus (single shared implementation for app +
 // jobs); re-exported here for existing importers.
-import { consensusFromSnapshots, snapToHalf } from "./consensus";
+import { consensusFromSnapshots, snapToHalf, SNAPSHOT_COLS } from "./consensus";
 
 export { consensusFromSnapshots, snapToHalf };
 
@@ -716,9 +716,13 @@ export async function fetchTeamAtsSeason(
   }>).filter((g) => g.home_points !== null && g.away_points !== null);
   if (finals.length === 0) return new Map();
 
+  // 09:P-6: the columns the consensus reads, not every column there is. This
+  // runs per game-page view over every final either team has played, and
+  // `select("*")` also drags ml_home/ml_away/source/id along for the ride —
+  // ~700 KB a view by November, per the performance audit.
   const { data: snaps } = await supabase
     .from("line_snapshots")
-    .select("*")
+    .select(SNAPSHOT_COLS)
     .in(
       "game_id",
       finals.map((g) => g.id),

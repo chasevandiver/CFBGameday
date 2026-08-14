@@ -22,7 +22,7 @@ import {
 import { nflTeamId, seasonIdsForYear, seasonYearOf } from "../../src/lib/league";
 import { cfbdScoringOffense, cfbdScoringPlays } from "../../src/lib/scoring";
 import { modelClv, roundClv, spreadClv, totalClv } from "../../src/lib/clv";
-import { consensusFromSnapshots } from "../../src/lib/consensus";
+import { consensusFromSnapshots, SNAPSHOT_COLS } from "../../src/lib/consensus";
 import { clockToSeconds, coverMargin, spreadCoverSide, totalCoverSide } from "../../src/lib/cover";
 import { gradePick, type PickMarket } from "../../src/lib/grade";
 import { keepLastPlay } from "../../src/lib/live-play";
@@ -96,7 +96,10 @@ interface Snapshot {
  * prediction's `open_spread` becomes a copy of `vegas_spread`. Exported so a
  * test can hold the column list to that.
  */
-export const SNAPSHOT_COLS = "game_id, provider, spread, spread_open, total, captured_at";
+/* One definition, in src/lib/consensus.ts beside the function that reads
+   these columns. Re-exported under the name jobs-core has always used, which
+   is what jobs-core.test.ts asserts on. */
+export { SNAPSHOT_COLS };
 
 /** Shared consensus (src/lib/consensus.ts) — no more drift between the jobs'
  *  copy and the app's copy (audit #43). */

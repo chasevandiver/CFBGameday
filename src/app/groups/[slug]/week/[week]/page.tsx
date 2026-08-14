@@ -130,20 +130,24 @@ export default async function GroupWeekPage({
   // which will say how many without saying who or what.
   const blindFor = (g: GameView) =>
     active.picksHiddenUntilKickoff && !(g.startTs !== null && new Date(g.startTs) <= new Date());
+  // 09:P-9: one call for the whole board, not one per game. This used to be a
+  // Promise.all over `group_game_pick_count`, which is a separate PostgREST
+  // request per hidden game — 60 on a full CFB slate, 91 on the Week 1 NFL
+  // board (DB-7). `group_game_pick_counts` (0051) answers for all of them at
+  // once and returns a row per game asked about, zeros included, so a game
+  // nobody has picked lands in the Map as 0 rather than going missing.
   const blindCounts = new Map<number, number>();
   if (active.picksHiddenUntilKickoff && user) {
-    const counted = await Promise.all(
-      matchups
-        .filter(({ game }) => blindFor(game))
-        .map(async ({ game }) => {
-          const { data } = await supabase.rpc("group_game_pick_count", {
-            p_group: active.id,
-            p_game: game.id,
-          });
-          return [game.id, Number(data ?? 0)] as const;
-        }),
-    );
-    for (const [id, n] of counted) blindCounts.set(id, n);
+    const blindIds = matchups.filter(({ game }) => blindFor(game)).map(({ game }) => game.id);
+    if (blindIds.length > 0) {
+      const { data } = await supabase.rpc("group_game_pick_counts", {
+        p_group: active.id,
+        p_games: blindIds,
+      });
+      for (const row of (data ?? []) as Array<{ game_id: number; n: number }>) {
+        blindCounts.set(row.game_id, Number(row.n ?? 0));
+      }
+    }
   }
 
   const toMatchupPick = (p: PickRow): MatchupPick => ({

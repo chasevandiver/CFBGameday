@@ -1050,9 +1050,39 @@ Two items remain open; the closed ones are kept for the record.
 - [ ] **09:P-1b** Slim `/api/slate-live` heal endpoint — decide after P-16's
       numbers. · M
 - [ ] **09:P-11** Cacheable weekly-static pages · M
-- [ ] **09:P-6** `fetchTeamAtsSeason` re-fetches every snapshot per game view · M
-- [ ] **09:P-9/P-10/P-12/P-13** Blind-count aggregate RPC; board picks-query
-      collapse; ratings latest-in-Postgres; receipts pagination · S–M each
+- [x] **09:P-6** `fetchTeamAtsSeason` re-fetches every snapshot per game view.
+      Fixed 2026-08-14: `select("*")` → the columns the consensus actually
+      reads. The audit measured the old shape at ~700 KB a view by November,
+      and `*` was also dragging `ml_home`, `ml_away`, `source` and `id` along.
+      The column list moved to `src/lib/consensus.ts` **beside the function that
+      reads it** — `jobs-core` re-exports it under `SNAPSHOT_COLS`, the name its
+      test asserts on. One list, two readers, which matters more than it looks:
+      the list carries `spread_open` for the grading path, and a second copy is
+      exactly how the silent opener fallback (`jobs-core.test.ts`'s "reports the
+      CURRENT line as the opener") gets reintroduced.
+- [x] **09:P-9** Blind-count aggregate RPC. Done 2026-08-14, migration
+      **0051**. The week page fired `group_game_pick_count` inside a
+      `Promise.all` over every blind game — one PostgREST round trip per game,
+      each with its own auth check and planning. 60 on a full CFB slate; **91
+      on the Week 1 NFL board** (`DB-7`), so not a hypothetical.
+      `group_game_pick_counts` takes the array and answers once.
+      **The contract mirrors the singular deliberately**: a non-member gets a
+      row of zeros per game asked about, not an empty result. Returning nothing
+      would leak membership through the *shape* of the response, which is the
+      leak the singular's `is_group_member` guard exists to prevent. Every
+      requested game comes back including the unpicked ones, so a missing key
+      cannot read as `undefined` where the caller expects 0. 5 DB assertions,
+      one of them pinning the two functions to the same answer.
+- [x] **09:P-12** Ratings latest-in-Postgres. Fixed 2026-08-14: `/ratings` read
+      the whole season — one row per team per week, ~2,040 by week 15 — to use
+      the latest week and the one before it. Now asks which week is latest
+      (one indexed row) and fetches only those two, ~276. A second round trip
+      for ~87% fewer rows by November; at week 0 the two shapes cost the same.
+- [ ] **09:P-10** Board picks-query collapse — three overlapping `picks` reads
+      per render (season crew picks inside `fetchSlateView`, season tallies,
+      week `select("*")`) · S–M
+- [ ] **09:P-13** Receipts pagination — the whole season in one document,
+      ~840 predictions + games + teams by December · S–M
 - [ ] **07:OPS-6** Backfill mode for null-CLV rows (post-kickoff `captured_at`
       is excluded forever) — only matters after a missed close · S–M
 - [x] **07:OPS-14a — preseason metered 2026-08-13; backtest deliberately not.**

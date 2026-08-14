@@ -130,6 +130,32 @@ select pg_temp.chk('anon is not granted the counter at all',
                    not has_function_privilege('anon',
                      'public.group_game_pick_count(uuid,integer)', 'execute'));
 
+-- 09:P-9. The batched counter, which the week page uses instead of one call
+-- per hidden game. Its contract has to match the singular exactly, because the
+-- singular's contract is a security decision: a non-member gets zeros rather
+-- than an empty result, so the SHAPE of the response does not leak membership.
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.chk('batched: a member gets the same count as the singular',
+                     (select n from group_game_pick_counts(:'grp'::uuid, array[301]) where game_id = 301)
+                     = group_game_pick_count(:'grp'::uuid, 301));
+  select pg_temp.chk('batched: every game asked about comes back, zeros included',
+                     (select count(*) from group_game_pick_counts(:'grp'::uuid, array[301, 302, 999])) = 3);
+  select pg_temp.chk('batched: a game nobody picked is 0, not missing',
+                     (select n from group_game_pick_counts(:'grp'::uuid, array[999]) where game_id = 999) = 0);
+rollback;
+begin;
+  select test_as(:cal::uuid);
+  -- Zeros, NOT an empty result. An empty result would say "you are not a
+  -- member" to anyone who asked, which is the leak the singular avoids.
+  select pg_temp.chk('batched: a non-member gets a row per game, all zero',
+                     (select count(*) from group_game_pick_counts(:'grp'::uuid, array[301, 302])) = 2
+                     and (select coalesce(sum(n), -1) from group_game_pick_counts(:'grp'::uuid, array[301, 302])) = 0);
+rollback;
+select pg_temp.chk('batched: anon is not granted it either',
+                   not has_function_privilege('anon',
+                     'public.group_game_pick_counts(uuid,integer[])', 'execute'));
+
 \echo '# a TBD kickoff stays hidden rather than defaulting to open'
 \o /dev/null
 update games set start_ts = null where id = 301;
