@@ -363,7 +363,23 @@ traffic any of this machinery has carried. Everything below was found by reading
 the live database and `jobs.yml` together, not by reading either alone — which
 is the same seam `SCHED-1` sat in.
 
-- [ ] **PUSH-11 — the scheduled push cannot send, and never could.**
+- [x] **PUSH-11 — the scheduled push cannot send, and never could.** Wired
+      2026-08-14: the three keys now sit in `jobs.yml`'s `env:` block.
+      **Guarded so it cannot come back**, and the guard is the interesting part —
+      `jobs-yml.test.ts` now reads the required key names *out of
+      `pushConfigured()` itself* rather than hardcoding them, so adding a third
+      required key to `push.ts` fails the workflow test instead of silently
+      disabling scheduled push a second time. Checked failing against the
+      pre-fix file: both keys reported missing.
+      **Not verified end to end from here**, deliberately. The proof is a
+      dispatch of `jobs · notify-picks-due` returning something other than
+      `{"skipped": "no vapid keys"}` — but that job sends real pushes to real
+      crew members with open picks, and firing it to satisfy a checkbox is not
+      mine to do. Dispatch it against this branch, or let the first scheduled
+      run be the proof, and read `job_runs.detail`.
+      *(Secret names are `.env.example`'s. If repo settings use different ones,
+      only the `${{ secrets.… }}` side changes — the left-hand names are what
+      `push.ts` reads. A wrong name degrades to today's skip, not a red run.)*
       `jobs.yml`'s `env:` block passes five secrets and **none of them is a VAPID
       key**, so `pushConfigured()` (`src/lib/push.ts:58`) is false in every
       Actions run. Live proof, not inference: `notify-picks-due` on 08-13 22:36

@@ -245,6 +245,23 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      # Web push (PUSH-11). These were missing until 2026-08-14, and their
+      # absence was invisible for the worst possible reason: the secrets existed
+      # and push demonstrably worked, but from /admin and the /me test button,
+      # which run on Vercel with its own env. An Actions secret is not an
+      # environment variable until this block maps it, so every scheduled push
+      # returned {"skipped": "no vapid keys"} and went green — including
+      # notifyWatchdog, which meant OPS-2's phone alert could never fire.
+      #
+      # Names are the ones .env.example documents. If a secret is named
+      # differently in repo settings, change the RIGHT-hand side only — the
+      # left-hand names are what src/lib/push.ts reads and must not move. A
+      # wrong name here degrades to the old skip rather than failing a run
+      # (pushConfigured(), push.ts:58), so verify by dispatch, not by reading:
+      # `jobs · notify-picks-due` must stop reporting "no vapid keys".
+      NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${{ secrets.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
+      VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+      VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
