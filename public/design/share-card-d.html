@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="en" data-direction="share-d">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Share card D — The Sheet · The CFB Slate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Graduate&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================================
+   SHARE CARD D — "The Sheet"     ← the chosen direction
+
+   A hybrid of the three superseded rounds (share-card-a/b/c.html), because each
+   had a weakness one of the others already solved:
+
+     row engine   from B  the right-hand Plex Mono column with tabular figures,
+                          so units sit under units. share-text.ts opens by
+                          conceding iMessage cannot do this ("no amount of
+                          padding will make columns line up") — it is the thing
+                          an image is FOR.
+     tier heading from A  printed in full, but only when the tier CHANGES.
+                          Consecutive same-tier bets share one heading, so we
+                          keep A's words at roughly a third of A's vertical cost
+                          and "BET OF THE AFTERNOON SLATE" survives intact.
+     hero         from C  but conditional — see below.
+
+   THE HERO RULE. The top bet gets the panel if and only if exactly one bet sits
+   alone at the highest tier present. Ties at the top, and slates where every bet
+   shares a tier, get no hero at all and the card degrades to rows+headings.
+   That is the fix for C's failure mode: it can never promote an arbitrary row.
+
+   NOTE — one correction to the approved plan. The plan also returned no hero
+   for a single-bet card. That was wrong on both counts: a lone bet trivially IS
+   alone at the highest tier, so the special case contradicted the rule it sat
+   next to, and a single row on a 1350px card looks broken. Single bet now gets
+   the hero, expanded to fill (state 4). One fewer branch, and it reads better.
+
+   1080x1350 (4:5). Palette is docs/BRAND.md §5 verbatim, not the app's charcoal
+   — brand.ts's docblock puts share cards in BRAND's remit and §31 specifies
+   them.
+
+   SATORI DISCIPLINE, unchanged from the first round: flexbox only, no grid, no
+   `gap`, explicit margins, display:flex on anything with >1 child. This file is
+   the thing the ImageResponse gets ported from, so anything satori cannot draw
+   would be a lie about what ships.
+
+   All four hero states are rendered below. That is the point of this file.
+   ========================================================================== */
+
+:root {
+  --near-black: #020A08;
+  --field-green: #08251C;
+  --raised-green: #0E3B2C;
+  --chalk: #F4EFE2;
+  --gold: #E8B93D;
+  --penalty: #E4572E;
+  --dim: #8FA79B;
+
+  --font-display: "Graduate";
+  --font-body: "Archivo";
+  --font-num: "IBM Plex Mono";
+}
+
+* { box-sizing: border-box; }
+html { color-scheme: dark; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: #0b0b0b;
+  font-family: var(--font-body), system-ui, sans-serif;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 14px 14px 60px;
+  --s: calc(min(100vw - 28px, 1080px) / 1080);
+}
+
+.state-label {
+  width: calc(1080px * var(--s)); color: #f2eee5; margin: 30px 0 10px;
+  font-family: var(--font-num), monospace; font-size: 12px; letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.state-label span { color: #a89f90; letter-spacing: 0; text-transform: none; font-size: 12.5px; }
+.state-label b.yes { color: var(--gold); }
+.state-label b.no { color: var(--dim); }
+
+.stage { width: calc(1080px * var(--s)); height: calc(1350px * var(--s)); }
+.card {
+  width: 1080px; height: 1350px;
+  transform: scale(var(--s)); transform-origin: top left;
+  position: relative; overflow: hidden;
+  background: var(--near-black);
+  display: flex; flex-direction: column;
+}
+
+/* --- ground: field texture + the green->gold rim light (§7, §10) ----------- */
+.field { position: absolute; left: 0; top: 0; width: 1080px; height: 1350px; display: flex; }
+.yard { position: absolute; top: 0; width: 2px; height: 1350px; background: rgba(244,239,226,0.028); }
+.yard.major { background: rgba(244,239,226,0.048); }
+.hash { position: absolute; width: 24px; height: 2px; background: rgba(244,239,226,0.038); }
+.aura-green {
+  position: absolute; left: -240px; top: -280px; width: 900px; height: 900px;
+  background: radial-gradient(circle at center, rgba(14,59,44,0.85) 0%, rgba(14,59,44,0) 68%);
+  display: flex;
+}
+.aura-gold {
+  position: absolute; right: -300px; bottom: -340px; width: 950px; height: 950px;
+  background: radial-gradient(circle at center, rgba(232,185,61,0.13) 0%, rgba(232,185,61,0) 66%);
+  display: flex;
+}
+
+/* --- header --------------------------------------------------------------- */
+.head { position: relative; display: flex; flex-direction: row; align-items: center; padding: 46px 56px 0; }
+.head-l { display: flex; flex-direction: column; flex: 1; }
+.name {
+  font-family: var(--font-display), serif; font-size: 58px; line-height: 1.02;
+  color: var(--chalk); text-transform: uppercase; letter-spacing: 0.01em; display: flex;
+}
+.meta {
+  font-family: var(--font-num), monospace; font-weight: 500; font-size: 22px;
+  letter-spacing: 0.18em; color: var(--dim); text-transform: uppercase;
+  margin-top: 13px; display: flex;
+}
+.head-stamp { width: 53px; height: 78px; display: flex; }
+
+/* --- hero (conditional) --------------------------------------------------- */
+.hero-wrap { position: relative; display: flex; padding: 0 56px; margin-top: 28px; }
+.hero-wrap.solo { margin-top: 40px; }
+.hero-aura {
+  position: absolute; left: 6px; top: -100px; width: 1068px; height: 660px;
+  background: radial-gradient(ellipse at 34% 48%, rgba(232,185,61,0.18) 0%, rgba(232,185,61,0) 62%);
+  display: flex;
+}
+.hero {
+  position: relative; flex: 1; display: flex; flex-direction: column;
+  background: var(--raised-green); border-radius: 10px;
+  padding: 30px 34px 30px 30px;
+}
+.hero-bar { position: absolute; left: 0; top: 0; width: 8px; height: 100%; background: var(--gold); border-radius: 10px 0 0 10px; display: flex; }
+.hero-tier {
+  font-family: var(--font-display), serif; font-size: 30px; letter-spacing: 0.15em;
+  color: var(--gold); text-transform: uppercase; display: flex;
+}
+.hero-body { display: flex; flex-direction: row; align-items: center; margin-top: 22px; }
+.hero-logos { display: flex; flex-direction: row; align-items: center; width: 196px; margin-right: 28px; }
+.hero-logo { width: 110px; height: 110px; display: flex; }
+.hero-logo.back { margin-left: -26px; }
+.hero-text { display: flex; flex-direction: column; flex: 1; }
+.hero-pick {
+  font-family: var(--font-body), sans-serif; font-weight: 800; font-size: 68px;
+  line-height: 1.02; color: var(--chalk); letter-spacing: -0.01em; display: flex;
+}
+.hero-matchup {
+  font-family: var(--font-body), sans-serif; font-weight: 500; font-size: 25px;
+  color: var(--dim); margin-top: 10px; display: flex;
+}
+.hero-nums { display: flex; flex-direction: row; align-items: baseline; margin-top: 22px; }
+.hero-units {
+  font-family: var(--font-num), monospace; font-weight: 600; font-size: 40px;
+  color: var(--gold); font-variant-numeric: tabular-nums; display: flex;
+}
+.hero-sub {
+  font-family: var(--font-num), monospace; font-weight: 400; font-size: 23px;
+  color: var(--dim); margin-left: 20px; letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums; display: flex;
+}
+
+/* --- rows ----------------------------------------------------------------- */
+.rows { position: relative; display: flex; flex-direction: column; padding: 0 56px; margin-top: 26px; }
+
+/* THE FILLER. A share card is a fixed 1350px canvas holding a variable-length
+   list, so leftover space is the normal case, not the edge case — one bet
+   leaves ~800px of it. Left empty the card reads as broken (see the first
+   render of states 3 and 4). This absorbs whatever is left and puts the S in
+   it at 6% opacity, so the space reads as the brand's negative space (§23)
+   instead of as a hole. It scales itself: `flex: 1 1 0` with `min-height: 0`
+   collapses to nothing on a full card, and the mark is bounded by the height
+   it is given, so it is a large watermark on a sparse card and invisible on a
+   dense one. No conditional anywhere.
+
+   PORTING NOTE: satori is less reliable about `height: 100%` + `width: auto`
+   on an <img> than a browser is. The route knows the row count, so compute the
+   mark's px size there and pass explicit width/height rather than relying on
+   the intrinsic-ratio behaviour this mockup uses. */
+.filler {
+  flex: 1 1 0; min-height: 0; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  /* The padding is a threshold, not spacing. border-box means a filler shorter
+     than 80px leaves zero content height, so the mark disappears outright
+     instead of rendering as a 30px smear above the footer — which is exactly
+     what a dense card was doing before this line. */
+  padding: 40px 0;
+}
+.filler img { height: 100%; max-height: 300px; width: auto; opacity: 0.06; display: flex; }
+
+/* A's heading, printed only on a tier change */
+.tier { display: flex; flex-direction: row; align-items: center; height: 30px; margin-top: 16px; }
+.tier-mark { width: 9px; height: 9px; background: var(--gold); margin-right: 15px; display: flex; }
+.tier-mark.lean { background: rgba(143,167,155,0.55); }
+.tier-label {
+  font-family: var(--font-display), serif; font-size: 24px; letter-spacing: 0.11em;
+  text-transform: uppercase; color: var(--chalk); display: flex; white-space: nowrap;
+}
+.tier-label.lean { color: var(--dim); }
+.tier-rule { flex: 1; height: 1px; background: rgba(244,239,226,0.20); margin-left: 20px; display: flex; }
+
+/* B's row engine */
+.row { display: flex; flex-direction: row; align-items: center; height: 86px; }
+.logos { display: flex; flex-direction: row; align-items: center; width: 86px; margin-right: 22px; }
+.logo { width: 52px; height: 52px; display: flex; }
+.logo.back { margin-left: -16px; }
+.mono-badge {
+  width: 52px; height: 52px; border-radius: 26px; background: var(--raised-green);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-body), sans-serif; font-weight: 700; font-size: 17px; color: var(--chalk);
+}
+.pick { display: flex; flex-direction: column; flex: 1; }
+.pick-line {
+  font-family: var(--font-body), sans-serif; font-weight: 600; font-size: 36px;
+  line-height: 1.05; color: var(--chalk); display: flex;
+}
+.matchup {
+  font-family: var(--font-body), sans-serif; font-weight: 400; font-size: 21px;
+  color: var(--dim); margin-top: 6px; display: flex;
+}
+/* the column that lines up: fixed width + tabular figures */
+.nums { display: flex; flex-direction: column; align-items: flex-end; width: 178px; }
+.units {
+  font-family: var(--font-num), monospace; font-weight: 600; font-size: 33px;
+  color: var(--gold); font-variant-numeric: tabular-nums; display: flex;
+}
+.sub {
+  font-family: var(--font-num), monospace; font-weight: 400; font-size: 20px;
+  color: var(--dim); margin-top: 6px; letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums; display: flex; white-space: nowrap;
+}
+
+/* --- footer (§31: the icon as a small brand stamp) ------------------------ */
+.foot { position: relative; display: flex; flex-direction: row; align-items: center; padding: 0 56px 42px; margin-top: 26px; }
+.foot-rule { position: absolute; left: 56px; right: 56px; top: -20px; height: 1px; background: rgba(244,239,226,0.16); display: flex; }
+.wordmark {
+  font-family: var(--font-display), serif; font-size: 24px; letter-spacing: 0.20em;
+  color: var(--chalk); text-transform: uppercase; display: flex;
+}
+.tally {
+  font-family: var(--font-num), monospace; font-weight: 500; font-size: 24px;
+  color: var(--gold); margin-left: auto; letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums; display: flex;
+}
+
+.notes { width: min(100%, 1080px); max-width: 46rem; color: #a89f90; font-size: 13.5px; line-height: 1.65; margin-top: 34px; }
+.notes h2 { font-family: var(--font-display), serif; font-size: 15px; letter-spacing: .14em; text-transform: uppercase; color: #f2eee5; margin: 0 0 8px; }
+.notes p { margin: 0 0 12px; }
+.notes b { color: #f2eee5; font-weight: 500; }
+.notes code { font-family: var(--font-num), monospace; font-size: 12px; color: var(--gold); }
+</style>
+</head>
+<body>
+
+<!-- ======================================================================== -->
+<!-- STATE 1 — one bet alone at the top tier → HERO                            -->
+<!-- ======================================================================== -->
+<div class="state-label">State 1 · one alone at the top &rarr; hero <b class="yes">yes</b><br><span>Georgia is the only Century bet. Seven bets, five headings, six rows under the panel.</span></div>
+<div class="stage">
+<div class="card">
+  <div class="field">
+    <div class="yard major" style="left:108px"></div><div class="yard" style="left:216px"></div>
+    <div class="yard" style="left:324px"></div><div class="yard major" style="left:432px"></div>
+    <div class="yard" style="left:540px"></div><div class="yard" style="left:648px"></div>
+    <div class="yard major" style="left:756px"></div><div class="yard" style="left:864px"></div>
+    <div class="yard" style="left:972px"></div>
+    <div class="hash" style="left:528px;top:760px"></div>
+    <div class="hash" style="left:528px;top:900px"></div>
+    <div class="hash" style="left:528px;top:1040px"></div>
+  </div>
+  <div class="aura-green"></div><div class="aura-gold"></div>
+
+  <div class="head">
+    <div class="head-l">
+      <div class="name">Chase Bets</div>
+      <div class="meta">Week 3 &middot; Sat Sep 12</div>
+    </div>
+    <img class="head-stamp" src="/brand/slate-mark.png" alt="" />
+  </div>
+
+  <div class="hero-wrap">
+    <div class="hero-aura"></div>
+    <div class="hero">
+      <div class="hero-bar"></div>
+      <div class="hero-tier">Bet of the Century</div>
+      <div class="hero-body">
+        <div class="hero-logos">
+          <img class="hero-logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/61.png" alt="" />
+          <img class="hero-logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2633.png" alt="" />
+        </div>
+        <div class="hero-text">
+          <div class="hero-pick">Georgia &minus;6.5</div>
+          <div class="hero-matchup">Tennessee at Georgia</div>
+          <div class="hero-nums">
+            <div class="hero-units">3.0u</div>
+            <div class="hero-sub">&minus;110 &middot; SAT 3:30 PM CT</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="rows">
+    <div class="tier"><div class="tier-mark"></div><div class="tier-label">Bet of the Year</div><div class="tier-rule"></div></div>
+    <div class="row">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/251.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/201.png" alt="" />
+      </div>
+      <div class="pick"><div class="pick-line">Texas &minus;2.5</div><div class="matchup">Oklahoma at Texas</div></div>
+      <div class="nums"><div class="units">2.0u</div><div class="sub">&minus;105 &middot; 11:00</div></div>
+    </div>
+
+    <div class="tier"><div class="tier-mark"></div><div class="tier-label">Bet of the Day</div><div class="tier-rule"></div></div>
+    <div class="row">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/194.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/213.png" alt="" />
+      </div>
+      <div class="pick"><div class="pick-line">Ohio State &minus;3.5</div><div class="matchup">Penn State at Ohio State</div></div>
+      <div class="nums"><div class="units">2.0u</div><div class="sub">&minus;110 &middot; 7:00</div></div>
+    </div>
+
+    <div class="tier"><div class="tier-mark"></div><div class="tier-label">Bet of the Afternoon Slate</div><div class="tier-rule"></div></div>
+    <div class="row">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/193.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2711.png" alt="" />
+      </div>
+      <div class="pick"><div class="pick-line">Miami (OH) +13.5</div><div class="matchup">Miami (OH) at Western Michigan</div></div>
+      <div class="nums"><div class="units">1.0u</div><div class="sub">&minus;108 &middot; 2:30</div></div>
+    </div>
+
+    <div class="tier"><div class="tier-mark"></div><div class="tier-label">Bets</div><div class="tier-rule"></div></div>
+    <div class="row">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/145.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/99.png" alt="" />
+      </div>
+      <div class="pick"><div class="pick-line">Over 51.5</div><div class="matchup">Ole Miss / LSU</div></div>
+      <div class="nums"><div class="units">1.0u</div><div class="sub">&minus;110 &middot; 6:00</div></div>
+    </div>
+    <div class="row">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2483.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/264.png" alt="" />
+      </div>
+      <div class="pick"><div class="pick-line">Oregon &minus;7</div><div class="matchup">Washington at Oregon</div></div>
+      <div class="nums"><div class="units">1.5u</div><div class="sub">&minus;115 &middot; 9:30</div></div>
+    </div>
+
+    <div class="tier"><div class="tier-mark lean"></div><div class="tier-label lean">Leans</div><div class="tier-rule"></div></div>
+    <div class="row">
+      <div class="logos"><div class="mono-badge">OSU</div></div>
+      <div class="pick"><div class="pick-line">OSU win total o10.5</div><div class="matchup">Season futures</div></div>
+      <div class="nums"><div class="units">0.5u</div><div class="sub">+120 &middot; &mdash;&mdash;</div></div>
+    </div>
+  </div>
+
+  <div class="filler"><img src="/brand/slate-mark.png" alt="" /></div>
+
+  <div class="foot">
+    <div class="foot-rule"></div>
+    <div class="wordmark">The CFB Slate</div>
+    <div class="tally">7 bets &middot; 11.0u</div>
+  </div>
+</div>
+</div>
+
+<!-- ======================================================================== -->
+<!-- STATE 2 — tie at the top tier → NO HERO                                   -->
+<!-- ======================================================================== -->
+<div class="state-label">State 2 · tie at the top &rarr; hero <b class="no">no</b><br><span>Georgia and Texas are both Century. Nothing stands alone, so nothing is promoted &mdash; the card is rows + headings, and the two share one heading.</span></div>
+<div class="stage">
+<div class="card">
+  <div class="field">
+    <div class="yard major" style="left:108px"></div><div class="yard" style="left:216px"></div>
+    <div class="yard" style="left:324px"></div><div class="yard major" style="left:432px"></div>
+    <div class="yard" style="left:540px"></div><div class="yard" style="left:648px"></div>
+    <div class="yard major" style="left:756px"></div><div class="yard" style="left:864px"></div>
+    <div class="yard" style="left:972px"></div>
+  </div>
+  <div class="aura-green"></div><div class="aura-gold"></div>
+
+  <div class="head">
+    <div class="head-l">
+      <div class="name">Chase Bets</div>
+      <div class="meta">Week 3 &middot; Sat Sep 12</div>
+    </div>
+    <img class="head-stamp" src="/brand/slate-mark.png" alt="" />
+  </div>
+
+  <div class="rows">
+    <div class="tier"><div class="tier-mark"></div><div class="tier-label">Bet of the Century</div><div class="tier-rule"></div></div>
+    <div class="row">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/251.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/201.png" alt="" />
+      </div>
+      <div class="pick"><div class="pick-line">Texas &minus;2.5</div><div class="matchup">Oklahoma at Texas</div></div>
+      <div class="nums"><div class="units">2.0u</div><div class="sub">&minus;105 &middot; 11:00</div></div>
+    </div>
+    <div class="row">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/61.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2633.png" alt="" />
+      </div>
+      <div class="pick"><div class="pick-line">Georgia &minus;6.5</div><div class="matchup">Tennessee at Georgia</div></div>
+      <div class="nums"><div class="units">3.0u</div><div class="sub">&minus;110 &middot; 3:30</div></div>
+    </div>
+
+    <div class="tier"><div class="tier-mark"></div><div class="tier-label">Bet of the Day</div><div class="tier-rule"></div></div>
+    <div class="row">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/194.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/213.png" alt="" />
+      </div>
+      <div class="pick"><div class="pick-line">Ohio State &minus;3.5</div><div class="matchup">Penn State at Ohio State</div></div>
+      <div class="nums"><div class="units">2.0u</div><div class="sub">&minus;110 &middot; 7:00</div></div>
+    </div>
+
+    <div class="tier"><div class="tier-mark"></div><div class="tier-label">Bet of the Afternoon Slate</div><div class="tier-rule"></div></div>
+    <div class="row">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/193.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2711.png" alt="" />
+      </div>
+      <div class="pick"><div class="pick-line">Miami (OH) +13.5</div><div class="matchup">Miami (OH) at Western Michigan</div></div>
+      <div class="nums"><div class="units">1.0u</div><div class="sub">&minus;108 &middot; 2:30</div></div>
+    </div>
+
+    <div class="tier"><div class="tier-mark"></div><div class="tier-label">Bets</div><div class="tier-rule"></div></div>
+    <div class="row">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/145.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/99.png" alt="" />
+      </div>
+      <div class="pick"><div class="pick-line">Over 51.5</div><div class="matchup">Ole Miss / LSU</div></div>
+      <div class="nums"><div class="units">1.0u</div><div class="sub">&minus;110 &middot; 6:00</div></div>
+    </div>
+    <div class="row">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2483.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/264.png" alt="" />
+      </div>
+      <div class="pick"><div class="pick-line">Oregon &minus;7</div><div class="matchup">Washington at Oregon</div></div>
+      <div class="nums"><div class="units">1.5u</div><div class="sub">&minus;115 &middot; 9:30</div></div>
+    </div>
+
+    <div class="tier"><div class="tier-mark lean"></div><div class="tier-label lean">Leans</div><div class="tier-rule"></div></div>
+    <div class="row">
+      <div class="logos"><div class="mono-badge">OSU</div></div>
+      <div class="pick"><div class="pick-line">OSU win total o10.5</div><div class="matchup">Season futures</div></div>
+      <div class="nums"><div class="units">0.5u</div><div class="sub">+120 &middot; &mdash;&mdash;</div></div>
+    </div>
+  </div>
+
+  <div class="filler"><img src="/brand/slate-mark.png" alt="" /></div>
+
+  <div class="foot">
+    <div class="foot-rule"></div>
+    <div class="wordmark">The CFB Slate</div>
+    <div class="tally">7 bets &middot; 11.0u</div>
+  </div>
+</div>
+</div>
+
+<!-- ======================================================================== -->
+<!-- STATE 3 — every bet one tier → NO HERO, ONE HEADING                       -->
+<!-- ======================================================================== -->
+<div class="state-label">State 3 · every bet one tier &rarr; hero <b class="no">no</b><br><span>The ordinary Saturday: seven plain bets, no conviction ladder at all. One heading, seven rows, sorted purely by kickoff. This is the state C got wrong.</span></div>
+<div class="stage">
+<div class="card">
+  <div class="field">
+    <div class="yard major" style="left:108px"></div><div class="yard" style="left:216px"></div>
+    <div class="yard" style="left:324px"></div><div class="yard major" style="left:432px"></div>
+    <div class="yard" style="left:540px"></div><div class="yard" style="left:648px"></div>
+    <div class="yard major" style="left:756px"></div><div class="yard" style="left:864px"></div>
+    <div class="yard" style="left:972px"></div>
+  </div>
+  <div class="aura-green"></div><div class="aura-gold"></div>
+
+  <div class="head">
+    <div class="head-l">
+      <div class="name">Chase Bets</div>
+      <div class="meta">Week 3 &middot; Sat Sep 12</div>
+    </div>
+    <img class="head-stamp" src="/brand/slate-mark.png" alt="" />
+  </div>
+
+  <div class="rows">
+    <div class="tier"><div class="tier-mark"></div><div class="tier-label">Bets</div><div class="tier-rule"></div></div>
+    <div class="row">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/251.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/201.png" alt="" />
+      </div>
+      <div class="pick"><div class="pick-line">Texas &minus;2.5</div><div class="matchup">Oklahoma at Texas</div></div>
+      <div class="nums"><div class="units">2.0u</div><div class="sub">&minus;105 &middot; 11:00</div></div>
+    </div>
+    <div class="row">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/193.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2711.png" alt="" />
+      </div>
+      <div class="pick"><div class="pick-line">Miami (OH) +13.5</div><div class="matchup">Miami (OH) at Western Michigan</div></div>
+      <div class="nums"><div class="units">1.0u</div><div class="sub">&minus;108 &middot; 2:30</div></div>
+    </div>
+    <div class="row">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/61.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2633.png" alt="" />
+      </div>
+      <div class="pick"><div class="pick-line">Georgia &minus;6.5</div><div class="matchup">Tennessee at Georgia</div></div>
+      <div class="nums"><div class="units">3.0u</div><div class="sub">&minus;110 &middot; 3:30</div></div>
+    </div>
+    <div class="row">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/145.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/99.png" alt="" />
+      </div>
+      <div class="pick"><div class="pick-line">Over 51.5</div><div class="matchup">Ole Miss / LSU</div></div>
+      <div class="nums"><div class="units">1.0u</div><div class="sub">&minus;110 &middot; 6:00</div></div>
+    </div>
+    <div class="row">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/194.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/213.png" alt="" />
+      </div>
+      <div class="pick"><div class="pick-line">Ohio State &minus;3.5</div><div class="matchup">Penn State at Ohio State</div></div>
+      <div class="nums"><div class="units">2.0u</div><div class="sub">&minus;110 &middot; 7:00</div></div>
+    </div>
+    <div class="row">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2483.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/264.png" alt="" />
+      </div>
+      <div class="pick"><div class="pick-line">Oregon &minus;7</div><div class="matchup">Washington at Oregon</div></div>
+      <div class="nums"><div class="units">1.5u</div><div class="sub">&minus;115 &middot; 9:30</div></div>
+    </div>
+    <div class="row">
+      <div class="logos"><div class="mono-badge">OSU</div></div>
+      <div class="pick"><div class="pick-line">OSU win total o10.5</div><div class="matchup">Season futures</div></div>
+      <div class="nums"><div class="units">0.5u</div><div class="sub">+120 &middot; &mdash;&mdash;</div></div>
+    </div>
+  </div>
+
+  <div class="filler"><img src="/brand/slate-mark.png" alt="" /></div>
+
+  <div class="foot">
+    <div class="foot-rule"></div>
+    <div class="wordmark">The CFB Slate</div>
+    <div class="tally">7 bets &middot; 11.0u</div>
+  </div>
+</div>
+</div>
+
+<!-- ======================================================================== -->
+<!-- STATE 4 — a single bet → HERO, EXPANDED                                   -->
+<!-- ======================================================================== -->
+<div class="state-label">State 4 · a single bet &rarr; hero <b class="yes">yes</b>, expanded<br><span>A lone bet trivially IS alone at the highest tier, so the rule gives it the panel. It fills, rather than sitting as one thin row on an empty card. This corrects the approved plan, which had said no hero here.</span></div>
+<div class="stage">
+<div class="card">
+  <div class="field">
+    <div class="yard major" style="left:108px"></div><div class="yard" style="left:216px"></div>
+    <div class="yard" style="left:324px"></div><div class="yard major" style="left:432px"></div>
+    <div class="yard" style="left:540px"></div><div class="yard" style="left:648px"></div>
+    <div class="yard major" style="left:756px"></div><div class="yard" style="left:864px"></div>
+    <div class="yard" style="left:972px"></div>
+  </div>
+  <div class="aura-green"></div><div class="aura-gold"></div>
+
+  <div class="head">
+    <div class="head-l">
+      <div class="name">Chase Bets</div>
+      <div class="meta">Week 3 &middot; Sat Sep 12</div>
+    </div>
+    <img class="head-stamp" src="/brand/slate-mark.png" alt="" />
+  </div>
+
+  <div class="hero-wrap solo">
+    <div class="hero-aura"></div>
+    <div class="hero">
+      <div class="hero-bar"></div>
+      <div class="hero-tier">Bet of the Century</div>
+      <div class="hero-body">
+        <div class="hero-logos">
+          <img class="hero-logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/61.png" alt="" />
+          <img class="hero-logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2633.png" alt="" />
+        </div>
+        <div class="hero-text">
+          <div class="hero-pick">Georgia &minus;6.5</div>
+          <div class="hero-matchup">Tennessee at Georgia</div>
+          <div class="hero-nums">
+            <div class="hero-units">3.0u</div>
+            <div class="hero-sub">&minus;110 &middot; SAT 3:30 PM CT</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="filler"><img src="/brand/slate-mark.png" alt="" /></div>
+
+  <div class="foot">
+    <div class="foot-rule"></div>
+    <div class="wordmark">The CFB Slate</div>
+    <div class="tally">1 bet &middot; 3.0u</div>
+  </div>
+</div>
+</div>
+
+<div class="notes">
+  <h2>Direction D &mdash; The Sheet</h2>
+  <p>
+    <b>The hero rule, stated once:</b> the top bet gets the panel <b>iff exactly
+    one bet sits alone at the highest tier present</b>. That single sentence
+    produces all four states above &mdash; hero, no hero on a tie, no hero when
+    everything is one tier, and hero for a lone bet. It lives in
+    <code>share-card.ts</code> as <code>heroBet()</code>, a pure function the
+    layout reads and nothing else, so the rule is testable on its own rather
+    than buried in JSX.
+  </p>
+  <p>
+    <b>Headings print on tier change, not per row.</b> Compare states 1 and 3:
+    seven bets each, but state 3 needs one heading instead of six. That is what
+    buys back A's vertical cost while keeping A's words &mdash; &ldquo;Bet of
+    the Afternoon Slate&rdquo; prints in full, with the broadcast window
+    interpolated from the bet's own kickoff via the existing
+    <code>kickSlot()</code>. B could only ever have said <code>SLATE</code>.
+  </p>
+  <p>
+    <b>The right-hand column is the reason this is an image.</b> Fixed width,
+    tabular figures, Plex Mono &mdash; <code>3.0u</code> over <code>2.0u</code>
+    over <code>1.5u</code>, decimal under decimal. <code>share-text.ts</code>
+    opens by conceding that the text share cannot do this.
+  </p>
+  <p>
+    Both hard cases are in every state: <b>Miami&nbsp;(OH) at Western
+    Michigan</b> as the longest matchup string the product can produce, and a
+    <b>futures bet</b> with no game &mdash; monogram instead of logos, an
+    em-dash where the clock would be, so the column keeps its shape.
+  </p>
+  <p>
+    <b>Sort order is visible in state 3</b>, where every tier is equal and the
+    rows fall in pure kickoff order: 11:00, 2:30, 3:30, 6:00, 7:00, 9:30, then
+    the futures bet with no kickoff last. In states 1 and 2 the same rule runs
+    inside each tier.
+  </p>
+</div>
+
+</body>
+</html>

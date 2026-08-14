@@ -27,6 +27,26 @@ export function kickHeading(iso: string, tz: string): string {
   return `${day.toUpperCase()} ${time} ${tzLabel(tz)}`;
 }
 
+/**
+ * "3:30p" — the kickoff in the width a betting sheet prints it.
+ *
+ * For the share card's number column, which is fixed-width so the stakes above
+ * it register. "3:30 PM" is three characters too wide there and "3:30" alone is
+ * ambiguous between an 11am and an 11pm kickoff. Same reasoning as the
+ * lowercase totals in `GameCard`: unspaced and lowercase is how a book sets it,
+ * and a lowercase meridiem never reads as part of the number.
+ */
+export function kickShort(iso: string, tz: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(new Date(iso));
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("hour")}:${get("minute")}${get("dayPeriod").toLowerCase().startsWith("p") ? "p" : "a"}`;
+}
+
 export function kickDateLong(iso: string, tz: string): string {
   return new Intl.DateTimeFormat("en-US", {
     timeZone: tz,

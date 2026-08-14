@@ -7,9 +7,12 @@ import { slipKey, useBetSlip, type SlipSelection } from "../../lib/bet-slip-stor
 import { betsChanged } from "../../lib/bets-changed";
 import { REASON_TAGS, REASON_TAG_LABELS } from "../../lib/db-types";
 import { DEFAULT_TZ, kickHeading } from "../../lib/kick";
+import { slipCardPayload } from "../../lib/share-card-build";
 import { shareOrCopy } from "../../lib/share-sheet";
 import { betSlipText, type SharePick } from "../../lib/share-text";
 import { fmtMoneyline } from "../../lib/slate";
+import { ConfidencePicker } from "../ConfidencePicker";
+import { ShareImageButton } from "../ShareImageButton";
 
 /** One logged/pending selection as a shareable line, with its kickoff. */
 function toSharePick(s: SlipSelection, units: number, tz: string): SharePick {
@@ -41,15 +44,18 @@ export function BetSlip({
   seasonId,
   week,
   tz = DEFAULT_TZ,
+  displayName = "",
   demo = false,
 }: {
   seasonId: number;
   week: number;
   tz?: string;
+  /** Titles the image share: "<display_name> Bets". */
+  displayName?: string;
   /** `/demo`: the slip fills and confirms, but never reaches the ledger. */
   demo?: boolean;
 }) {
-  const { slip, remove, clear } = useBetSlip();
+  const { slip, remove, setTier, clear } = useBetSlip();
   const [units, setUnits] = useState<Record<string, string>>({});
   // A tailed selection knows why it exists, so the slip says so by default —
   // still overridable, since somebody may have had the same side anyway.
@@ -66,6 +72,11 @@ export function BetSlip({
   // impossible from here before.
   const [logged, setLogged] = useState<SharePick[] | null>(null);
   const loggedUnits = useRef(0);
+  // The image share needs the whole payload, not the text lines, and the store
+  // is cleared on submit — so it is captured for the toast the same way.
+  // State rather than a ref, because unlike `loggedUnits` it is read during
+  // render: a ref read there would not re-render when the toast appears.
+  const [loggedCard, setLoggedCard] = useState<ReturnType<typeof slipCardPayload> | null>(null);
   const [shareNote, setShareNote] = useState<string | null>(null);
 
   const dayLabel = new Intl.DateTimeFormat("en-US", {
@@ -117,6 +128,12 @@ export function BetSlip({
             <Share size={13} aria-hidden />
             {shareNote ?? "Share slip"}
           </button>
+          <ShareImageButton
+            payload={loggedCard}
+            filename="cfb-slate-bets.png"
+            label="Image"
+            className="stat inline-flex min-h-11 min-w-[5.5rem] items-center justify-center gap-1.5 rounded-lg border border-chalk/20 px-2.5 text-xs font-semibold text-chalk hover:border-chalk/50 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+          />
           <button
             onClick={() => setLogged(null)}
             aria-label="Dismiss"
@@ -140,6 +157,8 @@ export function BetSlip({
     return Number.isFinite(u) ? sum + u : sum;
   }, 0);
 
+  const cardPayload = slipCardPayload(slip, unitsFor, { displayName, week, day: dayLabel });
+
   const submit = () =>
     startTransition(async () => {
       setError(null);
@@ -148,6 +167,7 @@ export function BetSlip({
         // — but there is no season 2026 game 9104 to write it against, and the
         // ledger is append-only. So it confirms and keeps nothing.
         loggedUnits.current = totalUnits;
+        setLoggedCard(cardPayload);
         setLogged(slip.map((s) => toSharePick(s, unitsFor(slipKey(s)), tz)));
         clear();
         setUnits({});
@@ -165,12 +185,14 @@ export function BetSlip({
           odds: s.odds,
           units: unitsFor(slipKey(s)),
           description: s.description,
+          confidence: s.tier,
         })),
       );
       if (!res.ok) {
         setError(res.message ?? "Something went wrong");
       } else {
         loggedUnits.current = totalUnits;
+        setLoggedCard(cardPayload);
         setLogged(slip.map((s) => toSharePick(s, unitsFor(slipKey(s)), tz)));
         clear();
         setUnits({});
@@ -205,10 +227,8 @@ export function BetSlip({
               {slip.map((s) => {
                 const key = slipKey(s);
                 return (
-                  <li
-                    key={key}
-                    className="flex items-center gap-2 border-b border-chalk/6 px-3.5 py-2"
-                  >
+                  <li key={key} className="border-b border-chalk/6 px-3.5 py-2">
+                   <div className="flex items-center gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="scorebug truncate text-[14px] leading-tight text-chalk">
                         {s.label}
@@ -236,6 +256,16 @@ export function BetSlip({
                     >
                       <X size={14} aria-hidden />
                     </button>
+                   </div>
+                    {/* Its own line: six labels as long as "Bet of the Century"
+                        cannot share a 340px row with the stake and the remove
+                        target and still clear 44px. */}
+                    <ConfidencePicker
+                      value={s.tier}
+                      onChange={(tier) => setTier(s.gameId, s.betType, tier)}
+                      label={`Confidence for ${s.label}`}
+                      className="stat mt-1.5 h-11 w-full rounded-md border border-chalk/12 bg-elev px-2 text-[11px] text-chalk focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+                    />
                   </li>
                 );
               })}
@@ -283,18 +313,27 @@ export function BetSlip({
                   className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-chalk/15 px-2.5 text-xs font-medium text-dim transition-colors hover:border-chalk/40 hover:text-chalk"
                 >
                   <Share size={13} aria-hidden />
-                  {shareNote ?? "Share"}
+                  {shareNote ?? "Text"}
                 </button>
-                <button
-                  onClick={submit}
-                  disabled={pending}
-                  className="h-9 flex-1 rounded-lg bg-accent text-sm font-semibold text-accent-ink transition-opacity disabled:opacity-60"
-                >
-                  {pending
-                    ? "Logging…"
-                    : `Log ${slip.length} bet${slip.length > 1 ? "s" : ""} · ${totalUnits}u`}
-                </button>
+                {/* The second share: the same slip as a card. */}
+                <ShareImageButton
+                  payload={cardPayload}
+                  filename="cfb-slate-bets.png"
+                  label="Image"
+                  className="stat flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-chalk/15 px-2.5 text-xs font-medium text-dim transition-colors hover:border-chalk/40 hover:text-chalk disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+                />
               </div>
+              {/* Full width and last, so the primary action sits lowest and
+                  widest — the thumb zone rule in docs/DESIGN.md. */}
+              <button
+                onClick={submit}
+                disabled={pending}
+                className="h-11 w-full rounded-lg bg-accent text-sm font-semibold text-accent-ink transition-opacity disabled:opacity-60"
+              >
+                {pending
+                  ? "Logging…"
+                  : `Log ${slip.length} bet${slip.length > 1 ? "s" : ""} · ${totalUnits}u`}
+              </button>
             </div>
           </div>
         )}

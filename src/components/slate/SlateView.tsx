@@ -46,6 +46,7 @@ export function SlateView({
   currentWeek,
   minWeek = 1,
   favoriteTeamIds = [],
+  displayName = "",
   demo = false,
 }: {
   initial: SlateData;
@@ -54,6 +55,8 @@ export function SlateView({
   minWeek?: number;
   /** Server-side favorites (/me) — pinned like local stars, roam across devices */
   favoriteTeamIds?: number[];
+  /** Titles the slip's share card: "<display_name> Bets". */
+  displayName?: string;
   /**
    * Sample slate, no database behind it (`/demo`).
    *
@@ -620,7 +623,7 @@ export function SlateView({
         )}
       </div>
 
-      <BetSlip seasonId={data.seasonId} week={week} tz={tz} demo={demo} />
+      <BetSlip seasonId={data.seasonId} week={week} tz={tz} demo={demo} displayName={displayName} />
     </>
   );
 }

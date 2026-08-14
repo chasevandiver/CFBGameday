@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en" data-direction="share-a">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Share card A — The Gameday Program · The CFB Slate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Graduate&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================================
+   SHARE CARD A — "The Gameday Program"
+
+   1080x1350 (4:5). The image a user posts to a timeline.
+
+   Palette is docs/BRAND.md §5 verbatim — NOT the app's charcoal tokens. That
+   is deliberate and it is what src/lib/brand.ts says in its own docblock: the
+   BRAND palette is for "the icon, the manifest, the launch surfaces, the share
+   cards." A share card is green and gold whatever theme the app is in.
+
+   SATORI DISCIPLINE. This mockup is a spec for a next/og ImageResponse, so it
+   only uses what satori can render:
+     · flexbox only — no grid
+     · no `gap` — explicit margins, so the port is mechanical
+     · every element with >1 child carries display:flex
+     · rules and textures are divs, not borders-with-tricks or repeating
+       gradients
+   Anything you see here can be lifted into JSX without redesign. That is the
+   point of building the mockup this way.
+
+   Leads with: tier structure.
+   Remembered by: the ruled tier headings, like a program's table of contents.
+   ========================================================================== */
+
+:root {
+  /* docs/BRAND.md §5 */
+  --near-black: #020A08;
+  --field-green: #08251C;
+  --raised-green: #0E3B2C;
+  --chalk: #F4EFE2;
+  --gold: #E8B93D;
+  --penalty: #E4572E;
+  /* the dim green all three existing OG routes already use */
+  --dim: #8FA79B;
+
+  --font-display: "Graduate";
+  --font-body: "Archivo";
+  --font-num: "IBM Plex Mono";
+}
+
+* { box-sizing: border-box; }
+html { color-scheme: dark; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: #0b0b0b;
+  font-family: var(--font-body), system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 14px 40px;
+  --s: calc(min(100vw - 28px, 1080px) / 1080);
+}
+
+/* Honest preview: the card is laid out at true 1080x1350 and scaled down, so
+   what you see is the pixel layout, not a responsive reflow of it. */
+.stage { width: calc(1080px * var(--s)); height: calc(1350px * var(--s)); }
+.card {
+  width: 1080px; height: 1350px;
+  transform: scale(var(--s)); transform-origin: top left;
+  position: relative; overflow: hidden;
+  background: var(--near-black);
+  display: flex; flex-direction: column;
+}
+
+/* --- field texture (§7: "the field is a texture, not the subject") --------- */
+.field { position: absolute; left: 0; top: 0; width: 1080px; height: 1350px; display: flex; }
+.yard { position: absolute; top: 0; width: 2px; height: 1350px; background: rgba(244,239,226,0.030); }
+.yard.major { background: rgba(244,239,226,0.052); }
+.hash { position: absolute; width: 26px; height: 2px; background: rgba(244,239,226,0.040); }
+/* the green->gold rim light of §10, localised so it never fills the frame */
+.aura-green {
+  position: absolute; left: -220px; top: -260px; width: 900px; height: 900px;
+  background: radial-gradient(circle at center, rgba(14,59,44,0.85) 0%, rgba(14,59,44,0) 68%);
+  display: flex;
+}
+.aura-gold {
+  position: absolute; right: -300px; bottom: -340px; width: 950px; height: 950px;
+  background: radial-gradient(circle at center, rgba(232,185,61,0.14) 0%, rgba(232,185,61,0) 66%);
+  display: flex;
+}
+
+/* --- header --------------------------------------------------------------- */
+.head { position: relative; display: flex; flex-direction: column; padding: 48px 64px 0; }
+.name {
+  font-family: var(--font-display), serif;
+  font-size: 66px; line-height: 1.02; color: var(--chalk);
+  letter-spacing: 0.01em; text-transform: uppercase;
+  display: flex;
+}
+.meta {
+  font-family: var(--font-num), monospace; font-size: 23px; font-weight: 500;
+  letter-spacing: 0.20em; color: var(--dim); text-transform: uppercase;
+  margin-top: 14px; display: flex;
+}
+.head-rule { height: 2px; background: rgba(244,239,226,0.20); margin-top: 26px; display: flex; }
+
+/* --- body ----------------------------------------------------------------- */
+.body { position: relative; display: flex; flex-direction: column; padding: 0 64px; flex: 1; }
+
+/* tier heading: label, then a hairline that grows to the edge. No knockout
+   trick — satori would not render one. */
+.tier { display: flex; flex-direction: row; align-items: center; margin-top: 26px; }
+.tier-label {
+  font-family: var(--font-display), serif; font-size: 26px; letter-spacing: 0.11em;
+  text-transform: uppercase; color: var(--chalk); display: flex; white-space: nowrap;
+}
+.tier-label.lean { color: var(--dim); }
+.tier-rule { flex: 1; height: 1px; background: rgba(244,239,226,0.22); margin-left: 22px; display: flex; }
+.tier-mark { width: 9px; height: 9px; background: var(--gold); margin-right: 16px; display: flex; }
+.tier-mark.lean { background: rgba(143,167,155,0.55); }
+
+/* --- a bet ---------------------------------------------------------------- */
+.bet { display: flex; flex-direction: row; align-items: center; margin-top: 22px; }
+
+.logos { display: flex; flex-direction: row; align-items: center; width: 116px; margin-right: 24px; }
+.logo { width: 64px; height: 64px; display: flex; }
+.logo.back { margin-left: -12px; }
+/* futures / no game: the monogram fallback TeamMark.tsx already uses */
+.mono {
+  width: 64px; height: 64px; border-radius: 32px; display: flex;
+  align-items: center; justify-content: center;
+  font-family: var(--font-body), sans-serif; font-weight: 700; font-size: 21px;
+  color: var(--chalk); background: var(--raised-green);
+}
+
+.pick { display: flex; flex-direction: column; flex: 1; }
+.pick-line {
+  font-family: var(--font-body), sans-serif; font-weight: 700; font-size: 42px;
+  line-height: 1.05; color: var(--chalk); display: flex;
+}
+.matchup {
+  font-family: var(--font-body), sans-serif; font-weight: 500; font-size: 23px;
+  color: var(--dim); margin-top: 8px; display: flex; letter-spacing: 0.01em;
+}
+
+/* fixed width + tabular figures so the numbers stack in a true column */
+.nums { display: flex; flex-direction: column; align-items: flex-end; width: 234px; }
+.units {
+  font-family: var(--font-num), monospace; font-weight: 600; font-size: 36px;
+  color: var(--gold); font-variant-numeric: tabular-nums; display: flex;
+}
+.odds-time {
+  font-family: var(--font-num), monospace; font-weight: 400; font-size: 21px;
+  color: var(--dim); margin-top: 8px; font-variant-numeric: tabular-nums;
+  display: flex; letter-spacing: 0.03em; white-space: nowrap;
+}
+
+/* --- footer (§31: the icon as a small brand stamp) ------------------------- */
+.foot {
+  position: relative; display: flex; flex-direction: row; align-items: center;
+  padding: 0 64px 44px; margin-top: 32px;
+}
+.foot-rule { position: absolute; left: 64px; right: 64px; top: -24px; height: 1px; background: rgba(244,239,226,0.16); display: flex; }
+.stamp { width: 41px; height: 60px; margin-right: 18px; display: flex; }
+.wordmark {
+  font-family: var(--font-display), serif; font-size: 24px; letter-spacing: 0.20em;
+  color: var(--chalk); text-transform: uppercase; display: flex;
+}
+.tally {
+  font-family: var(--font-num), monospace; font-weight: 500; font-size: 24px;
+  color: var(--gold); margin-left: auto; font-variant-numeric: tabular-nums;
+  display: flex; letter-spacing: 0.06em;
+}
+
+/* --- notes below the card (not part of the image) ------------------------- */
+.notes { width: min(100%, 1080px); max-width: 46rem; color: #a89f90; font-size: 13.5px; line-height: 1.65; margin-top: 26px; }
+.notes h2 { font-family: var(--font-display), serif; font-size: 15px; letter-spacing: .14em; text-transform: uppercase; color: #f2eee5; margin: 0 0 8px; }
+.notes p { margin: 0 0 12px; }
+.notes b { color: #f2eee5; font-weight: 500; }
+.notes code { font-family: var(--font-num), monospace; font-size: 12px; color: var(--gold); }
+.notes a { color: var(--gold); }
+</style>
+</head>
+<body>
+
+<div class="stage">
+<div class="card">
+
+  <!-- field texture -->
+  <div class="field">
+    <div class="yard major" style="left:108px"></div>
+    <div class="yard" style="left:216px"></div>
+    <div class="yard" style="left:324px"></div>
+    <div class="yard major" style="left:432px"></div>
+    <div class="yard" style="left:540px"></div>
+    <div class="yard" style="left:648px"></div>
+    <div class="yard major" style="left:756px"></div>
+    <div class="yard" style="left:864px"></div>
+    <div class="yard" style="left:972px"></div>
+    <div class="hash" style="left:527px;top:300px"></div>
+    <div class="hash" style="left:527px;top:450px"></div>
+    <div class="hash" style="left:527px;top:600px"></div>
+    <div class="hash" style="left:527px;top:750px"></div>
+    <div class="hash" style="left:527px;top:900px"></div>
+    <div class="hash" style="left:527px;top:1050px"></div>
+  </div>
+  <div class="aura-green"></div>
+  <div class="aura-gold"></div>
+
+  <!-- header -->
+  <div class="head">
+    <div class="name">Chase Bets</div>
+    <div class="meta">Week 3 &middot; Sat Sep 12</div>
+    <div class="head-rule"></div>
+  </div>
+
+  <div class="body">
+
+    <!-- ================= BET OF THE CENTURY ================= -->
+    <div class="tier">
+      <div class="tier-mark"></div>
+      <div class="tier-label">Bet of the Century</div>
+      <div class="tier-rule"></div>
+    </div>
+    <div class="bet">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/61.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2633.png" alt="" />
+      </div>
+      <div class="pick">
+        <div class="pick-line">Georgia &minus;6.5</div>
+        <div class="matchup">Tennessee at Georgia</div>
+      </div>
+      <div class="nums">
+        <div class="units">3.0u</div>
+        <div class="odds-time">&minus;110 &middot; SAT 3:30 CT</div>
+      </div>
+    </div>
+
+    <!-- ================= BET OF THE YEAR ================= -->
+    <div class="tier">
+      <div class="tier-mark"></div>
+      <div class="tier-label">Bet of the Year</div>
+      <div class="tier-rule"></div>
+    </div>
+    <div class="bet">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/251.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/201.png" alt="" />
+      </div>
+      <div class="pick">
+        <div class="pick-line">Texas &minus;2.5</div>
+        <div class="matchup">Oklahoma at Texas</div>
+      </div>
+      <div class="nums">
+        <div class="units">2.0u</div>
+        <div class="odds-time">&minus;105 &middot; SAT 11:00 CT</div>
+      </div>
+    </div>
+
+    <!-- ================= BET OF THE DAY ================= -->
+    <div class="tier">
+      <div class="tier-mark"></div>
+      <div class="tier-label">Bet of the Day</div>
+      <div class="tier-rule"></div>
+    </div>
+    <div class="bet">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/194.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/213.png" alt="" />
+      </div>
+      <div class="pick">
+        <div class="pick-line">Ohio State &minus;3.5</div>
+        <div class="matchup">Penn State at Ohio State</div>
+      </div>
+      <div class="nums">
+        <div class="units">2.0u</div>
+        <div class="odds-time">&minus;110 &middot; SAT 7:00 CT</div>
+      </div>
+    </div>
+
+    <!-- ============ BET OF THE AFTERNOON SLATE ============ -->
+    <div class="tier">
+      <div class="tier-mark"></div>
+      <div class="tier-label">Bet of the Afternoon Slate</div>
+      <div class="tier-rule"></div>
+    </div>
+    <div class="bet">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/193.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2711.png" alt="" />
+      </div>
+      <div class="pick">
+        <div class="pick-line">Miami (OH) +13.5</div>
+        <div class="matchup">Miami (OH) at Western Michigan</div>
+      </div>
+      <div class="nums">
+        <div class="units">1.0u</div>
+        <div class="odds-time">&minus;108 &middot; SAT 2:30 CT</div>
+      </div>
+    </div>
+
+    <!-- ================= BETS ================= -->
+    <div class="tier">
+      <div class="tier-mark"></div>
+      <div class="tier-label">Bets</div>
+      <div class="tier-rule"></div>
+    </div>
+    <div class="bet">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2483.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/264.png" alt="" />
+      </div>
+      <div class="pick">
+        <div class="pick-line">Oregon &minus;7</div>
+        <div class="matchup">Washington at Oregon</div>
+      </div>
+      <div class="nums">
+        <div class="units">1.5u</div>
+        <div class="odds-time">&minus;115 &middot; SAT 9:30 CT</div>
+      </div>
+    </div>
+    <div class="bet">
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/145.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/99.png" alt="" />
+      </div>
+      <div class="pick">
+        <div class="pick-line">Over 51.5</div>
+        <div class="matchup">Ole Miss / LSU</div>
+      </div>
+      <div class="nums">
+        <div class="units">1.0u</div>
+        <div class="odds-time">&minus;110 &middot; SAT 6:00 CT</div>
+      </div>
+    </div>
+
+    <!-- ================= LEANS ================= -->
+    <div class="tier">
+      <div class="tier-mark lean"></div>
+      <div class="tier-label lean">Leans</div>
+      <div class="tier-rule"></div>
+    </div>
+    <div class="bet">
+      <div class="logos">
+        <div class="mono">OSU</div>
+      </div>
+      <div class="pick">
+        <div class="pick-line">OSU win total o10.5</div>
+        <div class="matchup">Season futures</div>
+      </div>
+      <div class="nums">
+        <div class="units">0.5u</div>
+        <div class="odds-time">+120 &middot; NO KICKOFF</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- footer -->
+  <div class="foot">
+    <div class="foot-rule"></div>
+    <img class="stamp" src="/brand/slate-mark.png" alt="" />
+    <div class="wordmark">The CFB Slate</div>
+    <div class="tally">7 bets &middot; 11.0u</div>
+  </div>
+
+</div>
+</div>
+
+<div class="notes">
+  <h2>Direction A &mdash; The Gameday Program</h2>
+  <p>
+    <b>Leads with tier structure.</b> The tiers are the organising idea, so they
+    get to be the architecture: a gold tick, the tier in Graduate, and a hairline
+    running out to the margin &mdash; the section headings of a printed gameday
+    program. You read the card by conviction first and clock second, which is the
+    sort order (<code>tier desc, then kickoff asc</code>).
+  </p>
+  <p>
+    <b>Remembered by</b> the ruled headings. <b>Density</b> ~7 bets; a heading
+    costs vertical space, so this is the least dense of the three.
+    <b>Tier expressed as</b> a heading over a group.
+  </p>
+  <p>
+    Note the two hard cases, both real and both rendered: <b>Miami&nbsp;(OH) at
+    Western Michigan</b> is the longest matchup string the product can produce,
+    and the last row is a <b>futures bet with no game</b> &mdash; no logos, no
+    kickoff, so it falls back to the monogram that
+    <code>TeamMark.tsx</code> already uses and the time column reads
+    <code>NO KICKOFF</code> rather than going blank.
+  </p>
+  <p>
+    Gold appears four ways only: the tier ticks, the unit counts, the tally, and
+    the lower-right rim light. That is BRAND.md §6's 5% budget, spent on value.
+  </p>
+</div>
+
+</body>
+</html>

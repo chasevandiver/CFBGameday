@@ -4,12 +4,15 @@ import { PicksTab } from "./PicksTab";
 import { BetForm, type BetFormGame } from "../../components/BetForm";
 import { LiveStatusChip } from "../../components/slate/chips";
 import { ShareButton } from "../../components/ShareButton";
+import { RetagBetButton } from "../../components/RetagBetButton";
+import { ShareImageButton } from "../../components/ShareImageButton";
 import { StatTile } from "../../components/StatTile";
 import { UnitsCurve } from "../../components/UnitsCurve";
 import { VoidBetButton } from "../../components/VoidBetButton";
 import { REASON_TAGS, REASON_TAG_LABELS, type BetRow, type TeamRow } from "../../lib/db-types";
 import { kickParts, tzLabel, DEFAULT_TZ } from "../../lib/kick";
 import { statusForBet, type LiveBetStatus } from "../../lib/live-status";
+import { betsCardPayload, shareableBets, type BetCardGame } from "../../lib/share-card-build";
 import { seasonIdsForYear, seasonYearOf, sportOfSeasonId } from "../../lib/league";
 import { fetchBetFormGames, fetchCurrentSeasonWeek } from "../../lib/queries";
 import { cumulativeUnits, formatRecord, tally, tallyBy } from "../../lib/records";
@@ -99,7 +102,7 @@ export default async function LedgerPage({
     formTeamIds.length > 0
       ? await supabase.from("teams").select("*").in("id", formTeamIds)
       : { data: [] };
-  const teamById = new Map(((formTeams ?? []) as TeamRow[]).map((t) => [t.id, t]));
+  const teamById = new Map<number, TeamRow>(((formTeams ?? []) as TeamRow[]).map((t) => [t.id, t]));
   const formGames: BetFormGame[] = gameRows.map((g) => {
     const homeAbbr = abbrOf(teamById.get(g.home_team_id));
     const awayAbbr = abbrOf(teamById.get(g.away_team_id));
@@ -124,18 +127,67 @@ export default async function LedgerPage({
     openGameIds.length > 0
       ? await supabase
           .from("games")
-          .select("id, status, home_points, away_points")
+          // start_ts and both team ids are for the share card: it sorts on
+          // kickoff inside a tier and draws each side's crest.
+          .select("id, status, home_points, away_points, start_ts, home_team_id, away_team_id")
           .in("id", openGameIds)
       : { data: [] };
+  type OpenGame = {
+    id: number;
+    status: string;
+    home_points: number | null;
+    away_points: number | null;
+    start_ts: string | null;
+    home_team_id: number;
+    away_team_id: number;
+  };
+  const openGameRows = (openGames ?? []) as OpenGame[];
   const liveGameById = new Map(
-    ((openGames ?? []) as Array<{
-      id: number;
-      status: string;
-      home_points: number | null;
-      away_points: number | null;
-    }>)
+    openGameRows
       .filter((g) => g.status === "in_progress")
       .map((g) => [g.id, g]),
+  );
+
+  // Teams for the share card. The bet-form fetch above only covers this week's
+  // games, and an open bet can sit on any of them — a future included.
+  const cardTeamIds = [
+    ...new Set(openGameRows.flatMap((g) => [g.home_team_id, g.away_team_id])),
+  ].filter((id) => !teamById.has(id));
+  const { data: cardTeams } =
+    cardTeamIds.length > 0
+      ? await supabase.from("teams").select("*").in("id", cardTeamIds)
+      : { data: [] };
+  for (const t of (cardTeams ?? []) as TeamRow[]) teamById.set(t.id, t);
+  const side = (id: number) => {
+    const t = teamById.get(id);
+    return t ? { abbr: abbrOf(t), logo: t.logo_url, color: t.color } : null;
+  };
+  // 0045 freezes the tier at kickoff. This is the page's read of that rule,
+  // used only to decide whether to render the picker — the database decides
+  // for real, and RetagBetButton surfaces its refusal if the two disagree.
+  const kickedOff = new Map(openGameRows.map((g) => [g.id, g.start_ts !== null && g.start_ts <= new Date().toISOString()]));
+  const retaggable = (b: BetRow): boolean =>
+    b.result === null && b.voided_at === null && !(b.game_id !== null && kickedOff.get(b.game_id));
+
+  const dayLabel = new Intl.DateTimeFormat("en-US", {
+    timeZone: DEFAULT_TZ,
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(new Date());
+
+  // The card is titled "<display_name> Bets"; the text share keeps its own
+  // "My bets" wording, which reads fine in a message and badly on a poster.
+  const { data: profile } = user
+    ? await supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle()
+    : { data: null };
+  const displayName: string = profile?.display_name ?? "";
+
+  const cardGameById = new Map<number, BetCardGame>(
+    openGameRows.map((g) => [
+      g.id,
+      { startTs: g.start_ts, away: side(g.away_team_id), home: side(g.home_team_id) },
+    ]),
   );
   const liveStatusFor = (b: BetRow): LiveBetStatus | null => {
     if (b.result || b.voided_at || b.game_id === null) return null;
@@ -210,12 +262,7 @@ export default async function LedgerPage({
                 groupName: "Ledger",
                 userName: "My bets",
                 week,
-                day: new Intl.DateTimeFormat("en-US", {
-                  timeZone: DEFAULT_TZ,
-                  weekday: "short",
-                  month: "short",
-                  day: "numeric",
-                }).format(new Date()),
+                day: dayLabel,
                 today: todayBets.map((b) => ({
                   key: String(b.id),
                   market: "spread" as const,
@@ -231,6 +278,22 @@ export default async function LedgerPage({
                 weekRecord: overall,
                 lifetimeRecord: overall,
               }}
+            />
+          )}
+          {/* The second share option: the same open bets as a card. Text stays
+              exactly as it was — this is added beside it, not in place of it. */}
+          {user && (
+            <ShareImageButton
+              payload={
+                shareableBets(bets).length > 0
+                  ? betsCardPayload(shareableBets(bets), cardGameById, {
+                      displayName,
+                      week,
+                      day: dayLabel,
+                    })
+                  : null
+              }
+              filename="cfb-slate-bets.png"
             />
           )}
           {user && (
@@ -360,6 +423,7 @@ export default async function LedgerPage({
               <tr className="border-b border-chalk/20 text-left text-xs uppercase text-chalk/55">
                 <th className="px-3 py-2">Bet</th>
                 <th className="px-3 py-2">Tag</th>
+                <th className="px-3 py-2">Confidence</th>
                 <th className="px-3 py-2 text-right">Line</th>
                 <th className="px-3 py-2 text-right">Units</th>
                 <th className="px-3 py-2 text-right">CLV</th>
@@ -370,7 +434,7 @@ export default async function LedgerPage({
             <tbody>
               {bets.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-6 text-center text-chalk/50">
+                  <td colSpan={8} className="px-3 py-6 text-center text-chalk/50">
                     No bets logged yet this season.
                   </td>
                 </tr>
@@ -383,6 +447,13 @@ export default async function LedgerPage({
                   <td className="max-w-[16rem] truncate px-3 py-2 font-sans">{b.description}</td>
                   <td className="px-3 py-2 text-xs text-chalk/60">
                     {REASON_TAG_LABELS[b.reason_tag as keyof typeof REASON_TAG_LABELS] ?? b.reason_tag}
+                  </td>
+                  <td className="px-3 py-2">
+                    <RetagBetButton
+                      betId={b.id}
+                      tier={b.confidence}
+                      editable={retaggable(b)}
+                    />
                   </td>
                   <td className="px-3 py-2 text-right">{fmtBetLine(b)}</td>
                   <td className="px-3 py-2 text-right">{b.units}</td>

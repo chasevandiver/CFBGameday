@@ -221,7 +221,42 @@ export interface BetRow {
   result: "win" | "loss" | "push" | "void" | null;
   payout_units: number | null;
   voided_at: string | null;
+  confidence: ConfidenceTier;
 }
+
+/**
+ * Self-assigned conviction, low to high (migration 0045). Ordered, and the
+ * order is load-bearing — the share card sorts on the index into this tuple,
+ * so a reordering silently reorders every card. Append, don't rearrange.
+ *
+ * A `lean` is the bottom rung of this same ladder, not a separate unstaked
+ * thing: still a real bet with real units, just the one you would defend
+ * least. `slate` prints its broadcast window at render time from the bet's own
+ * kickoff (`kickSlot()` in kick.ts), which is why there is no "afternoon" here.
+ *
+ * Not null: the column is NOT NULL DEFAULT 'bet', so nothing downstream
+ * branches on an absent tier.
+ */
+export const CONFIDENCE_TIERS = [
+  "lean",
+  "bet",
+  "slate",
+  "day",
+  "year",
+  "century",
+] as const;
+
+export type ConfidenceTier = (typeof CONFIDENCE_TIERS)[number];
+
+/** Singular — the card prints one heading over a group, not one per row. */
+export const CONFIDENCE_TIER_LABELS: Record<ConfidenceTier, string> = {
+  lean: "Lean",
+  bet: "Bet",
+  slate: "Bet of the Slate",
+  day: "Bet of the Day",
+  year: "Bet of the Year",
+  century: "Bet of the Century",
+};
 
 export const REASON_TAGS = [
   "model_edge",

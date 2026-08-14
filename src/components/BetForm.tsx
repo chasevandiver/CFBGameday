@@ -2,7 +2,12 @@
 
 import { useRef, useState, useTransition } from "react";
 import { logBet } from "../app/actions/bets";
-import { REASON_TAGS, REASON_TAG_LABELS } from "../lib/db-types";
+import {
+  CONFIDENCE_TIERS,
+  CONFIDENCE_TIER_LABELS,
+  REASON_TAGS,
+  REASON_TAG_LABELS,
+} from "../lib/db-types";
 
 const BET_TYPES = [
   ["spread", "Spread"],
@@ -172,6 +177,23 @@ export function BetForm({ seasonId, games = [] }: { seasonId: number; games?: Be
             {REASON_TAGS.map((tag) => (
               <option key={tag} value={tag}>
                 {REASON_TAG_LABELS[tag]}
+              </option>
+            ))}
+          </select>
+        </Field>
+        {/* Conviction, not reason: "Why" is the audit tag and this is how
+            strongly. Defaults to the neutral rung so the field is skippable —
+            it only earns its place on the card when someone reaches for it. */}
+        <Field label="Confidence" htmlFor="bet-confidence">
+          <select
+            id="bet-confidence"
+            name="confidence"
+            className={input}
+            defaultValue="bet"
+          >
+            {[...CONFIDENCE_TIERS].reverse().map((tier) => (
+              <option key={tier} value={tier}>
+                {CONFIDENCE_TIER_LABELS[tier]}
               </option>
             ))}
           </select>

@@ -78,10 +78,12 @@ export default async function SlatePage({
       bettingGroup?.id ?? null,
     ),
     user
-      ? supabase.from("profiles").select("favorite_team_ids").eq("id", user.id).maybeSingle()
+      ? supabase.from("profiles").select("favorite_team_ids, display_name").eq("id", user.id).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
   const favoriteTeamIds: number[] = favRes.data?.favorite_team_ids ?? [];
+  // The share card is titled "<display_name> Bets", so the slip needs the name.
+  const displayName: string = favRes.data?.display_name ?? "";
 
   return (
     <>
@@ -92,6 +94,7 @@ export default async function SlatePage({
           currentWeek={currentWeek}
           minWeek={minWeek}
           favoriteTeamIds={favoriteTeamIds}
+          displayName={displayName}
         />
       </main>
     </>

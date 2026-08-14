@@ -1033,6 +1033,170 @@ silent about the wiring, which is the gap that let it sit for a day.
       group board's real first Saturday · S–M
 - [ ] **UX-14** Groups first-run pointer on the slate — pairs with G10, needs a
       live active-group cookie flow to test · S
+
+**Share image** — owner request 2026-08-14, pulled forward. A second share
+option beside the existing text share: a 1080×1350 card of a user's bets,
+sorted by confidence tier then kickoff, titled `<display_name> Bets`, shareable
+from the bet slip, the ledger and groups. This is the product's marketing
+piece, so it colours from `BRAND` (§31, and `src/lib/brand.ts`'s docblock) and
+not from the app's charcoal tokens. **No audit raised this** — there is no
+prior ID, and nothing image-related appears in the rejected-experiments table.
+The nearest neighbour is `G10-v1` above, which stays text.
+Decisions taken with the owner, recorded so they are not relitigated: the tier
+is stored on the bet, not chosen at share time; a *lean* is the bottom rung of
+one ladder, not a separate unstaked object; the tier is editable until kickoff
+and frozen after; pick'em picks get no tier; the group variant shares the
+viewer's own bets, not the whole sheet.
+- [x] **SHARE-1** Design directions at 1080×1350 in `public/design/`
+      (`share-card-a|b|c.html`), per DESIGN.md exploration mode. Built
+      flexbox-only with no grid and no `gap`, because the winner has to survive
+      being ported into a `next/og` ImageResponse and satori renders a narrower
+      CSS subset than a browser. Rendered and checked at full size, including
+      the two hard cases — Miami (OH) at Western Michigan, and a futures bet
+      with no game, no logos and no kickoff. **Done 2026-08-14. Owner chose a
+      hybrid, `share-card-d.html` "The Sheet"** — B's row engine and its aligned
+      Plex Mono column, A's tier headings printed in full but only on a tier
+      *change*, and C's hero made conditional: the panel appears iff exactly one
+      bet sits alone at the highest tier, so it can never promote an arbitrary
+      row. All four hero states are rendered in that file, and rendering them is
+      what earned its keep — three separate layout bugs were only visible at
+      full size: A overflowed the frame by ~275px and clipped two bets and its
+      footer, B's stub stretched and left a 200px hole, and D's single-bet hero
+      ballooned into an empty green slab. The last two are one problem — a fixed
+      1350px canvas holding a variable-length list — and are fixed by one
+      self-scaling `filler` that collapses to nothing on a dense card and
+      carries the S at 6% opacity on a sparse one.
+      **One correction to the approved plan, on the record:** the plan had a
+      single-bet card return no hero. That contradicted the rule it sat beside
+      (a lone bet *is* alone at the highest tier) and rendered as one thin row
+      on an empty card. The special case is gone; the rule is now one sentence
+      with no exceptions. · S
+- [x] **SHARE-2** Done 2026-08-14, `0045_bet_confidence.sql`.
+      `bets.confidence text not null default 'bet'` with a six-value check, so
+      existing rows land on the neutral rung and nothing downstream branches on
+      a null tier. `enforce_bet_void_only()` gains exactly one transition,
+      written in the same shape as the one already there — decide what may
+      change, rebuild the row from `OLD`, re-apply only that — so a retag
+      carrying a stake edit drops the stake edit, exactly as a void carrying one
+      already does.
+      **Kickoff, not grading, is the boundary**, and that is the whole design:
+      a tier frozen at insert makes a typo permanent, while a tier that moves
+      after kickoff destroys the only reason to store it — "how do my Bet of the
+      Day picks actually do?" is answerable only if the tier was set before
+      anyone knew. Futures have no kickoff and freeze at grading instead, which
+      the existing `old.result is not null` guard already covers; a game whose
+      `start_ts` is still null has not kicked off either, so TBD stays editable.
+      The `"void own bets"` policy was **not** renamed despite now carrying the
+      retag — that would break the trail back to `06:SEC-03`, so the drift is
+      recorded in a `comment on policy` instead.
+      Types in `db-types.ts`: `CONFIDENCE_TIERS` (ordered, and the order is
+      load-bearing — the card sorts on the index, so append but never rearrange)
+      and `CONFIDENCE_TIER_LABELS`, mirroring `REASON_TAGS`.
+      **Verified: 174 SQL assertions pass, 0 fail**, including 11 new ones —
+      default rung, explicit tier surviving the insert sanitizer, a tier outside
+      the ladder refused, retag pre-kickoff, retag discarding a smuggled stake
+      edit, retag post-kickoff refused, TBD kickoff allowed, futures allowed,
+      another user's bet refused, a graded bet refused, and the original void
+      path still working. `lint`, `tsc --noEmit` and 726 vitest tests clean.
+      **Caveat on how it was run:** `npm run db:test` cannot complete in this
+      container — migrations 0043/0044 `create extension pg_cron`, which is not
+      installed here, and it fails before reaching any suite. That is
+      pre-existing and unrelated to bets. The suites were run against the same
+      throwaway Postgres 16 cluster with those two migrations excluded. **0043
+      and 0044 have therefore never been exercised by `db:test` in this
+      environment** — worth knowing before trusting a green run. · M
+- [x] **SHARE-3** Done 2026-08-14. `src/lib/share-card.ts` — pure, no React, no
+      I/O, pinned by 27 tests in `share-card.test.ts`, exactly as
+      `share-text.ts` is. `sortForCard` (tier desc, then kickoff asc, unscheduled
+      to the bottom **of its own tier** rather than of the card, ties keeping
+      input order), `heroBet`, `groupByTier`, `tierHeadline`, `capForCard`,
+      `formatUnits`/`formatOdds`.
+      Three decisions worth not rediscovering later. **`capForCard` sorts before
+      it cuts** — the other order would drop by placement time and could bin the
+      Bet of the Year to keep a lean. **The `slate` tier groups by broadcast
+      window, not just by tier** — two slate bets in different windows are
+      genuinely different sections ("Bet of the Afternoon Slate" vs "…Primetime
+      Slate"), and kickoff order already clusters them so nothing fragments.
+      **The superlatives stay singular over several rows** because they are
+      titles, not categories; only `bet` and `lean` pluralise.
+      `formatUnits` always prints one decimal — `2u` over `1.5u` puts the
+      decimal points out of register and undoes the only reason this is an
+      image rather than text. `formatOdds` uses U+2212; **satori draws tofu
+      rather than falling back**, so SHARE-5 has to confirm that glyph on the
+      subset that actually ships, not on the family. · M
+- [x] **SHARE-4** Done 2026-08-14. `SlipSelection` now carries `away`/`home`
+      (abbr, logo, colour) and `tier`, filled at the two construction sites that
+      already hold the `GameView` — `GameCard`'s `sel()` and `SheetLine`'s
+      `selectionFor()`. `logSlipBets` validates the tier against
+      `CONFIDENCE_TIERS` before the insert rather than letting the check
+      constraint reject the batch, so one bad tier names itself instead of
+      failing the whole slip. A `setTier` action on the store; retagging on the
+      slip is a plain edit because 0045's freeze only governs a logged bet.
+      **A tail inherits the number, not the conviction** — how strongly someone
+      else liked it is their read, so a tailed selection starts at the neutral
+      rung.
+      **`league` deliberately not added to `SlipSelection`.** `GameView` carries
+      no `sport`, and `slate.ts` says league is "derived from the season id,
+      never guessed" — so the card builder derives it once via the existing
+      `sportOfSeasonId()`. That is exactly as correct as the existing logging,
+      which already writes a whole slip under one season. · S
+- [x] **SHARE-5** Done 2026-08-14. `POST /api/share-card` — `ImageResponse`,
+      node runtime, session-gated, zod-validated with bounded string lengths
+      (the layout is fixed, so a 400-character "pick" does not scroll, it wraps
+      until the card is unreadable). POST because the bet slip shares selections
+      that do not exist in the database yet.
+      `npm run brand` now also writes the four TTFs to `public/fonts/` and they
+      are committed, so no request fetches a font. `card.tsx` is presentation
+      only; `buildCardModel()` in `share-card.ts` makes every decision, which is
+      what lets the hero states be tested without rendering a PNG.
+      **Three things only rendering could have caught**, all fixed: a bet with
+      no teams drew an **empty coloured circle** (the monogram has no abbr to
+      set — it takes the S now); the lint rule against JSX in a try/catch was
+      right and load-bearing, because `ImageResponse` renders lazily as its
+      stream is consumed, so the guard caught nothing and only looked like it
+      did; and the four fonts do **not** carry the ʻokina, so Hawaiʻi would have
+      set a tofu box — `sanitizeForCard` swaps it. U+2212 *is* covered, which
+      retires the flag SHARE-3 raised.
+      **SSRF, worth naming:** the payload is client-supplied and satori will
+      fetch whatever URL it is handed, from inside the deployment — and because
+      the response is an image, a probe of an internal address fails silently
+      and looks like a broken logo. Logos are therefore resolved ahead of render
+      against an ESPN-CDN allowlist, with a timeout and a size cap. A test
+      asserts `169.254.169.254` is never reached. · M–L
+- [x] **SHARE-6** Done 2026-08-14. `shareImage()` (Web Share Level 2, download
+      fallback), `ShareImageButton`, `ConfidencePicker`, `RetagBetButton`, and
+      the payload builders in `share-card-build.ts`.
+      Image share sits **beside** the text share — the slip footer, the
+      post-log toast, the ledger header and the betting-group home. The text
+      share is untouched. The tier is set in the slip (one row each), in
+      `BetForm`, and retagged from the ledger's new Confidence column.
+      Notes. `shareImage` passes **only `files`** — `share-sheet.ts` documents
+      that adding `url` makes iOS append a link that pushes the content off the
+      message preview, and a caption does the same thing to an image. It feature-
+      tests with `canShare({files})` rather than `"share" in navigator`, because
+      plenty of browsers have Web Share and refuse files. There is **no
+      clipboard fallback**: image-to-clipboard is patchy and, where it works,
+      hands the user something they then have to find a place to paste. A
+      download is the honest second choice.
+      The slip's Log button moved to its own full-width row beneath the two
+      share buttons — lowest and widest is the thumb-zone rule, and it was
+      sharing a row with three other controls.
+      `RetagBetButton` deliberately does **not** decide whether an edit is
+      allowed. It renders the picker when the row looks live and surfaces the
+      trigger's own refusal when the browser's clock and Postgres's disagree,
+      so the UI cannot drift out of step with 0045. · M
+- [x] **SHARE-7** Done 2026-08-14, landed with SHARE-5. **The first test in the
+      repo to exercise a route** (§23 #42 is now partially closed — one route,
+      not the gap in general). 12 assertions: 401 unauthenticated, 400 on an
+      empty bet list / a tier outside the ladder / a body that is not JSON, and
+      then real PNG bytes for all four hero states, a card at the 12-bet cap,
+      the longest matchup the product can build, a logo-less future, a name
+      carrying the ʻokina, and the SSRF allowlist.
+      It checks the PNG magic number and a floor on byte length rather than just
+      the status, because a zero-byte or HTML response sails past a 200 check —
+      and an empty canvas is exactly what satori produces when it renders but
+      finds nothing to draw. · S
+
 - [ ] **F10** "Biggest line move" slate sort — needs real movement data · S
 - [ ] **F13** Returning-production % on team pages — lights up when data lands · S
 - [ ] **UX-08 — four of seven done 2026-08-13; three need a layout decision.**

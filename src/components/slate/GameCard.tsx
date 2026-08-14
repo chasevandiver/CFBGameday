@@ -634,6 +634,11 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
     line,
     odds,
     kickTs: game.startTs,
+    // Carried for the image share's logos; the card falls back to the abbr
+    // monogram when a logo is null, the same way TeamMark does on screen.
+    away: { abbr: game.away.abbr, logo: game.away.logo, color: game.away.color },
+    home: { abbr: game.home.abbr, logo: game.home.logo, color: game.home.color },
+    tier: "bet",
   });
 
   return (

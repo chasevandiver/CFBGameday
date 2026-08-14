@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en" data-direction="share-b">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Share card B — The Ticket · The CFB Slate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Graduate&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================================
+   SHARE CARD B — "The Ticket"
+
+   1080x1350 (4:5). Palette is docs/BRAND.md §5 verbatim (see share-card-a.html
+   for why a share card is green rather than the app's charcoal).
+
+   Same satori discipline as A: flexbox only, no grid, no `gap`, explicit
+   margins, display:flex on anything with more than one child. Ports to JSX
+   without redesign.
+
+   Leads with: the numbers.
+   Remembered by: the mono column that actually lines up — the one thing the
+   plain-text share can never do, and which src/lib/share-text.ts says so in
+   its own header ("no amount of padding will make columns line up").
+   ========================================================================== */
+
+:root {
+  --near-black: #020A08;
+  --field-green: #08251C;
+  --raised-green: #0E3B2C;
+  --chalk: #F4EFE2;
+  --gold: #E8B93D;
+  --penalty: #E4572E;
+  --dim: #8FA79B;
+
+  --font-display: "Graduate";
+  --font-body: "Archivo";
+  --font-num: "IBM Plex Mono";
+}
+
+* { box-sizing: border-box; }
+html { color-scheme: dark; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: #0b0b0b;
+  font-family: var(--font-body), system-ui, sans-serif;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 14px 14px 40px;
+  --s: calc(min(100vw - 28px, 1080px) / 1080);
+}
+.stage { width: calc(1080px * var(--s)); height: calc(1350px * var(--s)); }
+.card {
+  width: 1080px; height: 1350px;
+  transform: scale(var(--s)); transform-origin: top left;
+  position: relative; overflow: hidden;
+  background: var(--near-black);
+  display: flex; flex-direction: column;
+  padding: 40px;
+}
+
+/* localised rim light, §10 — never fills the frame */
+.aura-gold {
+  position: absolute; right: -260px; top: -280px; width: 820px; height: 820px;
+  background: radial-gradient(circle at center, rgba(232,185,61,0.16) 0%, rgba(232,185,61,0) 66%);
+  display: flex;
+}
+.aura-green {
+  position: absolute; left: -240px; bottom: -300px; width: 880px; height: 880px;
+  background: radial-gradient(circle at center, rgba(14,59,44,0.9) 0%, rgba(14,59,44,0) 68%);
+  display: flex;
+}
+
+/* --- the stub ------------------------------------------------------------- */
+/* The stub hugs its rows rather than stretching to the frame. A seven-bet
+   Saturday should read as a short ticket on a dark field, not as a tall ticket
+   with a hole in it. The near-black below is the card's negative space (§23). */
+.ticket {
+  position: relative; display: flex; flex-direction: column;
+  background: var(--raised-green); border-radius: 10px;
+  padding: 46px 44px 0;
+}
+/* perforated edge: near-black bites out of both sides */
+.perf { position: absolute; width: 22px; height: 22px; border-radius: 11px; background: var(--near-black); display: flex; }
+.perf.l { left: -11px; }
+.perf.r { right: -11px; }
+
+.head { display: flex; flex-direction: row; align-items: flex-end; }
+.head-l { display: flex; flex-direction: column; flex: 1; }
+.name {
+  font-family: var(--font-display), serif; font-size: 66px; line-height: 1.02;
+  color: var(--chalk); text-transform: uppercase; letter-spacing: 0.01em; display: flex;
+}
+.meta {
+  font-family: var(--font-num), monospace; font-weight: 500; font-size: 23px;
+  letter-spacing: 0.18em; color: var(--dim); text-transform: uppercase;
+  margin-top: 14px; display: flex;
+}
+.head-stamp { width: 62px; height: 92px; display: flex; }
+
+/* dashed rules, as dashes — satori will not honour border-style: dashed */
+.dashes { display: flex; flex-direction: row; margin-top: 30px; }
+.dash { width: 14px; height: 2px; background: rgba(244,239,226,0.22); margin-right: 10px; display: flex; }
+
+/* --- rows ----------------------------------------------------------------- */
+.rows { display: flex; flex-direction: column; }
+.row { display: flex; flex-direction: row; align-items: center; height: 106px; }
+.row-rule { height: 1px; background: rgba(244,239,226,0.10); display: flex; }
+
+.pill {
+  width: 132px; height: 34px; border-radius: 4px; background: var(--gold);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-num), monospace; font-weight: 600; font-size: 17px;
+  letter-spacing: 0.13em; color: var(--near-black); text-transform: uppercase;
+  margin-right: 26px;
+}
+.pill.lean { background: rgba(143,167,155,0.28); color: var(--dim); }
+.pill.plain { background: rgba(244,239,226,0.14); color: var(--chalk); }
+
+.logos { display: flex; flex-direction: row; align-items: center; width: 84px; margin-right: 22px; }
+.logo { width: 50px; height: 50px; display: flex; }
+.logo.back { margin-left: -16px; }
+.mono-badge {
+  width: 50px; height: 50px; border-radius: 25px; background: rgba(2,10,8,0.55);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-body), sans-serif; font-weight: 700; font-size: 17px; color: var(--chalk);
+}
+
+.pick { display: flex; flex-direction: column; flex: 1; }
+.pick-line {
+  font-family: var(--font-body), sans-serif; font-weight: 600; font-size: 37px;
+  line-height: 1.05; color: var(--chalk); display: flex;
+}
+.matchup {
+  font-family: var(--font-body), sans-serif; font-weight: 400; font-size: 21px;
+  color: var(--dim); margin-top: 7px; display: flex;
+}
+
+/* the column that aligns. fixed width + tabular figures. */
+.nums { display: flex; flex-direction: column; align-items: flex-end; width: 176px; }
+.units {
+  font-family: var(--font-num), monospace; font-weight: 600; font-size: 34px;
+  color: var(--gold); font-variant-numeric: tabular-nums; display: flex; letter-spacing: 0.02em;
+}
+.sub {
+  font-family: var(--font-num), monospace; font-weight: 400; font-size: 20px;
+  color: var(--dim); margin-top: 7px; font-variant-numeric: tabular-nums;
+  display: flex; letter-spacing: 0.04em;
+}
+
+/* --- foot of the stub ----------------------------------------------------- */
+.foot { display: flex; flex-direction: row; align-items: center; height: 104px; }
+.wordmark {
+  font-family: var(--font-display), serif; font-size: 24px; letter-spacing: 0.20em;
+  color: var(--chalk); text-transform: uppercase; display: flex;
+}
+.count {
+  font-family: var(--font-num), monospace; font-weight: 500; font-size: 22px;
+  color: var(--dim); letter-spacing: 0.14em; text-transform: uppercase;
+  margin-left: auto; margin-right: 26px; display: flex;
+}
+.total {
+  font-family: var(--font-num), monospace; font-weight: 600; font-size: 34px;
+  color: var(--gold); font-variant-numeric: tabular-nums; display: flex;
+}
+
+.notes { width: min(100%, 1080px); max-width: 46rem; color: #a89f90; font-size: 13.5px; line-height: 1.65; margin-top: 26px; }
+.notes h2 { font-family: var(--font-display), serif; font-size: 15px; letter-spacing: .14em; text-transform: uppercase; color: #f2eee5; margin: 0 0 8px; }
+.notes p { margin: 0 0 12px; }
+.notes b { color: #f2eee5; font-weight: 500; }
+.notes code { font-family: var(--font-num), monospace; font-size: 12px; color: var(--gold); }
+</style>
+</head>
+<body>
+
+<div class="stage">
+<div class="card">
+
+  <div class="aura-gold"></div>
+  <div class="aura-green"></div>
+
+  <div class="ticket">
+    <!-- perforations -->
+    <div class="perf l" style="top:150px"></div><div class="perf r" style="top:150px"></div>
+    <div class="perf l" style="top:256px"></div><div class="perf r" style="top:256px"></div>
+    <div class="perf l" style="top:362px"></div><div class="perf r" style="top:362px"></div>
+    <div class="perf l" style="top:468px"></div><div class="perf r" style="top:468px"></div>
+    <div class="perf l" style="top:574px"></div><div class="perf r" style="top:574px"></div>
+    <div class="perf l" style="top:680px"></div><div class="perf r" style="top:680px"></div>
+    <div class="perf l" style="top:786px"></div><div class="perf r" style="top:786px"></div>
+    <div class="perf l" style="top:892px"></div><div class="perf r" style="top:892px"></div>
+    <div class="perf l" style="top:998px"></div><div class="perf r" style="top:998px"></div>
+
+    <div class="head">
+      <div class="head-l">
+        <div class="name">Chase Bets</div>
+        <div class="meta">Week 3 &middot; Sat Sep 12</div>
+      </div>
+      <img class="head-stamp" src="/brand/slate-mark.png" alt="" />
+    </div>
+
+    <div class="dashes">
+      <div class="dash"></div><div class="dash"></div><div class="dash"></div><div class="dash"></div>
+      <div class="dash"></div><div class="dash"></div><div class="dash"></div><div class="dash"></div>
+      <div class="dash"></div><div class="dash"></div><div class="dash"></div><div class="dash"></div>
+      <div class="dash"></div><div class="dash"></div><div class="dash"></div><div class="dash"></div>
+      <div class="dash"></div><div class="dash"></div><div class="dash"></div><div class="dash"></div>
+      <div class="dash"></div><div class="dash"></div><div class="dash"></div><div class="dash"></div>
+      <div class="dash"></div><div class="dash"></div><div class="dash"></div><div class="dash"></div>
+      <div class="dash"></div><div class="dash"></div><div class="dash"></div><div class="dash"></div>
+      <div class="dash"></div><div class="dash"></div><div class="dash"></div><div class="dash"></div>
+      <div class="dash"></div><div class="dash"></div><div class="dash"></div><div class="dash"></div>
+    </div>
+
+    <div class="rows">
+
+      <div class="row">
+        <div class="pill">Century</div>
+        <div class="logos">
+          <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/61.png" alt="" />
+          <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2633.png" alt="" />
+        </div>
+        <div class="pick">
+          <div class="pick-line">Georgia &minus;6.5</div>
+          <div class="matchup">Tennessee at Georgia</div>
+        </div>
+        <div class="nums">
+          <div class="units">3.0u</div>
+          <div class="sub">&minus;110 &middot; 3:30</div>
+        </div>
+      </div>
+      <div class="row-rule"></div>
+
+      <div class="row">
+        <div class="pill">Year</div>
+        <div class="logos">
+          <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/251.png" alt="" />
+          <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/201.png" alt="" />
+        </div>
+        <div class="pick">
+          <div class="pick-line">Texas &minus;2.5</div>
+          <div class="matchup">Oklahoma at Texas</div>
+        </div>
+        <div class="nums">
+          <div class="units">2.0u</div>
+          <div class="sub">&minus;105 &middot; 11:00</div>
+        </div>
+      </div>
+      <div class="row-rule"></div>
+
+      <div class="row">
+        <div class="pill">Day</div>
+        <div class="logos">
+          <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/194.png" alt="" />
+          <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/213.png" alt="" />
+        </div>
+        <div class="pick">
+          <div class="pick-line">Ohio State &minus;3.5</div>
+          <div class="matchup">Penn State at Ohio State</div>
+        </div>
+        <div class="nums">
+          <div class="units">2.0u</div>
+          <div class="sub">&minus;110 &middot; 7:00</div>
+        </div>
+      </div>
+      <div class="row-rule"></div>
+
+      <div class="row">
+        <div class="pill">Slate</div>
+        <div class="logos">
+          <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/193.png" alt="" />
+          <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2711.png" alt="" />
+        </div>
+        <div class="pick">
+          <div class="pick-line">Miami (OH) +13.5</div>
+          <div class="matchup">Miami (OH) at Western Michigan</div>
+        </div>
+        <div class="nums">
+          <div class="units">1.0u</div>
+          <div class="sub">&minus;108 &middot; 2:30</div>
+        </div>
+      </div>
+      <div class="row-rule"></div>
+
+      <div class="row">
+        <div class="pill plain">Bet</div>
+        <div class="logos">
+          <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2483.png" alt="" />
+          <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/264.png" alt="" />
+        </div>
+        <div class="pick">
+          <div class="pick-line">Oregon &minus;7</div>
+          <div class="matchup">Washington at Oregon</div>
+        </div>
+        <div class="nums">
+          <div class="units">1.5u</div>
+          <div class="sub">&minus;115 &middot; 9:30</div>
+        </div>
+      </div>
+      <div class="row-rule"></div>
+
+      <div class="row">
+        <div class="pill plain">Bet</div>
+        <div class="logos">
+          <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/145.png" alt="" />
+          <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/99.png" alt="" />
+        </div>
+        <div class="pick">
+          <div class="pick-line">Over 51.5</div>
+          <div class="matchup">Ole Miss / LSU</div>
+        </div>
+        <div class="nums">
+          <div class="units">1.0u</div>
+          <div class="sub">&minus;110 &middot; 6:00</div>
+        </div>
+      </div>
+      <div class="row-rule"></div>
+
+      <div class="row">
+        <div class="pill lean">Lean</div>
+        <div class="logos">
+          <div class="mono-badge">OSU</div>
+        </div>
+        <div class="pick">
+          <div class="pick-line">OSU win total o10.5</div>
+          <div class="matchup">Season futures</div>
+        </div>
+        <div class="nums">
+          <div class="units">0.5u</div>
+          <div class="sub">+120 &middot; &mdash;&mdash;</div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="dashes">
+      <div class="dash"></div><div class="dash"></div><div class="dash"></div><div class="dash"></div>
+      <div class="dash"></div><div class="dash"></div><div class="dash"></div><div class="dash"></div>
+      <div class="dash"></div><div class="dash"></div><div class="dash"></div><div class="dash"></div>
+      <div class="dash"></div><div class="dash"></div><div class="dash"></div><div class="dash"></div>
+      <div class="dash"></div><div class="dash"></div><div class="dash"></div><div class="dash"></div>
+      <div class="dash"></div><div class="dash"></div><div class="dash"></div><div class="dash"></div>
+      <div class="dash"></div><div class="dash"></div><div class="dash"></div><div class="dash"></div>
+      <div class="dash"></div><div class="dash"></div><div class="dash"></div><div class="dash"></div>
+      <div class="dash"></div><div class="dash"></div><div class="dash"></div><div class="dash"></div>
+      <div class="dash"></div><div class="dash"></div><div class="dash"></div><div class="dash"></div>
+    </div>
+
+    <div class="foot">
+      <div class="wordmark">The CFB Slate</div>
+      <div class="count">7 bets</div>
+      <div class="total">11.0u</div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<div class="notes">
+  <h2>Direction B &mdash; The Ticket</h2>
+  <p>
+    <b>Leads with the numbers.</b> One continuous stub on the dark field, torn
+    down both edges. Tier stops being architecture and becomes a gold pill at the
+    head of each row, which buys back every pixel A spent on headings &mdash; so
+    this is the direction that holds a full Saturday.
+  </p>
+  <p>
+    <b>Remembered by</b> the right-hand column. Fixed width, tabular figures,
+    Plex Mono: <code>3.0u</code> over <code>2.0u</code> over <code>1.5u</code>,
+    decimal under decimal, all the way down. That is the one thing an image can
+    do that the text share explicitly cannot &mdash;
+    <code>src/lib/share-text.ts</code> opens by conceding it
+    (&ldquo;no amount of padding will make columns line up&rdquo;). If the point
+    of shipping an image is to do something text can&rsquo;t, this is the
+    direction that makes the argument.
+  </p>
+  <p>
+    <b>Density</b> 9 bets at the 106px row height shown, and 12 if the row
+    tightens to 80px &mdash; measured, not estimated. <b>Tier expressed as</b>
+    a pill, abbreviated to one word so it never wraps &mdash; which is also the
+    trade: &ldquo;Bet of the Afternoon Slate&rdquo; is reduced to
+    <code>SLATE</code>, and the broadcast window is lost. A only loses that
+    because it has room to print the heading in full.
+  </p>
+  <p>
+    Same two hard cases as A: <b>Miami&nbsp;(OH) at Western Michigan</b>, and a
+    <b>futures bet</b> with no game &mdash; monogram instead of logos, and the
+    clock reads as an em-dash rather than disappearing, so the column keeps its
+    shape.
+  </p>
+</div>
+
+</body>
+</html>

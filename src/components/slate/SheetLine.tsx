@@ -160,7 +160,17 @@ function selectionFor(game: GameView, b: GroupBetView): SlipSelection | null {
   if (side !== "home" && side !== "away" && side !== "over" && side !== "under") return null;
   const matchup = `${game.away.abbr} @ ${game.home.abbr}`;
   const team = side === "home" ? game.home : game.away;
-  const common = { gameId: game.id, matchup, kickTs: game.startTs, tailedFrom: b.name };
+  const common = {
+    gameId: game.id,
+    matchup,
+    kickTs: game.startTs,
+    tailedFrom: b.name,
+    away: { abbr: game.away.abbr, logo: game.away.logo, color: game.away.color },
+    home: { abbr: game.home.abbr, logo: game.home.logo, color: game.home.color },
+    // A tail inherits the number, not the conviction: how strongly someone else
+    // liked it is their read, not yours.
+    tier: "bet" as const,
+  };
 
   if (b.betType === "spread") {
     const { spread } = game.lines;
