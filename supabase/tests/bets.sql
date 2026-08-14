@@ -270,3 +270,41 @@ select pg_temp.raises('and an invented tag is still refused',
                       line_taken, odds, units, reason_tag)
     values (2026, '11111111-1111-1111-1111-111111111111'::uuid, 777, 'spread',
             'Georgia -3', 'home', -3, -110, 2, 'vibes')$$);
+
+-- ---------------------------------------------------------------------------
+\echo '# scoring_plays: everyone reads it, only the writers write it (0048)'
+-- ---------------------------------------------------------------------------
+-- SCORE-1. A scoring summary is no more private than the score it adds up to,
+-- so read matches `games`. Writes are the ingest jobs' alone: this is a record
+-- of what happened and nothing a user does should be able to edit it. Same
+-- posture as cover_flips (0026).
+\o /dev/null
+insert into scoring_plays (game_id, sequence, period, clock, scoring_team_id,
+                           play_type, play_text, home_points, away_points, source)
+values (777, 0, 1, '9:04', 1, 'Passing Touchdown',
+        'Ewers pass complete to Worthy for 17 yds for a TD', 7, 0, 'cfbd');
+\o
+
+select pg_temp.chk('a signed-out visitor can read the timeline',
+  (select count(*) = 1 from scoring_plays where game_id = 777));
+
+select public.expect_denied('but anon cannot write one', null,
+  $q$insert into scoring_plays (game_id, sequence, play_text, home_points, away_points, source)
+     values (777, 99, 'invented', 99, 0, 'nope')$q$,
+  'permission denied');
+
+select public.expect_denied('and neither can a signed-in user', :ann::uuid,
+  $q$insert into scoring_plays (game_id, sequence, play_text, home_points, away_points, source)
+     values (777, 98, 'invented', 99, 0, 'nope')$q$,
+  'permission denied');
+
+select public.expect_denied('nor edit one that is there', :ann::uuid,
+  $q$update scoring_plays set play_text = 'rewritten' where game_id = 777$q$,
+  'permission denied');
+
+-- The unique key is what makes the writer idempotent: a poll that re-reads the
+-- same summary upserts the same rows rather than appending the game's history
+-- a second time.
+select pg_temp.raises('the same play cannot land twice',
+  $$insert into scoring_plays (game_id, sequence, play_text, home_points, away_points, source)
+    values (777, 0, 'duplicate', 7, 0, 'cfbd')$$);

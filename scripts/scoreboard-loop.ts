@@ -27,9 +27,11 @@ import { envNum } from "./lib/env-num";
 import { idleSkip, envDays } from "./lib/idle";
 import {
   SEASON,
+  cfbScoringJob,
   logCfbdCalls,
   logEspnCalls,
   nflScoreboardJob,
+  nflScoringJob,
   recordJobRun,
   scoreboardJob,
 } from "./lib/jobs-core";
@@ -134,6 +136,20 @@ async function main() {
 
   // One job_runs row per launch (not per tick — a Saturday would write
   // thousands); the freshness card reads the latest launch.
+  /* SCORE-1's cadence. The scoring timeline rides this loop rather than its own
+     cron, because this is already the thing that runs during game windows —
+     but it does NOT ride the 30-second tick.
+
+     Both jobs are gated on the score having moved (`gamesNeedingScoring`), so
+     an idle pass costs zero external calls either way. The interval is about
+     the CFB side, which reads a whole week of FBS plays per call because CFBD
+     publishes no per-game route: that is a multi-MB response, and asking for it
+     twice a minute would be indefensible for a few dozen rows. Three minutes
+     puts a score on the card well inside the time anyone takes to tap into a
+     game, at ~20 calls an hour worst case against a 30,000/month budget. */
+  const SCORING_INTERVAL_MS = 3 * 60_000;
+  let lastScoring = 0;
+
   await recordJobRun(db, "scoreboard-loop", async () => {
     let ticks = 0;
     while (Date.now() < deadline) {
@@ -157,6 +173,30 @@ async function main() {
           ticks++;
           if (ticks % 10 === 1) console.log(`[nfl ${nflState}]`, JSON.stringify(result));
         }
+        // After the scores are written, so a play that just landed is matched
+        // against the score it produced rather than the previous one.
+        if (Date.now() - lastScoring >= SCORING_INTERVAL_MS) {
+          lastScoring = Date.now();
+          try {
+            if (nflState !== "idle") {
+              const before = espnCallCount();
+              const r = await nflScoringJob(db, NFL_SEASON);
+              await logEspnCalls(db, "nfl-scoring", espnCallCount() - before);
+              if ((r as { plays?: number }).plays) console.log("[nfl scoring]", JSON.stringify(r));
+            }
+            if (cfbState !== "idle") {
+              const before = cfbdCallCount();
+              const r = await cfbScoringJob(db, SEASON);
+              await logCfbdCalls(db, "cfb-scoring", cfbdCallCount() - before);
+              if ((r as { plays?: number }).plays) console.log("[cfb scoring]", JSON.stringify(r));
+            }
+          } catch (err) {
+            // The timeline is enrichment. A feed that will not answer must not
+            // cost the slate its live scores, which is what this loop is for.
+            console.error("scoring failed:", err instanceof Error ? err.message : err);
+          }
+        }
+
         const state =
           cfbState === "live" || nflState === "live"
             ? "live"

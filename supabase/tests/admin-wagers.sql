@@ -18,7 +18,8 @@
 -- The attempts go through parameterised helpers rather than the `raises(text)`
 -- idiom the other suites use: the statements here need a group UUID that only
 -- exists at runtime, and building them as strings means nesting dollar quotes
--- three deep for no benefit.
+-- three deep for no benefit. The statement-level one is `public.expect_denied`
+-- in `00_shim.sql`, shared with `bets.sql`.
 
 \set ON_ERROR_STOP on
 \pset pager off
@@ -55,24 +56,6 @@ language plpgsql as $$
 begin
   if p_as is null then perform test_as_anon(); else perform test_as(p_as); end if;
   perform admin_remove_pick(p_group, p_target, p_game, p_market);
-  return 'FAIL  ' || label || ' (no error raised)';
-exception
-  when undefined_function or undefined_table or undefined_column then
-    return 'FAIL  ' || label || ' (vacuous — the object is missing: ' || sqlerrm || ')';
-  when others then
-    if position(p_expect in sqlerrm) = 0 then
-      return 'FAIL  ' || label || ' (wrong error: ' || sqlerrm || ')';
-    end if;
-    return 'PASS  ' || label || ' -> ' || sqlerrm;
-end; $$;
-
--- The same, for a statement that should be refused to a given role.
-create function pg_temp.denied_sql(label text, p_as uuid, stmt text, p_expect text)
-returns text
-language plpgsql as $$
-begin
-  if p_as is null then perform test_as_anon(); else perform test_as(p_as); end if;
-  execute stmt;
   return 'FAIL  ' || label || ' (no error raised)';
 exception
   when undefined_function or undefined_table or undefined_column then
@@ -137,11 +120,11 @@ commit;
 -- ---------------------------------------------------------------------------
 \echo '# deleted_wagers is deny-all to both API roles'
 -- ---------------------------------------------------------------------------
-select pg_temp.denied_sql('anon cannot read the archive', null,
+select public.expect_denied('anon cannot read the archive', null,
   'select 1 from deleted_wagers', 'permission denied');
-select pg_temp.denied_sql('a signed-in user cannot read the archive', :ann::uuid,
+select public.expect_denied('a signed-in user cannot read the archive', :ann::uuid,
   'select 1 from deleted_wagers', 'permission denied');
-select pg_temp.denied_sql('and cannot write one either', :ann::uuid,
+select public.expect_denied('and cannot write one either', :ann::uuid,
   $q$insert into deleted_wagers (kind, payload) values ('bet', '{}'::jsonb)$q$,
   'permission denied');
 
@@ -215,7 +198,7 @@ insert into picks (group_id, user_id, game_id, market, side, line_at_pick, seaso
 values (:'grp'::uuid, :bob::uuid, 402, 'spread', 'away', -6.5, 2026, now());
 \o
 
-select pg_temp.denied_sql('the member himself is locked out after kickoff', :bob::uuid,
+select public.expect_denied('the member himself is locked out after kickoff', :bob::uuid,
   'select remove_pick(' || quote_literal(:'grp') || '::uuid, 402, ''spread'')',
   'picks are locked');
 
@@ -254,10 +237,10 @@ insert into bets (season_id, user_id, game_id, bet_type, description, side,
                   line_taken, odds, units, reason_tag)
 values (2026, :bob::uuid, 401, 'spread', 'Georgia -3', 'home', -3, -110, 2, 'model_edge');
 \o
-select pg_temp.denied_sql('a bettor cannot delete their own bet', :bob::uuid,
+select public.expect_denied('a bettor cannot delete their own bet', :bob::uuid,
   'delete from bets where user_id = ' || quote_literal(:bob) || '::uuid',
   'permission denied');
-select pg_temp.denied_sql('and anon certainly cannot', null, 'delete from bets',
+select public.expect_denied('and anon certainly cannot', null, 'delete from bets',
   'permission denied');
 select pg_temp.chk('the bet is still there',
                    (select count(*) from bets where game_id = 401) = 1);

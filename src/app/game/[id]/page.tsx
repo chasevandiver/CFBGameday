@@ -7,6 +7,8 @@ import { GameHeader } from "../../../components/game/GameHeader";
 import { MovementChart } from "../../../components/game/MovementChart";
 import { ConsensusChip, EdgeChip } from "../../../components/slate/chips";
 import { DeleteWagerButton } from "../../../components/DeleteWagerButton";
+import { ScoringTimeline } from "../../../components/game/ScoringTimeline";
+import type { ScoringPlayRow } from "../../../lib/scoring";
 import { VoidBetButton } from "../../../components/VoidBetButton";
 import { Sparkline } from "../../../components/slate/Sparkline";
 import type {
@@ -125,7 +127,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     .maybeSingle<GameRow>();
   if (!game) notFound();
 
-  const [teamsRes, linesRes, predRes, picksRes, betsRes, profilesRes, weatherRes, questionsRes, pollsRes, systemsRes, rivalryRes] = await Promise.all([
+  const [teamsRes, linesRes, predRes, picksRes, scoringRes, betsRes, profilesRes, weatherRes, questionsRes, pollsRes, systemsRes, rivalryRes] = await Promise.all([
     supabase.from("teams").select("*").in("id", [game.home_team_id, game.away_team_id]),
     supabase.from("line_snapshots").select("*").eq("game_id", gameId),
     supabase
@@ -135,6 +137,13 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
       .order("created_at", { ascending: false })
       .limit(5),
     supabase.from("picks").select("*").eq("game_id", gameId),
+    // SCORE-1. Public read (0048), so this loads signed-out too — a scoring
+    // summary is no more private than the score it adds up to.
+    supabase
+      .from("scoring_plays")
+      .select("*")
+      .eq("game_id", gameId)
+      .order("sequence", { ascending: true }),
     user
       ? supabase
           .from("bets")
@@ -196,6 +205,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     prediction = { ...prediction, total: null, home_score: null, away_score: null };
   }
   const picks = (picksRes.data ?? []) as PickRow[]; // crew picks are never hidden (0010)
+  const scoringPlays = (scoringRes.data ?? []) as ScoringPlayRow[];
   const profiles = new Map(
     ((profilesRes.data ?? []) as Array<Pick<ProfileRow, "id" | "display_name">>).map((p) => [
       p.id,
@@ -577,6 +587,10 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             </ul>
           )}
         </section>
+
+        {/* How the score got there (SCORE-1). Above the market because the
+            game is what the page is about; the numbers explain it. */}
+        <ScoringTimeline plays={scoringPlays} home={home} away={away} />
 
         {/* Odds table */}
         <section className="card mt-4 overflow-hidden">

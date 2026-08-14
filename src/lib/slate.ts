@@ -307,6 +307,17 @@ export interface SlateData {
    */
   linesAsOf: string | null;
   games: GameView[];
+  /**
+   * This is the cross-league Live view (UX-36), not one league's week.
+   *
+   * A flag rather than a third `Sport`, deliberately: `sport` is derived from
+   * the season id by `sportOfSeasonId` and must keep meaning exactly that, or
+   * every consumer that branches on it starts having to handle a value no
+   * season can produce. `seasonId` / `week` / `seasonType` still describe the
+   * bucket the games were loaded from and are meaningless to display here,
+   * which is why the view hides the week selector when this is set.
+   */
+  live?: boolean;
 }
 
 export const isLive = (g: GameView) => g.status === "in_progress";

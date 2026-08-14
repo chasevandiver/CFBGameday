@@ -1875,9 +1875,31 @@ rather than a quarter linescore.
       Settings. If that stops being true, this comes out. **Owner-verifiable
       only on a device**: the installed PWA and Safari-in-a-tab behave
       differently and only one honours the meta tag.
-- [ ] **UX-36** A Live option on the slate, alongside CFB and NFL. There is no
-      live filter today — only a count pill and a section that appears when the
-      sort is by kickoff.
+- [x] **UX-36 — Live · CFB · NFL**, 2026-08-14. There was no live filter of any
+      kind before this: only a count pill in the control bar and a "Live"
+      section that appears solely when the sort is by kickoff. `?sport=live` is
+      a third view rather than a third league — it spans both leagues and every
+      week — so the week selector and day tabs are hidden on it (a week number
+      describes one league's calendar; a day filter on a list that is by
+      definition happening now has one value) and the conference filter says
+      "All leagues".
+      **Built out of `fetchSlateView`, not beside it.** The obvious
+      implementation is one cross-league query on `status = 'in_progress'`, and
+      it is wrong: half of `fetchSlateView` is enrichment keyed to a single
+      season — ratings, poll ranks, SP+/FPI/Elo, season ATS records — so a
+      cross-league query would have to fork every one of them, and the same card
+      would drift between this tab and its league's. Instead the live ids are
+      found first (one indexed read; 0044 added `games_sport_status_start` for
+      almost this predicate), their distinct (season, week, season_type) buckets
+      resolved, and each loaded through the ordinary path. Usually one bucket,
+      two when an NFL Sunday overlaps a CFB Saturday night.
+      **Buckets, not "the current week"**, and the difference is a real defect
+      avoided: the NFL pointer rolls forward while Monday Night Football is
+      still being played, so asking each league's pointer would empty the Live
+      tab at exactly the moment somebody with money on MNF opens it.
+      The refresh poller's week guard is skipped on this view — it has no week
+      to compare, so the guard would reject every poll and the one view that
+      must stay current would be the only one that never updated.
 - [x] **UX-37 — the home hub says who has the ball**, 2026-08-14. A rendering
       gap, not a data gap: `fetchHomeData` goes through `fetchSlateView`, so
       `possession` was on the hub's `GameView` the whole time. The football
@@ -1935,10 +1957,45 @@ rather than a quarter linescore.
       which group it meant.
       8 component tests, 2 DB assertions (198 → 200), both checked failing
       without 0047. `docs/SPEC.md` §4 and §5.3 amended.
-- [ ] **SCORE-1** The scoring timeline, both leagues. Net-new everywhere: no
-      plays, drives or linescore data exists, neither API client parses any, and
-      `last_play` is **nulled the moment a game goes final**, so postgame there
-      is no play text left at all.
+- [x] **SCORE-1 — the scoring timeline, both leagues**, 2026-08-14, migration
+      **0048**. Net-new everywhere, and the starting position is worth keeping:
+      no plays, drives or linescore data existed, neither API client parsed any,
+      and `current_situation` / `last_play` are **nulled the moment a game goes
+      final** (`0007` header, `jobs-core.ts:365,373`) — so postgame there was no
+      play text in the database at all. `scoring_plays` is the first table here
+      that records what happened *during* a game rather than what is true now.
+      Ordered by the feed's own array index, not by the clock: a game clock
+      counts down, resets each quarter and stops, and a touchdown and its extra
+      point are routinely stamped at the same second. The running score is
+      **stored per row** rather than accumulated in the browser — a feed
+      occasionally reports a score whose play we never captured, and a computed
+      total would then be wrong for every row below it instead of for the one
+      that is missing.
+      **NFL** — ESPN `/summary?event=`, which is the call `NFL-12` left as a
+      decision owed on the grounds that one per live game per tick is ~16× the
+      scoreboard call on a Sunday. It is affordable because it is not per tick:
+      each row carries the score after it, so the timeline says how many points
+      are accounted for, and the call only happens when the scoreboard has moved
+      past that. **~1 call per score** — a 47-point game costs about a dozen
+      across three hours instead of ~360.
+      **CFB** — CFBD `/plays`, filtered to `scoring: true`. Shape forced by the
+      feed: there is no per-game plays route, so one call returns every play of
+      every FBS game in the week. That is one call **per week**, not per game,
+      so a fifteen-game afternoon costs one — but it is a multi-MB response, and
+      it is why this rides a 3-minute tick inside the scoreboard loop rather
+      than the 30-second one. CFBD publishes no play *type* and names the
+      scoring team as a school string, both handled; a name matching neither
+      team leaves the crest off rather than dropping the play.
+      **Recorded, not hidden:** if the CFBD payload or its live lag proves
+      unworkable on the first real Saturday, the fallback is `/drives` — far
+      lighter, gives the scoring drive and its result, and gives up the player
+      names that were the point of the request. That trade gets a
+      decisions-table row either way. **First measurable Aug 29**; there is no
+      live CFB game before then.
+      Rendered on `/game/[id]` only, with quarter headings — the request was
+      "when you click into it", and a timeline on a slate card would break the
+      glanceable rule. 19 parser tests + 6 gate tests (836 → 861), 5 DB
+      assertions (200 → 205).
 
 ---
 

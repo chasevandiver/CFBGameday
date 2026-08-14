@@ -11,8 +11,16 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cfbd, type CfbdScoreboardGame } from "../../src/lib/cfbd";
-import { espn, nflStoredWeek, parseEvent } from "../../src/lib/espn";
-import { nflTeamId } from "../../src/lib/league";
+import {
+  espn,
+  nflStoredWeek,
+  parseEvent,
+  parseScoringPlays,
+  pointsCovered,
+  type ScoringPlay,
+} from "../../src/lib/espn";
+import { nflTeamId, seasonYearOf } from "../../src/lib/league";
+import { cfbdScoringOffense, cfbdScoringPlays } from "../../src/lib/scoring";
 import { modelClv, roundClv, spreadClv, totalClv } from "../../src/lib/clv";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
 import { clockToSeconds, coverMargin, spreadCoverSide, totalCoverSide } from "../../src/lib/cover";
@@ -1286,6 +1294,217 @@ async function settleGames(db: SupabaseClient, allGames: SettleGameRow[]): Promi
   }
 
   return { picksGraded, betsGraded, predictionsGraded, voided };
+}
+
+/* ---- scoring timeline (SCORE-1) ---------------------------------------- */
+
+interface ScoringGame {
+  id: number;
+  home_points: number | null;
+  away_points: number | null;
+  home_team_id: number;
+  away_team_id: number;
+  week: number;
+  season_type: string;
+}
+
+/**
+ * Which games need their scoring summary re-read, and which do not.
+ *
+ * This is the entire cost control for the feature. `NFL-12` left the per-game
+ * ESPN `/summary` call as a decision owed on the grounds that one call per live
+ * game per tick is ~16x the single scoreboard call on a Sunday. It is only
+ * affordable because it does not have to be per tick: each stored row carries
+ * the running score after it, so the last row says how many points are already
+ * accounted for. If that equals the game's score, nothing has happened since
+ * the last read and there is nothing to fetch.
+ *
+ * ~1 call per SCORE rather than per tick. A 47-point game costs about a dozen
+ * calls across three hours instead of ~360.
+ *
+ * A game with no scoring rows and no points is skipped too — a scoreless first
+ * quarter is not a reason to poll.
+ */
+export function gamesNeedingScoring(
+  games: ScoringGame[],
+  coveredByGame: Map<number, number>,
+): ScoringGame[] {
+  return games.filter((g) => {
+    const scored = (g.home_points ?? 0) + (g.away_points ?? 0);
+    if (scored === 0) return false;
+    return scored > (coveredByGame.get(g.id) ?? 0);
+  });
+}
+
+/** Read how many points each game's stored timeline already accounts for. */
+async function coveredPointsByGame(
+  db: SupabaseClient,
+  gameIds: number[],
+): Promise<Map<number, number>> {
+  const out = new Map<number, number>();
+  if (gameIds.length === 0) return out;
+  const { data, error } = await db
+    .from("scoring_plays")
+    .select("game_id, sequence, home_points, away_points")
+    .in("game_id", gameIds)
+    .order("sequence", { ascending: true });
+  if (error) throw new Error(`scoring: read failed: ${error.message}`);
+  const byGame = new Map<number, Array<{ homePoints: number; awayPoints: number }>>();
+  for (const r of (data ?? []) as Array<{
+    game_id: number;
+    home_points: number;
+    away_points: number;
+  }>) {
+    const arr = byGame.get(r.game_id) ?? [];
+    arr.push({ homePoints: r.home_points, awayPoints: r.away_points });
+    byGame.set(r.game_id, arr);
+  }
+  for (const [id, plays] of byGame) out.set(id, pointsCovered(plays));
+  return out;
+}
+
+/** Upsert one game's timeline. Idempotent on (game_id, sequence). */
+async function writeScoringPlays(
+  db: SupabaseClient,
+  gameId: number,
+  plays: ScoringPlay[],
+  teamIdFor: (p: ScoringPlay, index: number) => number | null,
+  source: string,
+): Promise<number> {
+  if (plays.length === 0) return 0;
+  const rows = plays.map((p, i) => ({
+    game_id: gameId,
+    sequence: p.sequence,
+    period: p.period,
+    clock: p.clock,
+    scoring_team_id: teamIdFor(p, i),
+    play_type: p.playType,
+    play_text: p.text,
+    home_points: p.homePoints,
+    away_points: p.awayPoints,
+    source,
+  }));
+  const { error } = await db.from("scoring_plays").upsert(rows, { onConflict: "game_id,sequence" });
+  if (error) throw new Error(`scoring: write failed for game ${gameId}: ${error.message}`);
+  return rows.length;
+}
+
+/**
+ * NFL scoring timelines, from ESPN's per-game summary.
+ *
+ * One call per game that has scored since the last read — see
+ * `gamesNeedingScoring`. Errors on a single game are logged and skipped rather
+ * than thrown: a missing summary costs that game its timeline, and failing the
+ * whole job over it would cost every game its live score.
+ */
+export async function nflScoringJob(db: SupabaseClient, seasonId: number): Promise<Json> {
+  const { data, error } = await db
+    .from("games")
+    .select("id, home_points, away_points, home_team_id, away_team_id, week, season_type")
+    .eq("season_id", seasonId)
+    .in("status", ["in_progress", "final"]);
+  if (error) throw new Error(`scoring: games read failed: ${error.message}`);
+  const games = (data ?? []) as ScoringGame[];
+
+  const covered = await coveredPointsByGame(db, games.map((g) => g.id));
+  const todo = gamesNeedingScoring(games, covered);
+  if (todo.length === 0) return { games: 0, plays: 0 };
+
+  let written = 0;
+  let failed = 0;
+  for (const g of todo) {
+    try {
+      const summary = await espn.summary(g.id);
+      const plays = parseScoringPlays(summary);
+      written += await writeScoringPlays(
+        db,
+        g.id,
+        plays,
+        // ESPN ids are pre-offset on the play; the stored team id is not.
+        (p) => (p.espnTeamId === null ? null : nflTeamId(p.espnTeamId)),
+        "espn",
+      );
+    } catch (err) {
+      failed++;
+      console.error(`scoring: game ${g.id} failed: ${(err as Error).message}`);
+    }
+  }
+  return { games: todo.length, plays: written, ...(failed ? { failed } : {}) };
+}
+
+/**
+ * CFB scoring timelines, from CFBD's week-scoped plays route.
+ *
+ * The shape is forced by the feed: CFBD has no per-game plays endpoint, so one
+ * call returns every play of every FBS game in the week and the scoring rows
+ * are filtered out of it. That is a multi-MB response for a few dozen rows, and
+ * it is why this belongs on a slow cadence rather than on the 30-second tick.
+ *
+ * One call per WEEK that has games needing an update, not per game — so a
+ * fifteen-game Saturday afternoon costs exactly one call, and the arithmetic
+ * gets better as the slate gets busier.
+ *
+ * CFBD names the scoring team as a school string rather than an id, so it is
+ * matched against the game's own two teams. A name that matches neither leaves
+ * the crest off the row rather than dropping it — the play text is the feature.
+ */
+export async function cfbScoringJob(db: SupabaseClient, seasonId: number): Promise<Json> {
+  const { data, error } = await db
+    .from("games")
+    .select("id, home_points, away_points, home_team_id, away_team_id, week, season_type")
+    .eq("season_id", seasonId)
+    .in("status", ["in_progress", "final"]);
+  if (error) throw new Error(`scoring: games read failed: ${error.message}`);
+  const games = (data ?? []) as ScoringGame[];
+
+  const covered = await coveredPointsByGame(db, games.map((g) => g.id));
+  const todo = gamesNeedingScoring(games, covered);
+  if (todo.length === 0) return { games: 0, plays: 0, calls: 0 };
+
+  const teamIds = [...new Set(todo.flatMap((g) => [g.home_team_id, g.away_team_id]))];
+  const { data: teamRows } = await db.from("teams").select("id, school").in("id", teamIds);
+  const schoolById = new Map(
+    ((teamRows ?? []) as Array<{ id: number; school: string }>).map((t) => [t.id, t.school]),
+  );
+
+  // One call per (week, season_type) bucket, not per game.
+  const buckets = new Map<string, { week: number; seasonType: string; games: ScoringGame[] }>();
+  for (const g of todo) {
+    const key = `${g.week}:${g.season_type}`;
+    const b = buckets.get(key) ?? { week: g.week, seasonType: g.season_type, games: [] };
+    b.games.push(g);
+    buckets.set(key, b);
+  }
+
+  let written = 0;
+  let calls = 0;
+  for (const b of buckets.values()) {
+    const plays = await cfbd.plays(seasonYearOf(seasonId), {
+      week: b.week,
+      seasonType: b.seasonType,
+    });
+    calls++;
+    for (const g of b.games) {
+      const scoring = cfbdScoringPlays(plays, g.id);
+      const offenses = cfbdScoringOffense(plays, g.id);
+      const home = schoolById.get(g.home_team_id) ?? null;
+      const away = schoolById.get(g.away_team_id) ?? null;
+      written += await writeScoringPlays(
+        db,
+        g.id,
+        scoring,
+        (_p, i) => {
+          const school = offenses[i];
+          if (!school) return null;
+          if (home !== null && school === home) return g.home_team_id;
+          if (away !== null && school === away) return g.away_team_id;
+          return null;
+        },
+        "cfbd",
+      );
+    }
+  }
+  return { games: todo.length, plays: written, calls };
 }
 
 /**

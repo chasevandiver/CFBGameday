@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CfbdScoreboardGame } from "../../src/lib/cfbd";
 import { asClient, FakeSupabase } from "./fake-supabase";
-import { applyScoreboard, gradeGames } from "./jobs-core";
+import { applyScoreboard, gamesNeedingScoring, gradeGames } from "./jobs-core";
 
 /**
  * GRADE-1: a game settles on the tick that sees it finish.
@@ -231,5 +231,66 @@ describe("applyScoreboard grades what it sees finished", () => {
     expect(db.rows("games")[0].status).toBe("final");
     expect(db.rows("games")[0].home_points).toBe(27);
     expect(out.graded).toBeUndefined();
+  });
+});
+
+/**
+ * SCORE-1's cost control.
+ *
+ * `NFL-12` left the per-game ESPN `/summary` call as a decision owed, because
+ * one call per live game per tick is ~16x the single scoreboard call on an NFL
+ * Sunday. This gate is the whole reason it became affordable: each stored row
+ * carries the running score after it, so the timeline itself says how many
+ * points are already accounted for. Nothing to fetch unless that number has
+ * fallen behind the scoreboard.
+ */
+describe("gamesNeedingScoring", () => {
+  const game = (id: number, home: number, away: number) => ({
+    id,
+    home_points: home,
+    away_points: away,
+    home_team_id: 1,
+    away_team_id: 2,
+    week: 1,
+    season_type: "regular",
+  });
+
+  it("asks for a game whose score has moved past its stored timeline", () => {
+    const out = gamesNeedingScoring([game(1, 14, 7)], new Map([[1, 14]]));
+    expect(out.map((g) => g.id)).toEqual([1]);
+  });
+
+  /* The common case by a distance: on a 30-second tick almost every pass finds
+     nothing, and each one that does is a real score. */
+  it("skips a game whose timeline is already complete", () => {
+    expect(gamesNeedingScoring([game(1, 14, 7)], new Map([[1, 21]]))).toEqual([]);
+  });
+
+  it("asks for a game that has scored and has no timeline yet", () => {
+    expect(gamesNeedingScoring([game(1, 7, 0)], new Map()).map((g) => g.id)).toEqual([1]);
+  });
+
+  /* A scoreless first quarter is not a reason to poll — there is nothing to
+     fetch and the answer would be an empty array either way. */
+  it("skips a scoreless game entirely", () => {
+    expect(gamesNeedingScoring([game(1, 0, 0)], new Map())).toEqual([]);
+  });
+
+  it("treats a null score as zero rather than throwing", () => {
+    const g = { ...game(1, 0, 0), home_points: null, away_points: null };
+    expect(gamesNeedingScoring([g], new Map())).toEqual([]);
+  });
+
+  /* The shape of a real Saturday afternoon: most games are current, one just
+     scored, one has not started. Only the middle one costs a call. */
+  it("picks out only the games that moved, from a full board", () => {
+    const out = gamesNeedingScoring(
+      [game(1, 21, 14), game(2, 7, 7), game(3, 0, 0)],
+      new Map([
+        [1, 28], // 35 on the board, 28 accounted for — a touchdown just landed
+        [2, 14], // level
+      ]),
+    );
+    expect(out.map((g) => g.id)).toEqual([1]);
   });
 });

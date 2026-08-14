@@ -166,6 +166,108 @@ shipping it.
 
 ## Log
 
+### Aug 14 — Every score in the game, and a Live tab that spans both leagues
+
+SCORE-1 and UX-36; migration 0048. The last of the betting/game-card batch, and
+the only two that were features rather than defects.
+
+**What did not exist.** Asked for "the individual scores in that game… for all
+scores in that game", and the honest starting position was: nothing. No `plays`,
+`drives`, `scoring_plays` or linescore table; neither API client parsed any; and
+`games` carries only the *current* live state, every field of which is a moving
+value. Worse — `current_situation` and `last_play` are deliberately NULLED the
+moment a game goes final (0007's header comment), so postgame there was no play
+text in the database at all. `cover_flips` (0026) was the only per-event table
+and it is a Q4+ betting-verdict log. `scoring_plays` is the first table in this
+project that records what happened *during* a game rather than what is true
+about it now.
+
+**Two decisions inside the schema that are easy to get wrong.**
+
+Order is the feed's array index, not the clock and not the feed's play id. A
+game clock counts down, resets every quarter and stops; a touchdown and its
+extra point are routinely stamped at the same second. Nothing about a clock can
+order a timeline.
+
+The running score is stored per row rather than accumulated at read time. These
+look equivalent and are not: a feed occasionally reports a score whose play we
+never captured, and a browser-side running total would then be wrong for every
+row *below* the gap rather than for the one row that is missing.
+
+**The cost control is the whole feature.** `NFL-12` left ESPN's per-game
+`/summary` as a decision owed, on the grounds that one call per live game per
+tick is ~16× the single scoreboard call on an NFL Sunday. That arithmetic is
+right and it is also avoidable: because each stored row carries the score after
+it, the timeline itself reports how many points are already accounted for. The
+call happens only when the scoreboard has moved past that number — **~1 call per
+score, not per tick**. A 47-point game costs about a dozen calls across three
+hours instead of roughly 360. `gamesNeedingScoring` is six tests on its own,
+because if it ever stops being right the answer is an invisible order-of-
+magnitude increase in a free feed's traffic.
+
+**CFB's shape is forced by CFBD, and the cost is stated rather than buried.**
+There is no per-game plays route, so one call returns every play of every FBS
+game in the week and the scoring rows are filtered out of it. That is one call
+*per week* — a fifteen-game afternoon costs exactly one, and the arithmetic
+improves as the slate gets busier — but it is a multi-MB response for a few
+dozen rows, which is why both jobs ride a 3-minute tick inside the scoreboard
+loop rather than the 30-second one. If the payload or the live lag proves
+unworkable on the first real Saturday, the fallback is `/drives`: far lighter,
+gives the scoring drive and its result, and gives up the player names that were
+the point of the request. Either outcome gets a decisions-table row. **Not
+measurable before Aug 29** — there is no live CFB game until then.
+
+Two smaller absences the CFBD side has to absorb: it publishes no play *type* at
+all (which is why the column is nullable — `live-play.ts` solved the same
+absence for `last_play`), and it names the scoring team as a school string
+rather than an id, matched against the game's own two teams. A name matching
+neither leaves the crest off the row rather than dropping it. The play text is
+the feature.
+
+**The Live tab, and the query that was not written.** The obvious implementation
+is one cross-league query on `status = 'in_progress'`. It is wrong, and
+expensively so: half of `fetchSlateView` is enrichment keyed to a single season
+— ratings, poll ranks, SP+/FPI/Elo, season ATS records — so a cross-league query
+would have to fork every one of them, and the same game would then render
+differently on the Live tab than on its own league's tab. That drift is the
+failure this codebase keeps recording.
+
+Instead: find the live game ids first (one indexed read — 0044 added
+`games_sport_status_start` for almost exactly this predicate), resolve their
+distinct (season, week, season_type) buckets, and load each through the ordinary
+path. Usually one bucket, two when an NFL Sunday overlaps a CFB Saturday night.
+Every card is then identical to the card its league's tab would draw.
+
+**Buckets rather than "each league's current week"**, which is simpler and
+drops games. The NFL pointer rolls forward while Monday Night Football is still
+being played, so a viewer with money on MNF would find the Live tab empty at
+precisely the moment it matters most. Reading the buckets off the live rows
+cannot make that mistake.
+
+One consequence worth recording: the refresh poller's week guard — which drops a
+response for a week the reader has navigated away from — has to be skipped here.
+The Live view has no week to compare, so the guard would reject every poll and
+the one view that must stay current would be the only one that never updated.
+
+**A test helper moved into the shim, and why.** `public.expect_denied` now lives
+in `00_shim.sql`, shared by two suites. It takes the message it expects, because
+a helper that treats *any* error as a refusal reports PASS when the object under
+test does not exist — verified earlier the same day, when four authorization
+assertions passed on "function admin_remove_pick does not exist". A
+missing-object error is now reported as vacuous rather than absorbed, which is
+what makes "checked failing against the pre-fix schema" mean anything.
+
+**Testing.** 25 new (836 → 861) and 5 DB assertions (200 → 205), the latter
+checked failing without 0048. One of the new tests was wrong on its first run —
+it asserted an empty result for a board where a game genuinely had scored — and
+the code was right; recorded because the fix was to the assertion, not the
+implementation.
+
+**Not verified against live data.** Both ingest paths are pinned against
+fixtures shaped from the feeds' documented responses, not against a capture from
+a live game. The NFL side can be proved this week against a preseason final; the
+CFB side has nothing to run against until Aug 29.
+
 ### Aug 14 — A ticker that moves, no zoom, a slip you can read, and the Why field goes
 
 Four items from the same batch. UX-34, UX-35, UX-38, LEDGER-1; migration 0047.

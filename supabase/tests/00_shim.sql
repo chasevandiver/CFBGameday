@@ -56,3 +56,42 @@ begin
   perform set_config('request.jwt.claim.sub', '', true);
   execute 'set local role anon';
 end; $$;
+
+/*
+ * Expect a statement to be REFUSED, as a given role, for a NAMED reason.
+ *
+ * Lives here rather than in one suite because two now need it, and because the
+ * reason it takes `p_expect` is worth stating once: a helper that treats any
+ * error as a pass reports PASS when the object under test does not exist.
+ * Verified, not theorised — with migration 0046 removed, four "cannot cancel
+ * someone else's pick" assertions all passed on "function admin_remove_pick
+ * does not exist" while proving nothing whatever about authorization.
+ *
+ * So the message has to be the one the security check produces, and a
+ * missing-object error is reported as VACUOUS rather than absorbed. That makes
+ * the standard this repo already holds — every new DB assertion checked failing
+ * against the pre-fix schema — actually mean something.
+ *
+ * `set local role` is transaction-scoped and psql runs each of these in its own
+ * implicit transaction, so the role never leaks into the next assertion.
+ */
+create or replace function public.expect_denied(
+  p_label text,
+  p_as uuid,          -- null = signed out
+  p_stmt text,
+  p_expect text       -- substring the error message must contain
+) returns text
+language plpgsql as $$
+begin
+  if p_as is null then perform test_as_anon(); else perform test_as(p_as); end if;
+  execute p_stmt;
+  return 'FAIL  ' || p_label || ' (no error raised)';
+exception
+  when undefined_function or undefined_table or undefined_column then
+    return 'FAIL  ' || p_label || ' (vacuous — the object is missing: ' || sqlerrm || ')';
+  when others then
+    if position(p_expect in sqlerrm) = 0 then
+      return 'FAIL  ' || p_label || ' (wrong error: ' || sqlerrm || ')';
+    end if;
+    return 'PASS  ' || p_label || ' -> ' || sqlerrm;
+end; $$;

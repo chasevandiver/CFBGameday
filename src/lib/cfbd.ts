@@ -312,6 +312,29 @@ export interface CfbdScoreboardGame {
 // Endpoints
 // ---------------------------------------------------------------------------
 
+/**
+ * One play from `/plays`. CFBD returns considerably more; these are the fields
+ * a scoring line needs (SCORE-1).
+ */
+export interface CfbdPlay {
+  id: number | string;
+  game_id?: number | null;
+  gameId?: number | null;
+  scoring?: boolean | null;
+  period: number | null;
+  clock?: { minutes?: number | null; seconds?: number | null } | null;
+  offense?: string | null;
+  defense?: string | null;
+  play_type?: string | null;
+  playType?: string | null;
+  play_text?: string | null;
+  playText?: string | null;
+  home_score?: number | null;
+  homeScore?: number | null;
+  away_score?: number | null;
+  awayScore?: number | null;
+}
+
 export const cfbd = {
   teams: (year?: number) => get<CfbdTeam[]>("/teams", { year }),
   fbsTeams: (year: number) => get<CfbdTeam[]>("/teams/fbs", { year }),
@@ -387,4 +410,30 @@ export const cfbd = {
   /** Requires Tier 1+. Live game states for the Saturday poll job. */
   scoreboard: (classification = "fbs") =>
     get<CfbdScoreboardGame[]>("/scoreboard", { classification }),
+
+  /**
+   * A week's plays (SCORE-1). CFBD has no per-game plays route, so this is
+   * week-scoped and the caller filters to `scoring` and to the games it wants.
+   *
+   * That is the whole cost story and it is worth stating plainly: the response
+   * is every play of every FBS game in the week — several MB — for the handful
+   * of scoring rows we keep. It is one metered call regardless of how many
+   * games are live, which is what makes it affordable at a slow cadence, but it
+   * is not something to put on a 30-second tick.
+   *
+   * The lighter alternative, if this proves unworkable on a real Saturday, is
+   * `/drives`: far smaller, gives the scoring drive and its result, and gives
+   * up the player names that were the point of the request. That trade gets a
+   * decisions-table row either way.
+   */
+  plays: (
+    year: number,
+    opts: { week: number; seasonType?: string; classification?: string },
+  ) =>
+    get<CfbdPlay[]>("/plays", {
+      year,
+      week: opts.week,
+      seasonType: opts.seasonType ?? "regular",
+      classification: opts.classification ?? "fbs",
+    }),
 };
