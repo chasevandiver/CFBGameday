@@ -6,7 +6,7 @@ import { BettingHome } from "./BettingHome";
 import { GroupSwitcher, JoinCode } from "../../../components/group/GroupForms";
 import { MemberCard, WeekHero } from "../../../components/group/GroupHub";
 import type { PickRow } from "../../../lib/db-types";
-import { buildGroupShareContext } from "../../../lib/group-share";
+import { buildGroupShareContext, type MyWeekPick } from "../../../lib/group-share";
 import {
   fetchGroupMembers,
   groupLeague,
@@ -119,13 +119,33 @@ export default async function GroupHomePage({
   const boardGames = slate.games.filter((g) => inPlay.has(g.id));
   const gameById = new Map(slate.games.map((g) => [g.id, g]));
 
-  const { data: weekPickRows } = await supabase
-    .from("picks")
-    .select("*")
-    .eq("group_id", active.id)
-    .in("game_id", boardGames.length > 0 ? boardGames.map((g) => g.id) : [-1]);
-  const weekPicks = (weekPickRows ?? []) as PickRow[];
-  const myWeekPicks = weekPicks.filter((p) => p.user_id === user?.id);
+  // 09:P-10. This read the whole crew's picks on every board game with
+  // `select("*")` and then threw all but one member's away — `weekPicks`
+  // existed only to be filtered to `myWeekPicks` on the very next line. It is
+  // now scoped to the viewer and to the seven columns the share context reads
+  // (four it touches directly, three more that `tally` reads for the day and
+  // week records — the type caught those, a grep for `p.` did not).
+  //
+  // On a full-slate board that is the difference between "every member × every
+  // game × every column" and "my picks, five columns": the Week 1 NFL board
+  // resolves to 91 games (DB-7), so the old shape grew with the crew as well as
+  // with the slate.
+  //
+  // Still sequential, and unavoidably so — it filters on the board, which is
+  // only known once `fetchGroupWeek` and `fetchSlateView` have both answered.
+  const { data: weekPickRows } =
+    user && boardGames.length > 0
+      ? await supabase
+          .from("picks")
+          .select("game_id, line_at_pick, market, side, result, units, clv")
+          .eq("group_id", active.id)
+          .eq("user_id", user.id)
+          .in(
+            "game_id",
+            boardGames.map((g) => g.id),
+          )
+      : { data: [] };
+  const myWeekPicks = (weekPickRows ?? []) as MyWeekPick[];
 
   const shareContext = user
     ? buildGroupShareContext({

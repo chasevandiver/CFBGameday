@@ -20,6 +20,19 @@ import { betSideLabel, type GameView } from "./slate";
 const dayKeyIn = (d: Date, tz: string): string =>
   new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(d);
 
+/**
+ * The slice of a pick this module needs.
+ *
+ * Wider than it looks: the four fields the body reads directly are
+ * game_id/line_at_pick/market/side, but `tally()` reads result, units and clv
+ * off the same rows for the day and week records. Grepping for `p.` finds the
+ * first four and misses the last three — the type is what actually caught it.
+ */
+export type MyWeekPick = Pick<
+  PickRow,
+  "game_id" | "line_at_pick" | "market" | "side" | "result" | "units" | "clv"
+>;
+
 export function buildGroupShareContext({
   groupName,
   userName,
@@ -33,8 +46,12 @@ export function buildGroupShareContext({
   groupName: string;
   userName: string;
   week: number;
-  /** The viewer's own picks for the week being shared. */
-  myWeekPicks: PickRow[];
+  /**
+   * The viewer's own picks for the week being shared. Narrowed to the four
+   * columns this function reads (09:P-10) — the caller used to hand over whole
+   * rows for the entire crew and filter them down here.
+   */
+  myWeekPicks: MyWeekPick[];
   gameById: Map<number, GameView>;
   /** Every graded pick the viewer has in this group, across seasons. */
   lifetime: Array<Pick<PickRow, "result" | "units" | "clv">>;
@@ -42,7 +59,7 @@ export function buildGroupShareContext({
   now?: Date;
 }): Omit<ShareContext, "justPlaced"> {
   const today = dayKeyIn(now, tz);
-  const kicksToday = (p: PickRow): boolean => {
+  const kicksToday = (p: MyWeekPick): boolean => {
     const ts = gameById.get(p.game_id)?.startTs ?? null;
     return ts !== null && dayKeyIn(new Date(ts), tz) === today;
   };

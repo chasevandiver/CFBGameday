@@ -1078,9 +1078,30 @@ Two items remain open; the closed ones are kept for the record.
       the latest week and the one before it. Now asks which week is latest
       (one indexed row) and fetches only those two, ~276. A second round trip
       for ~87% fewer rows by November; at week 0 the two shapes cost the same.
-- [ ] **09:P-10** Board picks-query collapse — three overlapping `picks` reads
-      per render (season crew picks inside `fetchSlateView`, season tallies,
-      week `select("*")`) · S–M
+- [x] **09:P-10 — the third read was the whole problem; the other two should
+      not be merged.** Done 2026-08-14.
+      **Fixed:** the week query pulled `select("*")` for *every member's* picks
+      on every board game, then threw all but one member's away — `weekPicks`
+      existed solely to be filtered to `myWeekPicks` on the next line. Now
+      scoped to the viewer and to the columns the share context reads, so it
+      stops growing with the crew as well as with the slate. On the Week 1 NFL
+      board that is 91 games × every member × every column down to one person's
+      seven columns.
+      **Not merged, on evidence:** the audit calls this "three overlapping
+      `picks` queries", and the other two do overlap — but collapsing them costs
+      more than it saves. `fetchSlateView`'s internal read is one league,
+      season-wide, and needs `game_id/market/side`; the standings read spans
+      **both** leagues and needs `season_id`. Neither is a subset of the other,
+      and both currently run **inside the same `Promise.all`**. Merging means
+      the page fetches picks first and hands them to `fetchSlateView`, which
+      serialises two round trips that are parallel today — trading one query for
+      one round trip of latency, on the page whose whole complaint is latency.
+      It would also silently rescope the crew record on every slate card from
+      one league to two, which is the kind of drift this file keeps recording.
+      P3 in the audit, and this is why.
+      *(A type caught what a grep did not: `tally()` reads `result`, `units` and
+      `clv` off these rows for the day and week records, so the narrowed column
+      list is seven, not the four a search for `p.` turns up.)*
 - [ ] **09:P-13 — half done 2026-08-14, and the other half is a decision, not
       a build.** The cost was three `select("*")` reads over a whole season:
       ~840 predictions, their games, and every team by December. All three are
