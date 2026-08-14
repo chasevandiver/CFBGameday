@@ -379,12 +379,17 @@ is the same seam `SCHED-1` sat in.
       app, where the keys *are* set; nothing ever exercised the Actions
       environment. Exactly SCHED-1's shape — a path verified end to end on both
       sides of a seam nobody crossed.
-      Fix is three lines of `env:` plus the owner creating
-      `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` as
-      Actions secrets; the code already fails soft without them. Not applied here
-      — it is a production scheduler change and the secrets are the owner's to
-      mint. **Do this before Week 0**: it is the alerting channel P1-8 concluded
-      was needed. · S + owner
+      **The secrets already exist** — owner confirmed 2026-08-14, and push does
+      send from `/admin` and the `/me` test button. That is not a contradiction,
+      it is the reason this was invisible: an Actions secret is not an
+      environment variable until the YAML maps it, and `/admin` runs on Vercel,
+      which has its own env. So the two verified paths and the broken one never
+      touched.
+      Fix is therefore **three lines of `env:` in `jobs.yml`** and nothing else —
+      `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, each
+      `${{ secrets.… }}`. Cheapest item on this list by some distance.
+      **Do it before Week 0**: it is the alerting channel P1-8 concluded was
+      needed. · XS
 - [ ] **NFL-22 — the watchdog is blind to the NFL, including to NFL liveness.**
       `watchdogVerdict` checks `refresh-lines`, `sync-games`, `scoreboard-loop`,
       `notify-picks-due`, `notify-log-bets` and nothing else; the live
