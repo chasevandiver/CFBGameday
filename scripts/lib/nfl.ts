@@ -10,7 +10,7 @@
  */
 
 import { SEASON } from "./ingest";
-import { nflSeasonId } from "../../src/lib/league";
+import { nflSeasonId, nflVenueId } from "../../src/lib/league";
 
 /** The NFL season being ingested rides the same year knob as CFB. */
 export const NFL_SEASON = nflSeasonId(SEASON);
@@ -34,6 +34,50 @@ export function divisionOf(abbr: string | null | undefined): string | null {
 export function isDivisionGame(homeAbbr: string | null, awayAbbr: string | null): boolean {
   const h = divisionOf(homeAbbr);
   return h !== null && h === divisionOf(awayAbbr);
+}
+
+/** The venue fields ESPN's scoreboard actually carries (src/lib/espn.ts). */
+export interface EspnVenue {
+  espnId: number | null;
+  name: string | null;
+  city: string | null;
+  state: string | null;
+  indoor: boolean;
+}
+
+export interface VenueRow {
+  id: number;
+  name: string;
+  city: string | null;
+  state: string | null;
+  dome: boolean;
+}
+
+/**
+ * A `venues` row from an ESPN venue, or null when there is no id to key on.
+ *
+ * Ids are offset like team ids (`nflVenueId`) because ESPN's venue id space and
+ * CFBD's overlap — without it a Seattle stadium could land on a college one.
+ *
+ * **Coordinates are absent on purpose, not forgotten.** The scoreboard venue
+ * carries `fullName`, `address.city/state` and `indoor` and nothing else, so
+ * `latitude`/`longitude`/`elevation`/`capacity` stay null rather than invented.
+ * That is why this closes the game page's venue line and leaves NFL weather
+ * blocked — `weatherJob` needs coordinates, and no amount of care here supplies
+ * them.
+ */
+export function nflVenueRow(venue: EspnVenue | null): VenueRow | null {
+  if (!venue || venue.espnId === null) return null;
+  const id = nflVenueId(venue.espnId);
+  return {
+    id,
+    // NOT NULL in the schema, and a nameless venue is still worth the row —
+    // the game page can say "somewhere" more usefully than it can say nothing.
+    name: venue.name ?? `Venue ${id}`,
+    city: venue.city,
+    state: venue.state,
+    dome: venue.indoor,
+  };
 }
 
 /**

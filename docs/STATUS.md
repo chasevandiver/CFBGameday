@@ -483,14 +483,25 @@ is the same seam `SCHED-1` sat in.
       interleaved with scheduled ones and I could not attribute it honestly.
       The observability gap is real and fixed on its own merits; the anomaly is
       left unexplained rather than given a story.)* · S
-- [ ] **NFL-24 — `NFL-4`'s verification plan does not match the stored kickoff.**
-      That row says "TNF Sep 10 — close pass at 23:45 UTC Thu". The stored
-      week-1 opener (Seattle–New England) is `2026-09-10 00:20 UTC`, which is a
-      *Thursday* in UTC and Wednesday 20:20 ET — so a Thursday 23:45 cron lands
-      roughly 23 hours after it, and no cron in the set precedes it. Either the
-      ingested date is a day off or the row is; both are checkable against ESPN
-      in a minute and exactly one of them needs changing. Until then the opener
-      is in NFL-23's uncovered set. · XS
+- [x] **NFL-24 — withdrawn 2026-08-14. There was no mismatch, and the error was
+      mine.** This row claimed `NFL-4`'s "TNF Sep 10 — close pass at 23:45 UTC
+      Thu" contradicted the stored kickoff. Checked against ESPN directly
+      (`scoreboard?dates=2026&seasontype=2&week=1`): the feed returns event
+      `401872656` at `2026-09-10T00:20Z`, **character-identical to the stored
+      row**, so the ingest is right.
+      What I got wrong was assuming one game. Week 1 opens with **two**
+      standalone night games, and they are not the same fixture:
+      New England at Seattle kicks Wed Sep 9 8:20 pm ET (Thu 00:20 UTC), and
+      San Francisco at the Rams kicks **Thu Sep 10** 8:35 pm ET (Fri 00:35
+      UTC). `NFL-4` names the second one, and a Thursday 23:45 UTC pass lands 50
+      minutes before it — exactly as that row intended. I read "the opener" into
+      a row that never said it.
+      **One real thing came out of the wrong finding**: the Wednesday opener
+      genuinely had no close pass, because nothing in the old cron set ran on a
+      Wednesday. `NFL-23`'s widening of `45 23 * * 0,1,4,6` to `* * *` covers it
+      (Wed 23:45 → Thu 01:25). Recorded rather than deleted, because a wrong
+      finding that reached a commit message is worth more visible than tidy —
+      the same reason `DB-2` is still in this file. · withdrawn
 - [ ] **SCORE-1 (residue) — the scoring timeline has never seen a live game.**
       `scoring_plays` is empty for **both** leagues. Not a defect: SCORE-1
       merged 08-14 16:17 and the only NFL live window so far closed 08-14 04:00,
@@ -498,12 +509,31 @@ is the same seam `SCHED-1` sat in.
       means the job, its ESPN summary parsing and its `gamesNeedingScoring` gate
       are unobserved against real rows — the same status `observe-scoreboard`
       has for CFB, and with the same remedy: watch one, once. · watch
-- [ ] **NFL-25 — no NFL venues, so no venue line on the card.** Zero rows with
-      `id >= 100000` in `venues` and zero NFL games with a `venue_id`. `NFL-6`
-      records the *weather* consequence; the game page's venue line is the half
-      that was not written down. Reference data is otherwise complete — 32
-      teams, none missing logo, division, colour, abbreviation or
-      classification. · S
+- [x] **NFL-25 — no NFL venues, so no venue line on the card.** Fixed
+      2026-08-14 in `nfl-sync-games`, and the fix was smaller than the finding:
+      **`parseEvent` has always extracted the venue** — `espnId`, `name`,
+      `city`, `state`, `indoor` — and the job simply never wrote it. Venues are
+      upserted *before* games, because `games.venue_id` is a foreign key and a
+      game carrying an id with no row behind it fails the insert.
+      Ids go through `nflVenueId`, the same offset scheme team ids use, so an
+      ESPN stadium cannot land on a CFBD one. Logic lives in a pure
+      `nflVenueRow` in `scripts/lib/nfl.ts` rather than inline in the script,
+      with 6 tests.
+      **This does not unlock weather, and that is a feed limit, not an
+      oversight.** ESPN's scoreboard venue carries a name, a city, a state and
+      `indoor`, and **no coordinates**. `weatherJob` needs
+      `latitude`/`longitude`, so NFL weather stays exactly where `NFL-6` has it,
+      blocked on a source of coordinates. `dome` takes `indoor` because the
+      column is NOT NULL and that is the honest answer; everything else stays
+      null rather than invented — there is a test asserting the coordinates are
+      *absent*, so a later change cannot quietly fill them with something
+      plausible.
+      **Verified against real ESPN JSON, not a fixture**: week 1 gives 16 games,
+      16 distinct venues, every id ≥ 100000, Ford Field `dome: true`, Lumen
+      Field `dome: false`, and the Melbourne Cricket Ground row that the
+      international game needs. **Not run against production** — the sandbox
+      proxy 403s the API from `node` (curl works, Actions works), so the next
+      scheduled `sync-games` is what actually writes these rows. · S
 
 ### 2.2 This week (Aug 14–18)
 
