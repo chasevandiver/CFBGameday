@@ -1219,6 +1219,38 @@ silent about the wiring, which is the gap that let it sit for a day.
       the offseason case.
 
 **Product / UX**
+- [x] **STATS-1 — `/ledger/stats`, the breakdowns behind the Record tile.**
+      Owner request 2026-08-14 ("click on your betting record and it'd show a
+      whole bunch of stats"). Ten cuts across three groups: market, side,
+      favourite-or-dog and price; teams backed and teams faded; kickoff window,
+      day, stake and confidence — plus streaks and, once both leagues have
+      graded bets, a CFB/NFL split.
+      **The page renders and does not calculate.** Every table is
+      `tallyBy(bets, cut)`: the cuts are a new pure `src/lib/bet-cuts.ts`, the
+      arithmetic stays in `records.ts`. That module exists because six surfaces
+      once disagreed about what a record is, and a stats page with its own
+      private tally would have been a seventh. 34 new tests on the cuts alone.
+      **Deliberately no CLV cut** — the owner picked the three descriptive cuts,
+      and closing-line value already has a home on `/ledger` (the tile and the
+      tail/fade audit). A second place for the same number is a second place for
+      it to be wrong.
+      **`favouriteOrDog` refuses to answer rather than guess**: spreads read the
+      stored home-perspective line through the same conversion `lineForSide`
+      does, moneylines read the price because they have no spread, and a total
+      returns null because a total has no favourite. Every cut returns null for
+      rows it cannot classify and the page drops them, with a line under each
+      table saying how many of the settled bets it actually covered — so a cut
+      that skips half your ledger says so instead of quietly rebasing.
+      `BET_TYPES`/`TEAM_SIDED`/`TOTAL_SIDED` moved from `BetForm`'s privates
+      into `db-types.ts` beside `CONFIDENCE_TIERS`, so the form and the stats
+      page read one vocabulary.
+      **Seen rendered at 375 px** (signed-out state) — and it needed it: the
+      first shell nested `AppNav` inside `<main>` and omitted `w-full`, which
+      made the page 768 px wide and scroll sideways. Measured, not eyeballed:
+      `scrollWidth` 768 against a 375 viewport, now 375, matching `/ledger` and
+      `/`. **Not seen with data** — that needs a signed-in user with graded
+      bets, and the database holds two bets total. The populated tables are
+      unrendered and say so here rather than being claimed. · done
 - [ ] **G10-v1** Copy-digest ShareButton: Thursday (frozen slate / edges / "N
       haven't picked") + Sunday (results / movers / CLV) — best paired with the
       group board's real first Saturday · S–M

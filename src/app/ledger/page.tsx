@@ -373,7 +373,21 @@ export default async function LedgerPage({
 
         {/* Season dashboard */}
         <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatTile label="Record" value={graded.length ? formatRecord(overall) : "–"} />
+          {/* The record is the way in to the breakdowns (owner request: click
+              your record, get the stats). A plain link wrapper rather than a
+              button inside the tile — the whole tile is the target, which is
+              how it clears 44px without a layout change. */}
+          {graded.length ? (
+            <Link
+              href="/ledger/stats"
+              className="rounded-lg outline-none ring-accent/60 transition-colors focus-visible:ring-2"
+              aria-label={`Record ${formatRecord(overall)} — see full bet stats`}
+            >
+              <StatTile label="Record" value={formatRecord(overall)} sub="see breakdowns →" />
+            </Link>
+          ) : (
+            <StatTile label="Record" value="–" />
+          )}
           <StatTile
             label="Units"
             value={graded.length ? `${units >= 0 ? "+" : ""}${units.toFixed(1)}` : "–"}
