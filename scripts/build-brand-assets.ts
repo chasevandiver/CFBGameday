@@ -204,9 +204,36 @@ const FONTS = {
     url: "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJ8lc.ttf",
     file: "IBMPlexMono-Medium.ttf",
   },
+  archivo400: {
+    url: "https://fonts.gstatic.com/s/archivo/v25/k3k6o8UDI-1M0wlSV9XAw6lQkqWY8Q82sJaRE-NWIDdgffTTNDNp8A.ttf",
+    file: "Archivo-Regular.ttf",
+  },
+  archivo700: {
+    url: "https://fonts.gstatic.com/s/archivo/v25/k3k6o8UDI-1M0wlSV9XAw6lQkqWY8Q82sJaRE-NWIDdgffTT0zRp8A.ttf",
+    file: "Archivo-Bold.ttf",
+  },
 } as const;
 
-async function loadFont(key: keyof typeof FONTS): Promise<opentype.Font> {
+/**
+ * The four faces the share card renders with (BRAND.md §12: Graduate display,
+ * Archivo body, Plex Mono numbers).
+ *
+ * These ship as files rather than as outlines, which is the opposite of what
+ * the splash does — a splash draws one fixed string and can be outlined at
+ * build time, while a share card sets arbitrary team names at request time and
+ * needs the real font. `next/og` takes font buffers and reads no CSS, so the
+ * three faces the app loads through next/font are unreachable from the route;
+ * without these files the card would render in a default sans, which is exactly
+ * why the three existing OG cards do.
+ *
+ * Only four: one weight of mono for every number, and Archivo at 400/700
+ * rather than the 400/500/600/800 the mockup used in a browser. satori draws
+ * tofu rather than synthesising a missing weight, and every extra face is
+ * another file traced into the function.
+ */
+const SHARE_CARD_FONTS = ["graduate", "plexMono", "archivo400", "archivo700"] as const;
+
+async function fontBytes(key: keyof typeof FONTS): Promise<Buffer> {
   const { url, file } = FONTS[key];
   const path = join(CACHE, file);
   if (!existsSync(path)) {
@@ -215,7 +242,14 @@ async function loadFont(key: keyof typeof FONTS): Promise<opentype.Font> {
     if (!res.ok) throw new Error(`${file}: ${res.status} ${res.statusText}`);
     writeFileSync(path, Buffer.from(await res.arrayBuffer()));
   }
-  return opentype.parse(readFileSync(path).buffer as ArrayBuffer);
+  return readFileSync(path);
+}
+
+async function loadFont(key: keyof typeof FONTS): Promise<opentype.Font> {
+  const bytes = await fontBytes(key);
+  return opentype.parse(
+    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+  );
 }
 
 /**
@@ -591,6 +625,14 @@ export const SLATE_MARK_ASPECT = ${(markAspect).toFixed(4)};
 `,
   );
   console.log(`  src/lib/brand-mark-data.ts  ${(stamp.length / 1024).toFixed(0)} KB inlined`);
+
+  // The share card sets arbitrary team names at request time, so it needs the
+  // real fonts rather than the outlines the splash gets. next/og reads buffers,
+  // not CSS, so next/font is unreachable from a route handler.
+  console.log("share-card fonts");
+  for (const key of SHARE_CARD_FONTS) {
+    report(`public/fonts/${FONTS[key].file}`, await fontBytes(key));
+  }
 
   console.log("ios startup images");
   const graduate = await loadFont("graduate");

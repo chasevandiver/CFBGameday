@@ -7,6 +7,7 @@ import {
   formatUnits,
   groupByTier,
   heroBet,
+  sanitizeForCard,
   slotOf,
   sortForCard,
   tierHeadline,
@@ -231,6 +232,25 @@ describe("the aligned column", () => {
   it("totals the stakes for the footer", () => {
     expect(totalUnits([bet({ units: 3 }), bet({ units: 1.5 }), bet({ units: 0.5 })])).toBe(5);
     expect(totalUnits([])).toBe(0);
+  });
+});
+
+describe("sanitizeForCard", () => {
+  // satori draws tofu for a missing glyph instead of falling back, and the
+  // ʻokina is the one gap in the four fonts the card ships with.
+  it("swaps the ʻokina for a shape the card's fonts actually carry", () => {
+    expect(sanitizeForCard("Hawaiʻi")).toBe("Hawai’i");
+    expect(sanitizeForCard("Hawaiʻi at Stanford")).not.toContain("ʻ");
+  });
+
+  it("leaves the glyphs the fonts do carry alone", () => {
+    // All verified present in Graduate, Archivo 400/700 and Plex Mono 500.
+    const covered = "Texas A&M − 110 · Miami (OH) — St. John’s ‘26 José";
+    expect(sanitizeForCard(covered)).toBe(covered);
+  });
+
+  it("replaces every occurrence, not just the first", () => {
+    expect(sanitizeForCard("ʻaʻa")).toBe("’a’a");
   });
 });
 

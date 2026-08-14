@@ -17,7 +17,7 @@
  */
 
 import { CONFIDENCE_TIERS, type ConfidenceTier } from "./db-types";
-import { kickSlot, nflKickSlot } from "./kick";
+import { DEFAULT_TZ, kickHeading, kickShort, kickSlot, nflKickSlot } from "./kick";
 
 export interface ShareCardTeam {
   abbr: string;
@@ -225,4 +225,86 @@ export function formatOdds(odds: number): string {
 /** Total staked, for the footer. */
 export function totalUnits(bets: ShareCardBet[]): number {
   return bets.reduce((sum, b) => sum + b.units, 0);
+}
+
+/**
+ * Swap characters the card's fonts do not carry for ones they do.
+ *
+ * satori draws a tofu box for a missing glyph rather than falling back to a
+ * system face, so one uncovered codepoint in a school name is a visible defect
+ * on a card meant for a timeline. Checked against the four TTFs in
+ * `public/fonts/`: they cover U+2212, both curly quotes, the dashes, the middot
+ * and Latin-1 accents — the single gap is the ʻokina, and Hawaiʻi is an FBS
+ * school that appears in `0030_move_board_to_week_zero.sql`'s own comment.
+ *
+ * U+2019 is the closest covered shape and the substitution is invisible at
+ * card sizes. Re-run the coverage check if the font set ever changes.
+ */
+const GLYPH_SUBSTITUTIONS: Array<[RegExp, string]> = [
+  [/ʻ/g, "’"], // ʻokina → right single quote
+];
+
+export function sanitizeForCard(text: string): string {
+  return GLYPH_SUBSTITUTIONS.reduce((s, [from, to]) => s.replace(from, to), text);
+}
+
+/* ── the render model ─────────────────────────────────────────────────────── */
+
+/** A bet plus the strings the layout needs and the domain model does not store. */
+export interface RenderBet extends ShareCardBet {
+  /** "3:30p", or an em-dash pair when there is no kickoff. */
+  kickShort: string;
+  /** "SAT 3:30 PM CT" — the hero has room for the whole thing. */
+  kickLong: string | null;
+}
+
+export interface CardGroup {
+  heading: string;
+  /** The bottom rung is set quieter; the layout should not re-derive that. */
+  lean: boolean;
+  bets: RenderBet[];
+}
+
+export interface CardModel {
+  title: string;
+  subtitle: string;
+  /** Null when nothing stands alone at the top — see `heroBet`. */
+  hero: (RenderBet & { heading: string }) | null;
+  groups: CardGroup[];
+  count: number;
+  units: number;
+  overflow: number;
+}
+
+/**
+ * Everything the card renders, decided here rather than in JSX.
+ *
+ * Keeping this pure is what lets the four hero states be tested without
+ * rendering a PNG — the layout ends up as a function of this object, so a
+ * change to the promotion rule is a change to a value, not to a component.
+ */
+export function buildCardModel(payload: ShareCardPayload, tz: string = DEFAULT_TZ): CardModel {
+  const render = (b: ShareCardBet): RenderBet => ({
+    ...b,
+    kickShort: b.kickTs ? kickShort(b.kickTs, tz) : "——",
+    kickLong: b.kickTs ? kickHeading(b.kickTs, tz) : null,
+  });
+
+  const sorted = sortForCard(payload.bets);
+  const hero = heroBet(sorted);
+  const rest = hero ? sorted.filter((b) => b.key !== hero.key) : sorted;
+
+  return {
+    title: payload.title,
+    subtitle: payload.subtitle,
+    hero: hero ? { ...render(hero), heading: tierHeadline(hero, 1) } : null,
+    groups: groupByTier(rest).map((g) => ({
+      heading: g.heading,
+      lean: g.tier === "lean",
+      bets: g.bets.map(render),
+    })),
+    count: payload.bets.length,
+    units: totalUnits(payload.bets),
+    overflow: payload.overflow,
+  };
 }

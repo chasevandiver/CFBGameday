@@ -1140,22 +1140,44 @@ viewer's own bets, not the whole sheet.
       never guessed" — so the card builder derives it once via the existing
       `sportOfSeasonId()`. That is exactly as correct as the existing logging,
       which already writes a whole slip under one season. · S
-- [ ] **SHARE-5** `POST /api/share-card` — `ImageResponse` on the node runtime,
-      session-gated, zod-validated. POST rather than GET because the bet slip
-      shares selections that do not exist in the database yet. Brand fonts must
-      be supplied as buffers (the three existing OG cards render in a default
-      sans because none are passed); remote logos are fetched and inlined ahead
-      of render, falling back to `TeamMark`'s monogram. Watch the 500KB
-      ImageResponse bundle ceiling — fonts and the inlined mark count toward
-      it. · M–L
+- [x] **SHARE-5** Done 2026-08-14. `POST /api/share-card` — `ImageResponse`,
+      node runtime, session-gated, zod-validated with bounded string lengths
+      (the layout is fixed, so a 400-character "pick" does not scroll, it wraps
+      until the card is unreadable). POST because the bet slip shares selections
+      that do not exist in the database yet.
+      `npm run brand` now also writes the four TTFs to `public/fonts/` and they
+      are committed, so no request fetches a font. `card.tsx` is presentation
+      only; `buildCardModel()` in `share-card.ts` makes every decision, which is
+      what lets the hero states be tested without rendering a PNG.
+      **Three things only rendering could have caught**, all fixed: a bet with
+      no teams drew an **empty coloured circle** (the monogram has no abbr to
+      set — it takes the S now); the lint rule against JSX in a try/catch was
+      right and load-bearing, because `ImageResponse` renders lazily as its
+      stream is consumed, so the guard caught nothing and only looked like it
+      did; and the four fonts do **not** carry the ʻokina, so Hawaiʻi would have
+      set a tofu box — `sanitizeForCard` swaps it. U+2212 *is* covered, which
+      retires the flag SHARE-3 raised.
+      **SSRF, worth naming:** the payload is client-supplied and satori will
+      fetch whatever URL it is handed, from inside the deployment — and because
+      the response is an image, a probe of an internal address fails silently
+      and looks like a broken logo. Logos are therefore resolved ahead of render
+      against an ESPN-CDN allowlist, with a timeout and a size cap. A test
+      asserts `169.254.169.254` is never reached. · M–L
 - [ ] **SHARE-6** Client + UI: `shareImage()` via Web Share Level 2 with a
       download fallback, a share-image entry beside the existing text share at
       all four share points, and the tier picker in the slip, `BetForm` and the
       ledger history. · M
-- [ ] **SHARE-7** A route smoke test for `/api/share-card`. Would be the first
-      test in the repo to exercise a route — see §23 #42 — and this route earns
-      one: fonts, remote fetches and satori's CSS subset are all real failure
-      surfaces that no unit test reaches. · S
+- [x] **SHARE-7** Done 2026-08-14, landed with SHARE-5. **The first test in the
+      repo to exercise a route** (§23 #42 is now partially closed — one route,
+      not the gap in general). 12 assertions: 401 unauthenticated, 400 on an
+      empty bet list / a tier outside the ladder / a body that is not JSON, and
+      then real PNG bytes for all four hero states, a card at the 12-bet cap,
+      the longest matchup the product can build, a logo-less future, a name
+      carrying the ʻokina, and the SSRF allowlist.
+      It checks the PNG magic number and a floor on byte length rather than just
+      the status, because a zero-byte or HTML response sails past a 200 check —
+      and an empty canvas is exactly what satori produces when it renders but
+      finds nothing to draw. · S
 
 - [ ] **F10** "Biggest line move" slate sort — needs real movement data · S
 - [ ] **F13** Returning-production % on team pages — lights up when data lands · S
