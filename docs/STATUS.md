@@ -1789,18 +1789,57 @@ rather than a quarter linescore.
       unverifiable since 0043; 198 is measured today.
       **Not verified from here:** the delete against a real test bet in the live
       database, which needs production.
-- [ ] **NFL-20** The game page truncates NFL team names — `GameHeader.tsx:368`
-      is `truncate` on `team.school`, which is "Georgia" for CFB and
-      "Jacksonville Jaguars" for the NFL. Also the Systems section
-      (`game/[id]/page.tsx:700`) is `overflow-hidden` with no inner
-      `overflow-x-auto`, where the Market section above it has one.
-- [ ] **NFL-21** A final card says nothing about your bet. **Two causes, both
-      confirmed by reading the routing:** a final renders `FinalFooter`, which
-      never reads `game.myBets`; and `PregameFooter`'s settled-bet chips sit
-      behind `settled = live || final` whose `final` half is **unreachable**,
-      because a final card never renders that footer. The comment at `:865-869`
-      describes behaviour the routing prevents. Separately, the big top strip is
-      gated on `live && a pick`, so a bet never triggers it in any state.
+- [x] **NFL-20 — the game page no longer cuts NFL names in half**, 2026-08-14.
+      `GameHeader.tsx:368` was `truncate` on `{team.school}`, in a `1fr` column
+      beside a 48px mark inside an `overflow-hidden` card. `school` means
+      different things in the two feeds: CFBD gives "Georgia", ESPN gives the
+      full display name, "Jacksonville Jaguars", which is nearly three times as
+      wide in the same slot.
+      **No migration, in the end.** The plan called for a `teams.short_display`
+      column; checking rather than assuming found the short form already stored
+      — `nfl-sync-reference.ts:64` writes ESPN's `name` ("Chiefs") to
+      `teams.mascot`, and `mascot` is already on `TeamView`. New
+      `teamHeadline(team, sport)` uses it for the NFL and keeps `school` for
+      CFB, where the mascot is a *different* word ("Bulldogs" for Georgia)
+      rather than a shorter form of the same one.
+      `truncate` also becomes a two-line clamp in a fixed-height box — same fix
+      and same reason as NFL-9(c) for the last play. `min-height` in `lh` units
+      so it is exactly two lines at both breakpoints the header uses; browsers
+      without `lh` size to content, which can vary between games but never
+      within one, so nothing shifts while a score updates.
+      Found beside it and fixed in the same pass: the Systems section
+      (`game/[id]/page.tsx:700`) is `card overflow-hidden` with **no** inner
+      `overflow-x-auto`, where the Market section above it has had one all
+      along — so a table wider than the phone was clipped rather than
+      scrollable.
+- [x] **NFL-21 — a final card says what happened to your money**, 2026-08-14.
+      **Two independent causes, both confirmed by reading the routing rather
+      than inferred.** (a) A final renders `FinalFooter`, which builds chips
+      from `myPicks`, ATS, O/U and the model and **never reads `myBets`**.
+      `PregameFooter` does have settled-bet chips, behind `settled = live ||
+      final` — but a final never renders that footer, so the `final` half of
+      that condition was **unreachable** and the comment beside it described
+      behaviour the routing prevented. That comment is corrected in place; it is
+      why nobody looked. (b) The big strip across the top was gated on
+      `live && a pick`, so a bet could not trigger it in any state.
+      The strip now runs on finals and reads a **bet** first, matching
+      `tintFor`'s ordering — money is the louder fact. Word is Won / Lost /
+      Push through the existing `.cover-covering / -losing / -push` tiers, so
+      **no new colour, size or radius** enters the system; `.cover-word` is
+      already the broadcast score-bug idiom the request asked for.
+      The grader-first precedence rule had been written out by hand in three
+      places with the same comment; it is now one `settledResult()` in
+      `live-status.ts`. It matters in both directions — the grader settles types
+      a score cannot (`team_total`, `first_half`, `future` are entered by hand),
+      and until it runs, recomputing from the final score is the only thing that
+      can answer. **That second half is what the NFL exposed:** `nfl-grade` runs
+      Mon/Tue/Fri, so a Sunday final has `result: null` all afternoon. A voided
+      bet returns no verdict at all — it never happened.
+      12 tests, **9 of which were checked failing against the shipped code**;
+      the other 3 are negative controls that must pass either way. One of them
+      caught a vacuous assertion of my own: "names the bet" passed pre-fix
+      because the ATS chip renders the same string, so it is now scoped to the
+      strip element.
 - [ ] **UX-34** The ticker does not scroll — `ScoreTicker.tsx:119` is a static
       `overflow-x-auto` strip with no animation.
 - [ ] **UX-35** Remove pinch zoom. Owner request; see §6 for the accessibility
@@ -1808,9 +1847,16 @@ rather than a quarter linescore.
 - [ ] **UX-36** A Live option on the slate, alongside CFB and NFL. There is no
       live filter today — only a count pill and a section that appears when the
       sort is by kickoff.
-- [ ] **UX-37** Possession on the home hub. A rendering gap, not a data gap:
-      `game.possession` is already on the hub's `GameView`, but `compact` mode
-      skips `FieldStrip`, which is the only thing that owns the football.
+- [x] **UX-37 — the home hub says who has the ball**, 2026-08-14. A rendering
+      gap, not a data gap: `fetchHomeData` goes through `fetchSlateView`, so
+      `possession` was on the hub's `GameView` the whole time. The football
+      lived in two places the hub cannot reach — inside `GameCard`'s own `right`
+      override, and inside `FieldStrip`, which `compact` mode drops — so a live
+      row gave the down, the distance and the last play and never said who had
+      the ball. It is a `hasBall` prop on the shared `TeamScoreLine` now,
+      rendered once for both callers. The two comments claiming the football is
+      deliberately card-only (`GameCard.tsx:466`, `TeamLine.tsx:79-82`) are
+      corrected. 3 tests.
 - [ ] **UX-38 / LEDGER-1** The bet slip is too transparent to read, and the Why
       field goes. The slip is the one `.card` floating over scrolling content
       with neither an aura behind it nor a `backdrop-filter`, on an

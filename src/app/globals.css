@@ -661,6 +661,30 @@ html[data-theme="light"] .field-strip {
   color: var(--text-dim);
 }
 
+/* Team name in the game header. Same reasoning as .last-play above, applied to
+   a string that is long for a different reason: NFL-20. `school` is "Georgia"
+   from CFBD and "Jacksonville Jaguars" from ESPN, and the header sits a 48px
+   mark beside a 1fr column — so it was `truncate`, and on a phone the NFL name
+   was cut in half. `teamHeadline()` shortens the NFL side to the nickname;
+   this lets whatever is left wrap rather than clip.
+
+   min-height in `lh` so it is exactly two lines at whatever size the breakpoint
+   is using — the header steps from text-lg to text-xl at sm, and a pixel value
+   would be right at one of them and wrong at the other. Browsers without `lh`
+   (pre-16.4 Safari) ignore the min-height and the box simply sizes to content:
+   one line for most teams, two for the long ones. That degrades to a header
+   that can change height between two different games, never within one, so
+   nothing shifts while a score updates. */
+.team-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  min-height: 2lh;
+}
+
 /* ---- Motion ---------------------------------------------------------- */
 
 @keyframes card-in {

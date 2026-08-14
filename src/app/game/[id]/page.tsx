@@ -708,6 +708,10 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
         {systemRows.length > 0 && (
           <section className="card mt-4 overflow-hidden">
             <h2 className="border-b border-chalk/8 px-4 py-2.5 text-sm text-accent">Systems</h2>
+            {/* NFL-20, found beside it: the card is overflow-hidden, so a table
+                wider than the phone was clipped rather than scrollable. The
+                Market section above has had this wrapper all along. */}
+            <div className="scroll-thin overflow-x-auto">
             <table className="stats w-full border-collapse text-sm">
               <thead>
                 <tr className="text-left text-[10.5px] uppercase tracking-wider text-chalk/55">
@@ -748,6 +752,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                 )}
               </tbody>
             </table>
+            </div>
             <p className="px-4 py-2 text-[10.5px] text-dim">
               SP+ and FPI are points better than an average FBS team on a neutral field, the
               same scale our rating uses, so they read against each other directly. Elo is not —

@@ -14,10 +14,12 @@ import {
   isRedZone,
   lineForSide,
   pickSideLabel,
+  teamHeadline,
   type LinePoint,
   type MyBetView,
   type TeamView,
 } from "../../lib/slate";
+import { sportOfSeasonId } from "../../lib/league";
 import { liveWinProb } from "../../model/live";
 import { useGamesRealtime } from "../../lib/use-games-realtime";
 import { isDeadStatus } from "../../lib/void";
@@ -76,6 +78,8 @@ export function GameHeader({
 }: Props) {
   const viewerTz = useViewerTz(DEFAULT_TZ);
   const [g, setG] = useState<GameLiveState>(initial);
+  // NFL-20: which feed named these teams, and therefore how long the name is.
+  const sport = sportOfSeasonId(seasonId);
 
   const live = g.status === "in_progress";
   const final = g.status === "final";
@@ -250,9 +254,9 @@ export function GameHeader({
         </p>
 
         <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6">
-          <HeaderTeam team={away} points={g.awayPoints} showScore={showScore} lost={awayLost} align="left" hasBall={live && g.possession === "away"} />
+          <HeaderTeam team={away} name={teamHeadline(away, sport)} points={g.awayPoints} showScore={showScore} lost={awayLost} align="left" hasBall={live && g.possession === "away"} />
           <span className="scorebug text-lg text-chalk/35">{neutralSite ? "vs" : "@"}</span>
-          <HeaderTeam team={home} points={g.homePoints} showScore={showScore} lost={homeLost} align="right" hasBall={live && g.possession === "home"} />
+          <HeaderTeam team={home} name={teamHeadline(home, sport)} points={g.homePoints} showScore={showScore} lost={homeLost} align="right" hasBall={live && g.possession === "home"} />
         </div>
 
         {live && g.situation && (
@@ -339,6 +343,7 @@ export function GameHeader({
 
 function HeaderTeam({
   team,
+  name,
   points,
   showScore,
   lost,
@@ -351,6 +356,8 @@ function HeaderTeam({
   lost: boolean;
   align: "left" | "right";
   hasBall?: boolean;
+  /** Already shortened by `teamHeadline` — see NFL-20. */
+  name: string;
 }) {
   const right = align === "right";
   const ball = hasBall && (
@@ -365,7 +372,7 @@ function HeaderTeam({
     <div className={`flex items-center gap-3 ${right ? "flex-row-reverse" : ""} ${lost ? "opacity-50" : ""}`}>
       <TeamMark team={team} size={48} glow />
       <div className={`min-w-0 ${right ? "text-right" : ""}`}>
-        <p className="scorebug truncate text-lg leading-tight text-chalk sm:text-xl">{team.school}</p>
+        <p className="scorebug team-name text-lg leading-tight text-chalk sm:text-xl">{name}</p>
         <p className="stat text-[10.5px] text-dim">
           {[team.conference, team.pollRank !== null && team.poll ? `#${team.pollRank} ${team.poll}` : null]
             .filter(Boolean)

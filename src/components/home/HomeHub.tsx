@@ -254,17 +254,23 @@ export function PositionRow({
           {/* The slate's scoreboard, not a summary of it: each team on its own
               team-coloured rail with a 24px score at the right. */}
           <div className="mt-1.5 flex flex-col gap-1">
+            {/* UX-37: who has the ball, the same marker the slate card uses.
+                The data was already here — fetchHomeData goes through
+                fetchSlateView — but the football lived inside FieldStrip,
+                which `compact` below drops. */}
             <TeamScoreLine
               team={game.away}
               score={game.awayPoints}
               showScore={showScore}
               dimmed={final && a < h}
+              hasBall={live && game.possession === "away"}
             />
             <TeamScoreLine
               team={game.home}
               score={game.homePoints}
               showScore={showScore}
               dimmed={final && h < a}
+              hasBall={live && game.possession === "home"}
             />
           </div>
           {/* The same block the slate card shows, minus the field strip: a row

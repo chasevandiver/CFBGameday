@@ -242,6 +242,63 @@ export function statusForBet(
   return null;
 }
 
+/* ---- settled verdicts (NFL-21) ----------------------------------------- */
+
+export type SettledVerdict = "pass" | "fail" | "push";
+
+/**
+ * How a settled wager finished: the grader's word first, the score second.
+ *
+ * This precedence was written out by hand in three places — `GameCard`'s final
+ * chips, the game page's bets list, and the home hub — with the same comment
+ * each time. It matters in both directions. The grader settles bet types a
+ * score cannot (`team_total`, `first_half`, `future` are entered by hand), so
+ * for those the stored result is the ONLY answer; and until it has run, a
+ * spread or total recomputed from the final score is right and available
+ * immediately, which is what keeps a card from reading blank between the whistle
+ * and the settle.
+ *
+ * `null` means neither source can answer — an ungraded exotic, or a game with
+ * no score. The caller renders nothing rather than guessing.
+ */
+export function settledResult(
+  stored: string | null | undefined,
+  fromScore: LiveBetStatus | null,
+): SettledVerdict | null {
+  if (stored === "win") return "pass";
+  if (stored === "loss") return "fail";
+  if (stored === "push") return "push";
+  // A voided wager has no verdict to show — it never happened (League Rule #4).
+  if (stored === "void") return null;
+  if (!fromScore) return null;
+  return fromScore.state === "winning" ? "pass" : fromScore.state === "losing" ? "fail" : "push";
+}
+
+/**
+ * The cover strip for a game that is over (NFL-21).
+ *
+ * The strip has existed since the pick'em work but only ever rendered for a
+ * LIVE game with a PICK (`GameCard.tsx:119-127`). A final routes to
+ * `FinalFooter`, which reads `myPicks` and never `myBets`, so a bet on a
+ * finished game produced no verdict anywhere on the card — reported against an
+ * NFL final, where it is worse still because grading runs Mon/Tue/Fri.
+ *
+ * Reuses `PickCoverView` and the same three tiers, so no new colour or size
+ * enters the system: the word is what changes, from "Covering" to "Won".
+ * Past tense throughout — a settled game is not still doing anything.
+ */
+export function settledCoverView(verdict: SettledVerdict): PickCoverView {
+  return {
+    tier: verdict === "pass" ? "covering" : verdict === "fail" ? "losing" : "push",
+    word: verdict === "pass" ? "Won" : verdict === "fail" ? "Lost" : "Push",
+    // Nothing is still in doubt, so there is no margin to report and no room
+    // label to give. What you had on it rides in the strip's trailing slot,
+    // which is where the pick already sat.
+    margin: null,
+    sub: null,
+  };
+}
+
 /* ---- card tint (the Liquid Glass aura) --------------------------------- */
 
 /**

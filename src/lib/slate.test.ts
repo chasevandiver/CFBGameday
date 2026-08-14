@@ -21,6 +21,7 @@ import {
   pickSideLabel,
   betSideLabel,
   pickableSlots,
+  teamHeadline,
   watchability,
   weekModelRecord,
   type GameView,
@@ -639,5 +640,39 @@ describe("pickableSlots", () => {
 
   it("is zero for an empty board", () => {
     expect(pickableSlots([], ["spread", "total"])).toBe(0);
+  });
+});
+
+/* NFL-20: the game header truncated NFL team names, because `school` means
+   something different in each feed — "Georgia" from CFBD, "Jacksonville
+   Jaguars" from ESPN. */
+describe("teamHeadline", () => {
+  const t = (over: Partial<TeamView>): TeamView => ({ ...team(1), ...over });
+
+  it("shortens an NFL team to its nickname", () => {
+    expect(teamHeadline(t({ school: "Jacksonville Jaguars", mascot: "Jaguars" }), "nfl")).toBe(
+      "Jaguars",
+    );
+    expect(teamHeadline(t({ school: "Kansas City Chiefs", mascot: "Chiefs" }), "nfl")).toBe(
+      "Chiefs",
+    );
+  });
+
+  /* CFB deliberately keeps the school. The mascot there is a DIFFERENT word,
+     not a shorter form of the same one — "Bulldogs" is not what anyone is
+     scanning a slate for. */
+  it("leaves a CFB team on its school name, mascot or no mascot", () => {
+    expect(teamHeadline(t({ school: "Georgia", mascot: "Bulldogs" }), "cfb")).toBe("Georgia");
+    expect(teamHeadline(t({ school: "Middle Tennessee", mascot: null }), "cfb")).toBe(
+      "Middle Tennessee",
+    );
+  });
+
+  /* Every NFL row has a mascot today (nfl-sync-reference writes ESPN's `name`),
+     but a null must degrade to the full name rather than to blank. */
+  it("falls back to the full name when an NFL row has no nickname", () => {
+    expect(teamHeadline(t({ school: "Las Vegas Raiders", mascot: null }), "nfl")).toBe(
+      "Las Vegas Raiders",
+    );
   });
 });

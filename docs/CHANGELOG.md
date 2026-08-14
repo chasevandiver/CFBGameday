@@ -166,6 +166,89 @@ shipping it.
 
 ## Log
 
+### Aug 14 — The final card, the clipped name, and the ball on the home page
+
+Three owner reports from the same screen. NFL-20, NFL-21, UX-37.
+
+**"The nfl game cards get cut off when you click into them on the team names."**
+`GameHeader.tsx:368` was `truncate` on `{team.school}` in a `1fr` column beside
+a 48px mark. The cause is that `school` means different things in the two feeds:
+CFBD gives the school alone — "Georgia" — and ESPN gives the full display name,
+"Jacksonville Jaguars", nearly three times as wide in the same slot.
+
+The plan for this was a `teams.short_display` column and a re-sync. Checking
+rather than assuming killed it: `nfl-sync-reference.ts:64` already writes ESPN's
+`name` ("Chiefs") into `teams.mascot`, and `mascot` is already on `TeamView`.
+The short form had been in the database since the NFL shipped. So the fix is one
+function, `teamHeadline(team, sport)`, and no migration. CFB deliberately keeps
+`school` — there the mascot is a *different* word, not a shorter form of the
+same one, and nobody scanning a slate is looking for "Bulldogs".
+
+`truncate` also became a two-line clamp, same reasoning as NFL-9(c)'s last-play
+box. The min-height is in `lh` rather than pixels because the header steps from
+`text-lg` to `text-xl` at `sm` and a pixel value would be right at one
+breakpoint and wrong at the other.
+
+Found beside it: the Systems section is `card overflow-hidden` with no inner
+`overflow-x-auto`, where the Market section directly above it has had one all
+along. A table wider than the phone was clipped rather than scrollable.
+
+**"For the NFL game that went final there's nothing that says Lost, Won or
+Pushed."** Two independent causes, both read off the routing rather than
+guessed.
+
+A final renders `FinalFooter`, which builds chips from `myPicks`, ATS, O/U and
+the model — and never reads `myBets`. `PregameFooter` *does* have settled-bet
+chips, behind `settled = live || final`. But a final never renders that footer,
+so the `final` half of that condition has been unreachable since it was written,
+and the comment beside it described behaviour the routing prevents. That comment
+is the reason nobody looked, and it is corrected in place rather than deleted.
+
+Separately, the cover strip — the big word across the top, which is what the
+request meant by "a bigger tab at the top like the demo of live games" — was
+gated on `live && a pick`. A bet never produced one and a final never did.
+
+The strip now runs on finals and reads a bet first, matching `tintFor`'s
+ordering: real money is the louder fact. Won / Lost / Push through the existing
+`.cover-covering / -losing / -push` tiers, so no new colour, size or radius
+enters the system — `.cover-word` was already the broadcast score-bug idiom the
+request was asking for.
+
+The grader-first precedence rule had been hand-written in three places with the
+same comment each time; it is now one `settledResult()`. It is load-bearing in
+both directions. The grader settles types a score cannot — `team_total`,
+`first_half` and `future` are entered by hand — so for those the stored result
+is the only answer. And until the grader runs, recomputing from the final score
+is the only thing that can answer at all. **That second half is what the NFL
+exposed:** `nfl-grade` runs Mon/Tue/Fri, so a Sunday final carries `result:
+null` for the whole afternoon. GRADE-1 shortens that window to a scoreboard
+tick; this makes the card readable even when it hasn't closed yet.
+
+**"The Home Screen should also have who has possession of the ball like the
+slate shows."** A rendering gap, not a data gap — `fetchHomeData` goes through
+`fetchSlateView`, so `possession` was already on the hub's `GameView`. The
+football lived in two places the hub cannot reach: inside `GameCard`'s own
+`right` override, and inside `FieldStrip`, which the hub's `compact` mode drops
+on purpose (a 12px playing field in every row of a list reads as decoration).
+It is a `hasBall` prop on the shared `TeamScoreLine` now, drawn once for both
+callers, and the two comments asserting the football is deliberately card-only
+are corrected.
+
+**Testing.** 18 new (810 → 828). Nine of NFL-21's twelve were checked failing
+against the shipped code first; the other three are negative controls that must
+pass either way — a live card still says "Covering" and not "Won", a voided bet
+still says nothing, and a game you had no position on still shows no verdict.
+
+One of those controls caught a bad assertion of my own. "Names the bet the
+verdict is about" passed against the pre-fix code, because the ATS chip renders
+the same string `KC -3` and an unscoped text query cannot tell them apart. It is
+now scoped to the strip element. Same failure shape as the DB-assertion defect
+recorded below on the same day: a check that reports success without having
+tested the thing it names.
+
+**Not seen rendered.** These were verified by test and by reading, not on a
+device. The device pass is `NFL-3`, still open.
+
 ### Aug 14 — Admin cancellation, and the test runner that had been dead for a day
 
 Owner request: *"There needs to be a way to fully cancel bets before and after
