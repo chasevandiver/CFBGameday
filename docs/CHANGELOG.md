@@ -213,14 +213,27 @@ value, which looked exactly like a broken writer:
 
 Two for two, none copied.
 
-**On the field goals, honestly: not confirmed either way.** Two of the three
-things that would hide them are now fixed (this, and NFL-11's blanked block
-during the dead-ball stretch right after a score). The third is not a bug — the
-kickoff that follows a score is itself a real play and legitimately replaces the
-scoring play after twenty to forty seconds, so a made kick is visible for a few
-ticks rather than indefinitely. Six minutes of live sampling caught a
-`Field Goal Missed` and no made kick, so end-to-end confirmation is owed on the
-next live window (NFL-17).
+**And the field goals do reach the card — confirmed, after a second look.**
+The first six minutes of sampling caught only a `Field Goal Missed`, which was
+not enough to answer it, so this was written down as owed rather than claimed.
+A longer pass caught two made kicks in one window, both ESPN type
+`Field Goal Good`, both stored verbatim:
+
+```
+TEN @ SF   J.Slye 55 yard field goal is GOOD, Center-M.Cox, Holder-T.Townsend.
+IND @ NE   S.Shrader 61 yard field goal is GOOD, Center-L.Rhodes, Holder-R.Sanchez.
+```
+
+The type is not on the deny-list, so the fail-open rule keeps it, and NFL-11
+means the block still renders once the score clears the down and distance. Two
+bugs were hiding them, both now fixed; an extra point was not separately
+observed, but it is the same code path.
+
+What was never a bug: the kickoff after a score is itself a real play and
+legitimately replaces the scoring play twenty to forty seconds later, so a made
+kick is visible for a few ticks rather than indefinitely. Making scoring
+*persist* would be a new feature with a new column, logged as NFL-18 and not
+built.
 
 ### Aug 14 (night) — Ten seconds, for a third of the price, and a home page that moves
 

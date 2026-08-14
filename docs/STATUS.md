@@ -1300,19 +1300,28 @@ Built on `claude/nfl-scores-lines-l4bhio`; the design and its evidence are in
       v4): two distinct non-play moments observed with cache-busted reads —
       `Timeout #1 by SF` and `Official Timeout at 09:56` — and in both the
       database held the real play instead. 0 copied.
-- [ ] **NFL-17** Made field goals and extra points — reported as "can't see
-      for sure", and not directly confirmed either way. Three things would
-      have hidden them and two are now fixed: NFL-11 blanked the whole
-      situation block during the dead-ball stretch right after a score, which
-      is exactly when a PAT shows; NFL-16 let the following TV timeout
-      overwrite the scoring play. The third is not a bug — the kickoff after a
-      score is itself a real play and legitimately replaces the scoring play
-      after ~20–40s, so a scoring play is visible for a few ticks, not
-      indefinitely. Sampling across ~6 minutes of live preseason caught
-      `Field Goal Missed` but no made kick, so end-to-end confirmation is
-      owed on the next live window. If scoring plays should *persist* rather
-      than scroll past, that is a separate feature (a remembered last-score
-      line) and needs a column. · watch, then owner decision
+- [x] **NFL-17** Made field goals reach the card — **confirmed live
+      2026-08-14 ~02:33 UTC**, which is what the owner could not tell ("can't
+      see for sure though"). Two made kicks caught in the same window, both
+      ESPN type `Field Goal Good`, both stored verbatim:
+      `J.Slye 55 yard field goal is GOOD, Center-M.Cox, Holder-T.Townsend.`
+      (TEN@SF) and `S.Shrader 61 yard field goal is GOOD, Center-L.Rhodes,
+      Holder-R.Sanchez.` (IND@NE). The type is not in the deny-list, so
+      NFL-16's fail-open rule keeps it, and NFL-11 means the block renders
+      even once the score clears the down and distance. An extra point was not
+      separately observed, but it is the same code path and the same scoring
+      type family. What was never a bug: the kickoff after a score is itself a
+      real play and legitimately replaces the scoring play after ~20–40s, so a
+      made kick is visible for a few ticks rather than indefinitely. If
+      scoring plays should *persist* instead of scrolling past, that is a
+      separate feature (a remembered last-score line) needing a column —
+      NFL-18.
+- [ ] **NFL-18** Deferred, not started: a remembered "last score" line, so a
+      touchdown or field goal stays on the card until the next one instead of
+      being replaced by the kickoff ~30s later. Needs a column
+      (`last_score_play`) and a writer rule. Only worth building if the owner
+      wants scoring to persist; the current behaviour is correct, just
+      transient. · owner decision
 - [x] **NFL-14** The home hub, owner report 2026-08-14 ("the home page is
       having the same refresh problem and doesn't show the down and distance
       or last play like it does on the slate"). Two defects, both worse than
