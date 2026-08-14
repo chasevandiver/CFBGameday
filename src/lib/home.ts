@@ -79,6 +79,13 @@ export interface HomeData {
   seasonId: number;
   week: number;
   seasonType: SeasonType;
+  /**
+   * When this payload was read, stamped server-side. The page needs a "now" to
+   * decide whether a kickoff is imminent, and `Date.now()` during render is
+   * both impure (react-hooks/purity) and unstable across a re-render — the
+   * slate carries the same field for the same reason.
+   */
+  fetchedAt: string;
   /** Next kickoff still in the future, or null once the week has all started. */
   firstKick: string | null;
   liveCount: number;
@@ -330,6 +337,7 @@ export async function fetchHomeData(
     seasonId,
     week,
     seasonType,
+    fetchedAt: new Date().toISOString(),
     firstKick,
     liveCount: weekGames.filter((g) => g.status === "in_progress").length,
     weekGameCount: weekGames.length,
