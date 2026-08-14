@@ -277,6 +277,34 @@ export function rowsThatFit(groupCount: number, hasHero: boolean): number {
   return Math.max(1, Math.floor(forRows / MIN_ROW_H));
 }
 
+const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(n)));
+
+/**
+ * Title size, chosen so the name fits on one line.
+ *
+ * The header is not a fixed-height block, so a title that wraps pushes the meta
+ * line down and makes `HEAD_H` a lie — and `HEAD_H` is what the row budget is
+ * computed from, so a long name plus a full slip could push the footer off the
+ * bottom. Display names are capped at 24 characters by `updateDisplayName`,
+ * which with "’s Bets" is 31 uppercase characters, and 31 does not fit at 58.
+ *
+ * The width budget is not the full 968px content width: the S stamp sits at the
+ * right of the header row and takes ~53px plus its gutter, and the title is a
+ * `flex: 1` sibling, so a nowrap title that is too wide runs *under* the mark
+ * rather than shrinking. 0.66em is Graduate's average uppercase advance,
+ * measured off the rendered card — the first estimate of 0.62 was low and let a
+ * long name reach the stamp.
+ */
+const TITLE_WIDTH = 860;
+const TITLE_ADVANCE = 0.66;
+const TITLE_MAX = 58;
+const TITLE_MIN = 34;
+
+export function titleFontSize(title: string, width = TITLE_WIDTH): number {
+  if (title.length === 0) return TITLE_MAX;
+  return clamp(width / (title.length * TITLE_ADVANCE), TITLE_MIN, TITLE_MAX);
+}
+
 export interface CardMetrics {
   rowH: number;
   crest: number;
@@ -305,8 +333,6 @@ export interface CardMetrics {
   /** Gap between panels; 0 when rows are bare lines. */
   panelGap: number;
 }
-
-const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(n)));
 
 /**
  * Row size as a function of how many rows there are.

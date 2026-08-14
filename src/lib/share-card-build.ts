@@ -12,10 +12,24 @@ import type { BetRow, ConfidenceTier } from "./db-types";
 import { sportOfSeasonId } from "./league";
 import { capForCard, sanitizeForCard, type ShareCardBet, type ShareCardPayload } from "./share-card";
 
-/** "<display_name> Bets" — the owner asked for exactly this string. */
+/**
+ * "<display_name>’s Bets" — possessive, which is what the owner asked for.
+ *
+ * A typographic apostrophe (U+2019), not the ASCII one: the card is set in
+ * Archivo and Graduate at display size, where a straight quote reads as a
+ * typewriter mark. All four committed fonts carry U+2019 — that was checked
+ * when `sanitizeForCard` was written, which maps the ʻokina onto this same
+ * character.
+ *
+ * A name already ending in "s" still takes "’s" ("Marcus’s Bets"). It is the
+ * dominant modern style, and the alternative needs a rule that would silently
+ * do the wrong thing to a name that merely ends in an s sound.
+ *
+ * The signed-out fallback stays "My Bets" rather than becoming "My’s Bets".
+ */
 export function cardTitle(displayName: string): string {
   const name = displayName.trim();
-  return name ? `${name} Bets` : "My Bets";
+  return name ? `${name}’s Bets` : "My Bets";
 }
 
 export function cardSubtitle(week: number, day: string): string {
