@@ -1277,6 +1277,26 @@ Built on `claude/nfl-scores-lines-l4bhio`; the design and its evidence are in
       as situation-without-football, the degraded state NFL-5 already
       recorded. The deployed v2 had drifted from the repo copy in two comment
       lines only; v3 is the repo file verbatim.
+- [x] **NFL-10** `/api/slate` served week 0 to every parameterless request.
+      Found 2026-08-14 while verifying NFL-9 against production, not by
+      looking for it: `/api/slate?sport=nfl` returned `week 0`,
+      `seasonType regular`, **0 games** with five preseason games live. The
+      route read `Number(searchParams.get("week"))` — `get` returns `null`
+      when the param is absent, `Number(null)` is `0`, and week 0 is a real
+      addressable week (`MIN_WEEK`), so `isValidWeek` said yes and `hasWeek`
+      also forced `st` to `regular`. `parseWeekParam` was written for exactly
+      this (it separates absent from zero) and **had no callers**; the route
+      now uses it. Why it hid for so long: `SlateView.refresh` always sends an
+      explicit `week=`, so the slate itself was never affected, and on the CFB
+      side week 0 is populated (the eight Aug 29 games), which made a bare
+      call look plausible. New `src/lib/week-range.test.ts`, 5 tests, with the
+      absent-vs-zero case as a named regression. The seven page routes that
+      call `isValidWeek` take their param from `searchParams` destructuring,
+      where absent is `undefined` → `NaN` → correctly rejected, so none of
+      them carried this. **Residual, recorded not queued:** those seven still
+      read `Number(raw)`, so a literal empty `?week=` would parse as 0 there.
+      No known link produces one; `parseWeekParam` would close it if a reason
+      appears.
 - [x] **NFL-7** Preseason, owner request 2026-08-13 ("Can we add preseason
       too?"). `preseason` is a third season_type on the NFL side only: stored
       1:1 from ESPN (weeks 1–4, week 1 the Hall of Fame game), no schema
