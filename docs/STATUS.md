@@ -1071,13 +1071,40 @@ viewer's own bets, not the whole sheet.
       (a lone bet *is* alone at the highest tier) and rendered as one thin row
       on an empty card. The special case is gone; the rule is now one sentence
       with no exceptions. · S
-- [ ] **SHARE-2** `bets.confidence` — migration, six-value check constraint,
-      default `'bet'` so existing rows backfill to the neutral rung. Amend
-      `enforce_bet_void_only()` (migration 0013) to whitelist a confidence-only
-      transition pre-kickoff; today that trigger permits *voiding and nothing
-      else*, so a tier could be written at insert and never corrected. Freezing
-      at kickoff is what keeps "how do my Bet of the Day picks actually do?"
-      answerable later. SQL assertions in `supabase/tests/bets.sql`. · M
+- [x] **SHARE-2** Done 2026-08-14, `0045_bet_confidence.sql`.
+      `bets.confidence text not null default 'bet'` with a six-value check, so
+      existing rows land on the neutral rung and nothing downstream branches on
+      a null tier. `enforce_bet_void_only()` gains exactly one transition,
+      written in the same shape as the one already there — decide what may
+      change, rebuild the row from `OLD`, re-apply only that — so a retag
+      carrying a stake edit drops the stake edit, exactly as a void carrying one
+      already does.
+      **Kickoff, not grading, is the boundary**, and that is the whole design:
+      a tier frozen at insert makes a typo permanent, while a tier that moves
+      after kickoff destroys the only reason to store it — "how do my Bet of the
+      Day picks actually do?" is answerable only if the tier was set before
+      anyone knew. Futures have no kickoff and freeze at grading instead, which
+      the existing `old.result is not null` guard already covers; a game whose
+      `start_ts` is still null has not kicked off either, so TBD stays editable.
+      The `"void own bets"` policy was **not** renamed despite now carrying the
+      retag — that would break the trail back to `06:SEC-03`, so the drift is
+      recorded in a `comment on policy` instead.
+      Types in `db-types.ts`: `CONFIDENCE_TIERS` (ordered, and the order is
+      load-bearing — the card sorts on the index, so append but never rearrange)
+      and `CONFIDENCE_TIER_LABELS`, mirroring `REASON_TAGS`.
+      **Verified: 174 SQL assertions pass, 0 fail**, including 11 new ones —
+      default rung, explicit tier surviving the insert sanitizer, a tier outside
+      the ladder refused, retag pre-kickoff, retag discarding a smuggled stake
+      edit, retag post-kickoff refused, TBD kickoff allowed, futures allowed,
+      another user's bet refused, a graded bet refused, and the original void
+      path still working. `lint`, `tsc --noEmit` and 726 vitest tests clean.
+      **Caveat on how it was run:** `npm run db:test` cannot complete in this
+      container — migrations 0043/0044 `create extension pg_cron`, which is not
+      installed here, and it fails before reaching any suite. That is
+      pre-existing and unrelated to bets. The suites were run against the same
+      throwaway Postgres 16 cluster with those two migrations excluded. **0043
+      and 0044 have therefore never been exercised by `db:test` in this
+      environment** — worth knowing before trusting a green run. · M
 - [ ] **SHARE-3** `src/lib/share-card.ts` — the pure module: sort (tier desc,
       then kickoff asc, nulls last, stable), tier grouping, the broadcast-window
       headline off the existing `kickSlot()`, the row cap. Test-pinned, the same

@@ -124,6 +124,105 @@ begin;
     (select count(*) = 1 from bets));
 rollback;
 
+\echo '# the confidence tier: set at insert, editable until kickoff (0045)'
+-- 0045 widened enforce_bet_void_only()'s whitelist by exactly one transition.
+-- These are the boundaries of that transition. The tier has to be able to move
+-- (a typo should not be permanent) without becoming a way to decide after the
+-- fact what you were confident about — so kickoff, not grading, is the line.
+\o /dev/null
+insert into games (id, season_id, week, season_type, start_ts, home_team_id, away_team_id)
+values (302, 2026, 2, 'regular', now() - interval '2 hours', 1, 2),   -- already kicked
+       (303, 2026, 2, 'regular', null,                       1, 2);  -- kickoff TBD
+\o
+
+begin;
+  select test_as(:bob::uuid);
+  insert into bets (season_id, user_id, game_id, bet_type, description, side,
+                    line_taken, odds, units, reason_tag) values
+    (2026, :bob::uuid, 301, 'spread', 'live',   'home', -3.5, -110, 1, 'feel'),
+    (2026, :bob::uuid, 302, 'spread', 'kicked', 'home', -3.5, -110, 1, 'feel'),
+    (2026, :bob::uuid, 303, 'spread', 'tbd',    'home', -3.5, -110, 1, 'feel'),
+    (2026, :bob::uuid, 301, 'spread', 'graded', 'home', -3.5, -110, 1, 'feel');
+  insert into bets (season_id, user_id, bet_type, description, units, reason_tag, confidence)
+  values (2026, :bob::uuid, 'future', 'futures', 1, 'feel', 'lean');
+  select pg_temp.chk('an unspecified tier lands on the neutral rung',
+    (select confidence = 'bet' from bets where description = 'live'));
+  select pg_temp.chk('an explicit tier survives the insert sanitizer',
+    (select confidence = 'lean' from bets where description = 'futures'));
+commit;
+
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.raises('a tier outside the ladder -> refused',
+    'update bets set confidence = ''hammer'' where description = ''live''');
+rollback;
+
+begin;
+  select test_as(:bob::uuid);
+  update bets set confidence = 'century' where description = 'live';
+  select pg_temp.chk('retagging before kickoff lands',
+    (select confidence = 'century' from bets where description = 'live'));
+rollback;
+
+begin;
+  select test_as(:bob::uuid);
+  -- the retag branch rebuilds from OLD too, so a stake edit riding along on it
+  -- is discarded exactly the way a void carrying one already is
+  update bets set confidence = 'year', units = 50 where description = 'live';
+  select pg_temp.chk('a retag carrying a stake edit keeps only the tier',
+    (select confidence = 'year' and units = 1 from bets where description = 'live'));
+rollback;
+
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.raises('retagging after kickoff -> refused',
+    'update bets set confidence = ''century'' where description = ''kicked''');
+rollback;
+
+begin;
+  select test_as(:bob::uuid);
+  update bets set confidence = 'day' where description = 'tbd';
+  select pg_temp.chk('a game with no announced kickoff has not started',
+    (select confidence = 'day' from bets where description = 'tbd'));
+rollback;
+
+begin;
+  select test_as(:bob::uuid);
+  update bets set confidence = 'century' where description = 'futures';
+  select pg_temp.chk('a future has no kickoff, so it retags until it grades',
+    (select confidence = 'century' from bets where description = 'futures'));
+rollback;
+
+begin;
+  select test_as(:ann::uuid);
+  do $$ begin
+    execute 'update bets set confidence = ''lean'' where description = ''live''';
+  exception when others then null; end $$;
+  select pg_temp.chk('ann cannot retag bob''s bet',
+    (select confidence = 'bet' from bets where description = 'live'));
+rollback;
+
+-- Grading runs in its own transaction: a session cannot go service_role ->
+-- authenticated inside one, because service_role is not a member of it.
+begin;
+  set local role service_role;
+  update bets set result = 'loss', payout_units = -1 where description = 'graded';
+commit;
+
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.raises('retagging a graded bet -> refused',
+    'update bets set confidence = ''lean'' where description = ''graded''');
+rollback;
+
+begin;
+  select test_as(:bob::uuid);
+  -- and the transition 0013 actually cared about is untouched by all of this
+  update bets set result = 'void', voided_at = now() where description = 'live';
+  select pg_temp.chk('voiding still works alongside the new branch',
+    (select result = 'void' and confidence = 'bet' from bets where description = 'live'));
+rollback;
+
 \echo '# the append-only tables stay append-only (grants, not policies)'
 select pg_temp.chk('authenticated cannot UPDATE predictions',
   not has_table_privilege('authenticated', 'public.predictions', 'UPDATE'));
