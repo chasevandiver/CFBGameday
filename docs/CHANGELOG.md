@@ -166,6 +166,34 @@ shipping it.
 
 ## Log
 
+### Aug 14 (later still) — The touchdown was the one play guaranteed not to render
+
+Owner report: the slate cards don't show what the touchdown play was.
+
+`LiveSituation` opened with `if (!game.situation && !pos) return null`. ESPN
+publishes a down and distance only while a snap is pending, so the entire
+dead-ball stretch after a score — through the PAT and the kickoff — arrives as
+`situation: null`, and possession goes null with it, which makes `pos` null
+too. Both null, so the guard dropped the whole block: down, field strip, and
+the last play together. The play that just scored is the one play on a live
+card anybody wants to read, and it was the one play structurally guaranteed to
+be missing. Same for end of quarter and timeouts between possessions.
+
+Caught in the stored rows rather than by reading the code: game 401874392 sat
+at `current_situation: null` with `last_play: "Official Timeout at 04:42."`
+The last play is now a situation in its own right, and the down-and-distance
+row is skipped rather than rendered empty above it. The new test was checked
+failing against the old guard before the fix went in.
+
+**What this feed cannot give, recorded rather than guessed at.** The down and
+distance a play was *snapped* on is not in the scoreboard endpoint:
+`lastPlay.start.down`, `.distance` and `.downDistanceText` are all null, and
+`lastPlay.drive` carries only `"3 plays, -18 yards, 1:07"` — verified across
+six live games. The card's down-and-distance is the *next* one, computed after
+the play, which is why a sack reads "4th & 27 at DET 12" above "sacked at DET
+12 for -12 yards". Pre-snap down needs `/summary?event=<id>`, one extra call
+per live game per tick; queued as a decision (NFL-12), not built.
+
 ### Aug 14 (later) — `Number(null)` is 0, and week 0 is a real week
 
 Found while verifying the deploy above against production, not by looking for

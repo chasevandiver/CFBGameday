@@ -537,10 +537,21 @@ function LiveSituation({ game }: { game: GameView }) {
   const redZone = isRedZone(game);
   const posTeam =
     game.possession === "home" ? game.home : game.possession === "away" ? game.away : null;
-  if (!game.situation && !pos) return null;
+  /* The last play counts as a situation on its own.
+     ESPN publishes a down and distance only when there is a snap pending, so
+     it goes null for the whole dead-ball stretch after a touchdown — through
+     the PAT and the kickoff — and at end of quarter and on timeouts between
+     possessions. Possession goes null with it, so `pos` is null too, and this
+     guard used to drop the entire block. The play that just scored the
+     touchdown is the one play on the card anybody wants to read, and it was
+     the one play guaranteed not to render. */
+  if (!game.situation && !pos && !game.lastPlay) return null;
 
   return (
     <div className="mt-2.5">
+      {/* skipped entirely in the dead-ball state, rather than left as an empty
+          flex row above the play */}
+      {(game.situation || redZone) && (
       <div className="flex flex-wrap items-center gap-1.5">
         {sit ? (
           <span className="stat text-[12.5px] font-semibold text-chalk">
@@ -567,6 +578,7 @@ function LiveSituation({ game }: { game: GameView }) {
         ) : null}
         {redZone && <span className="chip bg-loss/15 text-loss">Red zone</span>}
       </div>
+      )}
       {pos && <FieldStrip game={game} pos={pos} redZone={redZone} />}
       {game.lastPlay && (
         /* Two lines, and the box is two lines tall whether or not it needs
