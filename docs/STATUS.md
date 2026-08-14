@@ -1071,7 +1071,21 @@ viewer's own bets, not the whole sheet.
       (a lone bet *is* alone at the highest tier) and rendered as one thin row
       on an empty card. The special case is gone; the rule is now one sentence
       with no exceptions. · S
-- [x] **SHARE-2** Done 2026-08-14, `0045_bet_confidence.sql`.
+- [x] **SHARE-2** Done 2026-08-14, `0045_bet_confidence.sql`, **applied
+      2026-08-14 ~05:03 UTC**. 13 existing bets backfilled to `'bet'`.
+      **Verified against production, not just against the test cluster.** Two
+      probes, each inside a block that raises at the end so the whole thing
+      rolls back — checked afterwards, and the table was untouched: 13 rows, no
+      probe rows, no tier changed, max units still 1.00.
+      The freeze: bet 12, whose game kicked at 00:00 UTC, refused the retag with
+      the trigger's own message and still refused a units edit. The allow path
+      needed a temporary row, because every one of the 13 live bets is either
+      voided or already kicked off — an explicit tier survived the insert
+      sanitizer (`lean`), a pre-kickoff retag landed (`century`), a retag
+      carrying `units = 999` moved the tier to `year` and **left units at
+      1.00**, and a tier outside the ladder was refused.
+      `get_advisors` reports nothing new; every lint on the project predates
+      this change.
       `bets.confidence text not null default 'bet'` with a six-value check, so
       existing rows land on the neutral rung and nothing downstream branches on
       a null tier. `enforce_bet_void_only()` gains exactly one transition,
