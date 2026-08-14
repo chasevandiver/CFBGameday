@@ -47,10 +47,70 @@ footer .dep { color: var(--edge); }
 <main>
   <h1>Design directions</h1>
   <p class="lede">
-    Two rounds of <b>exploration mode</b>, per <code>docs/DESIGN.md</code>. Open
+    Three rounds of <b>exploration mode</b>, per <code>docs/DESIGN.md</code>. Open
     them on a phone, in a dim room, at arm's length — that is the environment
     they are for. Nothing here is app code and nothing here ships.
   </p>
+
+  <h3>Share card — awaiting a decision <span style="color:var(--accent);font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.12em">· live round</span></h3>
+  <p class="sub">
+    Three directions for the <b>image share</b> — the thing a user posts to a
+    timeline. 1080×1350 (4:5), sorted by confidence tier then kickoff, titled
+    <code>&lt;display_name&gt; Bets</code>.
+  </p>
+  <p class="sub">
+    Two things make this round different. First, the palette is
+    <b>docs/BRAND.md §5</b> — green, chalk, gold — not the app's charcoal tokens,
+    because <code>src/lib/brand.ts</code> says share cards are BRAND's remit and
+    §31 already specifies them. Second, all three are built <b>flexbox-only, no
+    grid, no <code>gap</code></b>, because the winner has to survive being ported
+    into a <code>next/og</code> ImageResponse, and satori renders a narrower CSS
+    subset than your browser. A mockup using anything satori can't draw would be
+    a lie about what ships.
+  </p>
+  <p class="sub">
+    Same seven bets in all three, including <b>Miami&nbsp;(OH) at Western
+    Michigan</b> as the string-length test and a <b>futures bet with no game</b>
+    so the row that has no logos and no kickoff is visible rather than imagined.
+  </p>
+
+  <ol>
+    <li><a class="card" href="./share-card-a.html">
+      <span class="k">Share A</span>
+      <h2>The Gameday Program</h2>
+      <p class="d">
+        Tiers as architecture. A gold tick, the tier in Graduate, and a hairline
+        out to the margin — the section headings of a printed program. You read
+        the card by conviction first and clock second, which is the sort order.
+      </p>
+      <p class="axes">density ~7 bets · leads with tier structure · tier = a heading over a group</p>
+      <p class="rb">remembered by <b>the ruled headings</b> · the only one that can print “Bet of the Afternoon Slate” in full</p>
+    </a></li>
+
+    <li><a class="card" href="./share-card-b.html">
+      <span class="k">Share B</span>
+      <h2>The Ticket</h2>
+      <p class="d">
+        A torn stub on the dark field. Tier shrinks to a gold pill at the head of
+        each row, which buys back every pixel A spends on headings — so this is
+        the one that holds a full Saturday.
+      </p>
+      <p class="axes">density 10–12 bets · leads with the numbers · tier = a one-word pill</p>
+      <p class="rb">remembered by <b>the mono column that lines up</b> — the one thing <code>share-text.ts</code> concedes text can't do · costs the broadcast window (“Afternoon” → <code>SLATE</code>)</p>
+    </a></li>
+
+    <li><a class="card" href="./share-card-c.html">
+      <span class="k">Share C</span>
+      <h2>Broadcast Lower-Third</h2>
+      <p class="d">
+        The top-tier bet gets a panel, a leading gold bar, 122px logos and a
+        localised aura; the rest is a compact list beneath. The only direction
+        that takes a position on which bet matters.
+      </p>
+      <p class="axes">density 1 hero + 6 · leads with one bet · tier = a headline, then quiet tags</p>
+      <p class="rb"><span class="dep">needs a fallback</span> for a slate where every bet is the same tier — otherwise it promotes an arbitrary row</p>
+    </a></li>
+  </ol>
 
   <h3>Shipped — card aura</h3>
   <p class="sub">

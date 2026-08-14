@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en" data-direction="share-c">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Share card C — Broadcast Lower-Third · The CFB Slate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Graduate&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================================
+   SHARE CARD C — "Broadcast Lower-Third"
+
+   1080x1350 (4:5). Palette is docs/BRAND.md §5 verbatim (see share-card-a.html
+   for why a share card is green rather than the app's charcoal).
+
+   Same satori discipline as A and B: flexbox only, no grid, no `gap`, explicit
+   margins, display:flex on anything with more than one child.
+
+   Leads with: one bet.
+   Remembered by: the hero panel and its gold aura.
+
+   This is the direction that takes DESIGN.md's "the most important number on a
+   screen is the largest thing on it" literally and applies it to a card. It is
+   also the direction that most needs a decision from you, because it asserts
+   something the other two don't: that a share card has a subject, and the
+   subject is your best bet.
+   ========================================================================== */
+
+:root {
+  --near-black: #020A08;
+  --field-green: #08251C;
+  --raised-green: #0E3B2C;
+  --chalk: #F4EFE2;
+  --gold: #E8B93D;
+  --penalty: #E4572E;
+  --dim: #8FA79B;
+
+  --font-display: "Graduate";
+  --font-body: "Archivo";
+  --font-num: "IBM Plex Mono";
+}
+
+* { box-sizing: border-box; }
+html { color-scheme: dark; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: #0b0b0b;
+  font-family: var(--font-body), system-ui, sans-serif;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 14px 14px 40px;
+  --s: calc(min(100vw - 28px, 1080px) / 1080);
+}
+.stage { width: calc(1080px * var(--s)); height: calc(1350px * var(--s)); }
+.card {
+  width: 1080px; height: 1350px;
+  transform: scale(var(--s)); transform-origin: top left;
+  position: relative; overflow: hidden;
+  background: var(--near-black);
+  display: flex; flex-direction: column;
+}
+
+.field { position: absolute; left: 0; top: 0; width: 1080px; height: 1350px; display: flex; }
+.yard { position: absolute; top: 0; width: 2px; height: 1350px; background: rgba(244,239,226,0.026); }
+.yard.major { background: rgba(244,239,226,0.046); }
+
+/* --- header --------------------------------------------------------------- */
+.head { position: relative; display: flex; flex-direction: row; align-items: center; padding: 54px 60px 0; }
+.head-l { display: flex; flex-direction: column; flex: 1; }
+.name {
+  font-family: var(--font-display), serif; font-size: 58px; line-height: 1.02;
+  color: var(--chalk); text-transform: uppercase; letter-spacing: 0.01em; display: flex;
+}
+.meta {
+  font-family: var(--font-num), monospace; font-weight: 500; font-size: 22px;
+  letter-spacing: 0.18em; color: var(--dim); text-transform: uppercase;
+  margin-top: 13px; display: flex;
+}
+.head-stamp { width: 54px; height: 80px; display: flex; }
+
+/* --- hero ----------------------------------------------------------------- */
+.hero-wrap { position: relative; display: flex; padding: 0 60px; margin-top: 36px; }
+/* localised gold aura, §15: "never fill the screen with gold" */
+.hero-aura {
+  position: absolute; left: 10px; top: -110px; width: 1060px; height: 700px;
+  background: radial-gradient(ellipse at 32% 46%, rgba(232,185,61,0.19) 0%, rgba(232,185,61,0) 62%);
+  display: flex;
+}
+.hero {
+  position: relative; flex: 1; display: flex; flex-direction: column;
+  background: var(--raised-green); border-radius: 10px;
+  padding: 34px 38px 34px 34px;
+}
+/* the lower-third's leading gold bar */
+.hero-bar { position: absolute; left: 0; top: 0; width: 8px; height: 100%; background: var(--gold); border-radius: 10px 0 0 10px; display: flex; }
+
+.hero-tier {
+  font-family: var(--font-display), serif; font-size: 32px; letter-spacing: 0.15em;
+  color: var(--gold); text-transform: uppercase; display: flex;
+}
+.hero-body { display: flex; flex-direction: row; align-items: center; margin-top: 26px; }
+.hero-logos { display: flex; flex-direction: row; align-items: center; width: 214px; margin-right: 30px; }
+.hero-logo { width: 122px; height: 122px; display: flex; }
+.hero-logo.back { margin-left: -30px; }
+.hero-text { display: flex; flex-direction: column; flex: 1; }
+.hero-pick {
+  font-family: var(--font-body), sans-serif; font-weight: 800; font-size: 76px;
+  line-height: 1.02; color: var(--chalk); display: flex; letter-spacing: -0.01em;
+}
+.hero-matchup {
+  font-family: var(--font-body), sans-serif; font-weight: 500; font-size: 26px;
+  color: var(--dim); margin-top: 12px; display: flex;
+}
+.hero-nums { display: flex; flex-direction: row; align-items: baseline; margin-top: 26px; }
+.hero-units {
+  font-family: var(--font-num), monospace; font-weight: 600; font-size: 44px;
+  color: var(--gold); font-variant-numeric: tabular-nums; display: flex;
+}
+.hero-sub {
+  font-family: var(--font-num), monospace; font-weight: 400; font-size: 24px;
+  color: var(--dim); margin-left: 22px; letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums; display: flex;
+}
+
+/* --- the rest of the slate ------------------------------------------------ */
+.rest { position: relative; display: flex; flex-direction: column; padding: 0 60px; flex: 1; margin-top: 34px; }
+.rest-head { display: flex; flex-direction: row; align-items: center; margin-bottom: 4px; }
+.rest-label {
+  font-family: var(--font-num), monospace; font-weight: 500; font-size: 20px;
+  letter-spacing: 0.20em; color: var(--dim); text-transform: uppercase; display: flex;
+}
+.rest-rule { flex: 1; height: 1px; background: rgba(244,239,226,0.16); margin-left: 20px; display: flex; }
+
+.row { display: flex; flex-direction: row; align-items: center; height: 96px; }
+.tier-tag {
+  width: 116px; margin-right: 20px; display: flex;
+  font-family: var(--font-num), monospace; font-weight: 500; font-size: 18px;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--chalk);
+}
+.tier-tag.lean { color: var(--dim); }
+.logos { display: flex; flex-direction: row; align-items: center; width: 78px; margin-right: 22px; }
+.logo { width: 46px; height: 46px; display: flex; }
+.logo.back { margin-left: -14px; }
+.mono-badge {
+  width: 46px; height: 46px; border-radius: 23px; background: var(--raised-green);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-body), sans-serif; font-weight: 700; font-size: 16px; color: var(--chalk);
+}
+.pick { display: flex; flex-direction: column; flex: 1; }
+.pick-line {
+  font-family: var(--font-body), sans-serif; font-weight: 600; font-size: 34px;
+  line-height: 1.05; color: var(--chalk); display: flex;
+}
+.matchup {
+  font-family: var(--font-body), sans-serif; font-weight: 400; font-size: 20px;
+  color: var(--dim); margin-top: 6px; display: flex;
+}
+.nums { display: flex; flex-direction: column; align-items: flex-end; width: 168px; }
+.units {
+  font-family: var(--font-num), monospace; font-weight: 600; font-size: 31px;
+  color: var(--gold); font-variant-numeric: tabular-nums; display: flex;
+}
+.sub {
+  font-family: var(--font-num), monospace; font-weight: 400; font-size: 19px;
+  color: var(--dim); margin-top: 6px; letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums; display: flex;
+}
+
+/* --- footer --------------------------------------------------------------- */
+.foot { position: relative; display: flex; flex-direction: row; align-items: center; padding: 0 60px 48px; }
+.foot-rule { position: absolute; left: 60px; right: 60px; top: -22px; height: 1px; background: rgba(244,239,226,0.16); display: flex; }
+.wordmark {
+  font-family: var(--font-display), serif; font-size: 25px; letter-spacing: 0.20em;
+  color: var(--chalk); text-transform: uppercase; display: flex;
+}
+.tally {
+  font-family: var(--font-num), monospace; font-weight: 500; font-size: 25px;
+  color: var(--gold); margin-left: auto; letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums; display: flex;
+}
+
+.notes { width: min(100%, 1080px); max-width: 46rem; color: #a89f90; font-size: 13.5px; line-height: 1.65; margin-top: 26px; }
+.notes h2 { font-family: var(--font-display), serif; font-size: 15px; letter-spacing: .14em; text-transform: uppercase; color: #f2eee5; margin: 0 0 8px; }
+.notes p { margin: 0 0 12px; }
+.notes b { color: #f2eee5; font-weight: 500; }
+.notes code { font-family: var(--font-num), monospace; font-size: 12px; color: var(--gold); }
+</style>
+</head>
+<body>
+
+<div class="stage">
+<div class="card">
+
+  <div class="field">
+    <div class="yard major" style="left:108px"></div>
+    <div class="yard" style="left:216px"></div>
+    <div class="yard" style="left:324px"></div>
+    <div class="yard major" style="left:432px"></div>
+    <div class="yard" style="left:540px"></div>
+    <div class="yard" style="left:648px"></div>
+    <div class="yard major" style="left:756px"></div>
+    <div class="yard" style="left:864px"></div>
+    <div class="yard" style="left:972px"></div>
+  </div>
+
+  <div class="head">
+    <div class="head-l">
+      <div class="name">Chase Bets</div>
+      <div class="meta">Week 3 &middot; Sat Sep 12</div>
+    </div>
+    <img class="head-stamp" src="/brand/slate-mark.png" alt="" />
+  </div>
+
+  <!-- hero: the highest-tier bet -->
+  <div class="hero-wrap">
+    <div class="hero-aura"></div>
+    <div class="hero">
+      <div class="hero-bar"></div>
+      <div class="hero-tier">Bet of the Century</div>
+      <div class="hero-body">
+        <div class="hero-logos">
+          <img class="hero-logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/61.png" alt="" />
+          <img class="hero-logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2633.png" alt="" />
+        </div>
+        <div class="hero-text">
+          <div class="hero-pick">Georgia &minus;6.5</div>
+          <div class="hero-matchup">Tennessee at Georgia</div>
+          <div class="hero-nums">
+            <div class="hero-units">3.0u</div>
+            <div class="hero-sub">&minus;110 &middot; SAT 3:30 PM CT</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- the rest -->
+  <div class="rest">
+    <div class="rest-head">
+      <div class="rest-label">The rest of the slate</div>
+      <div class="rest-rule"></div>
+    </div>
+
+    <div class="row">
+      <div class="tier-tag">Year</div>
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/251.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/201.png" alt="" />
+      </div>
+      <div class="pick">
+        <div class="pick-line">Texas &minus;2.5</div>
+        <div class="matchup">Oklahoma at Texas</div>
+      </div>
+      <div class="nums"><div class="units">2.0u</div><div class="sub">&minus;105 &middot; 11:00</div></div>
+    </div>
+
+    <div class="row">
+      <div class="tier-tag">Day</div>
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/194.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/213.png" alt="" />
+      </div>
+      <div class="pick">
+        <div class="pick-line">Ohio State &minus;3.5</div>
+        <div class="matchup">Penn State at Ohio State</div>
+      </div>
+      <div class="nums"><div class="units">2.0u</div><div class="sub">&minus;110 &middot; 7:00</div></div>
+    </div>
+
+    <div class="row">
+      <div class="tier-tag">Slate</div>
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/193.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2711.png" alt="" />
+      </div>
+      <div class="pick">
+        <div class="pick-line">Miami (OH) +13.5</div>
+        <div class="matchup">Miami (OH) at Western Michigan</div>
+      </div>
+      <div class="nums"><div class="units">1.0u</div><div class="sub">&minus;108 &middot; 2:30</div></div>
+    </div>
+
+    <div class="row">
+      <div class="tier-tag">Bet</div>
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2483.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/264.png" alt="" />
+      </div>
+      <div class="pick">
+        <div class="pick-line">Oregon &minus;7</div>
+        <div class="matchup">Washington at Oregon</div>
+      </div>
+      <div class="nums"><div class="units">1.5u</div><div class="sub">&minus;115 &middot; 9:30</div></div>
+    </div>
+
+    <div class="row">
+      <div class="tier-tag">Bet</div>
+      <div class="logos">
+        <img class="logo" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/145.png" alt="" />
+        <img class="logo back" src="https://a.espncdn.com/i/teamlogos/ncaa/500-dark/99.png" alt="" />
+      </div>
+      <div class="pick">
+        <div class="pick-line">Over 51.5</div>
+        <div class="matchup">Ole Miss / LSU</div>
+      </div>
+      <div class="nums"><div class="units">1.0u</div><div class="sub">&minus;110 &middot; 6:00</div></div>
+    </div>
+
+    <div class="row">
+      <div class="tier-tag lean">Lean</div>
+      <div class="logos"><div class="mono-badge">OSU</div></div>
+      <div class="pick">
+        <div class="pick-line">OSU win total o10.5</div>
+        <div class="matchup">Season futures</div>
+      </div>
+      <div class="nums"><div class="units">0.5u</div><div class="sub">+120 &middot; &mdash;&mdash;</div></div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div class="foot-rule"></div>
+    <div class="wordmark">The CFB Slate</div>
+    <div class="tally">7 bets &middot; 11.0u</div>
+  </div>
+
+</div>
+</div>
+
+<div class="notes">
+  <h2>Direction C &mdash; Broadcast Lower-Third</h2>
+  <p>
+    <b>Leads with one bet.</b> The top-tier bet gets a panel, a leading gold bar,
+    122px logos, a 76px pick and a localised aura; everything else is a compact
+    list under a quiet rule. It is the only one of the three that takes a
+    position on which bet matters, rather than presenting the slate flat.
+  </p>
+  <p>
+    <b>Remembered by</b> the hero and its aura. <b>Density</b> 1 hero + 6 compact.
+    <b>Tier expressed as</b> a headline on the hero and a quiet tag on the rest.
+  </p>
+  <p>
+    The trade is real and worth naming before you pick: the hero is the whole
+    argument, so this direction is at its best on a Saturday with one genuine
+    <b>Bet of the Century</b> and at its worst on a Saturday with seven bets at
+    the same conviction &mdash; where it promotes an arbitrary row and the card
+    reads as if it means something it doesn&rsquo;t. A and B stay honest at any
+    distribution. <b>If we go with C, it needs a defined fallback for the
+    all-one-tier case</b> and that becomes part of the build.
+  </p>
+  <p>
+    Same two hard cases: <b>Miami&nbsp;(OH) at Western Michigan</b>, and a
+    <b>futures bet</b> with no game &mdash; monogram, and an em-dash where the
+    clock would be.
+  </p>
+</div>
+
+</body>
+</html>

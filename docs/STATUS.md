@@ -1033,6 +1033,60 @@ silent about the wiring, which is the gap that let it sit for a day.
       group board's real first Saturday · S–M
 - [ ] **UX-14** Groups first-run pointer on the slate — pairs with G10, needs a
       live active-group cookie flow to test · S
+
+**Share image** — owner request 2026-08-14, pulled forward. A second share
+option beside the existing text share: a 1080×1350 card of a user's bets,
+sorted by confidence tier then kickoff, titled `<display_name> Bets`, shareable
+from the bet slip, the ledger and groups. This is the product's marketing
+piece, so it colours from `BRAND` (§31, and `src/lib/brand.ts`'s docblock) and
+not from the app's charcoal tokens. **No audit raised this** — there is no
+prior ID, and nothing image-related appears in the rejected-experiments table.
+The nearest neighbour is `G10-v1` above, which stays text.
+Decisions taken with the owner, recorded so they are not relitigated: the tier
+is stored on the bet, not chosen at share time; a *lean* is the bottom rung of
+one ladder, not a separate unstaked object; the tier is editable until kickoff
+and frozen after; pick'em picks get no tier; the group variant shares the
+viewer's own bets, not the whole sheet.
+- [ ] **SHARE-1** Three design directions at 1080×1350 in `public/design/`
+      (`share-card-a|b|c.html`), per DESIGN.md exploration mode. Built
+      flexbox-only with no grid and no `gap`, because the winner has to survive
+      being ported into a `next/og` ImageResponse and satori renders a narrower
+      CSS subset than a browser. Rendered and checked at full size, including
+      the two hard cases — Miami (OH) at Western Michigan, and a futures bet
+      with no game, no logos and no kickoff. **Awaiting an owner decision;
+      nothing below starts until one direction wins.** · S
+- [ ] **SHARE-2** `bets.confidence` — migration, six-value check constraint,
+      default `'bet'` so existing rows backfill to the neutral rung. Amend
+      `enforce_bet_void_only()` (migration 0013) to whitelist a confidence-only
+      transition pre-kickoff; today that trigger permits *voiding and nothing
+      else*, so a tier could be written at insert and never corrected. Freezing
+      at kickoff is what keeps "how do my Bet of the Day picks actually do?"
+      answerable later. SQL assertions in `supabase/tests/bets.sql`. · M
+- [ ] **SHARE-3** `src/lib/share-card.ts` — the pure module: sort (tier desc,
+      then kickoff asc, nulls last, stable), tier grouping, the broadcast-window
+      headline off the existing `kickSlot()`, the row cap. Test-pinned, the same
+      way `share-text.ts` is. · M
+- [ ] **SHARE-4** Team identity on a slip selection. `SlipSelection` carries no
+      abbr/logo/colour today and `SharePick.homeAbbr/awayAbbr` are set to `""`
+      on every slip and ledger path — so no share payload can reach a logo. Fill
+      them at the two construction sites that already hold the `GameView`. · S
+- [ ] **SHARE-5** `POST /api/share-card` — `ImageResponse` on the node runtime,
+      session-gated, zod-validated. POST rather than GET because the bet slip
+      shares selections that do not exist in the database yet. Brand fonts must
+      be supplied as buffers (the three existing OG cards render in a default
+      sans because none are passed); remote logos are fetched and inlined ahead
+      of render, falling back to `TeamMark`'s monogram. Watch the 500KB
+      ImageResponse bundle ceiling — fonts and the inlined mark count toward
+      it. · M–L
+- [ ] **SHARE-6** Client + UI: `shareImage()` via Web Share Level 2 with a
+      download fallback, a share-image entry beside the existing text share at
+      all four share points, and the tier picker in the slip, `BetForm` and the
+      ledger history. · M
+- [ ] **SHARE-7** A route smoke test for `/api/share-card`. Would be the first
+      test in the repo to exercise a route — see §23 #42 — and this route earns
+      one: fonts, remote fetches and satori's CSS subset are all real failure
+      surfaces that no unit test reaches. · S
+
 - [ ] **F10** "Biggest line move" slate sort — needs real movement data · S
 - [ ] **F13** Returning-production % on team pages — lights up when data lands · S
 - [ ] **UX-08 — four of seven done 2026-08-13; three need a layout decision.**
