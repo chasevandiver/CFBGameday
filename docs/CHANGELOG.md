@@ -166,6 +166,59 @@ shipping it.
 
 ## Log
 
+### Aug 15 — GRADE-2: the last game of a slate could never be graded live
+
+Owner report: three bets on the Friday NFL preseason slate, two graded within
+minutes, the third — on the game that finished last — still open four hours
+later, with the next scheduled backstop two days away.
+
+**The bug is a collision between two correct-looking facts.** `applyScoreboard`
+grades the board it has just polled (GRADE-1), and the loop only polls a league
+while `activity()` reports something live. So the instant the *last* game of a
+slate goes final, `activity` returns `idle`, `nflScoreboardJob` stops being
+called, and the tick that would have offered that game as `"completed"` never
+happens. `gradeGames` has no other caller. One game per slate — always the last
+one — falls through to the scheduled pass every single time. GRADE-1's own
+entry claims it closed the "open bet on a finished game for up to a week" gap;
+it closed it for every game except the one this describes.
+
+Ruled out before that, each with the query that ruled it out: the game **is**
+`final` at 7–27 with four line snapshots; the bet has a valid side and line, so
+the grader's spread branch settles it; ESPN's `dates=20260814` board still
+returns all three games as `STATUS_FINAL`, so it is not board membership. The
+timing agrees too — the ungraded game's last scoring play was written at
+01:52:51 against 01:49:44 for the two that settled.
+
+**The sweep, at three moments.** `gradeSeasonFinals` — the same function the
+scheduled backstop runs, so no second implementation of the grading math — is
+now called on the live → idle edge inside a run (the exact tick the last game
+finished, ~30 seconds), at the end of a run (for a game that finals between the
+last tick and the deadline), and at the *start* of every run before the idle
+guard returns (for a game that finals in the gap between runs). Worst case goes
+from Monday to about an hour; the normal case is half a minute.
+
+Affordable because of an ordering GRADE-1 already established: the ungraded
+reads come before the closing-line read, so a sweep with nothing to settle is
+one games read and three empty ones and never touches `line_snapshots`. There
+is a test for exactly that, because it is what makes calling this every run
+defensible.
+
+**`nfl-grade` goes daily**, from `30 13 * * 1,2,5`. Not because the sweep needs
+help on a good night, but because this night was not one: **six
+`scoreboard-loop` runs died without writing `finished_at`** (08-14 20:18/21:13/
+22:09, 08-15 02:59/03:50/04:39 — the two that completed are the two that had
+live games). A backstop that only runs three days a week is not a backstop for a
+loop that dies. Four extra runs a week, one query each when there is nothing to
+do.
+
+Two things this turned up and did not fix, both in `docs/STATUS.md`: those stuck
+`running` rows (**OPS-4** — the watchdog reads that table to decide whether a job
+has gone silent, so a run that dies without marking itself is a hole in the hole
+detector), and **DQ-14**, one book stored under two provider names —
+`DraftKings` and `Draft Kings` on the same game — which makes
+`consensusFromSnapshots` average a book against itself. It did not change the
+close here, and CLV is graded against that number.
+
 ### Aug 15 — The logouts were Supabase revoking token families, not our cookies
 
 Reported as "it's not keeping me logged in on a device forever anymore", which
