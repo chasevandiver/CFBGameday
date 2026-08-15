@@ -4,6 +4,7 @@ import { AdjustmentsPanel, type AdjustmentView } from "../../components/Adjustme
 import { AppNav } from "../../components/AppNav";
 import { GameStatusPanel, type AdminGameView } from "../../components/GameStatusPanel";
 import { InviteForm } from "../../components/InviteForm";
+import { PitchPanel } from "../../components/PitchPanel";
 import { WagersPanel, type AdminWagerView } from "../../components/WagersPanel";
 import {
   NotificationsPanel,
@@ -292,6 +293,10 @@ export default async function AdminPage() {
         <p className="mb-6 text-sm text-dim">
           Site-wide. Group formats are set by each group&rsquo;s own admin.
         </p>
+
+        {/* Above Invites on purpose: sending the pitch is the step that comes
+            before adding an address, and the two are one job. */}
+        <PitchPanel />
 
         <section className="card mb-4 p-4">
           <h2 className="mb-1 text-sm text-accent">Invites</h2>

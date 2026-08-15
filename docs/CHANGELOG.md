@@ -166,6 +166,68 @@ shipping it.
 
 ## Log
 
+### Aug 15 — `/welcome`, the page for people who have never seen this
+
+Owner request: a marketing page for anyone not signed in, and a way for the
+admin to view and share it.
+
+**What shipped.** A public, static `/welcome` — the hero, two real game cards, a
+week-by-week walkthrough, an inventory of every screen, the pick'em and ledger
+sections, an honesty section, and the phone/PWA note. `PitchPanel` sits above
+Invites on `/admin` with the absolute URL, a View link and a share button on the
+existing `shareOrCopy` path. The signed-out home card and `/login` both link in.
+Its own `opengraph-image`, because the site-wide tile is written for people who
+already know what the product is.
+
+**Three decisions, taken with the owner, recorded so they are not relitigated:**
+
+1. **`/` is unchanged.** The literal reading of the request — signed-out
+   visitors get the pitch at the root — was offered and declined. A signed-out
+   visitor still lands on the week and a way in (`app/page.tsx`), and the pitch
+   is a page you *send*. That also keeps the demo, the slate and the hub exactly
+   as they were for someone with the URL already in their home screen.
+2. **It colours from BRAND §5, not from the app's charcoal tokens.** Same call
+   already made for the share card ("this is the product's marketing piece, so
+   it colours from `BRAND`"). Implemented by adding `.brand-surface` to the
+   *existing* `html[data-theme="field"]` selector lists in `globals.css` rather
+   than restating the palette — one Field palette in the file, two ways to ask
+   for it, so they cannot drift. The palette is pinned rather than themed, so a
+   screenshot of the page looks the same whichever theme the sender runs.
+3. **The CTA is the demo, then a mailto.** Signup is invite-only and there is no
+   self-serve path, so the page walks people into `/demo` and asks second. An
+   email-capture form was offered and declined — it would have been a new public
+   write endpoint for a page whose whole job is to be read.
+
+**The copy is written against the product's own honest note, not around it.**
+§05 leads with **49.2%** — how the model's flagged disagreements did against the
+closing line across the 2023–25 backtest, where 52.4% is break-even at −110 —
+and **+0.27**, the average CLV in the 4+ disagreement bucket. Both numbers are
+already on the site (`/edges`' docblock, SPEC §5.1). A pitch page that quietly
+omitted them while the app prints them would have been the one place the product
+lies about itself.
+
+**The cards are the real component, not a screenshot.** `CardShowcase` imports
+`GameCard` and feeds it `demoSlateData` at a frozen instant, so the marketing
+page cannot drift from the card it is advertising, and the page stays static
+(`/demo` anchors its Saturday to page-open time; that would have made this
+dynamic). The grid is `inert`, not `aria-hidden` — the cards are full of real
+buttons, and `aria-hidden` would have taken them out of the accessibility tree
+while leaving every one of them in the tab order.
+
+**Checks.** `welcome-links.test.tsx` walks every href on the page and resolves it
+against `src/app`'s actual `page.tsx` files, so a renamed route fails the build
+rather than shipping a 404 to a stranger; it also pins that the demo link
+precedes the invite ask. Rendered and read at 390px and 1280px: no horizontal
+overflow at either. `themeColor` is pinned per-route to `#020A08` because the
+root layout would hand a light-mode visitor an `#F2F3F6` status bar above a
+near-black page — verified that the root `viewport` (viewport-fit, the UX-35
+zoom decision) still inherits intact, and that other routes are untouched.
+
+**Not done, deliberately:** the page uses the browser's default focus ring like
+every other button on the site. Adding `focus-visible` rings to one page would
+have made it the only page with them. Recorded as a site-wide gap in
+`docs/STATUS.md` §6 rather than fixed here.
+
 ### Aug 15 — GRADE-2: the last game of a slate could never be graded live
 
 Owner report: three bets on the Friday NFL preseason slate, two graded within
