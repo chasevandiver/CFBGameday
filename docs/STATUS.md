@@ -61,7 +61,7 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **973 tests across 71 files**, all green in-session 2026-08-15 along with `tsc`, lint and `next build`, after the owner-report batch in §2.1e and the AUTH-2 proxy change. **257 DB assertions** against a real Postgres 16 cluster, 0 failed — 27 of them new in `supabase/tests/survivor.sql`, and three of those were rewritten after they passed for the wrong reason (the `raises` helper accepts any error, and the seed was refusing the pick on start-week rather than on the rule under test). Previously: **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
+| **Build** | **975 tests across 71 files**, all green in-session 2026-08-15 along with `tsc`, lint and `next build`, after the owner-report batch in §2.1e and the AUTH-2 proxy change. **257 DB assertions** against a real Postgres 16 cluster, 0 failed — 27 of them new in `supabase/tests/survivor.sql`, and three of those were rewritten after they passed for the wrong reason (the `raises` helper accepts any error, and the seed was refusing the pick on start-week rather than on the rule under test). Previously: **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
 | **Scheduler** | 111 completed runs. Reds to date: one watchdog firing correctly on a cold `job_runs` table, and runs #107–109 — the backup verification sequence, each a real defect, all closed. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
@@ -673,6 +673,63 @@ deliberate deferrals, each recorded below with what it would take.
       highlights neither side, which is why `leadingSide` returns null rather
       than defaulting.
 
+
+### 2.1f Owner report, 2026-08-15 — the last game of a slate never graded
+
+- [x] **GRADE-2 — the last game of every slate was ungraded until the scheduled
+      backstop.** Owner report: three bets on the NFL preseason Friday slate,
+      two graded within minutes, the third — ATL +3.5, the game that finished
+      last — still open four hours later.
+      **`applyScoreboard` grades the board it just polled, and the loop only
+      polls a league while `activity()` says something is live.** Those two
+      facts collide on exactly one game per slate: the instant the last game
+      flips to `final`, `activity` returns `idle`, `nflScoreboardJob` stops
+      being called, and the tick that would have offered that game as
+      `"completed"` never runs. `gradeGames` has no other caller. The two games
+      that finished earlier were graded on a tick where a third was still live;
+      the last one had nothing to keep the loop looking.
+      Ruled out first, each with the query that ruled it out: the game **is**
+      `final` at 7–27 with four line snapshots; the bet has a valid side and
+      line, so the grader's spread branch settles it; and ESPN's
+      `dates=20260814` board still returns all three as `STATUS_FINAL`, so it is
+      not board membership. Timing agrees — that game's last scoring play was
+      written at 01:52:51 against 01:49:44 for the other two.
+      **Fixed by sweeping `gradeSeasonFinals` at the three moments that close
+      the hole**: on the live → idle edge inside a run (the exact tick the last
+      game finished, ~30s), at the end of a run (a game that finals between the
+      last tick and the deadline), and at the start of every run *before* the
+      idle guard returns (a game that finals in the gap between runs). Every
+      query inside filters `result is null`, so a sweep with nothing to do is
+      one games read and three empty ones — `grade-at-final.test.ts` pins that
+      the expensive `line_snapshots` read is skipped entirely.
+      `nfl-grade` also moves from `30 13 * * 1,2,5` to daily. GRADE-1 already
+      made it a backstop; the night this was reported had **six
+      `scoreboard-loop` runs die without writing `finished_at`**, which is
+      precisely when the backstop carries the load, and on the old cadence a
+      Friday-night bet waited until Monday.
+      *One bet is still ungraded in production* — bet 17. Settling it needs
+      either a `jobs → nfl-grade` dispatch or the daily cron's first run; a
+      direct `update` was attempted and blocked by the sandbox classifier.
+
+- [ ] **OPS-4 — six `scoreboard-loop` runs are stuck at `running`.** 08-14
+      20:18, 21:13, 22:09 and 08-15 02:59, 03:50, 04:39 all have `status
+      'running'` and a null `finished_at`; the two that completed (23:10, 01:43)
+      are the ones that had live games. A run that dies without writing its
+      finish is not distinguishable, in `job_runs`, from one still going — and
+      the watchdog reads exactly that table to decide whether a job has gone
+      silent, so this is a hole in the thing that is supposed to notice holes.
+      First suspect is the hourly cron overlapping a `--minutes 63` loop and
+      GitHub cancelling the older run, which would leave the row exactly like
+      this. Not yet confirmed; the Actions run list will say. · **S**
+
+- [ ] **DQ-14 — one book is stored under two provider names.** Game 401873278
+      carries `DraftKings` and `Draft Kings` in `line_snapshots`, so
+      `consensusFromSnapshots` — which takes the latest row *per provider* and
+      means them — averaged one book against itself. It did not change the
+      result there (3.0 and 3.5 mean to 3.25, snapping to the 3.5 the close
+      would have been anyway), but a consensus that double-counts a book is
+      wrong in a way nobody would notice, and CLV is graded against it. Normalise
+      on write in the ESPN parser, and backfill. · **S**
 
 ### 2.2 This week (Aug 14–18)
 

@@ -28,6 +28,7 @@ import { idleSkip, envDays } from "./lib/idle";
 import {
   SEASON,
   cfbScoringJob,
+  gradeSeasonFinals,
   logCfbdCalls,
   logEspnCalls,
   nflScoreboardJob,
@@ -79,6 +80,45 @@ async function activity(
   return (soon ?? []).length > 0 ? "imminent" : "idle";
 }
 
+/**
+ * Settle everything final and ungraded in a season (GRADE-2).
+ *
+ * `applyScoreboard` grades the board it just polled, which covers every game
+ * except the one that matters most: the LAST one of a slate. `activity()` turns
+ * a league idle the instant nothing is `in_progress`, and the only caller of
+ * `gradeGames` is the poll that `activity` has just switched off — so the tick
+ * that would have offered the final game as "completed" never runs. Owner
+ * report 2026-08-15: two bets on a three-game preseason slate graded within
+ * minutes and the third, on the game that finished last, was still open four
+ * hours later with the next backstop (`nfl-grade`, Mon/Tue/Fri) two days away.
+ *
+ * This is the same `gradeSeasonFinals` the scheduled backstop runs, called at
+ * the three moments that close the hole:
+ *   - when a league goes live → idle inside a run, which is the exact tick the
+ *     last game finished on (~30s after the whistle);
+ *   - at the end of a run, for a game that finals between the last tick and the
+ *     deadline;
+ *   - at the start of every run, before the idle guard returns, for a game that
+ *     finals in the gap between runs.
+ *
+ * Cheap by construction: every query inside filters `result is null`, so a
+ * sweep with nothing to do is one games read and three empty ones. Errors are
+ * logged, never thrown — grading must not cost the loop its live scores, which
+ * is the same posture `applyScoreboard` takes for its inline pass.
+ */
+async function sweepGrading(
+  db: ReturnType<typeof createServiceClient>,
+  season: number,
+  label: string,
+): Promise<void> {
+  try {
+    const r = (await gradeSeasonFinals(db, season)) as { betsGraded?: number; picksGraded?: number };
+    if (r.betsGraded || r.picksGraded) console.log(`[sweep ${label}]`, JSON.stringify(r));
+  } catch (err) {
+    console.error(`sweep ${label} failed:`, err instanceof Error ? err.message : err);
+  }
+}
+
 async function callsThisMonth(db: ReturnType<typeof createServiceClient>): Promise<number> {
   const monthStart = new Date();
   monthStart.setUTCDate(1);
@@ -107,6 +147,14 @@ async function main() {
     season: NFL_SEASON,
     horizonDays,
   });
+  /* Before the idle guard, not after it. A game that finals in the gap between
+     two runs leaves the next run with nothing live to poll — which is exactly
+     when it would be idle-skipped and the straggler would wait for the
+     scheduled backstop. One sweep per launch, whether or not this run goes on
+     to poll anything. */
+  await sweepGrading(db, SEASON, "cfb start");
+  await sweepGrading(db, NFL_SEASON, "nfl start");
+
   if (cfbIdle && nflIdle) {
     return;
   }
@@ -152,6 +200,13 @@ async function main() {
 
   await recordJobRun(db, "scoreboard-loop", async () => {
     let ticks = 0;
+    // Per-league edge detection for the settle sweep, and whether this run ever
+    // saw the league awake — the end-of-run sweep only pays for a league that
+    // actually had games.
+    let cfbWasActive = false;
+    let nflWasActive = false;
+    let cfbRanLive = false;
+    let nflRanLive = false;
     while (Date.now() < deadline) {
       let waitMs = 60_000;
       try {
@@ -160,6 +215,7 @@ async function main() {
         const cfbState = cfbdExhausted ? "idle" : await activity(db, SEASON);
         const nflState = await activity(db, NFL_SEASON);
         if (cfbState !== "idle") {
+          cfbRanLive = true;
           const before = cfbdCallCount();
           const result = await scoreboardJob(db);
           await logCfbdCalls(db, "scoreboard", cfbdCallCount() - before);
@@ -167,6 +223,7 @@ async function main() {
           if (ticks % 10 === 1) console.log(`[cfb ${cfbState}]`, JSON.stringify(result));
         }
         if (nflState !== "idle") {
+          nflRanLive = true;
           const before = espnCallCount();
           const result = await nflScoreboardJob(db);
           await logEspnCalls(db, "scoreboard-nfl", espnCallCount() - before);
@@ -197,6 +254,15 @@ async function main() {
           }
         }
 
+        /* The moment a league stops having anything live is the moment its
+           last game went final — and the poll that would have graded it has
+           just been switched off. Sweep on that edge, per league, so the last
+           game of a slate settles on the same tick as every other one. */
+        if (cfbWasActive && cfbState === "idle") await sweepGrading(db, SEASON, "cfb settled");
+        if (nflWasActive && nflState === "idle") await sweepGrading(db, NFL_SEASON, "nfl settled");
+        cfbWasActive = cfbState !== "idle";
+        nflWasActive = nflState !== "idle";
+
         const state =
           cfbState === "live" || nflState === "live"
             ? "live"
@@ -212,6 +278,12 @@ async function main() {
       if (Date.now() + waitMs > deadline) break;
       await sleep(waitMs);
     }
+    /* The deadline can land between the last tick and a game going final, so
+       the edge above never fires for it. One more sweep on the way out, only
+       for a league this run actually polled. */
+    if (cfbRanLive) await sweepGrading(db, SEASON, "cfb end");
+    if (nflRanLive) await sweepGrading(db, NFL_SEASON, "nfl end");
+
     console.log(
       `done: ${ticks} scoreboard polls, ${cfbdCallCount()} CFBD + ${espnCallCount()} ESPN calls this run`,
     );

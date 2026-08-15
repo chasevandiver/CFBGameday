@@ -227,10 +227,14 @@ on:
     - cron: "5 10 * * 6"
     # Sunday ratings update + grading (8am ET)
     - cron: "0 13 * * 0"
-    # NFL settlement after each slate finishes: Mon (Sunday's games), Tue
-    # (MNF), Fri (TNF), morning UTC. Idempotent — result-null filters make a
-    # re-run a no-op — so over-running costs one query.
-    - cron: "30 13 * * 1,2,5"
+    # NFL settlement. Daily since GRADE-2, not Mon/Tue/Fri: the loop's sweep
+    # settles a final within ~30s, so this is purely the net under it — and the
+    # night that motivated GRADE-2 had six scoreboard-loop runs die without
+    # finishing, which is exactly when the net is load-bearing. On the old
+    # three-day cadence a Friday-night bet that the loop missed waited until
+    # Monday. Idempotent — result-null filters make a re-run a no-op — so the
+    # four extra runs a week cost one query each.
+    - cron: "30 13 * * *"
     # Watchdog: absence check on the data jobs, a few times a day and once
     # mid-Saturday-afternoon while games are live. Red run = a job went silent.
     - cron: "0 8,14,20 * * *"
@@ -311,7 +315,7 @@ jobs:
             "0 15-23 * * 6"|"0 0-5 * * 0"|"0 0-4 * * 5,6"|"0 16-23 * * 0,1"|"0 0-5 * * 1,2"|"0 0-4 * * 3,4"|"0 10-14 * * 6"|"0 20-23 * * 4,5") echo "task=scoreboard-loop" >> "$GITHUB_OUTPUT" ;;
             "0 10 * * 6") echo "task=weather" >> "$GITHUB_OUTPUT" ;;
             "0 13 * * 0") echo "task=ratings-update" >> "$GITHUB_OUTPUT" ;;
-            "30 13 * * 1,2,5") echo "task=nfl-grade" >> "$GITHUB_OUTPUT" ;;
+            "30 13 * * *") echo "task=nfl-grade" >> "$GITHUB_OUTPUT" ;;
             "0 8,14,20 * * *"|"30 21 * * 6") echo "task=watchdog" >> "$GITHUB_OUTPUT" ;;
             "0 15 * * 0") echo "task=backup" >> "$GITHUB_OUTPUT" ;;
             "0 6 1 * *") echo "task=keepalive" >> "$GITHUB_OUTPUT" ;;

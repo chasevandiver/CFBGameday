@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { CfbdScoreboardGame } from "../../src/lib/cfbd";
 import { asClient, FakeSupabase } from "./fake-supabase";
-import { applyScoreboard, gamesNeedingScoring, gradeGames } from "./jobs-core";
+import {
+  applyScoreboard,
+  gamesNeedingScoring,
+  gradeGames,
+  gradeSeasonFinals,
+} from "./jobs-core";
 
 /**
  * GRADE-1: a game settles on the tick that sees it finish.
@@ -292,5 +297,111 @@ describe("gamesNeedingScoring", () => {
       ]),
     );
     expect(out.map((g) => g.id)).toEqual([1]);
+  });
+});
+
+/**
+ * GRADE-2: the LAST game of a slate is the one GRADE-1 could not reach.
+ *
+ * `applyScoreboard` grades the board it just polled, and the loop only polls a
+ * league while `activity()` says something is live. Those two facts collide on
+ * exactly one game per slate: the moment the last one goes final, the league
+ * turns idle, and the tick that would have offered it as "completed" never
+ * runs. Owner report 2026-08-15 — two bets on a three-game preseason slate
+ * settled within minutes, the third sat open for four hours with the next
+ * scheduled backstop two days out.
+ *
+ * The sweep is `gradeSeasonFinals`, which the loop now calls on that idle edge.
+ * This pins the sequence rather than the wiring: poll a board where the second
+ * game is still playing, let it finish with nobody watching, sweep.
+ */
+const twoGameSlate = () => ({
+  games: [
+    {
+      id: 401, season_id: 102026, week: 2, status: "final",
+      home_points: 20, away_points: 7, start_ts: KICKOFF,
+      current_period: 4, current_clock: "0:00", current_situation: null,
+      last_play: null, possession: null, tv: "FOX",
+    },
+    {
+      id: 402, season_id: 102026, week: 2, status: "in_progress",
+      home_points: 7, away_points: 21, start_ts: KICKOFF,
+      current_period: 4, current_clock: "2:00", current_situation: null,
+      last_play: null, possession: null, tv: "FOX",
+    },
+  ],
+  line_snapshots: [
+    { game_id: 401, provider: "DraftKings", spread: -3, spread_open: -3,
+      total: 40.5, captured_at: "2026-09-06T16:45:00Z" },
+    { game_id: 402, provider: "DraftKings", spread: 3.5, spread_open: 3.5,
+      total: 39.5, captured_at: "2026-09-06T16:45:00Z" },
+  ],
+  bets: [
+    { id: 901, game_id: 401, bet_type: "moneyline", side: "home", line_taken: null,
+      odds: 141, units: 1, result: null, voided_at: null, clv: null,
+      closing_line: null, payout_units: null },
+    { id: 902, game_id: 402, bet_type: "spread", side: "home", line_taken: 3.5,
+      odds: -110, units: 1, result: null, voided_at: null, clv: null,
+      closing_line: null, payout_units: null },
+  ],
+  picks: [],
+});
+
+/** The board as the feed reports it while game 402 is still playing. */
+const boardWith402Live: CfbdScoreboardGame[] = [
+  {
+    id: 401, status: "completed", period: 4, clock: "0:00", situation: null,
+    lastPlay: null, lastPlayType: null, possession: null,
+    homeTeam: { id: 1, name: "WSH", points: 20 },
+    awayTeam: { id: 2, name: "MIA", points: 7 }, tv: "FOX",
+  },
+  {
+    id: 402, status: "in_progress", period: 4, clock: "2:00", situation: null,
+    lastPlay: null, lastPlayType: null, possession: null,
+    homeTeam: { id: 3, name: "ATL", points: 7 },
+    awayTeam: { id: 4, name: "DEN", points: 21 }, tv: "FOX",
+  },
+] as unknown as CfbdScoreboardGame[];
+
+describe("the last game of a slate", () => {
+  it("is left ungraded by the live path, and the sweep settles it", async () => {
+    const db = new FakeSupabase(twoGameSlate());
+
+    // The tick that sees 401 finish. 402 is still playing, so it is not on the
+    // completed list and nothing settles it.
+    await applyScoreboard(asClient(db), boardWith402Live);
+    expect(db.rows("bets").find((b) => b.id === 901)!.result).toBe("win");
+    expect(db.rows("bets").find((b) => b.id === 902)!.result).toBe(null);
+
+    // 402 goes final. Whoever writes it — a later tick, or the NFL's 10-second
+    // edge writer (0044) — the league is idle now, so no further board is
+    // polled and `gradeGames` is never called again.
+    const g402 = db.rows("games").find((g) => g.id === 402)!;
+    g402.status = "final";
+    g402.current_clock = "0:00";
+
+    // The sweep, which the loop runs on the live → idle edge.
+    const out = (await gradeSeasonFinals(asClient(db), 102026)) as { betsGraded: number };
+    expect(out.betsGraded).toBe(1);
+
+    // ATL +3.5 losing 7-21: (7 - 21) + 3.5 = -10.5, a loss at one unit.
+    const bet = db.rows("bets").find((b) => b.id === 902)!;
+    expect(bet.result).toBe("loss");
+    expect(bet.payout_units).toBe(-1);
+    expect(bet.closing_line).toBe(3.5);
+  });
+
+  it("costs nothing when the sweep has nothing to settle", async () => {
+    const db = new FakeSupabase(twoGameSlate());
+    db.rows("games").find((g) => g.id === 402)!.status = "final";
+    await gradeSeasonFinals(asClient(db), 102026);
+    const before = db.readCount("line_snapshots");
+
+    const again = (await gradeSeasonFinals(asClient(db), 102026)) as { betsGraded: number };
+
+    expect(again.betsGraded).toBe(0);
+    // The expensive read is skipped entirely on a sweep with nothing ungraded,
+    // which is what makes calling this every run affordable.
+    expect(db.readCount("line_snapshots")).toBe(before);
   });
 });
