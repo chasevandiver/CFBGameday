@@ -1785,7 +1785,24 @@ viewer's own bets, not the whole sheet.
 - [ ] **F9** Ratings sparklines — needs weekly rating history
 - [ ] **F11** §5.1 soft-market taxonomy content on `/edges` — editorial
 - [ ] **F12** Preseason team pages freeze at Week-1 kickoff · M
-- [ ] **F16** Systems side-by-side on slate cards (the game page has it) · S–M
+- [x] **F16 — systems on slate cards. The component existed; the gate was the
+      bug.** Fixed 2026-08-15, and the row's framing ("the game page has it")
+      was slightly off: `SystemsRow` has been in `GameCard.tsx` for some time,
+      rendering SP+/FPI/Elo home-relative in the market's convention. It sat
+      **inside** the `(p || liveProb !== null)` block, so it drew only once the
+      model had a prediction or the game was live.
+      `predictions` is empty until the Thursday freeze. So for the whole week
+      before every slate — the days people actually use to form an opinion — the
+      spec's "all four systems side by side on every game card" showed none of
+      them. Moved out of that block: the systems have their own sync (0016) and
+      no reason to wait on ours.
+      **Verified rendered** on a CFB card with no prediction: `SP+ -5.9
+      FPI -1.5` under the market lines, no layout shift, no overflow.
+      *(Elo is absent because only **two** systems are currently synced, not
+      three — a data state, not a render bug. `sync-systems` last reported
+      `unmatched: ["nationalAverages"]`. Worth a look before Week 0 if Elo is
+      meant to be there; it is not tracked here because nothing in this row
+      broke it.)*
 - [ ] **F-§3 / F-§6** Team-page LLM depth; tale of the tape · L / needs season stats
 - [ ] **G13 / F18 / §23 #36 residue** Season archive + `SEASON` rollover · offseason
 

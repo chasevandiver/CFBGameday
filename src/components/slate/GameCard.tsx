@@ -1033,9 +1033,17 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
               </>
             )}
           </p>
-          <SystemsRow game={game} />
         </div>
       )}
+      {/* F16. Outside the prediction block on purpose.
+          SP+/FPI/Elo used to render inside `(p || liveProb !== null)`, so a
+          card showed them only once the model had a frozen prediction or the
+          game was live. `predictions` is empty until the Thursday freeze, which
+          means for the whole week leading up to every slate — the days people
+          actually use to form an opinion — the spec's "all four systems side by
+          side on every game card" showed none of them. They are independent
+          data with an independent sync (0016); they should not wait on ours. */}
+      <SystemsRow game={game} />
     </div>
   );
 }
@@ -1050,7 +1058,7 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
 function SystemsRow({ game }: { game: GameView }) {
   if (game.systems.length === 0) return null;
   return (
-    <p className="stat mt-1 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px] leading-none text-dim">
+    <p className="stat mt-2 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px] leading-none text-dim">
       {game.systems.map((s) => {
         // Elo is not a points scale; the conversion lives in rating-scales,
         // beside the reason it is needed.
