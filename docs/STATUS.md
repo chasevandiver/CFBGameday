@@ -61,7 +61,7 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **969 tests across 70 files**, all green in-session 2026-08-15 along with `tsc`, lint and `next build`, after the owner-report batch in §2.1e. **257 DB assertions** against a real Postgres 16 cluster, 0 failed — 27 of them new in `supabase/tests/survivor.sql`, and three of those were rewritten after they passed for the wrong reason (the `raises` helper accepts any error, and the seed was refusing the pick on start-week rather than on the rule under test). Previously: **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
+| **Build** | **973 tests across 71 files**, all green in-session 2026-08-15 along with `tsc`, lint and `next build`, after the owner-report batch in §2.1e and the AUTH-2 proxy change. **257 DB assertions** against a real Postgres 16 cluster, 0 failed — 27 of them new in `supabase/tests/survivor.sql`, and three of those were rewritten after they passed for the wrong reason (the `raises` helper accepts any error, and the seed was refusing the pick on start-week rather than on the rule under test). Previously: **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
 | **Scheduler** | 111 completed runs. Reds to date: one watchdog firing correctly on a cold `job_runs` table, and runs #107–109 — the backup verification sequence, each a real defect, all closed. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
@@ -579,6 +579,50 @@ deliberate deferrals, each recorded below with what it would take.
       no extra email — the probe only sends when the account already exists.
       Pinned by `LoginForm.test.tsx`, including that the rendered string can
       never be `{}` or empty.
+
+- [ ] **AUTH-2 — Supabase revokes the session about once a day; "it's not
+      keeping me logged in on a device forever anymore".** Not a cookie
+      lifetime and not a code bug: **refresh-token rotation with reuse
+      detection** is on, so replaying any already-used refresh token revokes the
+      **whole token family**, including the token that is currently valid.
+      Proven in the live auth logs, not inferred — three in one evening:
+      `22:33:13 "Possible abuse attempt: 41"`, `02:19:59 "…: 42"`,
+      `02:22:40 "…: 57"`, all `refresh_token_already_used`, all 400. The kill is
+      visible in the table too: token 55 was the live token and its `updated_at`
+      is stamped `22:33:13`, the same instant token 41 was flagged — flagging the
+      old one revoked the live one. Then a **108-request storm** 23:23–23:25
+      replayed the dead token from **ten different Vercel IPs plus the phone**,
+      and the owner gave up and requested a fresh magic link at 02:22:51.
+      Two things feed it. The replayed tokens are **stale, not concurrent** —
+      token 42 was created 08-13 05:24 and presented again 08-15 02:19, two days
+      later, from a Vercel IP, so some client sent a two-day-old cookie. And the
+      app had **far too many independent refreshers**: 629 `/user` calls in one
+      hour, because the proxy ran `getUser()` on every matched request *and*
+      `/api/ticker` and `/api/slate` each call it again. Almost certainly why it
+      started recently — the 30s ticker, the moving home page and the live slate
+      all landed in the last few days, and each is another serverless instance
+      presenting the cookie. *(That last sentence is inference. The revocations
+      are not.)*
+      **Ruled out with evidence:** time-boxed sessions are **off** (`not_after`
+      null on all four rows in `auth.sessions`), so no expiry setting is doing
+      this; `createBrowserClient` is a singleton in the browser, so it is not
+      duplicate client instances; and the 400-day cookie config is correct.
+      **The fix is a project setting, not code: Authentication → Sessions →
+      turn off Refresh Token Rotation.** Raising the reuse interval instead only
+      covers refreshes colliding within seconds, and the tokens here were hours
+      and days old. The trade — a stolen refresh token stays usable until
+      sign-out — is one this product already made when it chose invite-only with
+      400-day sessions. · **Owner** · **S**
+      *Landed on the code side 2026-08-15 and neither half fixes it alone:*
+      `/api/*` is out of the proxy matcher (those routes build their own client
+      from the same cookies, so the proxy's pass was a second GoTrue round trip
+      per poll), a request with no `sb-…-auth-token` cookie no longer constructs
+      a client at all, and the proxy stopped overriding `maxAge` on every cookie
+      @supabase/ssr hands it — that override was rewriting ssr's `maxAge: 0`
+      **deletions** into 400-day empty cookies, and was redundant besides, since
+      ssr's own defaults have been 400 days since 0.10. `src/proxy.test.ts`
+      pins the matcher, because re-including `/api` later would double the auth
+      traffic again and nothing would look broken.
 
 - [x] **BRAND-8 — renamed to The Slate.** The product has carried the NFL since
       v1.0. Wordmark, manifest, title template, OG cards, share card, push

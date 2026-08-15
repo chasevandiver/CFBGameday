@@ -166,6 +166,71 @@ shipping it.
 
 ## Log
 
+### Aug 15 — The logouts were Supabase revoking token families, not our cookies
+
+Reported as "it's not keeping me logged in on a device forever anymore", which
+sounds like a cookie lifetime and is not. **Refresh-token rotation with reuse
+detection** is on, so replaying an already-used refresh token revokes the entire
+family — including the token that is currently valid. The auth logs show three
+in one evening:
+
+```
+22:33:13  "Possible abuse attempt: 41"   refresh_token_already_used  400
+02:19:59  "Possible abuse attempt: 42"   refresh_token_already_used  400
+02:22:40  "Possible abuse attempt: 57"   refresh_token_already_used  400
+```
+
+The revocation is visible in `auth.refresh_tokens` as well, which is what makes
+this a diagnosis rather than a theory: token 55 was the live token, and its
+`updated_at` is stamped `22:33:13` — the same instant token **41** was flagged.
+Flagging the old token revoked the live one. Fifty minutes later, 23:23–23:25,
+a **108-request storm** replayed the dead token from **ten distinct Vercel IPs
+plus the phone**, and at 02:22:51 the owner gave up and asked for a new magic
+link.
+
+**The replays are stale, not concurrent.** Token 42 was created 08-13 05:24 and
+presented again on 08-15 02:19 — two days later, from a Vercel IP, so a client
+sent a two-day-old cookie. That distinction decides the fix: a longer reuse
+interval covers refreshes that collide within seconds and does nothing for a
+cookie from Wednesday.
+
+**What we were feeding it.** 629 `/user` calls in one hour. The proxy ran
+`getUser()` on every matched request *and* `/api/ticker` and `/api/slate` each
+call it again, so every 30-second poll was two GoTrue round trips from a fresh
+serverless instance with no shared lock. That is almost certainly why this
+started recently: the moving ticker, the moving home page and the live slate all
+landed in the last few days. (Inference. The revocations above are not.)
+
+**Ruled out, with the query that ruled it out.** Time-boxed sessions are off —
+`not_after` is null on all four rows of `auth.sessions`. `createBrowserClient`
+is a singleton in the browser, so this is not duplicate client instances. The
+400-day cookie config is correct. And one wrong turn worth recording: an early
+check for two tokens sharing a `parent` came back empty and was read as "no
+refresh race". Wrong test — the reuse path errors instead of issuing a child, so
+an empty result is consistent with the race rather than against it.
+
+**The fix is a project setting: Authentication → Sessions → Refresh Token
+Rotation off.** The trade is that a stolen refresh token stays usable until
+sign-out, which is the trade this product already made when it chose invite-only
+with deliberately never-expiring sessions.
+
+Shipped here is the other half, and it is explicitly not the fix:
+
+  * `/api/*` is out of the proxy matcher. Those routes build their own server
+    client from the same cookies and can set cookies on their own responses, so
+    the proxy's pass was duplication.
+  * A request with no `sb-…-auth-token` cookie no longer constructs a client.
+    Signed-out browsing is most of the traffic and has no session to refresh.
+  * The proxy stopped overriding `maxAge` on every cookie `@supabase/ssr` hands
+    it. That override rewrote ssr's `maxAge: 0` **deletions** into 400-day empty
+    cookies — and was redundant anyway, since ssr's own `DEFAULT_COOKIE_OPTIONS`
+    has been 400 days since 0.10. The 400 in that docstring now comes from the
+    library instead of from us.
+
+`src/proxy.test.ts` pins the matcher. Re-including `/api` later would double the
+auth traffic and nothing would look broken, which is the kind of regression a
+comment does not survive.
+
 ### Aug 15 — Seven owner-reported items: the sign-up wall, a rename, survivor pools
 
 One report, seven items, from someone using the site rather than reading it.
