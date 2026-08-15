@@ -242,6 +242,16 @@ export interface GameView {
   situation: string | null;
   /** One-line last play while live, so a reopened app shows what just changed */
   lastPlay: string | null;
+  /**
+   * The most recent scoring play, which persists until the next one (NFL-18).
+   *
+   * `lastPlay` is whatever ESPN published last, and it is replaced within about
+   * thirty seconds of a touchdown by the extra point and then the kickoff — so
+   * anyone who looked down at their phone a minute after a score read about a
+   * kickoff. This does not expire; the live state is carried by the situation
+   * row above it.
+   */
+  lastScore: { text: string; abbr: string | null; period: number | null; clock: string | null } | null;
   possession: "home" | "away" | null;
   tv: string | null;
   neutralSite: boolean;

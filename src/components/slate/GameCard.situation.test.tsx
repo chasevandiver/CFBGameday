@@ -120,3 +120,61 @@ describe("the live situation block", () => {
     expect(screen.getByText(/1st & 10/)).toBeTruthy();
   });
 });
+
+/**
+ * NFL-18: the scoring play persists.
+ *
+ * `lastPlay` is whatever ESPN published a moment ago. After a touchdown that is
+ * the extra point within ~30s and the kickoff a few after, so a reader glancing
+ * down a minute later got a kickoff where the touchdown had been. Once a game
+ * has a score, this line shows the score and keeps showing it.
+ */
+describe("the last score outlives the plays after it", () => {
+  it("shows the score, not the kickoff that replaced it", () => {
+    renderCard(
+      live({
+        lastPlay: "Bell kickoff 65 yards from CIN 35",
+        lastScore: {
+          text: "Rivera 8 yd pass from Nakamura (Bell KICK)",
+          abbr: "CIN",
+          period: 3,
+          clock: "11:20",
+        },
+      }),
+    );
+    expect(screen.getByText(/8 yd pass from Nakamura/)).toBeTruthy();
+    expect(screen.queryByText(/kickoff 65 yards/)).toBeNull();
+  });
+
+  it("labels the line with the team that scored", () => {
+    renderCard(
+      live({
+        lastPlay: null,
+        lastScore: { text: "Ward 34 yd field goal", abbr: "PIT", period: 2, clock: "0:04" },
+      }),
+    );
+    expect(screen.getByText("PIT")).toBeTruthy();
+  });
+
+  it("falls back to the live play before anybody has scored", () => {
+    // A scoreless first quarter still has plays worth reading, and a card with
+    // an empty line where the play used to be is a regression, not a feature.
+    renderCard(live({ lastPlay: "Henderson rush for 12 yds", lastScore: null }));
+    expect(screen.getByText(/Henderson rush/)).toBeTruthy();
+    expect(screen.getByText("Last")).toBeTruthy();
+  });
+
+  it("keeps the live down and distance alongside the remembered score", () => {
+    // The point of putting the score on this line is that the situation row
+    // above is still current — if that stopped rendering, the card would be
+    // showing only stale information.
+    renderCard(
+      live({
+        situation: "3rd & 7 at PIT 42",
+        lastScore: { text: "Rivera 8 yd pass", abbr: "CIN", period: 3, clock: "11:20" },
+      }),
+    );
+    expect(screen.getByText(/3rd/)).toBeTruthy();
+    expect(screen.getByText(/Rivera 8 yd pass/)).toBeTruthy();
+  });
+});

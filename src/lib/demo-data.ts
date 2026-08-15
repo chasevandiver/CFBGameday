@@ -249,6 +249,7 @@ const base = {
   clock: null as string | null,
   situation: null as string | null,
   lastPlay: null as string | null,
+  lastScore: null as GameView["lastScore"],
   possession: null as "home" | "away" | null,
   homePoints: null as number | null,
   awayPoints: null as number | null,
@@ -334,6 +335,10 @@ export function demoGames(now: number): GameView[] {
       clock: "8:42",
       situation: "2nd & 8 at MICH 14",
       lastPlay: "Henderson rush up the middle for 12 yds to the MICH 14",
+      // NFL-18 on the demo slate: the drive is live, and the card still says
+      // who last scored. Without a fixture here the feature is invisible until
+      // a real Saturday.
+      lastScore: { text: "Rivera 8 yd pass from Nakamura (Bell KICK)", abbr: "OSU", period: 3, clock: "11:20" },
       possession: "away",
       tv: "FOX",
       homePoints: 24,

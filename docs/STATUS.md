@@ -502,7 +502,12 @@ is the same seam `SCHED-1` sat in.
       (Wed 23:45 → Thu 01:25). Recorded rather than deleted, because a wrong
       finding that reached a commit message is worth more visible than tidy —
       the same reason `DB-2` is still in this file. · withdrawn
-- [ ] **SCORE-1 (residue) — the scoring timeline has never seen a live game.**
+- [x] **SCORE-1 (residue) — the scoring timeline has never seen a live game.**
+      **It has now, and it works.** Checked 2026-08-15 against the preseason
+      slate: **63 scoring plays across 10 games**, newest written minutes
+      earlier, with three games still live. The job, its ESPN summary parsing
+      and its `gamesNeedingScoring` gate are all exercised against real rows.
+      That also made `NFL-18` a read rather than a build. Original note:
       `scoring_plays` is empty for **both** leagues. Not a defect: SCORE-1
       merged 08-14 16:17 and the only NFL live window so far closed 08-14 04:00,
       so the 78-tick loop that ran through it was running the previous code. It
@@ -2003,12 +2008,30 @@ are `src/lib/league.ts`'s offset scheme doing its job.
       scoring plays should *persist* instead of scrolling past, that is a
       separate feature (a remembered last-score line) needing a column —
       NFL-18.
-- [ ] **NFL-18** Deferred, not started: a remembered "last score" line, so a
-      touchdown or field goal stays on the card until the next one instead of
-      being replaced by the kickoff ~30s later. Needs a column
-      (`last_score_play`) and a writer rule. Only worth building if the owner
-      wants scoring to persist; the current behaviour is correct, just
-      transient. · owner decision
+- [x] **NFL-18 — the scoring play persists.** Owner decision 2026-08-15: yes.
+      **Cheaper than this row estimated, because SCORE-1 changed the ground.**
+      It said "needs a column (`last_score_play`) and a writer rule". It needed
+      neither: `scoring_plays` (0048) already stores every score with a
+      `sequence`, so "the last score" is a row that exists. One query for the
+      live and final games on the slate, reduced newest-per-game in memory —
+      a game has on the order of ten scoring plays. Estimates in this file go
+      stale when the thing underneath them ships.
+      **The design question was where to put it**, and the answer was already on
+      the card: the situation row above carries the live state — down, distance,
+      spot, field strip, red zone — and changes every snap. So the play line
+      becomes the part worth remembering rather than the part that just
+      happened. No new line, no height change, no layout shift.
+      Lives on `GameView`, so the slate card and the home hub get it from one
+      place — the `NFL-19` lesson about two answers to "what is happening in
+      this game".
+      **Verified against three live games**, not a fixture: Denver 17–0 Atlanta
+      reading `3rd & 5 at DEN 18 · RED ZONE` above and
+      `DEN Jaleel McLaughlin 5 Yd pass from Jarrett Stidham (Wil Lutz Kick)`
+      below, while `lastPlay` had already moved on. 4 render tests, including
+      the fallback to the live play before anyone has scored — a scoreless first
+      quarter still has plays worth reading. The demo slate carries a fixture
+      too, so the feature is visible at `/demo/slate` without waiting for a
+      Saturday.
 - [x] **NFL-19** The home hub's refresh tier read the wrong league, so it
       never fired. Owner report 2026-08-14, after NFL-14 shipped: "the Home
       Screen isn't refreshing at all, I have a live Titans 49ers game I'm
