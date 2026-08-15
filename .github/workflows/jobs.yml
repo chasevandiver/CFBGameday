@@ -127,9 +127,39 @@ on:
     # pass runs 23:45 the same UTC evening. Saturday joins each set for the
     # late-season weeks 15-18 slates; off-wave runs exit on the kick-window
     # check without a single ESPN call.
+    #
+    # NFL-23, 2026-08-14. The three lines below were written for the regular
+    # season's kickoff slots and missed 29 of 49 preseason games and 39 of 272
+    # regular-season ones — measured against the stored schedule, not guessed.
+    # The tell was that the preseason kicks at 23:00 and 23:30 UTC, i.e. BEFORE
+    # the 23:45 pass, and `--burst` filters `start_ts > now()`, so a game that
+    # has already kicked can never be picked up afterwards. Every addition
+    # below is a slot that exists in `games`, and each was verified to close a
+    # named gap:
+    #   50 21 * * *    the 22:00/23:00/23:30 evening kicks (preseason, and the
+    #                  late-season Saturday games)
+    #   45 23 * * *    widened from 0,1,4,6 — Wednesday covers the week-1
+    #                  opener at Thu 00:20 UTC, Friday the Sat 00:00/01:00 set
+    #   20 1 * * 0,5   the 02:00 UTC stragglers
+    #   40 14 * * 6    one Saturday 16:00 preseason kick
+    #   40 12/13 * * 0 the six international games (Sun 13:30 and 14:30), which
+    #                  kick before the earliest Sunday pass at 16:20
+    #   20 17, 50 19   Thanksgiving and Christmas, six games across Thu and Fri
+    # Cost of the extra entries is one runner spin-up and one DB query each:
+    # the kick-window check runs first and returns without an ESPN call.
+    # Still uncovered by design: 24 games stamped Sun 05:00 UTC, which are week
+    # 18 plus flex placeholders rather than real times. `nfl-sync-games` firms
+    # them daily — re-run the coverage check in December, don't chase them now.
     - cron: "20 16 * * 0,6"
     - cron: "45 19 * * 0,6"
-    - cron: "45 23 * * 0,1,4,6"
+    - cron: "45 23 * * *"
+    - cron: "50 21 * * *"
+    - cron: "20 1 * * 0,5"
+    - cron: "40 14 * * 6"
+    - cron: "40 12 * * 0"
+    - cron: "40 13 * * 0"
+    - cron: "20 17 * * 4,5"
+    - cron: "50 19 * * 4,5"
     # Games sync daily
     - cron: "0 9 * * *"
     # Picks-due nudge, ~2h before each kickoff wave. The job only notifies
@@ -245,6 +275,23 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      # Web push (PUSH-11). These were missing until 2026-08-14, and their
+      # absence was invisible for the worst possible reason: the secrets existed
+      # and push demonstrably worked, but from /admin and the /me test button,
+      # which run on Vercel with its own env. An Actions secret is not an
+      # environment variable until this block maps it, so every scheduled push
+      # returned {"skipped": "no vapid keys"} and went green — including
+      # notifyWatchdog, which meant OPS-2's phone alert could never fire.
+      #
+      # Names are the ones .env.example documents. If a secret is named
+      # differently in repo settings, change the RIGHT-hand side only — the
+      # left-hand names are what src/lib/push.ts reads and must not move. A
+      # wrong name here degrades to the old skip rather than failing a run
+      # (pushConfigured(), push.ts:58), so verify by dispatch, not by reading:
+      # `jobs · notify-picks-due` must stop reporting "no vapid keys".
+      NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${{ secrets.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
+      VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+      VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -257,7 +304,7 @@ jobs:
         run: |
           case "${{ github.event.schedule }}" in
             "0 12,22 * * *"|"20 15 * * 6"|"50 18 * * 6"|"20 22 * * 6"|"50 1 * * 0"|"50 22 * * 4,5"|"5 10 * * 6") echo "task=refresh-lines" >> "$GITHUB_OUTPUT" ;;
-            "20 16 * * 0,6"|"45 19 * * 0,6"|"45 23 * * 0,1,4,6") echo "task=nfl-lines-close" >> "$GITHUB_OUTPUT" ;;
+            "20 16 * * 0,6"|"45 19 * * 0,6"|"45 23 * * *"|"50 21 * * *"|"20 1 * * 0,5"|"40 14 * * 6"|"40 12 * * 0"|"40 13 * * 0"|"20 17 * * 4,5"|"50 19 * * 4,5") echo "task=nfl-lines-close" >> "$GITHUB_OUTPUT" ;;
             "0 9 * * *") echo "task=sync-games" >> "$GITHUB_OUTPUT" ;;
             "0 15 * * 6"|"0 18 * * 6"|"0 22 * * 4,5") echo "task=notify-picks-due" >> "$GITHUB_OUTPUT" ;;
             "45 15 * * 6"|"15 19 * * 6"|"15 23 * * 6") echo "task=notify-log-bets" >> "$GITHUB_OUTPUT" ;;

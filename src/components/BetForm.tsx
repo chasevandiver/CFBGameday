@@ -3,22 +3,13 @@
 import { useRef, useState, useTransition } from "react";
 import { logBet } from "../app/actions/bets";
 import {
+  BET_TYPES,
+  BET_TYPE_LABELS,
   CONFIDENCE_TIERS,
   CONFIDENCE_TIER_LABELS,
+  TEAM_SIDED,
+  TOTAL_SIDED,
 } from "../lib/db-types";
-
-const BET_TYPES = [
-  ["spread", "Spread"],
-  ["total", "Total"],
-  ["moneyline", "Moneyline"],
-  ["team_total", "Team total"],
-  ["first_half", "1st half"],
-  ["future", "Future"],
-] as const;
-
-/** Sides the grader and live tracker can key on, per bet type. */
-const TEAM_SIDED = new Set(["spread", "moneyline", "first_half"]);
-const TOTAL_SIDED = new Set(["total", "team_total"]);
 
 export interface BetFormGame {
   id: number;
@@ -110,9 +101,9 @@ export function BetForm({ seasonId, games = [] }: { seasonId: number; games?: Be
             onChange={(e) => setBetType(e.target.value)}
             className={input}
           >
-            {BET_TYPES.map(([v, label]) => (
+            {BET_TYPES.map((v) => (
               <option key={v} value={v}>
-                {label}
+                {BET_TYPE_LABELS[v]}
               </option>
             ))}
           </select>

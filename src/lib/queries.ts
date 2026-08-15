@@ -30,7 +30,7 @@ import type {
 
 // Consensus math lives in ./consensus (single shared implementation for app +
 // jobs); re-exported here for existing importers.
-import { consensusFromSnapshots, snapToHalf } from "./consensus";
+import { consensusFromSnapshots, snapToHalf, SNAPSHOT_COLS } from "./consensus";
 
 export { consensusFromSnapshots, snapToHalf };
 
@@ -151,9 +151,22 @@ export async function fetchSlateView(
   const gameRows = games as GameRow[];
   const gameIds = gameRows.map((g) => g.id);
   const teamIds = [...new Set(gameRows.flatMap((g) => [g.home_team_id, g.away_team_id]))];
+
+  /* NFL-18: the last scoring play per game, which the card shows instead of
+   * letting a touchdown be overwritten by the kickoff thirty seconds later.
+   *
+   * Read from `scoring_plays` (0048) rather than from a new column — SCORE-1
+   * already writes every score with a `sequence`, so "the last score" is a row
+   * that exists. Scoped to games that are live or final and to the four fields
+   * the card renders; a game has on the order of ten scoring plays, so the
+   * newest-per-game reduction happens here rather than in a view.
+   */
+  const scoredIds = gameRows
+    .filter((g) => g.status === "in_progress" || g.status === "final")
+    .map((g) => g.id);
   const venueIds = [...new Set(gameRows.map((g) => g.venue_id).filter((v): v is number => v !== null))];
 
-  const [teamsRes, consensusRes, predsRes, picksRes, betsRes, weatherRes, venuesRes, seasonGamesRes, ratingsRes, pollsRes, crewPicksRes, profilesRes, systemsRes, rivalriesRes, sheetMembersRes] =
+  const [teamsRes, consensusRes, predsRes, picksRes, betsRes, weatherRes, venuesRes, seasonGamesRes, ratingsRes, pollsRes, crewPicksRes, profilesRes, systemsRes, rivalriesRes, sheetMembersRes, scoresRes] =
     await Promise.all([
       supabase.from("teams").select("*").in("id", teamIds),
       // one consensus row per game, reduced in Postgres (migration 0015) —
@@ -234,6 +247,15 @@ export async function fetchSlateView(
             .eq("group_id", bettingGroupId)
             .is("removed_at", null)
         : Promise.resolve({ data: [], error: null }),
+      // NFL-18. Skipped entirely on a slate with nothing live or final, which
+      // is every slate before Saturday.
+      scoredIds.length > 0
+        ? supabase
+            .from("scoring_plays")
+            .select("game_id, sequence, period, clock, play_text, scoring_team_id")
+            .in("game_id", scoredIds)
+            .order("sequence", { ascending: true })
+        : Promise.resolve({ data: [], error: null }),
     ]);
 
   // teams, the consensus lines and the frozen predictions are what a slate card
@@ -267,6 +289,27 @@ export async function fetchSlateView(
       p.display_name,
     ]),
   );
+  /* NFL-18: newest scoring play per game. Ordered ascending by `sequence`
+     above, so the last write per game id wins and no comparison is needed. */
+  const lastScoreByGame = new Map<
+    number,
+    { text: string; teamId: number | null; period: number | null; clock: string | null }
+  >();
+  for (const r of (scoresRes.data ?? []) as Array<{
+    game_id: number;
+    period: number | null;
+    clock: string | null;
+    play_text: string;
+    scoring_team_id: number | null;
+  }>) {
+    lastScoreByGame.set(r.game_id, {
+      text: r.play_text,
+      teamId: r.scoring_team_id,
+      period: r.period,
+      clock: r.clock,
+    });
+  }
+
   const allPicks = (crewPicksRes.data ?? []) as Array<
     Pick<PickRow, "user_id" | "game_id" | "market" | "side" | "result" | "units" | "clv">
   >;
@@ -501,6 +544,23 @@ export async function fetchSlateView(
         clock: game.current_clock,
         situation: game.current_situation,
         lastPlay: game.last_play,
+        lastScore: (() => {
+          const sc = lastScoreByGame.get(game.id);
+          if (!sc) return null;
+          // The scoring team resolved to an abbreviation here, where the teams
+          // are already loaded — the card should not have to look one up.
+          const t = sc.teamId === null ? undefined : teams.get(sc.teamId);
+          return {
+            text: sc.text,
+            // Same derivation `toTeamView` uses, so a scoring team reads
+            // exactly as it does everywhere else on the card.
+            abbr: t
+              ? (t.abbreviation ?? t.school.replace(/[^A-Za-z]/g, "").slice(0, 4).toUpperCase())
+              : null,
+            period: sc.period,
+            clock: sc.clock,
+          };
+        })(),
         possession: game.possession,
         tv: game.tv,
         neutralSite: game.neutral_site,
@@ -716,9 +776,13 @@ export async function fetchTeamAtsSeason(
   }>).filter((g) => g.home_points !== null && g.away_points !== null);
   if (finals.length === 0) return new Map();
 
+  // 09:P-6: the columns the consensus reads, not every column there is. This
+  // runs per game-page view over every final either team has played, and
+  // `select("*")` also drags ml_home/ml_away/source/id along for the ride —
+  // ~700 KB a view by November, per the performance audit.
   const { data: snaps } = await supabase
     .from("line_snapshots")
-    .select("*")
+    .select(SNAPSHOT_COLS)
     .in(
       "game_id",
       finals.map((g) => g.id),

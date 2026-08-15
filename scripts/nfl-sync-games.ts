@@ -17,7 +17,7 @@ import { nflTeamId } from "../src/lib/league";
 import { SEASON, chunk, createSink } from "./lib/ingest";
 import { DAY_MS, envDays, idleOverridden, msUntilNextGame } from "./lib/idle";
 import { logEspnCalls, recordJobRun } from "./lib/jobs-core";
-import { NFL_SEASON, assertNoCfbCollision, isDivisionGame } from "./lib/nfl";
+import { NFL_SEASON, assertNoCfbCollision, isDivisionGame, nflVenueRow, type VenueRow } from "./lib/nfl";
 
 const MONDAY = 1;
 const PRESEASON_WEEKS = 4; // week 1 is the Hall of Fame game
@@ -84,6 +84,13 @@ async function run(
     games.push(...(board.events ?? []).map(parseEvent));
   }
 
+  /**
+   * NFL venue ids are offset like team ids are: ESPN's venue id space and
+   * CFBD's overlap, so `nflVenueId` keeps a Seattle stadium from landing on a
+   * college one (`src/lib/league.ts` explains the scheme).
+   */
+  const venueIdOf = (g: NflScoreboardGame): number | null => nflVenueRow(g.venue)?.id ?? null;
+
   const rows = games.flatMap((g) => {
     const stored = nflStoredWeek(g.espnSeasonType, g.espnWeek, g.name);
     if (!stored) return []; // preseason, Pro Bowl
@@ -105,11 +112,34 @@ async function run(
         away_team_id: nflTeamId(g.awayEspnId),
         home_points: g.homePoints,
         away_points: g.awayPoints,
+        ...(venueIdOf(g) !== null ? { venue_id: venueIdOf(g) } : {}),
         ...(g.status === "final" ? { status: "final" } : {}),
         ...(g.tv !== null ? { tv: g.tv } : {}),
       },
     ];
   });
+
+  // NFL-25. Venues, which `parseEvent` has always extracted and this job has
+  // never written — every NFL game had a null `venue_id`, so the game page
+  // showed no venue line at all.
+  //
+  // Written BEFORE the games below, because `games.venue_id` references this
+  // table: upserting a game with a venue id that has no row fails the FK.
+  //
+  // **This does not unlock weather**, and the reason is in the feed rather than
+  // here: ESPN's scoreboard venue carries `fullName`, `address.city/state` and
+  // `indoor`, and no coordinates. `weatherJob` needs `latitude`/`longitude`, so
+  // NFL weather stays where NFL-6 has it — blocked on a source for coordinates,
+  // not on this job. `dome` is NOT NULL in the schema and `indoor` is the
+  // honest answer for it; the rest stay null rather than invented.
+  const venues = new Map<number, VenueRow>();
+  for (const g of games) {
+    const row = nflVenueRow(g.venue);
+    if (row) venues.set(row.id, row);
+  }
+  if (venues.size > 0) {
+    for (const batch of chunk([...venues.values()], 500)) await sink.upsert("venues", batch);
+  }
 
   // The global-event-id assumption, made loud (scripts/lib/nfl.ts).
   if (db) {

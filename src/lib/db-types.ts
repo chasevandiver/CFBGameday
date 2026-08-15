@@ -258,6 +258,40 @@ export const CONFIDENCE_TIER_LABELS: Record<ConfidenceTier, string> = {
   century: "Bet of the Century",
 };
 
+/**
+ * The `bets.bet_type` vocabulary, beside the other two so there is one place to
+ * read what a bet can be. Lifted out of `BetForm.tsx` when `/ledger/stats`
+ * became a second reader — the form's private `BET_TYPES` was the only
+ * definition, and a stats page that grouped by a hardcoded copy of it would
+ * drift the first time a type was added.
+ *
+ * `TEAM_SIDED` / `TOTAL_SIDED` say which sides a type accepts, which is what
+ * makes "home vs away" and "over vs under" answerable without asking the row.
+ */
+export const BET_TYPES = [
+  "spread",
+  "total",
+  "moneyline",
+  "team_total",
+  "first_half",
+  "future",
+] as const;
+
+export type BetType = (typeof BET_TYPES)[number];
+
+export const BET_TYPE_LABELS: Record<BetType, string> = {
+  spread: "Spread",
+  total: "Total",
+  moneyline: "Moneyline",
+  team_total: "Team total",
+  first_half: "1st half",
+  future: "Future",
+};
+
+/** Sides the grader and live tracker can key on, per bet type. */
+export const TEAM_SIDED: ReadonlySet<string> = new Set(["spread", "moneyline", "first_half"]);
+export const TOTAL_SIDED: ReadonlySet<string> = new Set(["total", "team_total"]);
+
 export const REASON_TAGS = [
   "model_edge",
   "travel_rest",

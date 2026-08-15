@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "../../lib/supabase/server";
 import { createServiceClient } from "../../lib/supabase/service";
 import { isDeadStatus, nextGameStatus, voidWagersForGames, type VoidAction } from "../../lib/void";
+import { requireAdmin } from "../../lib/admin";
 
 export interface VoidResult {
   ok: boolean;
@@ -13,26 +14,14 @@ export interface VoidResult {
   bets?: number;
 }
 
-/**
- * RLS stops a non-admin's write, but reports it as a zero-row no-op that the
- * action would then call success (audit 06/SEC-11). Same check as
- * `actions/adjustments.ts`; kept there too rather than shared, because both
- * are four lines and a shared helper would hide which client each one runs on.
- */
-async function requireAdmin(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-): Promise<string | null> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return "Not signed in";
-  const { data: me } = await supabase
-    .from("profiles")
-    .select("is_admin")
-    .eq("id", user.id)
-    .maybeSingle();
-  return me?.is_admin ? null : "Admins only";
-}
+/* The admin gate is `lib/admin.ts`'s `requireAdmin`. RLS stops a non-admin's
+   write but reports it as a zero-row no-op the action would call success
+   (audit 06/SEC-11), so the app-level check is what turns it into an answer.
+   This file and `actions/adjustments.ts` used to keep private four-line copies
+   on the grounds that sharing would hide which client each runs on — the
+   shared version takes the client as a parameter, so it does not. SEC-08b
+   moved them because nine copies of an authorization check is nine chances to
+   get one backwards. */
 
 /**
  * Mark a game postponed or canceled, or restore one that was — League Rule #4

@@ -88,7 +88,7 @@ export function LiveSituation({ game, compact = false }: { game: GameView; compa
      guard used to drop the entire block. The play that just scored the
      touchdown is the one play on the card anybody wants to read, and it was
      the one play guaranteed not to render. */
-  if (!game.situation && !pos && !game.lastPlay) return null;
+  if (!game.situation && !pos && !game.lastPlay && !game.lastScore) return null;
 
   return (
     <div className={compact ? "mt-1.5" : "mt-2.5"}>
@@ -123,17 +123,24 @@ export function LiveSituation({ game, compact = false }: { game: GameView; compa
         </div>
       )}
       {pos && !compact && <FieldStrip game={game} pos={pos} redZone={redZone} />}
-      {game.lastPlay && (
-        /* Two lines, and the box is two lines tall whether or not it needs
-           them — a one-line play must not make the card shorter than its
-           neighbours and then grow on the next snap (DESIGN.md: no layout
-           shift on updates). It was one truncated line, which cut nearly
-           every real play description in half. */
+      {/* NFL-18. Once a game has scored, this line shows the SCORE and keeps
+          showing it; before that it shows the last play.
+          `lastPlay` is whatever ESPN published a moment ago, and after a
+          touchdown that is the extra point within about thirty seconds and the
+          kickoff a few after — so a reader glancing down a minute later got a
+          kickoff where the touchdown had been. The live state is not lost: the
+          down, distance, spot and field strip above are all current, and they
+          are the part that changes every snap. This line is the part worth
+          remembering.
+          Two lines tall either way — a one-line play must not make the card
+          shorter than its neighbours and then grow on the next snap
+          (DESIGN.md: no layout shift on updates). */}
+      {(game.lastScore || game.lastPlay) && (
         <p className="last-play">
           <span className="stat mr-1 text-[9px] font-semibold uppercase tracking-widest text-chalk/55">
-            Last
+            {game.lastScore ? (game.lastScore.abbr ?? "Score") : "Last"}
           </span>
-          {game.lastPlay}
+          {game.lastScore ? game.lastScore.text : game.lastPlay}
         </p>
       )}
     </div>

@@ -30,3 +30,28 @@ export function parseWeekParam(raw: string | undefined | null): number | null {
   const n = Number(raw);
   return isValidWeek(n) ? n : null;
 }
+
+/**
+ * The NFL playoff rounds, by stored week (NFL-6).
+ *
+ * ESPN numbers its postseason 1 Wild Card · 2 Divisional · 3 Conference ·
+ * 4 Pro Bowl · 5 Super Bowl. `nflStoredWeek` drops the Pro Bowl and stores the
+ * Super Bowl at 4, so these are the stored numbers, not ESPN's — reading
+ * `src/lib/espn.ts:418` and this list together is the only way that mapping
+ * stays legible.
+ *
+ * Named rather than numbered because nobody calls it "postseason week 3". A
+ * selector reading "Playoffs" for all four, which is what shipped, cannot say
+ * which round you are looking at and cannot get you to the other three.
+ */
+export const NFL_PLAYOFF_ROUNDS = [
+  { week: 1, label: "Wild Card" },
+  { week: 2, label: "Divisional" },
+  { week: 3, label: "Conference" },
+  { week: 4, label: "Super Bowl" },
+] as const;
+
+/** The round name for a stored postseason week, or null outside 1–4. */
+export function nflPlayoffLabel(week: number): string | null {
+  return NFL_PLAYOFF_ROUNDS.find((r) => r.week === week)?.label ?? null;
+}

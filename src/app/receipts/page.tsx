@@ -17,11 +17,41 @@ export const dynamic = "force-dynamic";
 
 export const metadata = { title: "Receipts" };
 
+/**
+ * The slices this page reads (09:P-13). Derived with `Pick` from the real row
+ * types rather than hand-declared, so a renamed or dropped column fails here
+ * instead of arriving as undefined at render time.
+ */
+type ReceiptPred = Pick<
+  PredictionRow,
+  | "game_id"
+  | "clv"
+  | "created_at"
+  | "edge"
+  | "edge_flag"
+  | "home_win_prob"
+  | "model_version"
+  | "spread"
+  | "vegas_spread"
+>;
+type ReceiptGame = Pick<
+  GameRow,
+  | "id"
+  | "week"
+  | "start_ts"
+  | "status"
+  | "home_points"
+  | "away_points"
+  | "home_team_id"
+  | "away_team_id"
+>;
+type ReceiptTeam = Pick<TeamRow, "id" | "school" | "abbreviation">;
+
 interface Receipt {
-  game: GameRow;
-  pred: PredictionRow;
-  home: TeamRow;
-  away: TeamRow;
+  game: ReceiptGame;
+  pred: ReceiptPred;
+  home: ReceiptTeam;
+  away: ReceiptTeam;
   /** Model's ATS lean vs the market line at freeze; null when no market line. */
   lean: "home" | "away" | null;
   /** win/loss/push once the game is final and a lean existed. */
@@ -36,34 +66,49 @@ export default async function ReceiptsPage() {
 
   // Scoped to the current season (audit bug #7: this used to fetch every
   // frozen prediction ever and merge same-numbered weeks across seasons).
+  // 09:P-13 (partial). Three `select("*")` reads over a whole season is the
+  // bulk of this page's cost — ~840 predictions plus their games plus every
+  // team by December. These are the columns the render and the calibration
+  // block below actually consume, checked against the file rather than
+  // guessed. Pagination itself is a separate question and an owner decision;
+  // see 09:P-13 in docs/STATUS.md for why it is not obviously right.
   const predRes = await supabase
     .from("predictions")
-    .select("*")
+    .select(
+      "game_id, clv, created_at, edge, edge_flag, home_win_prob, model_version, spread, vegas_spread",
+    )
     .eq("frozen", true)
     .eq("season_id", seasonId)
     .order("created_at", { ascending: false });
   // Receipts ARE the frozen predictions; a failed read rendering as "nothing
   // frozen yet" would misreport the one thing this page exists to prove
   // (db-result.ts).
-  const frozen = required<PredictionRow>(predRes, "frozen predictions");
+  const frozen = required<ReceiptPred>(predRes, "frozen predictions");
 
   // Newest frozen row per game is the standing prediction; older rows from
   // prior model versions stay in the table as history but don't render.
-  const newestByGame = new Map<number, PredictionRow>();
+  const newestByGame = new Map<number, ReceiptPred>();
   for (const p of frozen) {
     if (!newestByGame.has(p.game_id)) newestByGame.set(p.game_id, p);
   }
   const gameIds = [...newestByGame.keys()];
 
   const gamesRes = gameIds.length
-    ? await supabase.from("games").select("*").in("id", gameIds)
+    ? await supabase
+        .from("games")
+        .select(
+          "id, week, start_ts, status, home_points, away_points, home_team_id, away_team_id",
+        )
+        .in("id", gameIds)
     : { data: [], error: null };
-  const games = required<GameRow>(gamesRes, "games");
+  const games = required<ReceiptGame>(gamesRes, "games");
   const teamIds = [...new Set(games.flatMap((g) => [g.home_team_id, g.away_team_id]))];
   const teamsRes = teamIds.length
-    ? await supabase.from("teams").select("*").in("id", teamIds)
+    // Two fields per team, not nine: this page prints a name and an
+    // abbreviation and never draws a crest.
+    ? await supabase.from("teams").select("id, school, abbreviation").in("id", teamIds)
     : { data: [], error: null };
-  const teams = new Map(required<TeamRow>(teamsRes, "teams").map((t) => [t.id, t]));
+  const teams = new Map(required<ReceiptTeam>(teamsRes, "teams").map((t) => [t.id, t]));
 
   const receipts: Receipt[] = [];
   for (const g of games) {

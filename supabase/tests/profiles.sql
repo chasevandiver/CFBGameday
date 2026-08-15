@@ -107,10 +107,79 @@ begin;
   select pg_temp.chk('but names are still readable',
                      (select count(*) from (select id, display_name from profiles) q) = 2);
 rollback;
--- A signed-in member is unaffected — narrowing that is a separate, larger
--- change (an is_current_user_admin() RPC and six call sites), left queued.
+-- This is where the assertion "a signed-in member can still read is_admin"
+-- used to sit. It was correct and deliberate: 0040 closed the signed-out half
+-- only, and the row above it said the rest was "a separate, larger change
+-- (an is_current_user_admin() RPC and six call sites), left queued".
+--
+-- 0050 is that change, so the assertion is now false and its inverse is
+-- asserted below. Recorded rather than silently deleted, because a test that
+-- pinned the old behaviour failing is exactly how this migration proved it did
+-- something — it was the first thing to go red.
+-- (It was nine call sites, not six. See SEC-08b in docs/STATUS.md.)
+
+-- ── SEC-08b: is_admin is not readable, and the gate still works ────────────
+--
+-- 0040 closed the signed-out half of P2-2; `authenticated` kept the whole row,
+-- so any member could list the admins. 0050 takes the column away and puts the
+-- question behind a SECURITY DEFINER function that answers about the caller
+-- only.
+--
+-- The risk in this change is not that it fails open — it is that it fails
+-- CLOSED and nobody notices until an admin cannot reach /admin. Both
+-- directions are asserted, and the role switches use the same
+-- begin/test_as/rollback shape as the escalation tests above, because
+-- `set local role` is transaction-scoped and psql gives each statement its own
+-- transaction.
+
+\echo '# the admin flag is not readable, even signed in'
+select pg_temp.chk('authenticated has no column-level SELECT on is_admin',
+  not has_column_privilege('authenticated', 'public.profiles', 'is_admin', 'SELECT'));
+select pg_temp.chk('anon still has none either (0040 stands)',
+  not has_column_privilege('anon', 'public.profiles', 'is_admin', 'SELECT'));
+
+\echo '# but the columns the app reads are untouched'
+select pg_temp.chk('display_name, or every name on the site vanishes',
+  has_column_privilege('authenticated', 'public.profiles', 'display_name', 'SELECT'));
+select pg_temp.chk('and the two /me edits',
+  has_column_privilege('authenticated', 'public.profiles', 'timezone', 'SELECT')
+  and has_column_privilege('authenticated', 'public.profiles', 'favorite_team_ids', 'SELECT'));
+
+\echo '# a signed-in member can no longer read the column at all'
 begin;
   select test_as(:bob::uuid);
-  select pg_temp.chk('a signed-in member can still read is_admin',
-                     (select count(*) from (select is_admin from profiles) q) = 2);
+  select pg_temp.raises('bob reading is_admin -> denied',
+    'select is_admin from profiles where id = auth.uid()');
+  select pg_temp.raises('bob listing the admins -> denied',
+    'select id from profiles where is_admin');
 rollback;
+
+\echo '# is_current_user_admin() answers about the caller, and fails closed'
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.chk('ann, an admin, is told yes', is_current_user_admin());
+rollback;
+
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.chk('bob, a member, is told no', not is_current_user_admin());
+rollback;
+
+begin;
+  select test_as_anon();
+  -- Denied outright, not answered "false" — EXECUTE is revoked from anon, so a
+  -- signed-out caller cannot even ask. Two layers agree on the answer and this
+  -- is the outer one: `lib/admin.ts` turns any RPC error into false, and the
+  -- function's own coalesce() would return false if it ever were reachable.
+  -- Every call site guards on a user first, so nothing in the app takes this
+  -- path; it is asserted because "fails closed" should be a property of the
+  -- database, not an emergent one.
+  select pg_temp.raises('signed out cannot even call it -> denied',
+    'select is_current_user_admin()');
+rollback;
+
+\echo '# and the function is reachable by exactly the role that needs it'
+select pg_temp.chk('authenticated may execute it',
+  has_function_privilege('authenticated', 'public.is_current_user_admin()', 'EXECUTE'));
+select pg_temp.chk('anon may not — a signed-out caller has nothing to ask',
+  not has_function_privilege('anon', 'public.is_current_user_admin()', 'EXECUTE'));

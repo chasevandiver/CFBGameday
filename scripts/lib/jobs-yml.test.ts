@@ -17,6 +17,27 @@ import { describe, expect, it } from "vitest";
  */
 
 const YML = readFileSync(join(__dirname, "../../.github/workflows/jobs.yml"), "utf8");
+const PUSH_TS = readFileSync(join(__dirname, "../../src/lib/push.ts"), "utf8");
+
+/**
+ * The `env:` block on the `run` job — the only environment the scripts see.
+ *
+ * A GitHub Actions secret is NOT an environment variable. It exists in repo
+ * settings and stays there until a workflow maps it, which is how PUSH-11 hid
+ * for as long as it did: the VAPID secrets were set, push visibly worked from
+ * /admin and the /me test button (both on Vercel, which has its own env), and
+ * every scheduled push returned {"skipped": "no vapid keys"} and went green.
+ */
+function jobEnv(): Set<string> {
+  const block = YML.split("\n    env:\n")[1].split("\n    steps:")[0];
+  return new Set([...block.matchAll(/^ {6}([A-Z0-9_]+):/gm)].map((m) => m[1]));
+}
+
+/** The env vars `pushConfigured()` requires, read off the function itself. */
+function pushRequires(): string[] {
+  const body = PUSH_TS.split("export function pushConfigured")[1].split("\n}")[0];
+  return [...body.matchAll(/process\.env\.([A-Z0-9_]+)/g)].map((m) => m[1]);
+}
 
 /** Every `- cron: "…"` in the schedule block, in file order. */
 function declaredCrons(): string[] {
@@ -96,6 +117,27 @@ describe("jobs.yml scheduler wiring", () => {
       }
     }
     expect(shadowed).toEqual([]);
+  });
+
+  it("hands the jobs every key pushConfigured() gates on (PUSH-11)", () => {
+    // Derived from push.ts rather than hardcoded, so adding a third required
+    // key there fails here instead of silently disabling scheduled push again.
+    const required = pushRequires();
+    expect(required.length).toBeGreaterThan(1); // parser guard
+    const env = jobEnv();
+    expect(required.filter((k) => !env.has(k))).toEqual([]);
+  });
+
+  it("maps the secrets the data jobs cannot run without", () => {
+    const env = jobEnv();
+    expect(env.size).toBeGreaterThan(5); // parser guard
+    for (const key of [
+      "CFBD_API_KEY",
+      "NEXT_PUBLIC_SUPABASE_URL",
+      "SUPABASE_SERVICE_ROLE_KEY",
+    ]) {
+      expect(env.has(key)).toBe(true);
+    }
   });
 
   it("routes the notification crons, which were dead until 2026-08-13", () => {

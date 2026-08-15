@@ -6,6 +6,44 @@
 
 export const DEFAULT_TZ = "America/Chicago";
 
+/**
+ * The zones a reader can pick on `/me` (UX-25).
+ *
+ * A curated list, not `Intl.supportedValuesOf("timeZone")`. That returns
+ * ~400 entries, which is a worse control on a phone than a short list of the
+ * zones college football is actually watched in, and it would ship the whole
+ * table to the client for a setting most people never open.
+ *
+ * Hawaii and Alaska are here because the product has games in both (Stanford
+ * at Hawai'i is on the Week 0 board). Arizona is separate from Mountain
+ * because it does not observe DST, which is exactly the kind of thing a
+ * fixed offset gets wrong for half the season.
+ *
+ * The list is the validation: `updateTimezone` refuses anything not in it, so
+ * an arbitrary string can never reach `Intl.DateTimeFormat` and throw on a
+ * page that merely wanted to print a kickoff.
+ */
+export const TIMEZONES = [
+  { id: "America/New_York", label: "Eastern" },
+  { id: "America/Chicago", label: "Central" },
+  { id: "America/Denver", label: "Mountain" },
+  { id: "America/Phoenix", label: "Arizona (no DST)" },
+  { id: "America/Los_Angeles", label: "Pacific" },
+  { id: "America/Anchorage", label: "Alaska" },
+  { id: "Pacific/Honolulu", label: "Hawaii" },
+] as const;
+
+export type TimezoneId = (typeof TIMEZONES)[number]["id"];
+
+export function isSupportedTz(v: string | null | undefined): v is TimezoneId {
+  return TIMEZONES.some((t) => t.id === v);
+}
+
+/** A stored preference when it is one we support, the house default otherwise. */
+export function tzOf(stored: string | null | undefined): string {
+  return isSupportedTz(stored) ? stored : DEFAULT_TZ;
+}
+
 export function kickParts(iso: string, tz: string): { day: string; time: string } {
   const d = new Date(iso);
   const day = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" }).format(d);

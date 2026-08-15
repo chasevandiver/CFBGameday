@@ -3,20 +3,31 @@
 **The one file that answers "what's left."** Reconciled 2026-08-13 against the
 code on `claude/status-md-tasks-ivmbtb`. Week 0 is **Sat Aug 29** — 16 days.
 
-**As of 2026-08-13, §2 has no code or docs work left in it.** Everything still
-unchecked below is either owner-run (P1-8, 09:P-16 — P1-9b closed the same
-day), a dispatch
-(`--tune-fcs`, `observe-scoreboard`, Q8), or a dated watch. That is the whole
-remaining blocking list.
+**That was true on 2026-08-13 and stopped being true on 08-14**, when reading
+the live database against `jobs.yml` turned up six things in the NFL lane — §2.1d.
+Two of them are launch-relevant and neither is NFL-specific in its consequence:
+the scheduled push **cannot send at all** (`PUSH-11`, which takes OPS-2 down
+with it), and the watchdog's liveness gate is CFB-only (`NFL-22`), so it is
+switched off during exactly the weeks the NFL is the only football being played.
+Everything else still unchecked in §2 is owner-run (09:P-16), a dispatch
+(`--tune-fcs`, `observe-scoreboard`, Q8), or a dated watch.
+*(The original sentence here read "**As of 2026-08-13, §2 has no code or docs
+work left in it**" and is kept as what was believed, not deleted — it was
+accurate against the code and wrong about the scheduler, which is the third time
+that seam has produced a finding: SCHED-1, P1-9b, and now PUSH-11.)*
 
 **§4 was opened early, 2026-08-13, by owner decision** — the post-launch queue
 is marked "deliberately not before Aug 29" and eleven rows were pulled forward
 anyway because §2 had nothing buildable left. Landed: the four security rows
 (P2-5, SEC-01, SEC-02, P2-2/SEC-08) as migrations 0038–0040, five UX rows, and
-five ops/data-quality rows including migration 0041. **Migrations 0038–0041 are
-in the repo and proved against a local Postgres; they have NOT been applied to
-the live project** — that is a production write on new schema and it is the
-owner's call. Nothing in the app requires them until they are.
+five ops/data-quality rows including migration 0041. **Migrations 0038–0041 were
+applied to the live project on 2026-08-13**, in order and after the build
+carrying their dependent code deployed — see the Database row in §1 for what was
+verified afterwards and why the ordering was load-bearing. *(This paragraph said
+they had "NOT been applied" until 2026-08-14; it was written before the apply and
+never updated. The Database row was right the whole time — when a §-header
+paragraph and a §1 row disagree, the row is reconciled and the paragraph is
+prose.)*
 **Nine tracked rows described their own defect wrongly**, and in four cases the
 wrong detail changed the fix. Each correction is in the row.
 
@@ -50,7 +61,7 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
+| **Build** | **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
 | **Scheduler** | 111 completed runs. Reds to date: one watchdog firing correctly on a cold `job_runs` table, and runs #107–109 — the backup verification sequence, each a real defect, all closed. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
@@ -218,10 +229,12 @@ watches, plus two migrations to apply.
       the fault it is reporting — asserted in a test, along with the admin
       audience and the no-admins/no-keys/switched-off paths. 8 tests.
       **Explicitly not a replacement for P1-9b**, and the code says so.
-- [ ] **P1-8** Check the inbox: a watchdog failure email fired Aug 10 — did it
-      arrive? **The single highest-value 2 minutes left on this list.** It is
-      now the primary alerting channel, and an unverified failure channel is no
-      failure channel. · human
+- [x] **P1-8 — the original row, superseded by the answer above.** This is the
+      question; the ticked row three above it is the answer, recorded 2026-08-13
+      (the Aug 10 email arrived, and eight others did too, all unread). The box
+      should have been checked in that commit and was not — ticked 2026-08-14 on
+      re-reading, with the duplicate left in place rather than deleted so the
+      question it asked stays legible. · human, done
 - [x] **P0-4** Run 2026-08-12: `ratings` **138** rows, all week 0, all
       `2026.2.0` (expected ~136 ✓, and it confirms the four-versions-behind
       row above); `team_hfa` **138**; `line_snapshots` **808**. Also
@@ -342,6 +355,190 @@ watches, plus two migrations to apply.
       way bash reads it and asserts every cron resolves to a task, every task
       has a command, and no two tasks claim one cron string. Verified against
       the pre-fix file: 6 orphan crons before, 0 after.
+
+### 2.1d Found in the NFL lane, 2026-08-14
+
+The NFL preseason has been running for a week, which makes it the first real
+traffic any of this machinery has carried. Everything below was found by reading
+the live database and `jobs.yml` together, not by reading either alone — which
+is the same seam `SCHED-1` sat in.
+
+- [x] **PUSH-11 — the scheduled push cannot send, and never could.** Wired
+      2026-08-14: the three keys now sit in `jobs.yml`'s `env:` block.
+      **Guarded so it cannot come back**, and the guard is the interesting part —
+      `jobs-yml.test.ts` now reads the required key names *out of
+      `pushConfigured()` itself* rather than hardcoding them, so adding a third
+      required key to `push.ts` fails the workflow test instead of silently
+      disabling scheduled push a second time. Checked failing against the
+      pre-fix file: both keys reported missing.
+      **Not verified end to end from here**, deliberately. The proof is a
+      dispatch of `jobs · notify-picks-due` returning something other than
+      `{"skipped": "no vapid keys"}` — but that job sends real pushes to real
+      crew members with open picks, and firing it to satisfy a checkbox is not
+      mine to do. Dispatch it against this branch, or let the first scheduled
+      run be the proof, and read `job_runs.detail`.
+      *(Secret names are `.env.example`'s. If repo settings use different ones,
+      only the `${{ secrets.… }}` side changes — the left-hand names are what
+      `push.ts` reads. A wrong name degrades to today's skip, not a red run.)*
+      `jobs.yml`'s `env:` block passes five secrets and **none of them is a VAPID
+      key**, so `pushConfigured()` (`src/lib/push.ts:58`) is false in every
+      Actions run. Live proof, not inference: `notify-picks-due` on 08-13 22:36
+      returned `{"skipped":"no vapid keys"}`.
+      **This takes OPS-2 down with it.** `notifyWatchdog` opens with
+      `if (problems.length === 0 || !pushConfigured()) return {notified: 0,
+      errors: 0}` (`notify-jobs.ts:370`) — so the watchdog's phone buzz, the
+      thing built *because* nine failure emails went unread, silently sends
+      nothing and reports success. OPS-2 has never had a chance to fire (the one
+      red watchdog run is 08-10, three days before it shipped) and could not have
+      if it had.
+      **PUSH-3/PUSH-9 are not wrong.** The iPhone test went through the Vercel
+      app, where the keys *are* set; nothing ever exercised the Actions
+      environment. Exactly SCHED-1's shape — a path verified end to end on both
+      sides of a seam nobody crossed.
+      **The secrets already exist** — owner confirmed 2026-08-14, and push does
+      send from `/admin` and the `/me` test button. That is not a contradiction,
+      it is the reason this was invisible: an Actions secret is not an
+      environment variable until the YAML maps it, and `/admin` runs on Vercel,
+      which has its own env. So the two verified paths and the broken one never
+      touched.
+      Fix is therefore **three lines of `env:` in `jobs.yml`** and nothing else —
+      `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, each
+      `${{ secrets.… }}`. Cheapest item on this list by some distance.
+      **Do it before Week 0**: it is the alerting channel P1-8 concluded was
+      needed. · XS
+- [x] **NFL-22 — the watchdog is blind to the NFL, including to NFL liveness.**
+      Fixed 2026-08-14. Both gates now read `seasonIdsForYear(SEASON)` — the
+      helper that already existed for exactly this — and four NFL jobs joined
+      the verdict: `nfl-sync-games` (30 h), `nfl-refresh-lines` (26 h),
+      `nfl-lines-close` and `nfl-grade` (80 h).
+      **Why those two get 80 h and the notify jobs could not get a horizon at
+      all**: the NFL ingest jobs are *chained onto their CFB counterparts* in
+      the `Run job` case, so they fire daily year-round with no offseason
+      silence to tolerate, and the two with their own crons have a widest real
+      gap of 72 h (Fri→Mon for grading, Mon→Thu for the close pass). 80 leaves
+      Actions' 5–30 min lag room without blunting the check. All four record an
+      `ok` run when they no-op, which is what makes an absence check mean
+      anything for them.
+      The new fields are **optional**, so the change cannot make a caller that
+      never read the NFL start going red — asserted. `detail` now also reports
+      `leagues`, because before this the CFB-only gate and a correct one looked
+      identical from outside. 6 new tests, 43 in the file.
+      *(Still not watched: the `scoreboard-loop-nfl` idle marker. It is an
+      `idleSkip` bookkeeping row rather than a job, and `scoreboard-loop` itself
+      is already checked.)*
+      `watchdogVerdict` checks `refresh-lines`, `sync-games`, `scoreboard-loop`,
+      `notify-picks-due`, `notify-log-bets` and nothing else; the live
+      `detail.checked` confirms it. None of `nfl-sync-games`,
+      `nfl-refresh-lines`, `nfl-lines-close` or `nfl-grade` is watched, so any
+      of them can go silent without a red run.
+      **The worse half is not the missing rows.** Both gates inside
+      `watchdogJob` are `.eq("season_id", SEASON)` — CFB only
+      (`jobs-core.ts:247-260`). The scoreboard check only fires when a **CFB**
+      game is live, so through the whole NFL preseason — the only football being
+      played right now — the freshness check that exists to catch a dead live
+      layer is switched off. It will be switched off again for every NFL-only
+      Sunday of the regular season.
+      `NFL-6` records "watchdog rows for NFL job ages" as deferred, which is the
+      cheap half; this gate is the half that matters and was not written down
+      anywhere. · S–M
+- [x] **NFL-23 — the close-pass crons missed the slot the preseason kicks in.**
+      Fixed 2026-08-14. Seven cron entries added and `45 23 * * 0,1,4,6` widened
+      to `* * *`; every addition closes a named slot that exists in `games`, and
+      the set was verified by query rather than by reading it — coverage goes
+      from 29 of 49 preseason and 39 of 272 regular-season games *uncovered* to
+      **zero**, excluding 24 rows stamped Sun 05:00 UTC that are week-18 and
+      flex placeholders rather than real times.
+      The tell: preseason kicks at 23:00 and 23:30 UTC, i.e. **before** the
+      23:45 pass, and `--burst` filters `start_ts > now()`, so a game that has
+      already kicked can never be picked up afterwards.
+      **Two corrections to how this row was first written, both mine.**
+      *(a) The counts were 30 and 40.* My coverage query did day-of-week
+      arithmetic without wrapping the week, so a Saturday-night cron was scored
+      as not covering a Sunday-morning kick. Redone with minutes-mod-10080: 29
+      and 39. The shape of the finding survived; two of its numbers did not,
+      which is why they are restated here rather than quietly edited.
+      *(b) "Four games never got a line at all" was true and misleading.* Those
+      four have zero snapshots, but the daily non-burst chain
+      (`refresh-lines → nfl-refresh-lines`) had run exactly once at that point
+      and skipped, so the absence is mostly a one-day-old-wiring artifact. The
+      chain snapshots the whole earliest unplayed week twice a day — the 08-14
+      12:41 run wrote 10 rows covering tonight's kicks — so upcoming games do
+      get a line. **What these crons actually buy is a capture near kickoff**,
+      i.e. a real close and therefore real CLV, not the difference between a
+      line and no line. Recorded because the stronger claim reached a commit
+      message. · S
+- [x] **OPS-19 — every idle skip reached `job_runs` as the same flat "idle".**
+      Found and fixed 2026-08-14 while trying to explain why `nfl-refresh-lines`
+      reported `idle` 35 minutes before a kickoff. `idleSkip` returned a bare
+      boolean and both callers turned it into `{"skipped": "idle"}`, so the row
+      a human reads could not tell **`next_game_gt_7d`** — a correct offseason
+      no-op — from **`no_scheduled_games`**, which during a bootstrap is a real
+      fault wearing a green run. The console log had always distinguished them;
+      nothing that survives the run did.
+      Now returns the reason string, still truthy, so every call site is
+      unchanged (`scoreboard-loop`'s `cfbIdle && nflIdle` included). 1 new test
+      asserting the two reasons differ, and the two existing `toBe(true)`
+      assertions tightened to name their reason.
+      *(This did not explain the 23:25 run — that window has manual runs
+      interleaved with scheduled ones and I could not attribute it honestly.
+      The observability gap is real and fixed on its own merits; the anomaly is
+      left unexplained rather than given a story.)* · S
+- [x] **NFL-24 — withdrawn 2026-08-14. There was no mismatch, and the error was
+      mine.** This row claimed `NFL-4`'s "TNF Sep 10 — close pass at 23:45 UTC
+      Thu" contradicted the stored kickoff. Checked against ESPN directly
+      (`scoreboard?dates=2026&seasontype=2&week=1`): the feed returns event
+      `401872656` at `2026-09-10T00:20Z`, **character-identical to the stored
+      row**, so the ingest is right.
+      What I got wrong was assuming one game. Week 1 opens with **two**
+      standalone night games, and they are not the same fixture:
+      New England at Seattle kicks Wed Sep 9 8:20 pm ET (Thu 00:20 UTC), and
+      San Francisco at the Rams kicks **Thu Sep 10** 8:35 pm ET (Fri 00:35
+      UTC). `NFL-4` names the second one, and a Thursday 23:45 UTC pass lands 50
+      minutes before it — exactly as that row intended. I read "the opener" into
+      a row that never said it.
+      **One real thing came out of the wrong finding**: the Wednesday opener
+      genuinely had no close pass, because nothing in the old cron set ran on a
+      Wednesday. `NFL-23`'s widening of `45 23 * * 0,1,4,6` to `* * *` covers it
+      (Wed 23:45 → Thu 01:25). Recorded rather than deleted, because a wrong
+      finding that reached a commit message is worth more visible than tidy —
+      the same reason `DB-2` is still in this file. · withdrawn
+- [x] **SCORE-1 (residue) — the scoring timeline has never seen a live game.**
+      **It has now, and it works.** Checked 2026-08-15 against the preseason
+      slate: **63 scoring plays across 10 games**, newest written minutes
+      earlier, with three games still live. The job, its ESPN summary parsing
+      and its `gamesNeedingScoring` gate are all exercised against real rows.
+      That also made `NFL-18` a read rather than a build. Original note:
+      `scoring_plays` is empty for **both** leagues. Not a defect: SCORE-1
+      merged 08-14 16:17 and the only NFL live window so far closed 08-14 04:00,
+      so the 78-tick loop that ran through it was running the previous code. It
+      means the job, its ESPN summary parsing and its `gamesNeedingScoring` gate
+      are unobserved against real rows — the same status `observe-scoreboard`
+      has for CFB, and with the same remedy: watch one, once. · watch
+- [x] **NFL-25 — no NFL venues, so no venue line on the card.** Fixed
+      2026-08-14 in `nfl-sync-games`, and the fix was smaller than the finding:
+      **`parseEvent` has always extracted the venue** — `espnId`, `name`,
+      `city`, `state`, `indoor` — and the job simply never wrote it. Venues are
+      upserted *before* games, because `games.venue_id` is a foreign key and a
+      game carrying an id with no row behind it fails the insert.
+      Ids go through `nflVenueId`, the same offset scheme team ids use, so an
+      ESPN stadium cannot land on a CFBD one. Logic lives in a pure
+      `nflVenueRow` in `scripts/lib/nfl.ts` rather than inline in the script,
+      with 6 tests.
+      **This does not unlock weather, and that is a feed limit, not an
+      oversight.** ESPN's scoreboard venue carries a name, a city, a state and
+      `indoor`, and **no coordinates**. `weatherJob` needs
+      `latitude`/`longitude`, so NFL weather stays exactly where `NFL-6` has it,
+      blocked on a source of coordinates. `dome` takes `indoor` because the
+      column is NOT NULL and that is the honest answer; everything else stays
+      null rather than invented — there is a test asserting the coordinates are
+      *absent*, so a later change cannot quietly fill them with something
+      plausible.
+      **Verified against real ESPN JSON, not a fixture**: week 1 gives 16 games,
+      16 distinct venues, every id ≥ 100000, Ford Field `dome: true`, Lumen
+      Field `dome: false`, and the Melbourne Cricket Ground row that the
+      international game needs. **Not run against production** — the sandbox
+      proxy 403s the API from `node` (curl works, Actions works), so the next
+      scheduled `sync-games` is what actually writes these rows. · S
 
 ### 2.2 This week (Aug 14–18)
 
@@ -564,6 +761,23 @@ One sitting, ~2 h. Each is a doc edit, not a code change.
 
 ### 2.5 The hard dates
 
+**The NFL preseason is a live rehearsal for Week 0, and it is free.** Noted
+2026-08-14. Every launch-critical path except the model is shared between the
+two leagues — ingest, line snapshots, the close pass, the live scoreboard,
+`GRADE-1`'s grade-on-final-tick, CLV, the ledger, the slate cards, the scoring
+timeline — and the NFL is playing real games *now* while CFB has none until the
+29th. Three slates remain before Week 0: **tonight through Aug 16** (10 games),
+**Aug 20–24** (16), and **Aug 27–29** (16, the last of which overlaps Week 0
+itself). This is strictly better evidence than the scratch-week dispatch below,
+for the reason the `observe-scoreboard` row already gives: liveness is only
+measurable over a live game, once, unrepeatably. The never-observed paths to
+watch are `SCORE-1`'s timeline, `GRADE-1` settling on the tick that sees a
+final, the NFL close pass (NFL-23), and 0044's 10-second pull.
+
+- [ ] **Tonight, Aug 14–16** — 🏈 First rehearsal, and the cheapest one: 10
+      preseason games, first kick 23:00 UTC. Watch `scoring_plays` go non-zero,
+      a bet grade inside a tick of the final, and whether the 23:00 kicks get a
+      snapshot (they will not — that is NFL-23, and this is the confirmation).
 - [ ] **Aug 20** — `preseason-refresh` starts going **red** on decline
       (`jobs.yml:221`). Watch it. Also: `refresh-lines` leaves its idle guard
       ~Aug 22 (`LINES_IDLE_DAYS` 7) — first snapshots since spring.
@@ -687,6 +901,59 @@ Two items remain open; the closed ones are kept for the record.
       "graded after kickoff" on a game with no kickoff left to come, and now
       says "never played — no closing line" via `isDeadStatus`
       (`receipts/page.tsx`). The settle-or-not decision stays open. · S
+- [x] **SEC-08b — `profiles.is_admin` is still readable by any signed-in user.**
+      Closed 2026-08-14, migration **0050**. `is_current_user_admin()` is
+      SECURITY DEFINER, STABLE, `search_path = ''`, returns
+      `coalesce(…, false)`; `authenticated` loses the column and keeps
+      `id, display_name, favorite_team_ids, timezone, created_at`. EXECUTE is
+      granted to `authenticated` and revoked from `anon`.
+      **It was ten call sites, not six.** This row and §8 both said six; two
+      more were single-line reads on `/ledger` and `/game/[id]` that a
+      multi-line grep missed, a ninth was `actions/push.ts`, and **a tenth was
+      found the next day on `/me`** — `select("display_name,
+      favorite_team_ids, is_admin")`, a name inside a multi-column list, which
+      no search for `select("is_admin")` will ever return. Left as it was, 0050
+      would have made `/me` throw rather than degrade: the count being wrong
+      was not a bookkeeping detail, it was a missed site that would have broken
+      a page. All nine now go
+      through one `src/lib/admin.ts` — `isCurrentUserAdmin` plus a `requireAdmin`
+      for the five server actions that had the same three-step check
+      copy-pasted with only the refusal wording different. Nine copies of an
+      authorization check is nine chances to get one backwards, which is the
+      same argument `records.ts` won.
+      **Fails closed at two layers, deliberately.** `lib/admin.ts` turns any RPC
+      error into `false`, and the function's own `coalesce` would return false
+      if it were reachable — a signed-out caller is *denied outright* rather
+      than answered, because EXECUTE is revoked from `anon`. Every call site
+      guards on a user first so nothing takes that path; it is asserted anyway,
+      because "fails closed" should be a property of the database rather than an
+      emergent one.
+      **The old test caught it, which is the point.** `profiles.sql` carried an
+      assertion that a signed-in member *can* read `is_admin` — correct and
+      deliberate under 0040, and the first thing to go red here. Replaced by its
+      inverse, with the reason recorded in place rather than deleted. 11 new DB
+      assertions, 225 total. The `admin-wagers` mock needed its `rpc` stub
+      taught to answer, or four "an admin can do X" tests would have gone green
+      by denying everyone.
+      **Split across two migrations so the deploy has a safe order.** 0050 only
+      adds the function and is inert against the running code; **0052** does the
+      revoke and goes last. As one file the middle step had no safe position —
+      applied before the deploy it denies the old code's `select("is_admin")`
+      and breaks every admin gate, applied after it leaves a window where the
+      new code asks for a function that is not there. `lib/admin.ts` fails
+      closed, so that window would be admins quietly losing their admin links
+      rather than seeing an error, which is worse for being unreportable.
+      Order: **0050 → deploy → 0052.** · done
+      The half of P2-2/SEC-08 that migration 0040 deliberately did not close.
+      **Given a box 2026-08-14: it was described as "still queued below" in the
+      P2-5… P2-2 row and in §8, and it was not below.** By this file's own rule —
+      if it isn't here it isn't queued — it was untracked for a day, which is the
+      failure mode the rule exists to prevent. The work is unchanged from the
+      scope stated in P2-2: a security-definer `is_current_user_admin()` plus six
+      call sites moved onto it (`AuthButton.tsx:30`, `admin/page.tsx:41`, four
+      server actions), then drop `is_admin` from the `authenticated` column grant.
+      Not launch work — knowing who the admins are is not a capability, and the
+      signed-out half (the one an anonymous scraper could reach) is closed. · S–M
 - [x] **P2-5** Fixed 2026-08-13, migration **0038**. `remove_pick` now opens
       with the same `is_group_member` guard `make_pick` has carried since
       `0021:162`, so being removed from a group stops your writes in both
@@ -709,8 +976,9 @@ Two items remain open; the closed ones are kept for the record.
       only. `is_admin` is still readable by any *signed-in* user, because
       hiding it needs a security-definer `is_current_user_admin()` and six call
       sites moved onto it (`AuthButton.tsx:30`, `admin/page.tsx:41`, four server
-      actions) — worth doing, larger than this row, still queued below. 5 DB
-      assertions.
+      actions) — worth doing, larger than this row, **tracked as `SEC-08b`
+      above** (it said "still queued below" for a day while being queued
+      nowhere). 5 DB assertions.
 - [x] **SEC-02** Fixed 2026-08-13, migration **0038**. `join_group`'s
       `on conflict … do update set removed_at = null` discarded the `'member'`
       in its VALUES list, so the role survived untouched and an admin removed by
@@ -798,9 +1066,76 @@ Two items remain open; the closed ones are kept for the record.
 - [ ] **09:P-1b** Slim `/api/slate-live` heal endpoint — decide after P-16's
       numbers. · M
 - [ ] **09:P-11** Cacheable weekly-static pages · M
-- [ ] **09:P-6** `fetchTeamAtsSeason` re-fetches every snapshot per game view · M
-- [ ] **09:P-9/P-10/P-12/P-13** Blind-count aggregate RPC; board picks-query
-      collapse; ratings latest-in-Postgres; receipts pagination · S–M each
+- [x] **09:P-6** `fetchTeamAtsSeason` re-fetches every snapshot per game view.
+      Fixed 2026-08-14: `select("*")` → the columns the consensus actually
+      reads. The audit measured the old shape at ~700 KB a view by November,
+      and `*` was also dragging `ml_home`, `ml_away`, `source` and `id` along.
+      The column list moved to `src/lib/consensus.ts` **beside the function that
+      reads it** — `jobs-core` re-exports it under `SNAPSHOT_COLS`, the name its
+      test asserts on. One list, two readers, which matters more than it looks:
+      the list carries `spread_open` for the grading path, and a second copy is
+      exactly how the silent opener fallback (`jobs-core.test.ts`'s "reports the
+      CURRENT line as the opener") gets reintroduced.
+- [x] **09:P-9** Blind-count aggregate RPC. Done 2026-08-14, migration
+      **0051**. The week page fired `group_game_pick_count` inside a
+      `Promise.all` over every blind game — one PostgREST round trip per game,
+      each with its own auth check and planning. 60 on a full CFB slate; **91
+      on the Week 1 NFL board** (`DB-7`), so not a hypothetical.
+      `group_game_pick_counts` takes the array and answers once.
+      **The contract mirrors the singular deliberately**: a non-member gets a
+      row of zeros per game asked about, not an empty result. Returning nothing
+      would leak membership through the *shape* of the response, which is the
+      leak the singular's `is_group_member` guard exists to prevent. Every
+      requested game comes back including the unpicked ones, so a missing key
+      cannot read as `undefined` where the caller expects 0. 5 DB assertions,
+      one of them pinning the two functions to the same answer.
+- [x] **09:P-12** Ratings latest-in-Postgres. Fixed 2026-08-14: `/ratings` read
+      the whole season — one row per team per week, ~2,040 by week 15 — to use
+      the latest week and the one before it. Now asks which week is latest
+      (one indexed row) and fetches only those two, ~276. A second round trip
+      for ~87% fewer rows by November; at week 0 the two shapes cost the same.
+- [x] **09:P-10 — the third read was the whole problem; the other two should
+      not be merged.** Done 2026-08-14.
+      **Fixed:** the week query pulled `select("*")` for *every member's* picks
+      on every board game, then threw all but one member's away — `weekPicks`
+      existed solely to be filtered to `myWeekPicks` on the next line. Now
+      scoped to the viewer and to the columns the share context reads, so it
+      stops growing with the crew as well as with the slate. On the Week 1 NFL
+      board that is 91 games × every member × every column down to one person's
+      seven columns.
+      **Not merged, on evidence:** the audit calls this "three overlapping
+      `picks` queries", and the other two do overlap — but collapsing them costs
+      more than it saves. `fetchSlateView`'s internal read is one league,
+      season-wide, and needs `game_id/market/side`; the standings read spans
+      **both** leagues and needs `season_id`. Neither is a subset of the other,
+      and both currently run **inside the same `Promise.all`**. Merging means
+      the page fetches picks first and hands them to `fetchSlateView`, which
+      serialises two round trips that are parallel today — trading one query for
+      one round trip of latency, on the page whose whole complaint is latency.
+      It would also silently rescope the crew record on every slate card from
+      one league to two, which is the kind of drift this file keeps recording.
+      P3 in the audit, and this is why.
+      *(A type caught what a grep did not: `tally()` reads `result`, `units` and
+      `clv` off these rows for the day and week records, so the narrowed column
+      list is seven, not the four a search for `p.` turns up.)*
+- [ ] **09:P-13 — half done 2026-08-14, and the other half is a decision, not
+      a build.** The cost was three `select("*")` reads over a whole season:
+      ~840 predictions, their games, and every team by December. All three are
+      now narrowed to the columns the render and the calibration block actually
+      consume — checked against the file, not guessed — with the row types
+      derived by `Pick` from the real ones so a renamed column fails at compile
+      time instead of arriving as undefined. Teams went from nine columns to
+      **two**: this page prints a name and an abbreviation and never draws a
+      crest.
+      **Pagination itself is owner-owned, because it is not obviously right.**
+      The header carries season-wide calibration — SU%, ATS%, flagged-edge
+      record, CLV — computed over every receipt. Paginate the fetch and those
+      numbers silently become *this page's* numbers, which on the one page that
+      exists to prove the model's honesty is worse than a slow page. The two
+      real options are (a) week-scoped like `/recap/[week]`, with the
+      calibration kept season-wide by a second narrow query, or (b) leave it as
+      one scrollable document, which is arguably the point of a receipt book.
+      Not picked here. · owner, then S–M
 - [ ] **07:OPS-6** Backfill mode for null-CLV rows (post-kickoff `captured_at`
       is excluded forever) — only matters after a missed close · S–M
 - [x] **07:OPS-14a — preseason metered 2026-08-13; backtest deliberately not.**
@@ -1028,6 +1363,38 @@ silent about the wiring, which is the gap that let it sit for a day.
       the offseason case.
 
 **Product / UX**
+- [x] **STATS-1 — `/ledger/stats`, the breakdowns behind the Record tile.**
+      Owner request 2026-08-14 ("click on your betting record and it'd show a
+      whole bunch of stats"). Ten cuts across three groups: market, side,
+      favourite-or-dog and price; teams backed and teams faded; kickoff window,
+      day, stake and confidence — plus streaks and, once both leagues have
+      graded bets, a CFB/NFL split.
+      **The page renders and does not calculate.** Every table is
+      `tallyBy(bets, cut)`: the cuts are a new pure `src/lib/bet-cuts.ts`, the
+      arithmetic stays in `records.ts`. That module exists because six surfaces
+      once disagreed about what a record is, and a stats page with its own
+      private tally would have been a seventh. 34 new tests on the cuts alone.
+      **Deliberately no CLV cut** — the owner picked the three descriptive cuts,
+      and closing-line value already has a home on `/ledger` (the tile and the
+      tail/fade audit). A second place for the same number is a second place for
+      it to be wrong.
+      **`favouriteOrDog` refuses to answer rather than guess**: spreads read the
+      stored home-perspective line through the same conversion `lineForSide`
+      does, moneylines read the price because they have no spread, and a total
+      returns null because a total has no favourite. Every cut returns null for
+      rows it cannot classify and the page drops them, with a line under each
+      table saying how many of the settled bets it actually covered — so a cut
+      that skips half your ledger says so instead of quietly rebasing.
+      `BET_TYPES`/`TEAM_SIDED`/`TOTAL_SIDED` moved from `BetForm`'s privates
+      into `db-types.ts` beside `CONFIDENCE_TIERS`, so the form and the stats
+      page read one vocabulary.
+      **Seen rendered at 375 px** (signed-out state) — and it needed it: the
+      first shell nested `AppNav` inside `<main>` and omitted `w-full`, which
+      made the page 768 px wide and scroll sideways. Measured, not eyeballed:
+      `scrollWidth` 768 against a 375 viewport, now 375, matching `/ledger` and
+      `/`. **Not seen with data** — that needs a signed-in user with graded
+      bets, and the database holds two bets total. The populated tables are
+      unrendered and say so here rather than being claimed. · done
 - [ ] **G10-v1** Copy-digest ShareButton: Thursday (frozen slate / edges / "N
       haven't picked") + Sunday (results / movers / CLV) — best paired with the
       group board's real first Saturday · S–M
@@ -1307,7 +1674,14 @@ viewer's own bets, not the whole sheet.
 
 - [ ] **UX-06 (residue)** Sub-4.5 tokens: light `chalk/50–55` table headers,
       dark `/35–/45` decorative labels, edge-on-card — needs a rendered pass · S–M
-- [ ] **UX-21** Ledger "today" keyed to CT for non-CT bettors · S
+- [x] **UX-21** Ledger "today" keyed to CT for non-CT bettors. Fixed
+      2026-08-14 with UX-25, because they are one concern: the ledger now reads
+      the viewer's stored zone. The bug it closes is narrow and real — a bet
+      placed 10pm Pacific falls on the next Central day, so a Pacific reader
+      opening the app after a late West Coast game saw an empty "today" and a
+      day record that had already rolled over. Four sites: the day label, the
+      `dayKey` the share card groups on, and the bet form's kickoff labels.
+      `DEFAULT_TZ` no longer appears in the file.
 - [x] **UX-24** Fixed 2026-08-13, and it was **three call sites, not one** —
       the week page plus both render sites on `/game` (`game/[id]/page.tsx:81`,
       rendered at `:399` and `:453`). The bug is home-side only: `fmtSpread`
@@ -1318,7 +1692,28 @@ viewer's own bets, not the whole sheet.
       through, and the next caller gets it for free. 1 test, both sides plus a
       stringly-typed total. See 05:N12 for the same question settled for the
       arithmetic path.
-- [ ] **UX-25** `profiles.timezone` surfaced on `/me` and used server-side · S–M
+- [x] **UX-25** `profiles.timezone` surfaced on `/me` and used server-side.
+      Done 2026-08-14. A select on `/me` that submits on change, plus
+      `updateTimezone`; 0013 already granted UPDATE on the column, so no
+      migration.
+      **Server-side rather than sniffed from the browser**, which is the whole
+      point: kickoff labels and the ledger's "today" are rendered on the server,
+      and a client-side guess cannot reach them without a round trip the page
+      does not otherwise need.
+      **A curated list, not `Intl.supportedValuesOf("timeZone")`** — ~400
+      entries is a worse control on a phone and ships the whole table for a
+      setting most people never open. Seven zones, including Hawaii and Alaska
+      because the product has games in both (Stanford at Hawai'i is on the Week
+      0 board) and Arizona separately because it does not observe DST.
+      **The list is the validation.** `updateTimezone` refuses anything not in
+      it, so an arbitrary string cannot reach `Intl.DateTimeFormat` and turn a
+      preference into a self-inflicted outage on every page that prints a
+      kickoff. `tzOf` falls back to Central for the null case, which is every
+      existing reader.
+      **Not seen rendered** — `/me` redirects signed-out and there is no signed-in
+      session available here. The control is a `select` in the existing card and
+      `input` token, so it inherits the house form styling rather than
+      introducing any.
 - [x] **UX-27** Fixed 2026-08-13. `error.tsx` now renders `<AppNav />` like
       `not-found.tsx` and `loading.tsx` do — nav is not in the root layout
       (`layout.tsx:74-104`), every page mounts its own, and a boundary that
@@ -1354,8 +1749,25 @@ viewer's own bets, not the whole sheet.
       **What would settle it:** the Aug 21 real-device pass. If nobody can make
       a name truncate on a real phone, close it as "not a defect" rather than
       as done. · S
-- [ ] **UX-31 / §23 #19** Week changes via `pushState` so Back traverses weeks
-      (`SlateView.tsx:263` is `replaceState` — deliberate, revisit) · S
+- [x] **UX-31 / §23 #19** Week changes via `pushState` so Back traverses weeks.
+      Done 2026-08-14. The old blanket `replaceState` was sound about filters —
+      a query typed character by character would fill the history stack with
+      garbage — and wrong about the week, which is a navigation. From week 3,
+      Back left the slate entirely.
+      Split by what changed: week or season type pushes, every other key
+      replaces. A `popstate` handler restores the week from the URL and
+      refetches, because without it Back would move the address bar and leave
+      the grid where it was, which is worse than the old behaviour.
+      **Verified in a browser, and it needed two rounds.** First attempt got
+      the URLs right and the history depth one short: `lastNavRef` started null,
+      so the first change of a fresh visit took the replace branch and
+      overwrote the entry for the week you arrived on — Back from week 2 went to
+      `about:blank`. Seeded with the loaded week instead.
+      Measured on the real page rather than reasoned about: `/slate` (11 cards)
+      → week 1 (94) → week 2 (89) → **Back** → `?week=1` with **94 cards and
+      the selector reading 1** → Back → `/slate`, 11 cards, selector 0 →
+      Forward → `?week=1`. The card counts are the point: they prove the grid
+      moved, not just the URL.
 - [x] **05:N12** Pinned 2026-08-13. The module's types said `number` while its
       implementation defended against strings (`num()`, and a test asserting
       `numeric` columns "arrive as strings"), and `audit/05` §29 had already
@@ -1378,7 +1790,24 @@ viewer's own bets, not the whole sheet.
 - [ ] **F9** Ratings sparklines — needs weekly rating history
 - [ ] **F11** §5.1 soft-market taxonomy content on `/edges` — editorial
 - [ ] **F12** Preseason team pages freeze at Week-1 kickoff · M
-- [ ] **F16** Systems side-by-side on slate cards (the game page has it) · S–M
+- [x] **F16 — systems on slate cards. The component existed; the gate was the
+      bug.** Fixed 2026-08-15, and the row's framing ("the game page has it")
+      was slightly off: `SystemsRow` has been in `GameCard.tsx` for some time,
+      rendering SP+/FPI/Elo home-relative in the market's convention. It sat
+      **inside** the `(p || liveProb !== null)` block, so it drew only once the
+      model had a prediction or the game was live.
+      `predictions` is empty until the Thursday freeze. So for the whole week
+      before every slate — the days people actually use to form an opinion — the
+      spec's "all four systems side by side on every game card" showed none of
+      them. Moved out of that block: the systems have their own sync (0016) and
+      no reason to wait on ours.
+      **Verified rendered** on a CFB card with no prediction: `SP+ -5.9
+      FPI -1.5` under the market lines, no layout shift, no overflow.
+      *(Elo is absent because only **two** systems are currently synced, not
+      three — a data state, not a render bug. `sync-systems` last reported
+      `unmatched: ["nationalAverages"]`. Worth a look before Week 0 if Elo is
+      meant to be there; it is not tracked here because nothing in this row
+      broke it.)*
 - [ ] **F-§3 / F-§6** Team-page LLM depth; tale of the tape · L / needs season stats
 - [ ] **G13 / F18 / §23 #36 residue** Season archive + `SEASON` rollover · offseason
 
@@ -1386,6 +1815,45 @@ viewer's own bets, not the whole sheet.
 make"; BRAND.md §17 has required the identity carry both leagues since v1.0).
 Built on `claude/nfl-scores-lines-l4bhio`; the design and its evidence are in
 `docs/CHANGELOG.md` (Aug 13, "The NFL, as a second seasons row").
+
+**Where the NFL stands against CFB, minus the model** — audited against the live
+database 2026-08-14, because "we added the NFL" and "the NFL works" are different
+claims and only the first had evidence. League isolation is the part that came
+out cleanest: `fetchCurrentSeasonWeek` takes a `sport` and filters on it, so the
+two `is_current` season rows never collide; NFL teams carry
+`classification = 'nfl'`, so `/standings`' `classification = 'fbs'` filter
+excludes them without needing to know the NFL exists. Neither was luck — both
+are `src/lib/league.ts`'s offset scheme doing its job.
+
+| Capability | CFB | NFL | |
+|---|---|---|---|
+| Schedule ingest | `sync-games`, CFBD, 09:00 daily | `nfl-sync-games`, ESPN, chained onto the same cron | ✅ 321 games |
+| Team reference | `sync-reference` | `nfl-sync-reference` (dispatch-only) | ✅ 32/32 complete |
+| Venues + weather | ✅ | ❌ zero rows | NFL-25 / NFL-6 |
+| Lines, display refresh | `refresh-lines` 12:00/22:00 | chained onto it | ✅ |
+| Lines, close pass | 5 crons | 3 crons, with holes | ⚠️ NFL-23 |
+| True opening line | first-snapshot proxy | the book's own `open.line` | 🟢 NFL is better |
+| Live scores | CFBD via the Actions loop | 0044 edge function, 10s from Postgres | 🟢 NFL is better |
+| Down/distance + last play | ❌ | ✅ | NFL only |
+| Scoring timeline | `cfb-scoring` | `nfl-scoring` | ⚠️ neither observed |
+| Grading + CLV | Sunday + `GRADE-1` live | Mon/Tue/Fri + `GRADE-1` live | ✅ `nfl-grade` graded 2 bets |
+| Bets / ledger / slate / home | ✅ | ✅ sport-aware | ✅ |
+| Pick'em boards | ✅ | regular season only | deliberate |
+| Model, receipts, edges, ratings, rankings | ✅ | ❌ | by design |
+| Recap, standings | ✅ | ❌ | see below |
+| Watchdog | 5 jobs | none | ⚠️ NFL-22 |
+| Push | league-agnostic | league-agnostic | ⚠️ inert everywhere, PUSH-11 |
+| Demo data | ✅ | ❌ | NFL-6 |
+
+- [ ] **NFL-26 — decision owed: do `/recap` and `/standings` ever carry the
+      NFL?** Both are CFB-only today and neither was a decision — `/recap` reads
+      the CFB season pointer and `/standings` filters `classification = 'fbs'`,
+      so the NFL falls out of both without anyone choosing it. The division data
+      to do standings properly is already there (`teams.conference` holds
+      "AFC West" and friends, which is what makes the slate's conference filter
+      and the groups' conference mode work). Recording it as a question rather
+      than queueing a build: "the NFL is scores, lines and bets, not a second
+      league to follow" is a perfectly good answer and costs nothing. · owner
 - [x] **NFL-1** The whole build: `src/lib/espn.ts` + fixture-pinned odds
       parsing, migration 0042 (sport columns, one-current-per-sport,
       `groups.leagues`), the three ingest CLIs + cron wiring, `?sport=` slate
@@ -1434,10 +1902,34 @@ Built on `claude/nfl-scores-lines-l4bhio`; the design and its evidence are in
       the ball at 2nd & 5, which is exactly the synthesized fixture's mapping
       to `"away"`. The kickoff gap renders as situation-without-football —
       degraded, not wrong — and needs nothing.
-- [ ] **NFL-6** Deferred, recorded: playoff-round labels + postseason week
-      browsing (January; stored weeks 1–4 exist now), NFL venues + weather
-      (existing `weatherJob` machinery, needs offset venue rows + coords),
-      watchdog rows for NFL job ages, NFL demo data.
+- [ ] **NFL-6 — three of its four parts are now done; the fourth is blocked on
+      a feed.** Reduced 2026-08-14 rather than closed.
+      **Playoff-round labels + postseason week browsing — done.** The selector
+      offered one "Playoffs" entry, which could neither say which round you were
+      on nor reach the other three. Now Wild Card / Divisional / Conference /
+      Super Bowl, from `NFL_PLAYOFF_ROUNDS` in `week-range.ts` — **stored**
+      numbering, not ESPN's, which puts the Pro Bowl at 4 and the Super Bowl at
+      5. Getting that backwards would label the championship "Pro Bowl" in
+      January. 4 tests, one of which fails if anyone widens the list.
+      CFB is deliberately untouched: its postseason is a month of bowls, not
+      four rounds, so it keeps one entry and its URLs are byte-identical.
+      **Two bugs the browser found and the tests could not**, both in the same
+      class — green types, green suite, wrong page. (a) Every round shared one
+      URL, because the query-string writer only emitted `week` for preseason and
+      regular; rounds were unlinkable and Back skipped straight past them.
+      (b) With that fixed, `?st=post&week=3` still opened on Wild Card, because
+      the *server* discarded an explicit week for the postseason — so a round
+      was reachable by clicking and never by linking. Both fixed and re-verified:
+      all four rounds deep-link, `?st=post` alone still lands on Wild Card, and
+      CFB's `?st=post` is unchanged.
+      **Watchdog rows — done** as `NFL-22`.
+      **NFL venues — done** as `NFL-25`.
+      **Still open: NFL weather, and NFL demo data.** Weather is not deferred
+      by choice any more — it is blocked. ESPN's scoreboard venue carries no
+      coordinates and `weatherJob` needs `latitude`/`longitude`, so this wants a
+      second source (a static 32-stadium table is the obvious one, and is
+      editorial data of the same kind as `NFL_DIVISIONS`). Demo data is
+      unstarted. · S–M
 - [x] **NFL-8** The 30-second live pull, owner decision 2026-08-14 ("the
       site should be pulling from espn on a 30 second refresh"). **Done and
       verified live 2026-08-14 ~00:40 UTC, owner-approved execution.** Edge
@@ -1538,12 +2030,30 @@ Built on `claude/nfl-scores-lines-l4bhio`; the design and its evidence are in
       scoring plays should *persist* instead of scrolling past, that is a
       separate feature (a remembered last-score line) needing a column —
       NFL-18.
-- [ ] **NFL-18** Deferred, not started: a remembered "last score" line, so a
-      touchdown or field goal stays on the card until the next one instead of
-      being replaced by the kickoff ~30s later. Needs a column
-      (`last_score_play`) and a writer rule. Only worth building if the owner
-      wants scoring to persist; the current behaviour is correct, just
-      transient. · owner decision
+- [x] **NFL-18 — the scoring play persists.** Owner decision 2026-08-15: yes.
+      **Cheaper than this row estimated, because SCORE-1 changed the ground.**
+      It said "needs a column (`last_score_play`) and a writer rule". It needed
+      neither: `scoring_plays` (0048) already stores every score with a
+      `sequence`, so "the last score" is a row that exists. One query for the
+      live and final games on the slate, reduced newest-per-game in memory —
+      a game has on the order of ten scoring plays. Estimates in this file go
+      stale when the thing underneath them ships.
+      **The design question was where to put it**, and the answer was already on
+      the card: the situation row above carries the live state — down, distance,
+      spot, field strip, red zone — and changes every snap. So the play line
+      becomes the part worth remembering rather than the part that just
+      happened. No new line, no height change, no layout shift.
+      Lives on `GameView`, so the slate card and the home hub get it from one
+      place — the `NFL-19` lesson about two answers to "what is happening in
+      this game".
+      **Verified against three live games**, not a fixture: Denver 17–0 Atlanta
+      reading `3rd & 5 at DEN 18 · RED ZONE` above and
+      `DEN Jaleel McLaughlin 5 Yd pass from Jarrett Stidham (Wil Lutz Kick)`
+      below, while `lastPlay` had already moved on. 4 render tests, including
+      the fallback to the live play before anyone has scored — a scoreless first
+      quarter still has plays worth reading. The demo slate carries a fixture
+      too, so the feature is visible at `/demo/slate` without waiting for a
+      Saturday.
 - [x] **NFL-19** The home hub's refresh tier read the wrong league, so it
       never fired. Owner report 2026-08-14, after NFL-14 shipped: "the Home
       Screen isn't refreshing at all, I have a live Titans 49ers game I'm
@@ -2125,24 +2635,28 @@ here so they aren't rediscovered as bugs.
 - **The 2026 gate's week-1 lines are the fit set**, so t < 2 there is by
   construction. Out-of-sample evidence is the 2024–25 weeks 2–4 result, and
   going forward the weeks-2+ 2026 lines as they post.
-- **`TRUNCATE` is granted to `anon` and `authenticated` on every public table.**
-  Found 2026-08-14 while verifying 0048's grants, and it is **project-wide, not
-  new**: `games`, `bets`, `picks`, `line_snapshots`, `cover_flips` and
-  `scoring_plays` all carry it, from Supabase's default
-  `alter default privileges … grant all on tables`. It matters because TRUNCATE
-  is a table privilege and is **not subject to RLS** — the policies that make
-  `bets` append-only would not stop it.
-  **Practical exposure today is nil**, which is why this is recorded rather than
-  hot-fixed: those two roles are only reachable through PostgREST, and the Data
-  API exposes no TRUNCATE verb. What it costs is defence in depth — the day any
-  `security definer` function runs dynamic SQL, this becomes reachable, and the
-  whole point of 0013's append-only triggers is that the guarantee should not
-  depend on the API surface staying the shape it is today.
-  **Fix is one statement per table** (`revoke truncate on all tables in schema
-  public from anon, authenticated`) plus an `alter default privileges` so new
-  tables do not re-inherit it. Not done here because it touches every table in
-  the project and belongs in its own change with its own DB assertions, not
-  bolted onto a UI branch. · S
+- ~~**`TRUNCATE` is granted to `anon` and `authenticated` on every public
+  table.**~~ **Fixed 2026-08-14, migration 0049** — moved out of this section
+  because it stopped being a residual. It affected **32 tables**, which is more
+  than the six this row originally listed; the count comes from the failing
+  assertion, which names them.
+  Two statements, and the second is the one that lasts: the revoke fixes the
+  tables that exist, and `alter default privileges` stops the next `create
+  table` re-inheriting it — without that half, the migration would read as done
+  while the hole reopened on the next table anyone added. Scoped to `postgres`,
+  the role that creates every table in this repo. `supabase_admin` carries an
+  identical default ACL for tables *it* creates, and altering that needs
+  membership in that role; **not attempted rather than attempted and swallowed**,
+  because a `DO` block catching `insufficient_privilege` would make a migration
+  that did half its job look exactly like one that did all of it.
+  New `supabase/tests/truncate.sql`, 10 assertions, **7 of them checked failing
+  against the pre-fix schema** — the local harness reproduces Supabase's
+  `grant all` default (`00_shim.sql:24`), so the proof is real rather than
+  vacuous. The 3 that pass either way are deliberate controls: anon keeps
+  SELECT, authenticated keeps INSERT, `service_role` keeps TRUNCATE, because
+  the revoke has to be surgical and a suite that only checks the removal would
+  not notice it took the app's reads with it. 215 DB assertions total.
+  *(Not applied to the live project — same rule as every migration here.)*
 - **The light theme's `--accent` on `--accent-ink` is 3.83:1**, under 1.4.3's
   4.5:1 for the 12px labels that use it. Pre-existing — it carries the slip's
   primary action and the pick buttons — and UX-36's active segment is a new
@@ -2258,6 +2772,7 @@ UX-08 targets (star, pin, bet-chip `X` — they sit in ~30px stacked rows, so a
 44px target would overlap its sibling and that needs a layout change seen on a
 device), `backtest.ts` metering (needs Supabase secrets in a workflow that runs
 on every model PR), the `game/[id]` teams query (two rows, no win), P2-2's
-signed-in half (needs an `is_current_user_admin()` RPC and six call sites), and
+signed-in half (needs an `is_current_user_admin()` RPC and six call sites — now
+tracked as `SEC-08b` in §4, which is where it should have been from the start), and
 the existing six-character join codes (regenerating invalidates codes already
 sent to the crew).

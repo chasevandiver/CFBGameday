@@ -45,6 +45,24 @@ export function snapToHalf(v: number): number {
  * kickoff) to get the closing consensus — the same cutoff the grading job
  * uses — instead of the latest one.
  */
+/**
+ * The columns `consensusFromSnapshots` actually reads.
+ *
+ * Lives here rather than at a call site because it is a property of this
+ * function: change what the consensus consults and this list has to move with
+ * it. `jobs-core.ts` re-exports it as `SNAPSHOT_COLS` (its original name, which
+ * a test asserts on), and `queries.ts` uses it to stop `fetchTeamAtsSeason`
+ * pulling `select("*")` — that path ran per game-page view over every final
+ * either team had played, which the performance audit measured at ~700 KB by
+ * November (09:P-6).
+ *
+ * `spread_open` is in the list for the grading path, not this one: without it
+ * the opener silently falls back to the current line and every receipt reads
+ * zero movement. Keeping one list for both readers is the point — two lists is
+ * how that fallback gets reintroduced.
+ */
+export const SNAPSHOT_COLS = "game_id, provider, spread, spread_open, total, captured_at";
+
 export function consensusFromSnapshots(snapshots: SnapshotLike[], before?: string): Consensus {
   const latestByProvider = new Map<string, SnapshotLike>();
   for (const s of snapshots) {

@@ -101,10 +101,24 @@ export interface IdleOptions {
 }
 
 /**
- * True when the job should return without doing any work. Logs a structured
- * one-liner on every skip so an Actions run always says why it did nothing.
+ * The reason a job should return without doing any work, or `false` to proceed.
+ *
+ * **Returns the reason, not just `true`.** It used to return a bare boolean and
+ * every caller turned that into the same `{skipped: "idle"}` — which meant
+ * `job_runs.detail` could not tell "the next kickoff is in March", a correct
+ * offseason no-op, from "this season has no games in the table at all", which
+ * during a bootstrap is a real problem wearing a green run. The console log has
+ * always distinguished them; the row a human actually reads did not. Found
+ * 2026-08-14 while trying to explain an NFL run that reported `idle` 35 minutes
+ * before kickoff.
+ *
+ * Still truthy on skip, so `if (await idleSkip(...))` at every call site is
+ * unchanged.
  */
-export async function idleSkip(db: SupabaseClient, opts: IdleOptions): Promise<boolean> {
+export async function idleSkip(
+  db: SupabaseClient,
+  opts: IdleOptions,
+): Promise<false | string> {
   if (idleOverridden()) return false;
 
   const now = opts.now ?? Date.now();
@@ -119,20 +133,21 @@ export async function idleSkip(db: SupabaseClient, opts: IdleOptions): Promise<b
         [skip ? "skipped" : "proceeding"]: "no_scheduled_games",
       }),
     );
-    return skip;
+    return skip ? "no_scheduled_games" : false;
   }
 
   const days = ms / DAY_MS;
   if (days <= opts.horizonDays) return false;
 
+  const reason = `next_game_gt_${opts.horizonDays}d`;
   console.log(
     JSON.stringify({
       job: opts.job,
       season: opts.season,
-      skipped: `next_game_gt_${opts.horizonDays}d`,
+      skipped: reason,
       days_to_kickoff: Math.round(days * 10) / 10,
       next_kickoff: new Date(now + ms).toISOString(),
     }),
   );
-  return true;
+  return reason;
 }

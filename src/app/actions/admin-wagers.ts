@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { PickMarket } from "../../lib/grade";
 import { createClient } from "../../lib/supabase/server";
 import { createServiceClient } from "../../lib/supabase/service";
+import { isCurrentUserAdmin } from "../../lib/admin";
 
 export interface AdminWagerResult {
   ok: boolean;
@@ -29,12 +30,9 @@ async function requireAdmin(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { denied: "Not signed in" };
-  const { data: me } = await supabase
-    .from("profiles")
-    .select("is_admin")
-    .eq("id", user.id)
-    .maybeSingle();
-  return me?.is_admin ? { userId: user.id } : { denied: "Admins only" };
+  return (await isCurrentUserAdmin(supabase))
+    ? { userId: user.id }
+    : { denied: "Admins only" };
 }
 
 /** Every surface that can show a bet or a pick. A deletion changes all of them. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NFL_DIVISIONS, assertNoCfbCollision, divisionOf, isDivisionGame } from "./nfl";
+import { NFL_DIVISIONS, assertNoCfbCollision, divisionOf, isDivisionGame, nflVenueRow, type EspnVenue } from "./nfl";
 
 describe("NFL division table", () => {
   it("has exactly 32 teams in 8 divisions of 4", () => {
@@ -39,5 +39,52 @@ describe("assertNoCfbCollision", () => {
     expect(() =>
       assertNoCfbCollision([{ id: 401628319, sport: "cfb" }], new Set([401628319])),
     ).toThrow(/global-event-id/);
+  });
+});
+
+describe("nflVenueRow (NFL-25)", () => {
+  const v = (over: Partial<EspnVenue> = {}): EspnVenue => ({
+    espnId: 3673,
+    name: "Lumen Field",
+    city: "Seattle",
+    state: "WA",
+    indoor: false,
+    ...over,
+  });
+
+  it("offsets the id, so an ESPN stadium cannot land on a CFBD one", () => {
+    expect(nflVenueRow(v())!.id).toBe(103673);
+    expect(nflVenueRow(v())!.id).toBeGreaterThanOrEqual(100_000);
+  });
+
+  it("carries the fields the feed actually has", () => {
+    expect(nflVenueRow(v())).toEqual({
+      id: 103673,
+      name: "Lumen Field",
+      city: "Seattle",
+      state: "WA",
+      dome: false,
+    });
+  });
+
+  it("maps indoor to dome, which is NOT NULL in the schema", () => {
+    expect(nflVenueRow(v({ name: "Ford Field", indoor: true }))!.dome).toBe(true);
+  });
+
+  it("names a nameless venue rather than dropping the row", () => {
+    // `venues.name` is NOT NULL, and a row with an id is still worth having.
+    expect(nflVenueRow(v({ name: null }))!.name).toBe("Venue 103673");
+  });
+
+  it("is null with no id to key on — there is nothing to upsert against", () => {
+    expect(nflVenueRow(v({ espnId: null }))).toBeNull();
+    expect(nflVenueRow(null)).toBeNull();
+  });
+
+  it("does not invent coordinates, which is why NFL weather stays blocked", () => {
+    // The scoreboard venue has no lat/lon. Asserting their ABSENCE keeps a
+    // later change from quietly filling them with something plausible.
+    expect(nflVenueRow(v())).not.toHaveProperty("latitude");
+    expect(nflVenueRow(v())).not.toHaveProperty("longitude");
   });
 });

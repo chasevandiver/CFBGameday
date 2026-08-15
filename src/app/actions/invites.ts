@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { createServiceClient } from "../../lib/supabase/service";
 import { createClient } from "../../lib/supabase/server";
+import { isCurrentUserAdmin } from "../../lib/admin";
 
 export interface InviteResult {
   ok: boolean;
@@ -30,12 +31,8 @@ export async function inviteCrewMember(formData: FormData): Promise<InviteResult
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, message: "Not signed in" };
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("is_admin")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!profile?.is_admin) return { ok: false, message: "Commissioner only" };
+  if (!(await isCurrentUserAdmin(supabase)))
+    return { ok: false, message: "Commissioner only" };
 
   const service = createServiceClient();
 

@@ -17,6 +17,7 @@ import { pushConfigured } from "../../lib/push";
 import { createServiceClient } from "../../lib/supabase/service";
 import { DEFAULT_TZ, kickHeading } from "../../lib/kick";
 import { partitionAdminGames } from "../../lib/void";
+import { isCurrentUserAdmin } from "../../lib/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -38,13 +39,8 @@ export default async function AdminPage() {
   } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  const { data: me } = await supabase
-    .from("profiles")
-    .select("is_admin")
-    .eq("id", user.id)
-    .maybeSingle();
   // Not an admin and not a page: no hint that there is something here to find.
-  if (!me?.is_admin) notFound();
+  if (!(await isCurrentUserAdmin(supabase))) notFound();
 
   const { seasonId } = await fetchCurrentSeasonWeek(supabase);
   const service = createServiceClient();

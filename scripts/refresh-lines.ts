@@ -41,13 +41,17 @@ async function run(
   // Offseason guard, BEFORE the CFBD fetch: in burst mode the lines call
   // happens ahead of the kick-window filter, so an idle Saturday would still
   // spend ~72 calls a day on games two months out.
-  if (db && (await idleSkip(db, {
-    job: burst ? "refresh-lines-burst" : "refresh-lines",
-    season: SEASON,
-    horizonDays: envDays("LINES_IDLE_DAYS", 7),
-  }))) {
-    return { skipped: "idle" };
-  }
+  const idle = db
+    ? await idleSkip(db, {
+        job: burst ? "refresh-lines-burst" : "refresh-lines",
+        season: SEASON,
+        horizonDays: envDays("LINES_IDLE_DAYS", 7),
+      })
+    : false;
+  // The reason, not a flat "idle" — `next_game_gt_7d` and `no_scheduled_games`
+  // are a correct offseason no-op and a broken bootstrap respectively, and
+  // job_runs.detail used to render both as the same green nothing.
+  if (idle) return { skipped: idle };
 
   if (week === undefined && db) {
     // Default to the earliest week with unplayed games
