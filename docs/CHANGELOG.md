@@ -231,6 +231,23 @@ Shipped here is the other half, and it is explicitly not the fix:
 auth traffic and nothing would look broken, which is the kind of regression a
 comment does not survive.
 
+**Applied, and the rotation setting is off.** `0053_survivor_pools` went to the
+live project as `20260815044806` — 52 files, 52 rows, in sync. Verified after
+applying rather than assumed: `groups_kind_check` accepts `'survivor'`, **0**
+TRUNCATE grants to `anon`/`authenticated` on either new table (0049's `alter
+default privileges` half is holding for tables created after it, which is the
+first time that has been tested), `survivor_picks` grants only `SELECT`, five
+policies and four functions present, `create_survivor_group` executable by
+`authenticated` and not by `anon`. The probe call stopped on the sign-in guard,
+so production has **0** survivor groups — nothing was created to test it.
+
+The owner unchecked "Detect and revoke potentially compromised refresh tokens"
+the same evening. That is the actual fix for the logouts; everything in the
+commit above is load reduction. It is not yet *observed* fixed — that needs a
+few days of `auth_logs` with no `refresh_token_already_used` across a real
+sleep/wake cycle, and the row in `docs/STATUS.md` says so rather than claiming
+the win early.
+
 ### Aug 15 — Seven owner-reported items: the sign-up wall, a rename, survivor pools
 
 One report, seven items, from someone using the site rather than reading it.

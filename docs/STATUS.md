@@ -66,7 +66,7 @@ rows were decided by reading code, not by reading commit messages.
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
 | **Model in code** | `2026.5.0` — tilt carry, `baseHfa` 3.0, centered team-HFA, portal fix, market-anchored tier recentre |
-| **Database** | ⚠️ **52 migration files, 51 recorded rows** — `0053_survivor_pools.sql` is written and tested and **not applied** (DB-8, §2.1e). Unlike 0047 and 0052 its ordering does not matter: no old code reads the new tables and no new code path runs before it. Previously **51 migration files, 51 recorded rows, in sync** — verified live 2026-08-15 after PR #76 merged. 0049/0050/0051 were applied **before** the merge and 0052 **after the deploy was confirmed live**, which is the whole reason 0050 was split: 0050 only adds `is_current_user_admin()` and is inert against the old code, while 0052's revoke would have denied the running code's `select("is_admin")` and broken every admin gate. Deploy confirmed by `/ledger/stats` answering 200 in production — a route that exists only in the new build — not by a status badge. Verified after applying: **0 public tables grant TRUNCATE** to `anon` or `authenticated` (was 32), `is_current_user_admin` executable by `authenticated` and not by `anon`, `group_game_pick_counts` executable, `profiles.is_admin` no longer readable by `authenticated` while `display_name` and `timezone` still are, and twelve production routes serving 200 with `/admin` still returning its 404 body to an anonymous caller. Previously: **47 migration files, 47 recorded rows, in sync** — verified live 2026-08-14 after 0046/0047/0048 were applied to `mjijyutmbtnwcjspozsx` in that order, which was load-bearing: **0047 had to land before the code that stops sending `reason_tag` deployed**, or every bet insert would have failed the NOT NULL. Verified after applying: `deleted_wagers` and `scoring_plays` exist, `admin_remove_pick` is present, `bets.reason_tag` is nullable, `deleted_wagers` has no grant to either API role, and `scoring_plays` grants SELECT only. *(File count is 47 against numbers running to 0048 because **0004 does not exist** — a pre-existing gap, confirmed by counting the directory rather than trusting a number in this file.)* One thing that verification turned up and did not fix: **TRUNCATE is granted to `anon` and `authenticated` on every public table**, project-wide and pre-existing — see §6. Previously: **40 migration files, 40 recorded rows, in sync** — verified live 2026-08-13 after PR #58 merged and deployed. 0038–0041 were applied in order once the production build carried the code they depend on, which was the whole reason they waited: 0039 makes `join_group` return null on a bad code (the old action read that as success), 0040 revokes `is_admin` from anon while the old `fetchProfiles` still did `select("*")`, and 0041 renames a column the old `build-preseason` still wrote — which would have failed `preseason-refresh`, the job the Aug 26 checkpoint waits on. Verified after applying: join codes mint at 10 Crockford characters, `normalize_join_code('il o-1')` → `1101`, `group_join_attempts` exists deny-all, and anon can read neither `groups.join_code` nor `profiles.is_admin`. Before this pass it was 36/36, and 0034–0037 **are applied** — an earlier version of this row said 0034 and 0035 were "not yet applied to the live project" and gave the count as 32/32, and both were stale by the time they were written. It matters because two ticked rows depend on them: P1-1's re-pick fix *is* 0034 (`make_pick` confirmed carrying it live), and OPS-2's watchdog push needs 0036's enum value and 0037's `notification_settings` row — `notifyWatchdog` returns `{notified: 0, errors: 0}` when that row is missing (`notify-jobs.ts:375`), so it would have been a silent no-op. Both confirmed live, along with 2 admin push subscriptions for it to reach. The `0017` ledger gap (DB-3) was repaired 08-12. 0031–0033 add the push tables. `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
+| **Database** | **52 migration files, 52 recorded rows, in sync** — verified live 2026-08-15 after `0053_survivor_pools` was applied as `20260815044806`. Its ordering did not matter, unlike 0047's and 0052's: no old code reads `survivor_pools`/`survivor_picks` and no new code path runs before it, so it went in ahead of the deploy. Verified after applying: `groups_kind_check` accepts `'survivor'`, **0** TRUNCATE grants to `anon`/`authenticated` on either new table, `survivor_picks` grants only `SELECT`, 5 policies and 4 functions present, `create_survivor_group` executable by `authenticated` and not by `anon`, and **0** survivor groups created — the probe stopped on the sign-in guard rather than writing a row. Previously **51 migration files, 51 recorded rows, in sync** — verified live 2026-08-15 after PR #76 merged. 0049/0050/0051 were applied **before** the merge and 0052 **after the deploy was confirmed live**, which is the whole reason 0050 was split: 0050 only adds `is_current_user_admin()` and is inert against the old code, while 0052's revoke would have denied the running code's `select("is_admin")` and broken every admin gate. Deploy confirmed by `/ledger/stats` answering 200 in production — a route that exists only in the new build — not by a status badge. Verified after applying: **0 public tables grant TRUNCATE** to `anon` or `authenticated` (was 32), `is_current_user_admin` executable by `authenticated` and not by `anon`, `group_game_pick_counts` executable, `profiles.is_admin` no longer readable by `authenticated` while `display_name` and `timezone` still are, and twelve production routes serving 200 with `/admin` still returning its 404 body to an anonymous caller. Previously: **47 migration files, 47 recorded rows, in sync** — verified live 2026-08-14 after 0046/0047/0048 were applied to `mjijyutmbtnwcjspozsx` in that order, which was load-bearing: **0047 had to land before the code that stops sending `reason_tag` deployed**, or every bet insert would have failed the NOT NULL. Verified after applying: `deleted_wagers` and `scoring_plays` exist, `admin_remove_pick` is present, `bets.reason_tag` is nullable, `deleted_wagers` has no grant to either API role, and `scoring_plays` grants SELECT only. *(File count is 47 against numbers running to 0048 because **0004 does not exist** — a pre-existing gap, confirmed by counting the directory rather than trusting a number in this file.)* One thing that verification turned up and did not fix: **TRUNCATE is granted to `anon` and `authenticated` on every public table**, project-wide and pre-existing — see §6. Previously: **40 migration files, 40 recorded rows, in sync** — verified live 2026-08-13 after PR #58 merged and deployed. 0038–0041 were applied in order once the production build carried the code they depend on, which was the whole reason they waited: 0039 makes `join_group` return null on a bad code (the old action read that as success), 0040 revokes `is_admin` from anon while the old `fetchProfiles` still did `select("*")`, and 0041 renames a column the old `build-preseason` still wrote — which would have failed `preseason-refresh`, the job the Aug 26 checkpoint waits on. Verified after applying: join codes mint at 10 Crockford characters, `normalize_join_code('il o-1')` → `1101`, `group_join_attempts` exists deny-all, and anon can read neither `groups.join_code` nor `profiles.is_admin`. Before this pass it was 36/36, and 0034–0037 **are applied** — an earlier version of this row said 0034 and 0035 were "not yet applied to the live project" and gave the count as 32/32, and both were stale by the time they were written. It matters because two ticked rows depend on them: P1-1's re-pick fix *is* 0034 (`make_pick` confirmed carrying it live), and OPS-2's watchdog push needs 0036's enum value and 0037's `notification_settings` row — `notifyWatchdog` returns `{notified: 0, errors: 0}` when that row is missing (`notify-jobs.ts:375`), so it would have been a silent no-op. Both confirmed live, along with 2 admin push subscriptions for it to reach. The `0017` ledger gap (DB-3) was repaired 08-12. 0031–0033 add the push tables. `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
 | **Model in production** | ⚠️ `2026.2.0`. **Four versions behind**, pricing every cross-classification opener ~10 points toward the G5. Waiting on CFBD to publish 2026 talent; `preseason-refresh` retries daily and loads itself the first morning `--check` is green. |
 | **The edge verdict** | b₁ = 0.035 (t = 0.84) for the model vs 0.987 (t = 22.81) for the market, n = 2611; flagged edges 49.2% ATS vs the close. Edges are **information, not bets** — and no model-accuracy work belongs in the next 17 days. |
 
@@ -546,20 +546,21 @@ Seven items, reported by the owner while using the live site rather than while
 reading it. Six landed in this commit; what is left open is one apply and two
 deliberate deferrals, each recorded below with what it would take.
 
-- [ ] **DB-8 — migration `0053_survivor_pools.sql` is not applied to the live
-      project.** Survivor pools do not work until it is, and the failure mode is
-      quiet: `create_survivor_group` does not exist, so the form returns
-      PostgREST's "function not found" and every other kind of group carries on
-      working. **Safe in either order** — unlike 0047 and 0052, nothing in the
-      new code path runs before the migration, and nothing in the old code path
-      reads the new tables. Apply it whenever.
-      Verify after applying: `create_survivor_group('x','private','nfl','AFC',
-      1,false)` **raises** (NFL pools take no conference), `survivor_picks` and
-      `survivor_pools` grant no TRUNCATE to `anon` or `authenticated`, a direct
-      `insert into survivor_picks` from `authenticated` is denied, and
-      `groups_kind_check` accepts `'survivor'`. All four are asserted in
-      `supabase/tests/survivor.sql` against a real cluster; the live apply is
-      what has not happened. · **Owner** · **S**
+- [x] **DB-8 — migration `0053_survivor_pools.sql`.** **Applied to
+      `mjijyutmbtnwcjspozsx` 2026-08-15**, recorded as `20260815044806`. Ordering
+      did not matter here, unlike 0047 and 0052: nothing in the old code reads
+      the new tables and nothing in the new code path runs before the migration,
+      so it went in ahead of the deploy.
+      Verified live afterwards, not assumed: `groups_kind_check` reads
+      `kind = ANY (ARRAY['pickem','betting','survivor'])`; **0** TRUNCATE grants
+      to `anon` or `authenticated` on either new table (0049's posture holds for
+      tables added after it); `survivor_picks` grants `SELECT` and nothing that
+      writes; 5 RLS policies and all 4 functions present;
+      `create_survivor_group` executable by `authenticated` and **not** by
+      `anon`. A probe call confirmed the definer body runs and stops on its
+      sign-in guard — `execute_sql` has no `auth.uid()` — leaving
+      `groups where kind = 'survivor'` at **0 rows**, so nothing was created in
+      production to test it.
 
 - [x] **AUTH-1 — sign-up failed with a bare red `{}`.** The `{}` is
       `JSON.stringify` of a `Response` object: `@supabase/auth-js` builds the
@@ -580,7 +581,7 @@ deliberate deferrals, each recorded below with what it would take.
       Pinned by `LoginForm.test.tsx`, including that the rendered string can
       never be `{}` or empty.
 
-- [ ] **AUTH-2 — Supabase revokes the session about once a day; "it's not
+- [x] **AUTH-2 — Supabase revokes the session about once a day; "it's not
       keeping me logged in on a device forever anymore".** Not a cookie
       lifetime and not a code bug: **refresh-token rotation with reuse
       detection** is on, so replaying any already-used refresh token revokes the
@@ -607,12 +608,18 @@ deliberate deferrals, each recorded below with what it would take.
       null on all four rows in `auth.sessions`), so no expiry setting is doing
       this; `createBrowserClient` is a singleton in the browser, so it is not
       duplicate client instances; and the 400-day cookie config is correct.
-      **The fix is a project setting, not code: Authentication → Sessions →
-      turn off Refresh Token Rotation.** Raising the reuse interval instead only
-      covers refreshes colliding within seconds, and the tokens here were hours
-      and days old. The trade — a stolen refresh token stays usable until
-      sign-out — is one this product already made when it chose invite-only with
-      400-day sessions. · **Owner** · **S**
+      **Fixed by a project setting, not by code: "Detect and revoke potentially
+      compromised refresh tokens" was unchecked by the owner 2026-08-15.**
+      Raising the reuse interval instead would only have covered refreshes
+      colliding within seconds, and the tokens here were hours and days old. The
+      trade — a stolen refresh token stays usable until sign-out — is the one
+      this product already made when it chose invite-only with 400-day sessions.
+      **Not yet confirmed by a clean week.** The proof is `auth_logs` carrying no
+      `refresh_token_already_used` for several days across a real
+      sleep/wake cycle on the phone; until then this is "the mechanism is
+      removed", not "observed fixed". Query:
+      `select count(*) from logs where source='auth_logs' and
+      JSONExtractString(event_message,'error_code')='refresh_token_already_used'`.
       *Landed on the code side 2026-08-15 and neither half fixes it alone:*
       `/api/*` is out of the proxy matcher (those routes build their own client
       from the same cookies, so the proxy's pass was a second GoTrue round trip
@@ -2727,6 +2734,42 @@ rather than a quarter linescore.
 
 ---
 
+
+**Open the front door** — owner decision 2026-08-15: "I do want to make it just
+where they can join the site without me having to put in their emails, but we
+can do that later." Today `handle_new_user` (0002) raises for any address not on
+`invite_allowlist`, which is the single reason a new user gets an error at all
+(AUTH-1, §2.1e). Deliberately queued, not done, because it changes who can have
+an account and that is a decision with a blast radius, not a bug.
+- [ ] **AUTH-3** Let someone create an account without the commissioner adding
+      their email first. **Three shapes, and the middle one is the
+      recommendation:**
+      **(a) Fully open.** Drop the allowlist check. Anyone with an email gets an
+      account. Cheap — delete one `raise` — and it opens more than it looks
+      like: signed-in reads are wider than anonymous ones, every **public**
+      group becomes joinable by a stranger, and `profiles` becomes a table
+      anyone can add a row to, which is the table every leaderboard and roster
+      joins against.
+      **(b) Join-code-gated signup — recommended.** Signup stays closed by
+      default, and presenting a valid group join code is what opens it. This is
+      how the product already thinks: codes exist, they already mint
+      memberships, and "someone sent me a link" is the actual way people arrive.
+      The machinery is nearly all there — `signInWithOtp`'s `options.data`
+      carries arbitrary fields into `raw_user_meta_data`, so the trigger can
+      read `new.raw_user_meta_data->>'join_code'`, normalise it the way 0039
+      does, and allow the insert when it matches a live group. Auto-joining that
+      group in the same transaction is then free, which removes the "make an
+      account, then find the code again" step the invite flow has today.
+      Throttling has a home too: `group_join_attempts` (0039) is already the
+      deny-all table for exactly this kind of guessing.
+      **(c) Signed invite links.** A token in the URL rather than a code.
+      Strictly better security, strictly more machinery, and it does not remove
+      the commissioner from the loop — which is the thing the owner asked to
+      remove.
+      Whichever lands, two things move with it: the login form's copy stops
+      saying "invite-only" (`LoginForm.tsx`, `INVITE_ONLY`), and AUTH-1's
+      ambiguity resolves on its own — with the trigger no longer raising, a 500
+      on the signup call means the mailer and only the mailer. · **M**
 
 **Box score, part two** — `SCORE-2` (§2.1e) shipped the line score, derived from
 `scoring_plays` with no new ingest. What a box score also means, and this does
