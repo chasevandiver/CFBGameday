@@ -166,6 +166,41 @@ shipping it.
 
 ## Log
 
+### Aug 15 — Shipped: PR #76, and a migration split that earned itself
+
+Merged and deployed. The interesting part is the ordering, because it is the
+third time this project has been bitten by a migration whose safe position
+depends on what code is running.
+
+`0050` originally did two things: create `is_current_user_admin()` and revoke
+`is_admin` from `authenticated`. As one file the middle step of the rollout had
+nowhere to stand. Applied before the deploy, the revoke denies the running
+code's `select("is_admin")` and breaks every admin gate — including `/me`,
+which reads it inside a multi-column list and throws rather than degrades.
+Applied after, there is a window where the new code calls a function that does
+not exist; `lib/admin.ts` fails closed, so that window is admins quietly losing
+their admin links rather than seeing an error, which is worse for being the
+kind of thing nobody reports.
+
+Split into `0050` (the function, inert against old code) and `0052` (the
+revoke). Executed as: apply 0049/0050/0051 → merge → confirm the deploy →
+apply 0052. Between the two halves `is_admin` was deliberately checked and
+found **still readable**, which is what proved the split was doing its job
+rather than merely looking tidy.
+
+**The deploy was confirmed by behaviour, not by a badge.** `/ledger/stats`
+answering 200 in production is proof the new build is serving, because that
+route does not exist in the old one. A green Vercel status only says a build
+finished.
+
+Verified after 0052: TRUNCATE reachable on **0** public tables (was 32),
+`is_admin` no longer readable by `authenticated` while `display_name` and
+`timezone` still are, `/admin` still returning its 404 body to an anonymous
+caller, and twelve production routes at 200 with nothing 500ing.
+
+51 migration files, 51 recorded rows.
+
+
 ### Aug 14 — The NFL lane audited against the live database, and a push channel that never worked
 
 No code shipped here. This is a reconciliation pass: `docs/STATUS.md` had the
