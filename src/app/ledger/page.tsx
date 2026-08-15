@@ -365,7 +365,7 @@ export default async function LedgerPage({
                     })
                   : null
               }
-              filename="cfb-slate-bets.png"
+              filename="the-slate-bets.png"
             />
           )}
           {user && (

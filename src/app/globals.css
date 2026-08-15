@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* The CFB Slate — premium game-day design system.
+/* The Slate — premium game-day design system.
    Charcoal broadcast dark is native; light mode is the variant, toggled via
    html[data-theme="light"] (set pre-paint in layout.tsx to avoid a flash).
    Legacy token names (chalk / gold / flag / field) are kept and remapped so
@@ -428,28 +428,25 @@ html[data-theme="light"] .panel {
   letter-spacing: 0.07em;
   text-transform: uppercase;
 }
-.cover-margin {
-  font-family: var(--font-numeric), monospace;
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  font-style: italic;
-  font-size: 18px;
-  line-height: 1;
-}
-.cover-sub {
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  opacity: 0.85;
-}
+/* `.cover-margin` (the 18px signed number) and `.cover-sub` (the totals room
+   line) were removed 2026-08-15 with the elements that used them — see the
+   CoverStrip comment in GameCard.tsx for why. `PickCoverView` still computes
+   both; the sort key in `liveUrgency` reads the same distance, so the strip
+   dropping them does not make the numbers dead. */
+/* What you hold, at the size of the verdict beside it.
+   Was 10.5px at 0.75 opacity — smaller and fainter than the crew line further
+   down the same card, on the one element that exists to tell you where your
+   money is. Full opacity and 13px is the readable floor docs/DESIGN.md sets for
+   text that carries meaning, and it lands beside the word rather than under it
+   because the strip is a single line: "COVERING … UTAH +3.5". */
 .cover-pick {
   margin-left: auto;
   font-family: var(--font-numeric), monospace;
   font-variant-numeric: tabular-nums;
-  font-size: 10.5px;
+  font-size: 13px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  opacity: 0.75;
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 .cover-covering {

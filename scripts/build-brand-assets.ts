@@ -637,7 +637,7 @@ export const SLATE_MARK_ASPECT = ${(markAspect).toFixed(4)};
   console.log("ios startup images");
   const graduate = await loadFont("graduate");
   const plex = await loadFont("plexMono");
-  const word = setLine(graduate, "THE CFB SLATE", 100, 9);
+  const word = setLine(graduate, "THE SLATE", 100, 9);
   const capTop = -(graduate.tables.os2.sCapHeight ?? 700) * (100 / graduate.unitsPerEm);
   const tag = setLine(plex, "RATINGS · PREDICTIONS · PICKS · BET TRACKING", 100, 4);
   const markUri = `data:image/png;base64,${keyed.toString("base64")}`;

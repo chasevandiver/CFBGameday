@@ -1,5 +1,5 @@
 /**
- * The CFB Slate prediction model — pure functions, no I/O.
+ * The Slate prediction model — pure functions, no I/O.
  * All parameters live in ModelParams so the backtest can tune them
  * and every prediction can be attributed to a model_version.
  * Spec: docs/SPEC.md §2.

@@ -8,7 +8,7 @@ import { fmtSpread } from "../../../lib/slate";
 // Per-matchup link card (audit 08/UX-12): a shared /game link renders the
 // scorebug — teams, the consensus spread, kickoff — instead of a bare URL.
 // Runs on the node runtime because it reads Supabase via the server client.
-export const alt = "Matchup on The CFB Slate";
+export const alt = "Matchup on The Slate";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -35,13 +35,13 @@ export default async function Image({ params }: { params: Promise<{ id: string }
       <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 40 }}>
         <img src={SLATE_MARK_DATA_URI} height={46} width={Math.round(46 * SLATE_MARK_ASPECT)} alt="" />
         <div style={{ fontSize: 28, letterSpacing: 4, color: BRAND.gold, textTransform: "uppercase" }}>
-          The CFB Slate
+          The Slate
         </div>
       </div>
     </div>
   );
 
-  if (!Number.isInteger(gameId)) return new ImageResponse(brand("The CFB Slate"), size);
+  if (!Number.isInteger(gameId)) return new ImageResponse(brand("The Slate"), size);
 
   const supabase = await createClient();
   const { data: game } = await supabase
@@ -49,7 +49,7 @@ export default async function Image({ params }: { params: Promise<{ id: string }
     .select("home_team_id, away_team_id, start_ts")
     .eq("id", gameId)
     .maybeSingle();
-  if (!game) return new ImageResponse(brand("The CFB Slate"), size);
+  if (!game) return new ImageResponse(brand("The Slate"), size);
 
   const [{ data: teams }, { data: snaps }] = await Promise.all([
     supabase.from("teams").select("id, school, abbreviation").in("id", [game.home_team_id, game.away_team_id]),
@@ -102,7 +102,7 @@ export default async function Image({ params }: { params: Promise<{ id: string }
         <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 44, opacity: 0.72 }}>
           <img src={SLATE_MARK_DATA_URI} height={44} width={Math.round(44 * SLATE_MARK_ASPECT)} alt="" />
           <div style={{ fontSize: 26, letterSpacing: 4, color: BRAND.chalk, textTransform: "uppercase" }}>
-            The CFB Slate
+            The Slate
           </div>
         </div>
       </div>

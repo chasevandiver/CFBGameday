@@ -1,4 +1,4 @@
-# The CFB Slate — Status
+# The Slate — Status
 
 **The one file that answers "what's left."** Reconciled 2026-08-13 against the
 code on `claude/status-md-tasks-ivmbtb`. Week 0 is **Sat Aug 29** — 16 days.
@@ -61,12 +61,12 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
+| **Build** | **973 tests across 71 files**, all green in-session 2026-08-15 along with `tsc`, lint and `next build`, after the owner-report batch in §2.1e and the AUTH-2 proxy change. **257 DB assertions** against a real Postgres 16 cluster, 0 failed — 27 of them new in `supabase/tests/survivor.sql`, and three of those were rewritten after they passed for the wrong reason (the `raises` helper accepts any error, and the seed was refusing the pick on start-week rather than on the rule under test). Previously: **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
 | **Scheduler** | 111 completed runs. Reds to date: one watchdog firing correctly on a cold `job_runs` table, and runs #107–109 — the backup verification sequence, each a real defect, all closed. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
 | **Model in code** | `2026.5.0` — tilt carry, `baseHfa` 3.0, centered team-HFA, portal fix, market-anchored tier recentre |
-| **Database** | **51 migration files, 51 recorded rows, in sync** — verified live 2026-08-15 after PR #76 merged. 0049/0050/0051 were applied **before** the merge and 0052 **after the deploy was confirmed live**, which is the whole reason 0050 was split: 0050 only adds `is_current_user_admin()` and is inert against the old code, while 0052's revoke would have denied the running code's `select("is_admin")` and broken every admin gate. Deploy confirmed by `/ledger/stats` answering 200 in production — a route that exists only in the new build — not by a status badge. Verified after applying: **0 public tables grant TRUNCATE** to `anon` or `authenticated` (was 32), `is_current_user_admin` executable by `authenticated` and not by `anon`, `group_game_pick_counts` executable, `profiles.is_admin` no longer readable by `authenticated` while `display_name` and `timezone` still are, and twelve production routes serving 200 with `/admin` still returning its 404 body to an anonymous caller. Previously: **47 migration files, 47 recorded rows, in sync** — verified live 2026-08-14 after 0046/0047/0048 were applied to `mjijyutmbtnwcjspozsx` in that order, which was load-bearing: **0047 had to land before the code that stops sending `reason_tag` deployed**, or every bet insert would have failed the NOT NULL. Verified after applying: `deleted_wagers` and `scoring_plays` exist, `admin_remove_pick` is present, `bets.reason_tag` is nullable, `deleted_wagers` has no grant to either API role, and `scoring_plays` grants SELECT only. *(File count is 47 against numbers running to 0048 because **0004 does not exist** — a pre-existing gap, confirmed by counting the directory rather than trusting a number in this file.)* One thing that verification turned up and did not fix: **TRUNCATE is granted to `anon` and `authenticated` on every public table**, project-wide and pre-existing — see §6. Previously: **40 migration files, 40 recorded rows, in sync** — verified live 2026-08-13 after PR #58 merged and deployed. 0038–0041 were applied in order once the production build carried the code they depend on, which was the whole reason they waited: 0039 makes `join_group` return null on a bad code (the old action read that as success), 0040 revokes `is_admin` from anon while the old `fetchProfiles` still did `select("*")`, and 0041 renames a column the old `build-preseason` still wrote — which would have failed `preseason-refresh`, the job the Aug 26 checkpoint waits on. Verified after applying: join codes mint at 10 Crockford characters, `normalize_join_code('il o-1')` → `1101`, `group_join_attempts` exists deny-all, and anon can read neither `groups.join_code` nor `profiles.is_admin`. Before this pass it was 36/36, and 0034–0037 **are applied** — an earlier version of this row said 0034 and 0035 were "not yet applied to the live project" and gave the count as 32/32, and both were stale by the time they were written. It matters because two ticked rows depend on them: P1-1's re-pick fix *is* 0034 (`make_pick` confirmed carrying it live), and OPS-2's watchdog push needs 0036's enum value and 0037's `notification_settings` row — `notifyWatchdog` returns `{notified: 0, errors: 0}` when that row is missing (`notify-jobs.ts:375`), so it would have been a silent no-op. Both confirmed live, along with 2 admin push subscriptions for it to reach. The `0017` ledger gap (DB-3) was repaired 08-12. 0031–0033 add the push tables. `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
+| **Database** | **52 migration files, 52 recorded rows, in sync** — verified live 2026-08-15 after `0053_survivor_pools` was applied as `20260815044806`. Its ordering did not matter, unlike 0047's and 0052's: no old code reads `survivor_pools`/`survivor_picks` and no new code path runs before it, so it went in ahead of the deploy. Verified after applying: `groups_kind_check` accepts `'survivor'`, **0** TRUNCATE grants to `anon`/`authenticated` on either new table, `survivor_picks` grants only `SELECT`, 5 policies and 4 functions present, `create_survivor_group` executable by `authenticated` and not by `anon`, and **0** survivor groups created — the probe stopped on the sign-in guard rather than writing a row. Previously **51 migration files, 51 recorded rows, in sync** — verified live 2026-08-15 after PR #76 merged. 0049/0050/0051 were applied **before** the merge and 0052 **after the deploy was confirmed live**, which is the whole reason 0050 was split: 0050 only adds `is_current_user_admin()` and is inert against the old code, while 0052's revoke would have denied the running code's `select("is_admin")` and broken every admin gate. Deploy confirmed by `/ledger/stats` answering 200 in production — a route that exists only in the new build — not by a status badge. Verified after applying: **0 public tables grant TRUNCATE** to `anon` or `authenticated` (was 32), `is_current_user_admin` executable by `authenticated` and not by `anon`, `group_game_pick_counts` executable, `profiles.is_admin` no longer readable by `authenticated` while `display_name` and `timezone` still are, and twelve production routes serving 200 with `/admin` still returning its 404 body to an anonymous caller. Previously: **47 migration files, 47 recorded rows, in sync** — verified live 2026-08-14 after 0046/0047/0048 were applied to `mjijyutmbtnwcjspozsx` in that order, which was load-bearing: **0047 had to land before the code that stops sending `reason_tag` deployed**, or every bet insert would have failed the NOT NULL. Verified after applying: `deleted_wagers` and `scoring_plays` exist, `admin_remove_pick` is present, `bets.reason_tag` is nullable, `deleted_wagers` has no grant to either API role, and `scoring_plays` grants SELECT only. *(File count is 47 against numbers running to 0048 because **0004 does not exist** — a pre-existing gap, confirmed by counting the directory rather than trusting a number in this file.)* One thing that verification turned up and did not fix: **TRUNCATE is granted to `anon` and `authenticated` on every public table**, project-wide and pre-existing — see §6. Previously: **40 migration files, 40 recorded rows, in sync** — verified live 2026-08-13 after PR #58 merged and deployed. 0038–0041 were applied in order once the production build carried the code they depend on, which was the whole reason they waited: 0039 makes `join_group` return null on a bad code (the old action read that as success), 0040 revokes `is_admin` from anon while the old `fetchProfiles` still did `select("*")`, and 0041 renames a column the old `build-preseason` still wrote — which would have failed `preseason-refresh`, the job the Aug 26 checkpoint waits on. Verified after applying: join codes mint at 10 Crockford characters, `normalize_join_code('il o-1')` → `1101`, `group_join_attempts` exists deny-all, and anon can read neither `groups.join_code` nor `profiles.is_admin`. Before this pass it was 36/36, and 0034–0037 **are applied** — an earlier version of this row said 0034 and 0035 were "not yet applied to the live project" and gave the count as 32/32, and both were stale by the time they were written. It matters because two ticked rows depend on them: P1-1's re-pick fix *is* 0034 (`make_pick` confirmed carrying it live), and OPS-2's watchdog push needs 0036's enum value and 0037's `notification_settings` row — `notifyWatchdog` returns `{notified: 0, errors: 0}` when that row is missing (`notify-jobs.ts:375`), so it would have been a silent no-op. Both confirmed live, along with 2 admin push subscriptions for it to reach. The `0017` ledger gap (DB-3) was repaired 08-12. 0031–0033 add the push tables. `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
 | **Model in production** | ⚠️ `2026.2.0`. **Four versions behind**, pricing every cross-classification opener ~10 points toward the G5. Waiting on CFBD to publish 2026 talent; `preseason-refresh` retries daily and loads itself the first morning `--check` is green. |
 | **The edge verdict** | b₁ = 0.035 (t = 0.84) for the model vs 0.987 (t = 22.81) for the market, n = 2611; flagged edges 49.2% ATS vs the close. Edges are **information, not bets** — and no model-accuracy work belongs in the next 17 days. |
 
@@ -539,6 +539,140 @@ is the same seam `SCHED-1` sat in.
       international game needs. **Not run against production** — the sandbox
       proxy 403s the API from `node` (curl works, Actions works), so the next
       scheduled `sync-games` is what actually writes these rows. · S
+
+### 2.1e Owner report from using the site, 2026-08-15
+
+Seven items, reported by the owner while using the live site rather than while
+reading it. Six landed in this commit; what is left open is one apply and two
+deliberate deferrals, each recorded below with what it would take.
+
+- [x] **DB-8 — migration `0053_survivor_pools.sql`.** **Applied to
+      `mjijyutmbtnwcjspozsx` 2026-08-15**, recorded as `20260815044806`. Ordering
+      did not matter here, unlike 0047 and 0052: nothing in the old code reads
+      the new tables and nothing in the new code path runs before the migration,
+      so it went in ahead of the deploy.
+      Verified live afterwards, not assumed: `groups_kind_check` reads
+      `kind = ANY (ARRAY['pickem','betting','survivor'])`; **0** TRUNCATE grants
+      to `anon` or `authenticated` on either new table (0049's posture holds for
+      tables added after it); `survivor_picks` grants `SELECT` and nothing that
+      writes; 5 RLS policies and all 4 functions present;
+      `create_survivor_group` executable by `authenticated` and **not** by
+      `anon`. A probe call confirmed the definer body runs and stops on its
+      sign-in guard — `execute_sql` has no `auth.uid()` — leaving
+      `groups where kind = 'survivor'` at **0 rows**, so nothing was created in
+      production to test it.
+
+- [x] **AUTH-1 — sign-up failed with a bare red `{}`.** The `{}` is
+      `JSON.stringify` of a `Response` object: `@supabase/auth-js` builds the
+      message for every 5xx with `_getErrorMessage(error)` passing the response
+      rather than its parsed body (`dist/main/lib/fetch.js:34-42`), and a
+      `Response` has no own enumerable properties. So **any** 500 from GoTrue
+      arrives with its reason discarded, which is why reading our own code would
+      never have found this.
+      Two live causes sit behind it: the invite-only trigger (`handle_new_user`,
+      0002) raising for an address not on `invite_allowlist` — which aborts the
+      `auth.users` insert and returns 500 `unexpected_failure`, the raise message
+      lost — and a custom SMTP sender that cannot authenticate, also a 500.
+      `LoginForm` now identifies a brand-new address *before* the signup path, by
+      asking for a sign-in with `shouldCreateUser: false`: an existing account
+      gets its link from that call, and anything else comes back as a clean 422
+      `otp_disabled`. A 500 is then attributable by which call raised it. Costs
+      no extra email — the probe only sends when the account already exists.
+      Pinned by `LoginForm.test.tsx`, including that the rendered string can
+      never be `{}` or empty.
+
+- [x] **AUTH-2 — Supabase revokes the session about once a day; "it's not
+      keeping me logged in on a device forever anymore".** Not a cookie
+      lifetime and not a code bug: **refresh-token rotation with reuse
+      detection** is on, so replaying any already-used refresh token revokes the
+      **whole token family**, including the token that is currently valid.
+      Proven in the live auth logs, not inferred — three in one evening:
+      `22:33:13 "Possible abuse attempt: 41"`, `02:19:59 "…: 42"`,
+      `02:22:40 "…: 57"`, all `refresh_token_already_used`, all 400. The kill is
+      visible in the table too: token 55 was the live token and its `updated_at`
+      is stamped `22:33:13`, the same instant token 41 was flagged — flagging the
+      old one revoked the live one. Then a **108-request storm** 23:23–23:25
+      replayed the dead token from **ten different Vercel IPs plus the phone**,
+      and the owner gave up and requested a fresh magic link at 02:22:51.
+      Two things feed it. The replayed tokens are **stale, not concurrent** —
+      token 42 was created 08-13 05:24 and presented again 08-15 02:19, two days
+      later, from a Vercel IP, so some client sent a two-day-old cookie. And the
+      app had **far too many independent refreshers**: 629 `/user` calls in one
+      hour, because the proxy ran `getUser()` on every matched request *and*
+      `/api/ticker` and `/api/slate` each call it again. Almost certainly why it
+      started recently — the 30s ticker, the moving home page and the live slate
+      all landed in the last few days, and each is another serverless instance
+      presenting the cookie. *(That last sentence is inference. The revocations
+      are not.)*
+      **Ruled out with evidence:** time-boxed sessions are **off** (`not_after`
+      null on all four rows in `auth.sessions`), so no expiry setting is doing
+      this; `createBrowserClient` is a singleton in the browser, so it is not
+      duplicate client instances; and the 400-day cookie config is correct.
+      **Fixed by a project setting, not by code: "Detect and revoke potentially
+      compromised refresh tokens" was unchecked by the owner 2026-08-15.**
+      Raising the reuse interval instead would only have covered refreshes
+      colliding within seconds, and the tokens here were hours and days old. The
+      trade — a stolen refresh token stays usable until sign-out — is the one
+      this product already made when it chose invite-only with 400-day sessions.
+      **Not yet confirmed by a clean week.** The proof is `auth_logs` carrying no
+      `refresh_token_already_used` for several days across a real
+      sleep/wake cycle on the phone; until then this is "the mechanism is
+      removed", not "observed fixed". Query:
+      `select count(*) from logs where source='auth_logs' and
+      JSONExtractString(event_message,'error_code')='refresh_token_already_used'`.
+      *Landed on the code side 2026-08-15 and neither half fixes it alone:*
+      `/api/*` is out of the proxy matcher (those routes build their own client
+      from the same cookies, so the proxy's pass was a second GoTrue round trip
+      per poll), a request with no `sb-…-auth-token` cookie no longer constructs
+      a client at all, and the proxy stopped overriding `maxAge` on every cookie
+      @supabase/ssr hands it — that override was rewriting ssr's `maxAge: 0`
+      **deletions** into 400-day empty cookies, and was redundant besides, since
+      ssr's own defaults have been 400 days since 0.10. `src/proxy.test.ts`
+      pins the matcher, because re-including `/api` later would double the auth
+      traffic again and nothing would look broken.
+
+- [x] **BRAND-8 — renamed to The Slate.** The product has carried the NFL since
+      v1.0. Wordmark, manifest, title template, OG cards, share card, push
+      payloads, service worker, export filenames and the iOS splash. `npm run
+      brand` re-ran for the splash wordmark only; **the icon artwork was not
+      touched**, per AGENTS.md. `docs/BRAND.md` records it at the top.
+
+- [x] **GRP-4 — the Groups tab showed preseason weeks as regular-season weeks.**
+      Reported as "preseason week 2 is listed as week 2, with the first set of
+      games not on week 5". The group pages carried `?week=` and took the season
+      *type* from the live calendar pointer, which in August is `preseason` — so
+      the number was right and its meaning was wrong, every week link stayed
+      inside a four-week season type, and the regular season was unreachable
+      because nothing in the group UI could change the type. `/slate` has carried
+      `?st=pre|post` since NFL-6; `src/lib/group-weeks.ts` makes that shared and
+      the chevrons now walk one ordered calendar across the boundaries. It also
+      surfaces a rule that had been invisible: `set_group_week_config` refuses
+      `preseason`, so an August admin was sent to a page whose save could only
+      throw.
+
+- [x] **GRP-5 — survivor pools.** A third `groups.kind` (0053), CFB by
+      conference and NFL league-wide. Elimination is derived, never stored;
+      a tie is a strike; a missed week is a strike only once every game in it
+      has kicked off. 27 DB assertions and 13 unit assertions.
+
+- [x] **SCORE-2 — box scores on the game page**, pregame, live and final,
+      derived from `scoring_plays` (0048) with no new table, feed call or job.
+      Quarters that do not sum to the scoreboard are footnoted rather than
+      reconciled by parking the difference somewhere plausible.
+
+- [x] **UX-39 — the cover strip reads a bet, and lost its big number.** Live it
+      was gated on a pick'em pick, so a card with money and no pick glowed green
+      with no word on it; it now ranks a bet over a pick, matching `tintFor`. The
+      18px signed margin and the totals room line are gone, and the tail that
+      says what you hold went from 10.5px/75% to 13px at full weight — it was
+      smaller than the crew line beneath it. The home hub's position rows render
+      the same strip; they had the aura and no word.
+
+- [x] **UX-40 — the ticker highlights the leader**, in weight and brightness
+      rather than colour (colour is already spent on your own verdict). A tie
+      highlights neither side, which is why `leadingSide` returns null rather
+      than defaulting.
+
 
 ### 2.2 This week (Aug 14–18)
 
@@ -2600,6 +2734,57 @@ rather than a quarter linescore.
 
 ---
 
+
+**Open the front door** — owner decision 2026-08-15: "I do want to make it just
+where they can join the site without me having to put in their emails, but we
+can do that later." Today `handle_new_user` (0002) raises for any address not on
+`invite_allowlist`, which is the single reason a new user gets an error at all
+(AUTH-1, §2.1e). Deliberately queued, not done, because it changes who can have
+an account and that is a decision with a blast radius, not a bug.
+- [ ] **AUTH-3** Let someone create an account without the commissioner adding
+      their email first. **Three shapes, and the middle one is the
+      recommendation:**
+      **(a) Fully open.** Drop the allowlist check. Anyone with an email gets an
+      account. Cheap — delete one `raise` — and it opens more than it looks
+      like: signed-in reads are wider than anonymous ones, every **public**
+      group becomes joinable by a stranger, and `profiles` becomes a table
+      anyone can add a row to, which is the table every leaderboard and roster
+      joins against.
+      **(b) Join-code-gated signup — recommended.** Signup stays closed by
+      default, and presenting a valid group join code is what opens it. This is
+      how the product already thinks: codes exist, they already mint
+      memberships, and "someone sent me a link" is the actual way people arrive.
+      The machinery is nearly all there — `signInWithOtp`'s `options.data`
+      carries arbitrary fields into `raw_user_meta_data`, so the trigger can
+      read `new.raw_user_meta_data->>'join_code'`, normalise it the way 0039
+      does, and allow the insert when it matches a live group. Auto-joining that
+      group in the same transaction is then free, which removes the "make an
+      account, then find the code again" step the invite flow has today.
+      Throttling has a home too: `group_join_attempts` (0039) is already the
+      deny-all table for exactly this kind of guessing.
+      **(c) Signed invite links.** A token in the URL rather than a code.
+      Strictly better security, strictly more machinery, and it does not remove
+      the commissioner from the loop — which is the thing the owner asked to
+      remove.
+      Whichever lands, two things move with it: the login form's copy stops
+      saying "invite-only" (`LoginForm.tsx`, `INVITE_ONLY`), and AUTH-1's
+      ambiguity resolves on its own — with the trigger no longer raising, a 500
+      on the signup call means the mailer and only the mailer. · **M**
+
+**Box score, part two** — `SCORE-2` (§2.1e) shipped the line score, derived from
+`scoring_plays` with no new ingest. What a box score also means, and this does
+not have, is the team stat line: total yards, first downs, third-down
+conversions, turnovers, time of possession.
+- [ ] **SCORE-3** A `game_team_stats` table plus an ingest, fed by ESPN's
+      `/summary` `boxscore.teams[].statistics` for the NFL and CFBD
+      `/games/teams` for CFB. Cost is the reason it is not in SCORE-2 rather
+      than a design objection: the NFL side can ride the existing per-game
+      `/summary` call that `nflScoringJob` already makes (`gamesNeedingScoring`
+      keeps that to ~1 call per score), but the CFB side needs a route we do not
+      currently touch, and the shape has to absorb two feeds naming the same
+      stat differently — the same problem `scoring.ts` solved for plays. Do it
+      after Week 0, when there is real data to check the parse against. · **M**
+
 ## 5. Not built, by choice
 
 Additive features, no defect behind any of them. Verified still open 2026-08-12.
@@ -2699,6 +2884,23 @@ here so they aren't rediscovered as bugs.
   early-season σ have each already been tested and rejected on evidence.
 
 ---
+
+- **A failed sign-up cannot say *which* 500 it was.** `AUTH-1` (§2.1e) narrows a
+  GoTrue 500 to the signup call, which is most of the value, but the invite-only
+  trigger and a failing SMTP sender are the same opaque 500 from the browser, so
+  the message names both. Closing it properly needs one of: an
+  `is_invited(email)` RPC granted to `anon` — which is an enumeration oracle on
+  the allowlist, cheap to build and a real (if small) disclosure; or GoTrue
+  surfacing the trigger's raise message, which it does not and which we do not
+  control. Not queued: the current message tells the reader what to do in either
+  case, which is the part that was missing.
+- **A survivor entrant who is already eliminated can still insert a pick.** By
+  design and stated in 0053's header: elimination is derived from the picks and
+  the finals rather than stored, so there is no flag for the RPC to check, and
+  adding one would create the second source of truth the design exists to avoid.
+  It has no effect — every standing is recomputed from the whole history on each
+  read — and the UI does not offer the control. Recorded because "the database
+  enforces every invariant" is this project's rule and this is the exception.
 
 ## 7. Corrections from this reconciliation (2026-08-12)
 

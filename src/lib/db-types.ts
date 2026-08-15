@@ -135,7 +135,7 @@ export interface ProfileRow {
   is_admin: boolean;
 }
 
-export type GroupKind = "pickem" | "betting";
+export type GroupKind = "pickem" | "betting" | "survivor";
 
 export interface GroupRow {
   id: string;
@@ -143,7 +143,8 @@ export interface GroupRow {
   slug: string;
   visibility: "private" | "public";
   /** `pickem` runs an admin's board; `betting` is a lens over members' own
-   *  ledgers, with no board and no picks at all (migration 0027). */
+   *  ledgers, with no board and no picks at all (migration 0027); `survivor` is
+   *  one team a week, no repeats, wrong answer and you are out (0053). */
   kind: GroupKind;
   /** Others' picks are unreadable until each game kicks off (migration 0023). */
   picks_hidden_until_kickoff: boolean;

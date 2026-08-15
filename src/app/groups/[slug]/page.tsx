@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppNav } from "../../../components/AppNav";
 import { BettingHome } from "./BettingHome";
+import { SurvivorHome } from "./SurvivorHome";
 import { GroupSwitcher, JoinCode } from "../../../components/group/GroupForms";
 import { MemberCard, WeekHero } from "../../../components/group/GroupHub";
 import type { PickRow } from "../../../lib/db-types";
@@ -14,12 +15,20 @@ import {
   fetchGroupWeek,
   resolveActiveGroup,
 } from "../../../lib/groups";
+import {
+  parseWeekRef,
+  seasonWeeks,
+  stQuery,
+  weekLabel,
+  weekQuery,
+  type WeekRef,
+} from "../../../lib/group-weeks";
 import { seasonIdsForYear, seasonYearOf, sportOfSeasonId } from "../../../lib/league";
+import { fetchSurvivorPool } from "../../../lib/survivor-data";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../lib/queries";
 import { byLeagueRules, EMPTY_TALLY, tallyBy } from "../../../lib/records";
 import { pickableSlots } from "../../../lib/slate";
 import { createClient } from "../../../lib/supabase/server";
-import { isValidWeek } from "../../../lib/week-range";
 
 export const dynamic = "force-dynamic";
 
@@ -45,10 +54,10 @@ export default async function GroupHomePage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ week?: string; league?: string }>;
+  searchParams: Promise<{ week?: string; st?: string; league?: string }>;
 }) {
   const { slug } = await params;
-  const { week: weekParam, league: leagueParam } = await searchParams;
+  const { week: weekParam, st: stRaw, league: leagueParam } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -59,20 +68,59 @@ export default async function GroupHomePage({
   // are deliberately the same answer.
   if (!active || active.slug !== slug) notFound();
 
-  // A both-league group holds one board per league per week (they are separate
-  // group_week_config rows under separate season ids); ?league= says which is
-  // in view. Betting groups always resolve CFB here — their home reads both.
-  const league = groupLeague(leagueParam, active.kind === "betting" ? ["cfb"] : active.leagues);
-  const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(
-    supabase,
-    league,
+  /* A both-league group holds one board per league per week (separate
+     group_week_config rows under separate season ids); ?league= says which is
+     in view. A survivor pool carries its single league in the same column, so
+     it resolves the same way. A betting group always resolves CFB — its home
+     reads both leagues' ledgers regardless. */
+  const league = groupLeague(
+    leagueParam,
+    active.kind === "betting" ? ["cfb"] : active.leagues,
   );
-  const parsed = Number(weekParam);
-  const week = isValidWeek(parsed) ? parsed : currentWeek;
+  const {
+    seasonId,
+    week: currentWeek,
+    seasonType: currentType,
+    minWeek,
+  } = await fetchCurrentSeasonWeek(supabase, league);
 
-  // Two kinds of group, two entirely different homes. A betting group has no
-  // board to configure, no picks and no minimum — it reads its members'
-  // ledgers — so it branches before any of the pick'em queries below run.
+  /* The week in view, season type included.
+     This used to be `?week=` alone with the season type inherited from the live
+     calendar pointer, which in August means `preseason` — so a group page in
+     mid-August called NFL preseason week 2 "Week 2", every week link stayed
+     inside the preseason, and the regular season was unreachable. See
+     lib/group-weeks.ts. */
+  const weeks = seasonWeeks(league, minWeek);
+  const currentRef: WeekRef = { seasonType: currentType, week: currentWeek };
+  const ref = parseWeekRef(weekParam, stRaw, weeks, currentRef);
+  const { week, seasonType } = ref;
+
+  // Three kinds of group, three entirely different homes. A survivor pool and a
+  // betting group both branch before any of the pick'em queries below run —
+  // neither has a board, a minimum, or a row in `picks`.
+  if (active.kind === "survivor") {
+    const pool = await fetchSurvivorPool(supabase, active.id);
+    // A survivor group with no pool row cannot happen through
+    // `create_survivor_group`, which writes both in one transaction. If it
+    // somehow does, the hub is the honest answer, not a crash.
+    if (pool) {
+      return (
+        <>
+          <AppNav />
+          <SurvivorHome
+            supabase={supabase}
+            group={active}
+            pool={pool}
+            mine={mine}
+            userId={user?.id ?? null}
+            weekRef={ref}
+            weeks={weeks}
+          />
+        </>
+      );
+    }
+  }
+
   if (active.kind === "betting") {
     return (
       <>
@@ -85,6 +133,8 @@ export default async function GroupHomePage({
           seasonId={seasonId}
           week={week}
           seasonType={seasonType}
+          weeks={weeks}
+          weekRef={ref}
         />
       </>
     );
@@ -234,8 +284,9 @@ export default async function GroupHomePage({
 
         <WeekHero
           slug={slug}
-          week={week}
-          currentWeek={currentWeek}
+          weekRef={ref}
+          weeks={weeks}
+          currentRef={currentRef}
           groupWeek={groupWeek}
           gameCount={boardGames.length}
           pickSlots={pickableSlots(boardGames, groupWeek?.markets ?? [])}
@@ -256,7 +307,7 @@ export default async function GroupHomePage({
             </h2>
             <span className="h-px flex-1 bg-chalk/10" aria-hidden />
             <Link
-              href={`/groups/${slug}/week/${week}?view=person`}
+              href={`/groups/${slug}/week/${week}?view=person${stQuery(ref)}${league === "nfl" ? "&league=nfl" : ""}`}
               className="stat text-[11px] text-dim hover:text-chalk"
             >
               Everyone&rsquo;s picks →
@@ -296,14 +347,14 @@ export default async function GroupHomePage({
               </p>
               <div className="flex flex-wrap gap-2">
                 <Link
-                  href={`/groups/${slug}/settings?week=${week}`}
+                  href={`/groups/${slug}/settings${weekQuery(ref, { league: league === "nfl" ? "nfl" : null })}`}
                   className="stat inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-sm font-semibold text-accent-ink"
                 >
                   <Settings size={14} aria-hidden />
-                  Set week {week}
+                  Set {weekLabel(ref, league).toLowerCase()}
                 </Link>
                 <Link
-                  href={`/groups/${slug}/settings?week=${week}`}
+                  href={`/groups/${slug}/settings${weekQuery(ref, { league: league === "nfl" ? "nfl" : null })}`}
                   className="stat inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-chalk/20 px-3.5 text-sm text-chalk hover:border-chalk/50"
                 >
                   <Users size={14} aria-hidden />

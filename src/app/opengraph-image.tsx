@@ -5,7 +5,7 @@ import { SLATE_MARK_ASPECT, SLATE_MARK_DATA_URI } from "../lib/brand-mark-data";
 // Site-wide link card: a bare URL in the group chat becomes a branded tile
 // (audit 08/UX-12). Code-generated — no asset, no external font fetch.
 export const runtime = "edge";
-export const alt = "The CFB Slate";
+export const alt = "The Slate";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -38,7 +38,7 @@ export default function Image() {
             Saturdays, settled
           </div>
           <div style={{ fontSize: 116, fontWeight: 800, lineHeight: 1.05, marginTop: 16 }}>
-            The CFB Slate
+            The Slate
           </div>
           <div style={{ fontSize: 38, color: "#8FA79B", marginTop: 24 }}>
             Ratings · edges · pick&apos;em · the crew ledger

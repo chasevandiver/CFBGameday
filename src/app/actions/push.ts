@@ -96,7 +96,7 @@ export async function sendTestNotification(): Promise<PushResult> {
 
   const service = createServiceClient();
   const result = await sendToUser(service, user.id, "admin", `test:${Date.now()}`, {
-    title: "The CFB Slate",
+    title: "The Slate",
     body: "Notifications are working. This is what a real one will look like.",
     url: "/me",
   });

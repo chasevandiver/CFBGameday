@@ -1,4 +1,4 @@
-/* The CFB Slate — service worker.
+/* The Slate — service worker.
  *
  * Push only. This deliberately does NOT cache anything: the app is live scores
  * and lines, and a stale-while-revalidate shell is exactly how you end up
@@ -18,7 +18,7 @@ self.addEventListener("push", (event) => {
   // A push with no body should still show something rather than nothing: iOS
   // shows a browser-generated placeholder if the handler resolves without
   // calling showNotification, which looks broken.
-  let payload = { title: "The CFB Slate", body: "", url: "/" };
+  let payload = { title: "The Slate", body: "", url: "/" };
   try {
     if (event.data) payload = { ...payload, ...event.data.json() };
   } catch {

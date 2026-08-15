@@ -29,7 +29,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   if (!team) return {};
   return {
     title: team.school,
-    description: `${team.school}${team.mascot ? ` ${team.mascot}` : ""} — rating breakdown, schedule map, and the verdict on The CFB Slate.`,
+    description: `${team.school}${team.mascot ? ` ${team.mascot}` : ""} — rating breakdown, schedule map, and the verdict on The Slate.`,
   };
 }
 

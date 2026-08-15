@@ -129,7 +129,7 @@ export function BetSlip({
           </button>
           <ShareImageButton
             payload={loggedCard}
-            filename="cfb-slate-bets.png"
+            filename="the-slate-bets.png"
             label="Image"
             className="stat inline-flex min-h-11 min-w-[5.5rem] items-center justify-center gap-1.5 rounded-lg border border-chalk/20 px-2.5 text-xs font-semibold text-chalk hover:border-chalk/50 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
           />
@@ -321,7 +321,7 @@ export function BetSlip({
                 {/* The second share: the same slip as a card. */}
                 <ShareImageButton
                   payload={cardPayload}
-                  filename="cfb-slate-bets.png"
+                  filename="the-slate-bets.png"
                   label="Image"
                   className="stat flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-chalk/15 px-2.5 text-xs font-medium text-dim transition-colors hover:border-chalk/40 hover:text-chalk disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
                 />

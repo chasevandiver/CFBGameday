@@ -1,4 +1,4 @@
-# The CFB Slate — Change & Decision Log
+# The Slate — Change & Decision Log
 
 Running record of what shipped, what was tested and rejected, and why. Companion
 to `docs/SPEC.md` (what we're building) and `audit/AUDIT-2026-08.md` (a
@@ -165,6 +165,197 @@ shipping it.
 ---
 
 ## Log
+
+### Aug 15 — The logouts were Supabase revoking token families, not our cookies
+
+Reported as "it's not keeping me logged in on a device forever anymore", which
+sounds like a cookie lifetime and is not. **Refresh-token rotation with reuse
+detection** is on, so replaying an already-used refresh token revokes the entire
+family — including the token that is currently valid. The auth logs show three
+in one evening:
+
+```
+22:33:13  "Possible abuse attempt: 41"   refresh_token_already_used  400
+02:19:59  "Possible abuse attempt: 42"   refresh_token_already_used  400
+02:22:40  "Possible abuse attempt: 57"   refresh_token_already_used  400
+```
+
+The revocation is visible in `auth.refresh_tokens` as well, which is what makes
+this a diagnosis rather than a theory: token 55 was the live token, and its
+`updated_at` is stamped `22:33:13` — the same instant token **41** was flagged.
+Flagging the old token revoked the live one. Fifty minutes later, 23:23–23:25,
+a **108-request storm** replayed the dead token from **ten distinct Vercel IPs
+plus the phone**, and at 02:22:51 the owner gave up and asked for a new magic
+link.
+
+**The replays are stale, not concurrent.** Token 42 was created 08-13 05:24 and
+presented again on 08-15 02:19 — two days later, from a Vercel IP, so a client
+sent a two-day-old cookie. That distinction decides the fix: a longer reuse
+interval covers refreshes that collide within seconds and does nothing for a
+cookie from Wednesday.
+
+**What we were feeding it.** 629 `/user` calls in one hour. The proxy ran
+`getUser()` on every matched request *and* `/api/ticker` and `/api/slate` each
+call it again, so every 30-second poll was two GoTrue round trips from a fresh
+serverless instance with no shared lock. That is almost certainly why this
+started recently: the moving ticker, the moving home page and the live slate all
+landed in the last few days. (Inference. The revocations above are not.)
+
+**Ruled out, with the query that ruled it out.** Time-boxed sessions are off —
+`not_after` is null on all four rows of `auth.sessions`. `createBrowserClient`
+is a singleton in the browser, so this is not duplicate client instances. The
+400-day cookie config is correct. And one wrong turn worth recording: an early
+check for two tokens sharing a `parent` came back empty and was read as "no
+refresh race". Wrong test — the reuse path errors instead of issuing a child, so
+an empty result is consistent with the race rather than against it.
+
+**The fix is a project setting: Authentication → Sessions → Refresh Token
+Rotation off.** The trade is that a stolen refresh token stays usable until
+sign-out, which is the trade this product already made when it chose invite-only
+with deliberately never-expiring sessions.
+
+Shipped here is the other half, and it is explicitly not the fix:
+
+  * `/api/*` is out of the proxy matcher. Those routes build their own server
+    client from the same cookies and can set cookies on their own responses, so
+    the proxy's pass was duplication.
+  * A request with no `sb-…-auth-token` cookie no longer constructs a client.
+    Signed-out browsing is most of the traffic and has no session to refresh.
+  * The proxy stopped overriding `maxAge` on every cookie `@supabase/ssr` hands
+    it. That override rewrote ssr's `maxAge: 0` **deletions** into 400-day empty
+    cookies — and was redundant anyway, since ssr's own `DEFAULT_COOKIE_OPTIONS`
+    has been 400 days since 0.10. The 400 in that docstring now comes from the
+    library instead of from us.
+
+`src/proxy.test.ts` pins the matcher. Re-including `/api` later would double the
+auth traffic and nothing would look broken, which is the kind of regression a
+comment does not survive.
+
+**Applied, and the rotation setting is off.** `0053_survivor_pools` went to the
+live project as `20260815044806` — 52 files, 52 rows, in sync. Verified after
+applying rather than assumed: `groups_kind_check` accepts `'survivor'`, **0**
+TRUNCATE grants to `anon`/`authenticated` on either new table (0049's `alter
+default privileges` half is holding for tables created after it, which is the
+first time that has been tested), `survivor_picks` grants only `SELECT`, five
+policies and four functions present, `create_survivor_group` executable by
+`authenticated` and not by `anon`. The probe call stopped on the sign-in guard,
+so production has **0** survivor groups — nothing was created to test it.
+
+The owner unchecked "Detect and revoke potentially compromised refresh tokens"
+the same evening. That is the actual fix for the logouts; everything in the
+commit above is load reduction. It is not yet *observed* fixed — that needs a
+few days of `auth_logs` with no `refresh_token_already_used` across a real
+sleep/wake cycle, and the row in `docs/STATUS.md` says so rather than claiming
+the win early.
+
+### Aug 15 — Seven owner-reported items: the sign-up wall, a rename, survivor pools
+
+One report, seven items, from someone using the site rather than reading it.
+Three of them were defects that only a real user hits; the other four are
+product. The first is the one that mattered.
+
+**Sign-up did not work, and the error was the literal string `{}`.**
+
+Not our string. `@supabase/auth-js` treats every 5xx as retryable and builds the
+message with `_getErrorMessage(error)` where `error` is the **`Response`
+object**, not its parsed body (`dist/main/lib/fetch.js:34-42`). A `Response` has
+no own enumerable properties, so `JSON.stringify` of it is `"{}"` — which means
+**any** 500 from GoTrue reaches the UI as `{}` with the real reason thrown away.
+Worth writing down because it is not a bug in our code and reading our code will
+never find it.
+
+Two different 500s are live behind that `{}`, and they need different answers:
+
+  * the invite-only trigger. `handle_new_user` (0002) raises for an address not
+    on `invite_allowlist`, which aborts the `auth.users` insert. GoTrue answers
+    500 `unexpected_failure`, and the raise message — which says exactly what is
+    wrong — never leaves the database;
+  * a custom SMTP sender that cannot authenticate, which also fails the request
+    with a 500.
+
+The fix identifies a brand-new address **before** running the signup path:
+`signInWithOtp({ shouldCreateUser: false })` sends the link for an account that
+exists and otherwise returns a clean 422 `otp_disabled`, the one unambiguous
+"there is no account here". Only then does the second call, the one that can
+create a user, run. So a 500 becomes attributable by which call produced it, and
+the form says either "this address isn't on the invite list" or "the service
+errored" instead of `{}`. It costs no extra email: the probe only sends when the
+account already exists, in which case that IS the link.
+
+*What this does not do:* the two 500s still cannot be told apart from the
+browser, so the signup message names both causes. Distinguishing them needs
+either an `is_invited(email)` RPC — an enumeration oracle on the allowlist — or
+GoTrue surfacing the trigger's message, which it does not. Recorded in
+`docs/STATUS.md` rather than guessed at.
+
+**Renamed to The Slate.** The product has carried the NFL since v1.0, so a name
+saying CFB described half of it. Wordmark, manifest, `<title>` template, OG
+cards, share card, push payloads, the service worker, the CSV and image export
+filenames, and the iOS splash (`npm run brand`, wordmark string only — the icon
+artwork was not touched). `docs/BRAND.md` records the change at the top; the old
+name stays in this log and in the audits, which are history.
+
+**Survivor pools, the third kind of group (0053).** One team a week, straight
+up, no team twice, wrong answer and you are out. CFB pools scope to a conference
+— "SEC survivor" is how these are actually run — and the NFL is one league-wide
+pool, which the RPC enforces rather than merely defaulting.
+
+The cheap version of this is a pick'em week with one `straight_up` market and a
+one-pick minimum, and it is wrong twice: `picks` has no way to express a
+constraint that spans weeks (you cannot take a team twice), and pick'em has no
+failure state at all. So it is a third `groups.kind` sharing roster, join code
+and visibility with the other two and nothing else — the same relation `betting`
+has to `pickem`.
+
+**Elimination is derived, never stored.** Whether you are out is a function of
+your picks and the final scores; a stored flag would be a second source of truth
+that a corrected score could contradict. `src/lib/survivor.ts` recomputes every
+standing from the whole season on each read. Two rules that are easy to get
+wrong and are pinned by tests: a **tie is a strike**, and a **missed week is a
+strike only once every game in that week has kicked off** — our picks lock per
+game, so somebody holding out for Monday night has not missed Sunday.
+
+**The Groups tab's weeks were preseason weeks wearing regular-season labels.**
+Reported as "preseason week 2 is listed as week 2, with the first set of games
+not on week 5", and that is exactly the mechanism: the group pages carried
+`?week=` and took the season *type* from the live calendar pointer, which in
+August says `preseason`. So "Week 2" was preseason week 2, every week link
+stayed inside a four-week season type, and the regular season had no reachable
+link at all — nothing in the group UI could change the season type. `/slate` has
+carried `?st=pre|post` since NFL-6; `src/lib/group-weeks.ts` is that model made
+shared, and the chevrons now walk one ordered calendar across the boundaries.
+It also surfaces a rule that was invisible: `set_group_week_config` refuses
+`preseason`, so an August admin was being sent to a page whose save could only
+throw. It now says pick'em does not run in the preseason and links to the
+opener.
+
+**Box scores on the game page**, pregame, live and final. Derived from
+`scoring_plays` (0048), which already stores each score's period and the running
+total after it — the points in a quarter are the difference across it. No new
+table, no new feed call, no new job. Where the derived quarters do not sum to
+the scoreboard (a feed reporting a score whose play we never captured) the
+difference is footnoted rather than parked in the fourth quarter. **Team stat
+lines — total yards, first downs, turnovers — are not in this**: they need a
+`game_team_stats` ingest off ESPN's boxscore block and CFBD `/games/teams`, and
+that is queued, not half-built.
+
+**The cover strip reads bets, not just picks, and lost its big number.** Live,
+the strip was gated on a pick'em pick, so a card you had money and no pick on
+glowed green from the aura with no word saying why; it now ranks a bet over a
+pick, the order `tintFor` already used. The 18px signed margin (`COVERING +2½`)
+and the totals room line are gone — the colour already says which side of the
+number you are on — and the tail that says *what you hold* went from 10.5px at
+75% opacity to 13px at full weight. It was smaller than the crew line under it,
+on the one element whose entire job is telling you where your money is. The home
+hub's position rows now render the same strip; they had the aura and no word.
+
+**The ticker highlights whoever is in front** — weight and brightness, not
+colour, because the strip already spends colour on your own verdict. Ties
+highlight neither side.
+
+Lands with 969 vitest assertions across 70 files and 257 DB assertions against a
+real Postgres 16 cluster (27 of them new, in `supabase/tests/survivor.sql`).
+**Migration 0053 is not applied to the live project** — see `docs/STATUS.md`.
 
 ### Aug 15 — Shipped: PR #76, and a migration split that earned itself
 

@@ -6,9 +6,9 @@ import { createClient } from "../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-// The layout's title template would make this "Home · The CFB Slate", which
+// The layout's title template would make this "Home · The Slate", which
 // reads as a subpage of itself.
-export const metadata = { title: { absolute: "The CFB Slate" } };
+export const metadata = { title: { absolute: "The Slate" } };
 
 /**
  * The front door.

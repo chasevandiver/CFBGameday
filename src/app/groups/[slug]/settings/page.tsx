@@ -9,7 +9,16 @@ import { fetchGroupMembers, fetchGroupWeek, groupLeague, resolveActiveGroup } fr
 import { DEFAULT_TZ, kickParts, tzLabel } from "../../../../lib/kick";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../../lib/queries";
 import { createClient } from "../../../../lib/supabase/server";
-import { isValidWeek } from "../../../../lib/week-range";
+import {
+  boardRunsIn,
+  firstRegular,
+  parseWeekRef,
+  sameWeek,
+  seasonWeeks,
+  shortWeekLabel,
+  weekLabel,
+  weekQuery,
+} from "../../../../lib/group-weeks";
 
 export const dynamic = "force-dynamic";
 
@@ -24,10 +33,10 @@ export default async function GroupSettingsPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ week?: string; league?: string }>;
+  searchParams: Promise<{ week?: string; st?: string; league?: string }>;
 }) {
   const { slug } = await params;
-  const { week: weekParam, league: leagueParam } = await searchParams;
+  const { week: weekParam, st: stRaw, league: leagueParam } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -39,17 +48,29 @@ export default async function GroupSettingsPage({
 
   // A betting group has no board: send them to the one page it does have
   // rather than rendering an empty week.
-  if (active.kind === "betting") redirect(`/groups/${slug}`);
+  if (active.kind !== "pickem") redirect(`/groups/${slug}`);
 
   // Each league runs its own week calendar; ?league= picks which board is
   // being configured, and only leagues the group plays are reachable.
   const league = groupLeague(leagueParam, active.leagues);
-  const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(
-    supabase,
-    league,
-  );
-  const parsed = Number(weekParam);
-  const week = isValidWeek(parsed) ? parsed : currentWeek;
+  const {
+    seasonId,
+    week: currentWeek,
+    seasonType: currentType,
+    minWeek,
+  } = await fetchCurrentSeasonWeek(supabase, league);
+
+  /* Only the weeks a board can exist for. `set_group_week_config` refuses
+     `preseason` outright, so offering those weeks here is offering a control
+     that throws — and in August the live pointer IS a preseason week, which is
+     how an admin ended up on a page that could not save anything. The default
+     falls forward to the season opener instead. */
+  const weeks = seasonWeeks(league, minWeek).filter(boardRunsIn);
+  const fallback = boardRunsIn({ seasonType: currentType, week: currentWeek })
+    ? { seasonType: currentType, week: currentWeek }
+    : (firstRegular(weeks) ?? weeks[0]);
+  const ref = parseWeekRef(weekParam, stRaw, weeks, fallback);
+  const { week, seasonType } = ref;
 
   // The same slate the board renders, so the admin picks games from rows that
   // look like the rows their members will see — logos, poll ranks and records
@@ -137,20 +158,23 @@ export default async function GroupSettingsPage({
               </nav>
             )}
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="text-sm text-accent">Week {week}</h2>
+              <h2 className="text-sm text-accent">{weekLabel(ref, league)}</h2>
               <nav className="scroll-thin -mx-1 flex max-w-full gap-1 overflow-x-auto px-1">
-                {/* Each league's own regular-season range — CFB stops at 16
-                    (audit 08/UX-17), the NFL runs to 18. */}
-                {Array.from({ length: league === "nfl" ? 18 : 16 }, (_, i) => i + 1).map((w) => (
+                {/* Each league's own board weeks, in playing order: the regular
+                    season (CFB stops at 16 — audit 08/UX-17 — the NFL runs to
+                    18) and then the postseason rounds. The preseason is absent
+                    because no board can be set for it. */}
+                {weeks.map((w) => (
                   <Link
-                    key={w}
-                    href={`/groups/${slug}/settings?week=${w}${league === "nfl" ? "&league=nfl" : ""}`}
-                    aria-current={w === week ? "page" : undefined}
-                    className={`stat flex min-h-11 w-9 shrink-0 items-center justify-center rounded-md text-xs ${
-                      w === week ? "bg-accent/15 text-accent" : "text-dim hover:text-chalk"
-                    }`}
+                    key={`${w.seasonType}-${w.week}`}
+                    href={`/groups/${slug}/settings${weekQuery(w, { league: league === "nfl" ? "nfl" : null })}`}
+                    aria-current={sameWeek(w, ref) ? "page" : undefined}
+                    aria-label={weekLabel(w, league)}
+                    className={`stat flex min-h-11 shrink-0 items-center justify-center rounded-md px-2 text-xs ${
+                      sameWeek(w, ref) ? "bg-accent/15 text-accent" : "text-dim hover:text-chalk"
+                    } ${w.seasonType === "regular" ? "w-9" : ""}`}
                   >
-                    {w}
+                    {w.seasonType === "regular" ? w.week : shortWeekLabel(w, league)}
                   </Link>
                 ))}
               </nav>

@@ -53,11 +53,11 @@ export async function GET() {
     withLeague(picks as Array<Record<string, unknown>> | null),
   );
 
-  const body = `# The CFB Slate — ledger export\n\n## Bets\n${betCsv}\n\n## Pick'em\n${pickCsv}\n`;
+  const body = `# The Slate — ledger export\n\n## Bets\n${betCsv}\n\n## Pick'em\n${pickCsv}\n`;
   return new Response(body, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="cfb-slate-ledger.csv"`,
+      "Content-Disposition": `attachment; filename="the-slate-ledger.csv"`,
     },
   });
 }

@@ -645,7 +645,7 @@ export function ShareCard({ model, logos }: { model: CardModel; logos: Logos }) 
             display: "flex",
           }}
         >
-          The CFB Slate
+          The Slate
         </div>
         <div
           style={{
