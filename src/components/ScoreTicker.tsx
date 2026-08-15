@@ -228,9 +228,37 @@ const chipClass = (mine: TickerGame["mine"]): string =>
     mine ? `ticker-mine-${mine}` : ""
   }`;
 
+/**
+ * Which side the ticker should brighten.
+ *
+ * Only once there is a score to read: a scheduled game has no leader, and a tie
+ * has two. Ties are rare in the NFL and impossible in CFB, but "highlight the
+ * one in front" has to answer for them, and highlighting both would say the
+ * opposite of what a tie is. Null means nobody is picked out and the chip reads
+ * exactly as it did before.
+ */
+export function leadingSide(g: TickerGame): "home" | "away" | null {
+  if (g.status !== "in_progress" && g.status !== "final") return null;
+  const h = g.homePoints ?? 0;
+  const a = g.awayPoints ?? 0;
+  if (h === a) return null;
+  return h > a ? "home" : "away";
+}
+
+/* Weight and brightness, not colour: the ticker already spends colour on the
+   viewer's own verdict (the `mine` underline), and a second hue on the same
+   chip would be two signals competing at 11px. */
+const sideClass = (leading: "home" | "away" | null, side: "home" | "away"): string =>
+  leading === null
+    ? "font-medium text-chalk"
+    : leading === side
+      ? "font-bold text-chalk"
+      : "font-medium text-chalk/45";
+
 function ChipBody({ g }: { g: TickerGame }) {
   const live = g.status === "in_progress";
   const final = g.status === "final";
+  const leading = leadingSide(g);
   return (
     <>
       {live && (
@@ -243,11 +271,11 @@ function ChipBody({ g }: { g: TickerGame }) {
           NFL
         </span>
       )}
-      <span className="font-medium text-chalk">
+      <span className={sideClass(leading, "away")}>
         {g.awayAbbr} {live || final ? (g.awayPoints ?? 0) : ""}
       </span>
       <span className="text-chalk/30">–</span>
-      <span className="font-medium text-chalk">
+      <span className={sideClass(leading, "home")}>
         {g.homeAbbr} {live || final ? (g.homePoints ?? 0) : ""}
       </span>
       <span className="text-[10px] uppercase">

@@ -9,7 +9,9 @@ import {
 } from "../../../components/group/BettingHub";
 import { ShareImageButton } from "../../../components/ShareImageButton";
 import { ShareSheetButton } from "../../../components/group/ShareSheetButton";
+import { WeekJump } from "../../../components/group/WeekJump";
 import { byUnits, fetchBettingSheet } from "../../../lib/betting-groups";
+import { weekLabel, type WeekRef } from "../../../lib/group-weeks";
 import type { GroupSummary } from "../../../lib/groups";
 import type { BetRow } from "../../../lib/db-types";
 import { buildSheetShareContext } from "../../../lib/group-share";
@@ -42,6 +44,8 @@ export async function BettingHome({
   seasonId,
   week,
   seasonType,
+  weeks,
+  weekRef,
 }: {
   supabase: SupabaseClient;
   group: GroupSummary;
@@ -50,6 +54,10 @@ export async function BettingHome({
   seasonId: number;
   week: number;
   seasonType: SeasonType;
+  /** The league's calendar in playing order — preseason weeks included, which
+   *  a betting group very much does play. */
+  weeks: WeekRef[];
+  weekRef: WeekRef;
 }) {
   const [sheet, slate, joinRes] = await Promise.all([
     fetchBettingSheet(supabase, group.id, seasonId),
@@ -146,8 +154,9 @@ export async function BettingHome({
         >
           My ledger
         </Link>
+        <WeekJump base={`/groups/${group.slug}`} weeks={weeks} current={weekRef} sport="cfb" />
         {share && <ShareSheetButton sheet={share} />}
-        {myCard && <ShareImageButton payload={myCard} filename="cfb-slate-bets.png" label="My bets image" />}
+        {myCard && <ShareImageButton payload={myCard} filename="the-slate-bets.png" label="My bets image" />}
         {joinCode && <JoinCode code={joinCode} />}
       </div>
 
@@ -155,7 +164,7 @@ export async function BettingHome({
       <section className="mb-7" aria-labelledby="sheet-heading">
         <div className="mb-2.5 flex items-baseline gap-2">
           <h2 id="sheet-heading" className="text-sm text-accent">
-            Week {week} sheet
+            {weekLabel(weekRef, "cfb")} sheet
           </h2>
           <span className="h-px flex-1 bg-chalk/10" aria-hidden />
           <span className="stat text-[11px] text-dim">

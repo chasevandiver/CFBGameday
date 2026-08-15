@@ -1,4 +1,4 @@
-import { ClipboardList, Ticket } from "lucide-react";
+import { ClipboardList, Ticket, Trophy } from "lucide-react";
 import Link from "next/link";
 import { AppNav } from "../../components/AppNav";
 import { CreateGroupForm, JoinGroupForm } from "../../components/group/GroupForms";
@@ -23,6 +23,18 @@ export default async function GroupsPage() {
   } = await supabase.auth.getUser();
   const { seasonId } = await fetchCurrentSeasonWeek(supabase);
   const groups = await fetchMyGroups(supabase, user?.id ?? null);
+
+  // Conference names for the survivor form's scope picker. FBS only: a pool
+  // scoped to a conference nobody in the group follows is not a real option,
+  // and the list is long enough already.
+  const { data: confRows } = await supabase
+    .from("teams")
+    .select("conference")
+    .eq("classification", "fbs")
+    .not("conference", "is", null);
+  const conferences = [
+    ...new Set(((confRows ?? []) as Array<{ conference: string }>).map((c) => c.conference)),
+  ].sort();
 
   // One query for every group's picks; RLS already limits it to groups the
   // viewer can see, and the tally is grouped in memory.
@@ -66,10 +78,11 @@ export default async function GroupsPage() {
       <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
         <h1 className="text-2xl">Groups</h1>
         <p className="mb-6 text-sm leading-relaxed text-dim">
-          Two kinds. A <span className="text-chalk">pick&rsquo;em pool</span> runs a board an admin
-          sets each week. A <span className="text-chalk">betting group</span> has no board — it
-          shows what everyone actually bet off the slate, who got there first, and how tailing
-          them goes.
+          Three kinds. A <span className="text-chalk">pick&rsquo;em pool</span> runs a board an
+          admin sets each week. A <span className="text-chalk">betting group</span> has no board —
+          it shows what everyone actually bet off the slate, who got there first, and how tailing
+          them goes. A <span className="text-chalk">survivor pool</span> is one winner a week, no
+          team twice, and a wrong answer puts you out.
         </p>
 
         {!user ? (
@@ -96,7 +109,17 @@ export default async function GroupsPage() {
             ) : (
               <ul className="mb-6 flex flex-col gap-2.5">
                 {groups.map((g) => {
-                  const t = g.kind === "betting" ? myBetTally : myTallies.get(g.id);
+                  // A survivor pool has no record to show here — it has a
+                  // state, and answering "am I still in" needs the whole
+                  // season's picks and finals. That belongs on the pool's own
+                  // page, not in a list row that would have to load it for
+                  // every pool the viewer is in.
+                  const t =
+                    g.kind === "survivor"
+                      ? null
+                      : g.kind === "betting"
+                        ? myBetTally
+                        : myTallies.get(g.id);
                   return (
                     <li key={g.id}>
                       <Link
@@ -108,10 +131,16 @@ export default async function GroupsPage() {
                           <span className="stat flex items-center gap-1.5 text-xs text-dim">
                             {g.kind === "betting" ? (
                               <Ticket size={11} aria-hidden className="shrink-0 text-accent" />
+                            ) : g.kind === "survivor" ? (
+                              <Trophy size={11} aria-hidden className="shrink-0 text-accent" />
                             ) : (
                               <ClipboardList size={11} aria-hidden className="shrink-0" />
                             )}
-                            {g.kind === "betting" ? "Betting sheet" : "Pick’em"}
+                            {g.kind === "betting"
+                              ? "Betting sheet"
+                              : g.kind === "survivor"
+                                ? "Survivor"
+                                : "Pick’em"}
                             {" · "}
                             {g.role === "admin" ? "Admin" : "Member"}
                             {g.visibility === "public" ? " · public" : ""}
@@ -132,7 +161,11 @@ export default async function GroupsPage() {
                             </span>
                           )}
                           <span className="block text-[10px] uppercase tracking-wider text-chalk/40">
-                            {g.kind === "betting" ? "your bets" : "this season"}
+                            {g.kind === "betting"
+                              ? "your bets"
+                              : g.kind === "survivor"
+                                ? "open it"
+                                : "this season"}
                           </span>
                         </span>
                       </Link>
@@ -145,7 +178,7 @@ export default async function GroupsPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <section className="card px-4 py-4">
                 <h2 className="mb-3 text-sm text-accent">Start a group</h2>
-                <CreateGroupForm />
+                <CreateGroupForm conferences={conferences} />
               </section>
               <section className="card px-4 py-4">
                 <h2 className="mb-3 text-sm text-accent">Join one</h2>

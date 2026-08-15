@@ -1,4 +1,4 @@
-# The CFB Slate
+# The Slate
 
 A college football ratings, edges, pick'em, and bet-tracking site for the crew. Full product spec — including the prediction model, league rules, and the honesty layer — lives in [`docs/SPEC.md`](docs/SPEC.md).
 

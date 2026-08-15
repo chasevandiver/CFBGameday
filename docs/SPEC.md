@@ -1,4 +1,4 @@
-# The CFB Slate — 2026 College Football Site
+# The Slate — 2026 Football Site
 ## Build Specification (v2 — amended and verified, Aug 2026)
 
 **What this is:** A full-stack college football site for a group of friends who watch everything and bet on it. It combines a prediction model, preseason team intelligence, a Saturday-morning game slate, per-user bet tracking with closing line value (CLV), and a social pick'em layer where each person can develop and audit their own edge.
@@ -7,7 +7,7 @@
 
 **Prime directive:** The site should answer "what matters right now?" every time it's opened, and it should run itself via scheduled jobs — not manual refresh buttons.
 
-**Naming:** The site is **The CFB Slate** (formerly working-titled "The Saturday Machine"). Use this name in all UI, branding, PWA manifest, page titles, and docs.
+**Naming:** The site is **The Slate**. Renamed 2026-08-15 by owner decision — it was **The CFB Slate** (and before that the working title "The Saturday Machine"), and the CFB in the name stopped describing it the day the NFL landed. Use **The Slate** in all UI, branding, PWA manifest, page titles, and docs.
 
 **v2 changes:** This revision folds in verified corrections (API tiers, cron infrastructure, closing-line reality) and fills gaps found in pre-implementation review. Changes are marked **[v2]** where they alter the original document.
 

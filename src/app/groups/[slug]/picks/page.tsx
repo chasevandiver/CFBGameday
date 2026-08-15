@@ -7,7 +7,14 @@ import { buildGroupShareContext } from "../../../../lib/group-share";
 import { fetchGroupMembers, fetchGroupWeek, groupLeague, resolveActiveGroup } from "../../../../lib/groups";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../../lib/queries";
 import { createClient } from "../../../../lib/supabase/server";
-import { isValidWeek } from "../../../../lib/week-range";
+import {
+  boardRunsIn,
+  parseWeekRef,
+  seasonWeeks,
+  weekIndex,
+  weekLabel,
+  weekQuery,
+} from "../../../../lib/group-weeks";
 
 export const dynamic = "force-dynamic";
 
@@ -30,10 +37,10 @@ export default async function GroupPicksPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ week?: string; league?: string }>;
+  searchParams: Promise<{ week?: string; st?: string; league?: string }>;
 }) {
   const { slug } = await params;
-  const { week: weekParam, league: leagueParam } = await searchParams;
+  const { week: weekParam, st: stRaw, league: leagueParam } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -44,15 +51,30 @@ export default async function GroupPicksPage({
 
   // A betting group has no board: send them to the one page it does have
   // rather than rendering an empty week.
-  if (active.kind === "betting") redirect(`/groups/${slug}`);
+  // Neither of the boardless kinds has a pick board to render.
+  if (active.kind !== "pickem") redirect(`/groups/${slug}`);
 
   const league = groupLeague(leagueParam, active.leagues);
-  const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(
+  const {
+    seasonId,
+    week: currentWeek,
+    seasonType: currentType,
+    minWeek,
+  } = await fetchCurrentSeasonWeek(
     supabase,
     league,
   );
-  const parsed = Number(weekParam);
-  const week = isValidWeek(parsed) ? parsed : currentWeek;
+  // Season-typed, like every other group route since the August week defect —
+  // a bare `?week=2` in the preseason used to mean preseason week 2.
+  const weeks = seasonWeeks(league, minWeek);
+  const ref = parseWeekRef(weekParam, stRaw, weeks, {
+    seasonType: currentType,
+    week: currentWeek,
+  });
+  const { week, seasonType } = ref;
+  const i = weekIndex(weeks, ref);
+  const prevWeek = i > 0 ? weeks[i - 1] : null;
+  const nextWeek = i >= 0 && i < weeks.length - 1 ? weeks[i + 1] : null;
 
   const [groupWeek, members, slate, lifetimeRes] = await Promise.all([
     fetchGroupWeek(supabase, active.id, seasonId, week, seasonType),
@@ -123,20 +145,20 @@ export default async function GroupPicksPage({
       <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 pb-28 pt-6">
         <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
           <span className="flex items-center gap-1">
-            {week > 1 && (
+            {prevWeek && (
               <Link
-                href={`/groups/${slug}/picks?week=${week - 1}`}
-                aria-label={`Week ${week - 1}`}
+                href={`/groups/${slug}/picks${weekQuery(prevWeek)}`}
+                aria-label={weekLabel(prevWeek, league)}
                 className="stat inline-flex min-h-11 min-w-8 items-center justify-center text-sm text-accent hover:underline"
               >
                 ‹
               </Link>
             )}
-            <h1 className="text-2xl">Week {week} board</h1>
-            {week < 20 && (
+            <h1 className="text-2xl">{weekLabel(ref, league)} board</h1>
+            {nextWeek && (
               <Link
-                href={`/groups/${slug}/picks?week=${week + 1}`}
-                aria-label={`Week ${week + 1}`}
+                href={`/groups/${slug}/picks${weekQuery(nextWeek)}`}
+                aria-label={weekLabel(nextWeek, league)}
                 className="stat inline-flex min-h-11 min-w-8 items-center justify-center text-sm text-accent hover:underline"
               >
                 ›
@@ -172,11 +194,15 @@ export default async function GroupPicksPage({
 
         {groupWeek === null ? (
           <section className="card px-6 py-10 text-center">
-            <p className="text-sm text-chalk">Week {week} isn&rsquo;t set up yet.</p>
+            <p className="text-sm text-chalk">
+              {boardRunsIn(ref)
+                ? `${weekLabel(ref, league)} isn’t set up yet.`
+                : "Pick’em doesn’t run in the preseason."}
+            </p>
             <p className="mt-1 text-sm text-dim">
               {active.role === "admin" ? (
                 <Link
-                  href={`/groups/${slug}/settings?week=${week}`}
+                  href={`/groups/${slug}/settings${weekQuery(ref)}`}
                   className="font-medium text-accent underline-offset-2 hover:underline"
                 >
                   Choose the games and bet types
@@ -188,7 +214,9 @@ export default async function GroupPicksPage({
           </section>
         ) : boardGames.length === 0 ? (
           <section className="card px-6 py-10 text-center">
-            <p className="text-sm text-dim">No games in play for week {week}.</p>
+            <p className="text-sm text-dim">
+              No games in play for {weekLabel(ref, league).toLowerCase()}.
+            </p>
           </section>
         ) : (
           <PickBoard

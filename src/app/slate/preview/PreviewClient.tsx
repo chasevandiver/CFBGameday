@@ -10,6 +10,7 @@ import { useState } from "react";
 import { AppNav } from "../../../components/AppNav";
 import { PairPanel, SheetGameRow, SourceCard } from "../../../components/group/BettingHub";
 import { CreateGroupForm, GroupSwitcher } from "../../../components/group/GroupForms";
+import { seasonWeeks } from "../../../lib/group-weeks";
 import { MemberCard, WeekHero } from "../../../components/group/GroupHub";
 import { PickBoard } from "../../../components/group/PickBoard";
 import { HomeDashboard, HubEmpty, SectionHead } from "../../../components/home/HomeHub";
@@ -243,8 +244,9 @@ export function SlatePreviewClient() {
             </div>
             <WeekHero
               slug="saturday-boys"
-              week={12}
-              currentWeek={12}
+              weekRef={{ seasonType: "regular", week: 12 }}
+              weeks={seasonWeeks("cfb", 0)}
+              currentRef={{ seasonType: "regular", week: 12 }}
               groupWeek={GROUP_WEEK}
               gameCount={4}
               pickSlots={8}

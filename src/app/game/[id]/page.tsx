@@ -3,6 +3,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { AppNav } from "../../../components/AppNav";
+import { BoxScore } from "../../../components/game/BoxScore";
 import { GameHeader } from "../../../components/game/GameHeader";
 import { MovementChart } from "../../../components/game/MovementChart";
 import { ConsensusChip, EdgeChip } from "../../../components/slate/chips";
@@ -46,7 +47,7 @@ import {
   type MyBetView,
   type TeamView,
 } from "../../../lib/slate";
-import { clockTime, tzLabel, DEFAULT_TZ } from "../../../lib/kick";
+import { clockTime, kickParts, tzLabel, DEFAULT_TZ } from "../../../lib/kick";
 import { createClient } from "../../../lib/supabase/server";
 import { hasCalibratedTotals } from "../../../model/ratings";
 import { isCurrentUserAdmin } from "../../../lib/admin";
@@ -72,7 +73,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const name = (tid: number) =>
     (teams ?? []).find((t: { id: number; school: string }) => t.id === tid)?.school ?? "TBD";
   const title = `${name(game.away_team_id)} @ ${name(game.home_team_id)}`;
-  const description = `${title} — lines, model number, picks, and live status on The CFB Slate.`;
+  const description = `${title} — lines, model number, picks, and live status on The Slate.`;
   return {
     title:
       game.season_type === "postseason" ? `${title} · Postseason` : `${title} · Week ${game.week}`,
@@ -586,8 +587,24 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
           )}
         </section>
 
-        {/* How the score got there (SCORE-1). Above the market because the
-            game is what the page is about; the numbers explain it. */}
+        {/* The box, then how it got there. Quarters first because that is the
+            shape everyone reads a football game in; the timeline underneath is
+            the same story play by play. Both above the market, because the game
+            is what the page is about and the numbers explain it. */}
+        <BoxScore
+          plays={scoringPlays}
+          home={home}
+          away={away}
+          homePoints={game.home_points}
+          awayPoints={game.away_points}
+          status={game.status}
+          period={game.current_period}
+          kickoff={
+            game.start_ts
+              ? `${kickParts(game.start_ts, DEFAULT_TZ).day} ${kickParts(game.start_ts, DEFAULT_TZ).time} ${tzLabel(DEFAULT_TZ)}`
+              : null
+          }
+        />
         <ScoringTimeline plays={scoringPlays} home={home} away={away} />
 
         {/* Odds table */}

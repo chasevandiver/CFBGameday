@@ -32,11 +32,11 @@ export function AppNav({ demoTicker }: { demoTicker?: TickerData } = {}) {
               the order the brand puts them in. */}
           <Link
             href="/"
-            aria-label="The CFB Slate — home"
+            aria-label="The Slate — home"
             className="flex shrink-0 items-center gap-2 leading-none"
           >
             <SlateMark size={21} className="text-chalk" />
-            <span className="display text-lg text-accent">The CFB Slate</span>
+            <span className="display text-lg text-accent">The Slate</span>
           </Link>
           <NavTabs />
           <div className="flex flex-1 items-center justify-end gap-4 md:flex-none">

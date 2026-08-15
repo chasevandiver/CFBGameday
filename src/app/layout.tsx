@@ -32,24 +32,25 @@ const plexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://cfb-gameday.vercel.app"),
   title: {
-    default: "The CFB Slate",
-    template: "%s · The CFB Slate",
+    default: "The Slate",
+    template: "%s · The Slate",
   },
   description:
-    "College football ratings, edges, pick'em, and the crew ledger — what matters right now, every Saturday.",
-  applicationName: "The CFB Slate",
+    "College football and NFL ratings, edges, pick'em, and the crew ledger — what matters right now, every game day.",
+  applicationName: "The Slate",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    // What sits under the icon on the home screen. "The CFB Slate" truncates
-    // to an ellipsis there; the icon already says which app this is.
-    title: "CFB Slate",
+    // What sits under the icon on the home screen. It has room for about a
+    // dozen characters before the ellipsis, which "The Slate" now fits — the
+    // old "CFB Slate" was a truncation workaround for a longer name.
+    title: "The Slate",
     // Not black-translucent: the app does not pad for the top inset, and a
     // translucent bar would drop the status text on top of the header.
     statusBarStyle: "black",
   },
   openGraph: {
-    siteName: "The CFB Slate",
+    siteName: "The Slate",
     type: "website",
   },
 };

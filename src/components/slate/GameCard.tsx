@@ -8,15 +8,13 @@ import { inSlip, useBetSlip, type SlipSelection } from "../../lib/bet-slip-store
 import { betsChanged } from "../../lib/bets-changed";
 import { kickParts, periodLabel } from "../../lib/kick";
 import {
-  pickCoverView,
-  settledCoverView,
   settledResult,
   statusForBet,
   statusForPick,
   tintFor,
   type PickCoverView,
-  type SettledVerdict,
 } from "../../lib/live-status";
+import { betPrefix, liveStake, pickPrefix, settledStake } from "../../lib/stake";
 import { RATING_SCALES, systemMargin } from "../../lib/rating-scales";
 import {
   atsResult,
@@ -29,20 +27,18 @@ import {
   isFinal,
   isLive,
   headlinePick,
-  lineForSide,
   liveHomeWinProb,
   modelPicks,
   ouResult,
-  pickSideLabel,
   spreadMoveRead,
   upsetAlert,
   watchability,
   type GameView,
   type MyBetView,
-  type MyPickView,
   type TeamView,
 } from "../../lib/slate";
 import { ConsensusChip, EdgeChip, LiveBadge, LiveStatusChip, MoveIndicator, PickedChip, ResultChip } from "./chips";
+import { CoverStrip } from "./CoverStrip";
 import { LiveSituation } from "./LiveSituation";
 import { SheetLine } from "./SheetLine";
 import { TeamScoreLine } from "./TeamLine";
@@ -120,27 +116,17 @@ export function GameCard({
 
   const headline = headlinePick(game.myPicks);
   /* The strip, and what it is allowed to say.
-     Live, it reads a PICK — that is what it was built for and the word is a
-     present-tense "Covering".
-     Final, it reads whatever you actually had on the game (NFL-21). A bet
-     outranks a pick for the same reason the aura ranks them that way: real
-     money is the louder fact. Before this, a final card carried no verdict for
-     a bet at all — `FinalFooter` never looked at `myBets`, and the strip was
-     gated on `live && a pick`, so a bet could not reach either. */
-  const stake = settledStake(game);
-  const cover: PickCoverView | null = live
-    ? headline
-      ? pickCoverView(
-          headline.market,
-          headline.side,
-          headline.line,
-          game.homePoints ?? 0,
-          game.awayPoints ?? 0,
-        )
-      : null
-    : final && stake
-      ? settledCoverView(stake.verdict)
-      : null;
+     Live, it reads the position you hold — a ledger BET first, a pool pick
+     otherwise, the same order `tintFor` ranks them in, because real money is
+     the louder fact. It used to read a pick and only a pick, so a card you had
+     a bet and no pick on glowed green from the aura with no word to say why
+     (owner report, 2026-08-15).
+     Final, it reads whatever you actually had on the game (NFL-21) — same
+     ordering, past tense. Before that a final card carried no verdict for a bet
+     at all: `FinalFooter` never looked at `myBets` and the strip was gated on
+     `live && a pick`, so a bet could not reach either. */
+  const stake = live ? liveStake(game) : final ? settledStake(game) : null;
+  const cover: PickCoverView | null = stake?.cover ?? null;
 
   const homeColor = game.home.color ?? "var(--push)";
   const awayColor = game.away.color ?? "var(--push)";
@@ -200,7 +186,7 @@ export function GameCard({
         style={{ animationDelay: `${Math.min(index * 30, 150)}ms` }}
       >
       {cover ? (
-        <CoverStrip cover={cover} tail={live ? `Pick ${pickPrefix(game)}` : (stake?.label ?? "")} />
+        <CoverStrip cover={cover} tail={stake?.label ?? ""} />
       ) : (
         /* team-color split accent edge */
         <div aria-hidden className="absolute inset-x-0 top-0 flex h-[3px]">
@@ -278,28 +264,6 @@ export function GameCard({
         </div>
         </div>
       </article>
-    </div>
-  );
-}
-
-/* ---- cover strip -------------------------------------------------------- */
-
-/**
- * The verdict on a live card with a pick. The word says which side of the number
- * you're on; the tier's colour says how close it is, amber meaning one score
- * flips it. pointer-events stay off so taps fall through to the card link.
- */
-function CoverStrip({ cover, tail }: { cover: PickCoverView; tail: string }) {
-  return (
-    <div className={`cover-strip relative z-10 pointer-events-none cover-${cover.tier}`}>
-      <span className="cover-word">{cover.word}</span>
-      {/* the margin earns its place only when the number is in doubt */}
-      {cover.margin && <span className="cover-margin">{cover.margin}</span>}
-      {cover.sub && <span className="cover-sub">{cover.sub}</span>}
-      {/* What you have on it. Live this is always a pick, which is why the
-          slot used to hardcode the word; since NFL-21 a final says which BET
-          it settled, so the caller supplies the whole label. */}
-      {tail && <span className="cover-pick">{tail}</span>}
     </div>
   );
 }
@@ -853,47 +817,6 @@ function BetChip({ bet, label }: { bet: MyBetView; label: string }) {
       </button>
     </span>
   );
-}
-
-/** "OSU -3.5" / "O 54.5" / "OSU ML" — the one formatter all three card states share. */
-function pickPrefix(g: GameView, p: MyPickView | null = headlinePick(g.myPicks)): string {
-  if (!p) return "";
-  return pickSideLabel(p.market, p.side, p.line, g.home.abbr, g.away.abbr, { compact: true });
-}
-
-/**
- * What the card should shout about a finished game: the viewer's own position,
- * settled (NFL-21).
- *
- * A bet outranks a pick, matching `tintFor`'s ordering — money is the louder
- * fact and the two can disagree. Among bets, the first one the grader (or the
- * score) can actually settle wins; an ungraded `future` sitting at the top of
- * the list must not silence a graded spread underneath it.
- *
- * Null when the viewer had nothing on it, or had only wagers nothing can
- * settle — in which case the card keeps its team-colour edge, exactly as before.
- */
-function settledStake(g: GameView): { verdict: SettledVerdict; label: string } | null {
-  const h = g.homePoints ?? 0;
-  const a = g.awayPoints ?? 0;
-  for (const bet of g.myBets) {
-    const verdict = settledResult(bet.result, statusForBet(bet, h, a));
-    if (verdict) return { verdict, label: betPrefix(g, bet) };
-  }
-  const pick = headlinePick(g.myPicks);
-  if (pick && g.homePoints !== null && g.awayPoints !== null) {
-    const verdict = settledResult(null, statusForPick(pick.market, pick.side, pick.line, h, a));
-    if (verdict) return { verdict, label: `Pick ${pickPrefix(g, pick)}` };
-  }
-  return null;
-}
-
-function betPrefix(g: GameView, b: MyBetView): string {
-  const team = b.side === "home" ? g.home : g.away;
-  // stored home-perspective; the ticket reads the side's number
-  if (b.betType === "spread") return `${team.abbr} ${fmtSpread(lineForSide(b.side ?? "home", b.line))}`;
-  if (b.betType === "total") return `${b.side === "over" ? "O" : "U"} ${fmtTotal(b.line)}`;
-  return `${team.abbr} ML`;
 }
 
 function PregameFooter({ game, live }: { game: GameView; live: boolean }) {

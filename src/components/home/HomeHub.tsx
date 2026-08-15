@@ -2,6 +2,7 @@ import { ArrowRight, ClipboardList, Ticket, Tv, Users } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { LiveBadge, LiveStatusChip, PickedChip, ResultChip } from "../slate/chips";
+import { CoverStrip } from "../slate/CoverStrip";
 import { LiveSituation } from "../slate/LiveSituation";
 import { TeamScoreLine } from "../slate/TeamLine";
 import { StatTile } from "../StatTile";
@@ -9,6 +10,7 @@ import { UnitsCurve } from "../UnitsCurve";
 import { heldVsNow, splitPositions, type GroupStanding, type HomeBet, type HomeData, type HomePick, type Position, type WeekProgress } from "../../lib/home";
 import { DEFAULT_TZ, kickParts, periodLabel, tzLabel } from "../../lib/kick";
 import { statusForBet, statusForPick, tintFor } from "../../lib/live-status";
+import { cardStake } from "../../lib/stake";
 import { formatRecord, type Tally } from "../../lib/records";
 import { betSideLabel, pickSideLabel, type GameView } from "../../lib/slate";
 
@@ -227,6 +229,7 @@ export function PositionRow({
   // gets its two team colours.
   const tint = tintFor(game);
   const hasVerdict = tint !== "teams";
+  const stake = cardStake(game);
   const aura =
     tint === "covering"
       ? ["var(--win)", "var(--win)"]
@@ -249,7 +252,17 @@ export function PositionRow({
         <span className="aura-b" style={{ background: aura[1] }} />
       </div>
       <div className="card overflow-hidden">
-        <MaybeLink href={`/game/${game.id}`} inert={demo} className="block px-3 pb-2.5 pt-2">
+        {/* The word for the glow. The aura above has always coloured this row
+            green or red off `tintFor`; the hub never said what it was about,
+            so the one screen built around "what do I have going on" answered
+            it in colour alone. Same component, same vocabulary, same ordering
+            (bet over pick) as the slate card. */}
+        {stake && <CoverStrip cover={stake.cover} tail={stake.label} />}
+        <MaybeLink
+          href={`/game/${game.id}`}
+          inert={demo}
+          className={`block px-3 pb-2.5 ${stake ? "pt-1.5" : "pt-2"}`}
+        >
           <RowHeader game={game} live={live} final={final} tz={tz} />
           {/* The slate's scoreboard, not a summary of it: each team on its own
               team-coloured rail with a 24px score at the right. */}

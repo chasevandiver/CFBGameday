@@ -14,6 +14,13 @@ import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../../../lib/queri
 import { EMPTY_TALLY, formatRecord, tallyBy } from "../../../../../lib/records";
 import { pickSideLabel, type GameView } from "../../../../../lib/slate";
 import { createClient } from "../../../../../lib/supabase/server";
+import {
+  parseWeekRef,
+  seasonWeeks,
+  weekIndex,
+  weekLabel,
+  type WeekRef,
+} from "../../../../../lib/group-weeks";
 import { isValidWeek } from "../../../../../lib/week-range";
 
 export const dynamic = "force-dynamic";
@@ -45,10 +52,10 @@ export default async function GroupWeekPage({
   searchParams,
 }: {
   params: Promise<{ slug: string; week: string }>;
-  searchParams: Promise<{ view?: string; league?: string }>;
+  searchParams: Promise<{ view?: string; st?: string; league?: string }>;
 }) {
   const { slug, week: weekStr } = await params;
-  const { view: viewParam, league: leagueParam } = await searchParams;
+  const { view: viewParam, st: stRaw, league: leagueParam } = await searchParams;
   const view: View = viewParam === "pick" ? "pick" : "person";
 
   const week = Number(weekStr);
@@ -60,11 +67,31 @@ export default async function GroupWeekPage({
   } = await supabase.auth.getUser();
   const { active } = await resolveActiveGroup(supabase, user?.id ?? null, slug);
   if (!active || active.slug !== slug) notFound();
-  // Pick'em only — a betting group has no weekly board of picks to list.
-  if (active.kind === "betting") redirect(`/groups/${slug}`);
+  // Pick'em only — neither a betting group nor a survivor pool has a weekly
+  // board of picks to list.
+  if (active.kind !== "pickem") redirect(`/groups/${slug}`);
 
   const league = groupLeague(leagueParam, active.leagues);
-  const { seasonId, seasonType } = await fetchCurrentSeasonWeek(supabase, league);
+  const { seasonId, week: currentWeek, seasonType: currentType, minWeek } =
+    await fetchCurrentSeasonWeek(supabase, league);
+  // `?st=` decides which part of the calendar `[week]` names. Without it this
+  // page read the live pointer, so in August a URL saying week 2 rendered the
+  // preseason's week 2 — see lib/group-weeks.ts.
+  const weeks = seasonWeeks(league, minWeek);
+  const ref = parseWeekRef(String(week), stRaw, weeks, {
+    seasonType: currentType,
+    week: currentWeek,
+  });
+  const seasonType = ref.seasonType;
+  const i = weekIndex(weeks, ref);
+  const prevWeek = i > 0 ? weeks[i - 1] : null;
+  const nextWeek = i >= 0 && i < weeks.length - 1 ? weeks[i + 1] : null;
+  const nav = (w: WeekRef) =>
+    `/groups/${slug}/week/${w.week}?${new URLSearchParams({
+      ...(viewParam ? { view: viewParam } : {}),
+      ...(w.seasonType === "preseason" ? { st: "pre" } : w.seasonType === "postseason" ? { st: "post" } : {}),
+      ...(league === "nfl" ? { league: "nfl" } : {}),
+    }).toString()}`;
   const [groupWeek, members, slate, lifetimeRes] = await Promise.all([
     fetchGroupWeek(supabase, active.id, seasonId, week, seasonType),
     fetchGroupMembers(supabase, active.id),
@@ -167,20 +194,20 @@ export default async function GroupWeekPage({
         <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
           {/* the Sunday flow is "how did last week go" — weeks must be walkable */}
           <span className="flex items-center gap-1">
-            {week > 1 && (
+            {prevWeek && (
               <Link
-                href={`/groups/${slug}/week/${week - 1}${viewParam ? `?view=${viewParam}` : ""}`}
-                aria-label={`Week ${week - 1}`}
+                href={nav(prevWeek)}
+                aria-label={weekLabel(prevWeek, league)}
                 className="stat inline-flex min-h-11 min-w-11 items-center justify-center text-sm text-accent hover:underline"
               >
                 ‹
               </Link>
             )}
-            <h1 className="text-2xl">Week {week}</h1>
-            {week < 20 && (
+            <h1 className="text-2xl">{weekLabel(ref, league)}</h1>
+            {nextWeek && (
               <Link
-                href={`/groups/${slug}/week/${week + 1}${viewParam ? `?view=${viewParam}` : ""}`}
-                aria-label={`Week ${week + 1}`}
+                href={nav(nextWeek)}
+                aria-label={weekLabel(nextWeek, league)}
                 className="stat inline-flex min-h-11 min-w-11 items-center justify-center text-sm text-accent hover:underline"
               >
                 ›
@@ -213,13 +240,15 @@ export default async function GroupWeekPage({
           <section className="card px-6 py-10 text-center">
             <p className="text-sm text-dim">
               {groupWeek === null
-                ? `${active.name} hasn't set up week ${week} yet.`
-                : `No games in play for week ${week}.`}
+                ? `${active.name} hasn't set up ${weekLabel(ref, league).toLowerCase()} yet.`
+                : `No games in play for ${weekLabel(ref, league).toLowerCase()}.`}
             </p>
           </section>
         ) : view === "person" && picks.length === 0 ? (
           <section className="card px-6 py-10 text-center">
-            <p className="text-sm text-dim">No picks in yet for week {week}.</p>
+            <p className="text-sm text-dim">
+            No picks in yet for {weekLabel(ref, league).toLowerCase()}.
+          </p>
           </section>
         ) : view === "person" ? (
           <ul className="flex flex-col gap-3">

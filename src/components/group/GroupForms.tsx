@@ -1,9 +1,10 @@
 "use client";
 
-import { ClipboardList, Ticket } from "lucide-react";
+import { ClipboardList, Ticket, Trophy } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { createGroup, joinGroup, setActiveGroup } from "../../app/actions/groups";
+import { createSurvivorGroup } from "../../app/actions/survivor";
 import type { GroupKind } from "../../lib/db-types";
 
 /**
@@ -11,17 +12,24 @@ import type { GroupKind } from "../../lib/db-types";
  * make that group the active one, because the next thing you want after
  * either is to look at its board.
  */
-export function CreateGroupForm() {
+export function CreateGroupForm({ conferences = [] }: { conferences?: string[] }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  /* Survivor needs three settings the other two kinds have no use for — league,
+     conference, strikes — and it goes through its own RPC. Held in state rather
+     than revealed with CSS so the fields are absent from the submission when
+     the kind is not survivor, instead of being present and ignored. */
+  const [kind, setKind] = useState<GroupKind>("pickem");
+  const [sport, setSport] = useState<"cfb" | "nfl">("cfb");
 
   return (
     <form
       action={(fd) =>
         start(async () => {
           setError(null);
-          const res = await createGroup(fd);
+          const res =
+            kind === "survivor" ? await createSurvivorGroup(fd) : await createGroup(fd);
           if (!res.ok) setError(res.message ?? "Could not create the group");
           else if (res.slug) router.push(`/groups/${res.slug}`);
         })
@@ -54,7 +62,14 @@ export function CreateGroupForm() {
           </span>
         </legend>
         <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-chalk/15 p-2.5 text-sm has-[:checked]:border-accent/60 has-[:checked]:bg-accent/8">
-          <input type="radio" name="kind" value="pickem" defaultChecked className="mt-0.5" />
+          <input
+            type="radio"
+            name="kind"
+            value="pickem"
+            defaultChecked
+            onChange={() => setKind("pickem")}
+            className="mt-0.5"
+          />
           <span>
             <span className="flex items-center gap-1.5 text-chalk">
               <ClipboardList size={13} aria-hidden className="shrink-0" />
@@ -66,7 +81,13 @@ export function CreateGroupForm() {
           </span>
         </label>
         <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-chalk/15 p-2.5 text-sm has-[:checked]:border-accent/60 has-[:checked]:bg-accent/8">
-          <input type="radio" name="kind" value="betting" className="mt-0.5" />
+          <input
+            type="radio"
+            name="kind"
+            value="betting"
+            onChange={() => setKind("betting")}
+            className="mt-0.5"
+          />
           <span>
             <span className="flex items-center gap-1.5 text-chalk">
               <Ticket size={13} aria-hidden className="shrink-0 text-accent" />
@@ -78,11 +99,96 @@ export function CreateGroupForm() {
             </span>
           </span>
         </label>
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-chalk/15 p-2.5 text-sm has-[:checked]:border-accent/60 has-[:checked]:bg-accent/8">
+          <input
+            type="radio"
+            name="kind"
+            value="survivor"
+            onChange={() => setKind("survivor")}
+            className="mt-0.5"
+          />
+          <span>
+            <span className="flex items-center gap-1.5 text-chalk">
+              <Trophy size={13} aria-hidden className="shrink-0 text-accent" />
+              Survivor pool
+            </span>
+            <span className="block text-[11px] leading-snug text-dim">
+              One winner a week, straight up. You can&rsquo;t use a team twice, and a loss puts
+              you out.
+            </span>
+          </span>
+        </label>
         <p className="text-[11px] leading-snug text-dim">
-          Want both? Make two groups — the same people can be in each, and your bets and your
-          picks stay separate.
+          Want more than one? Make more than one group — the same people can be in each, and your
+          bets, your picks and your survivor run stay separate.
         </p>
       </fieldset>
+
+      {kind === "survivor" && (
+        <fieldset className="flex flex-col gap-2 rounded-lg border border-accent/25 bg-accent/5 p-2.5">
+          <legend className="px-1 text-xs text-accent">Pool rules</legend>
+
+          <div className="flex gap-2" role="group" aria-label="League">
+            {(["cfb", "nfl"] as const).map((l) => (
+              <label
+                key={l}
+                className="stat flex min-h-11 flex-1 cursor-pointer items-center justify-center rounded-lg border border-chalk/15 text-sm text-chalk has-[:checked]:border-accent has-[:checked]:bg-accent/15 has-[:checked]:text-accent"
+              >
+                <input
+                  type="radio"
+                  name="sport"
+                  value={l}
+                  defaultChecked={l === "cfb"}
+                  onChange={() => setSport(l)}
+                  className="sr-only"
+                />
+                {l.toUpperCase()}
+              </label>
+            ))}
+          </div>
+
+          {/* Conference is the normal CFB shape — "SEC survivor" — and is not
+              offered for the NFL, where the pool is the league. */}
+          {sport === "cfb" && (
+            <label className="flex flex-col gap-1 text-xs text-dim">
+              Conference
+              <select
+                name="conference"
+                defaultValue=""
+                className="min-h-11 rounded-lg border border-chalk/25 bg-elev px-3 text-sm text-chalk"
+              >
+                <option value="">All of college football</option>
+                {conferences.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <label className="flex flex-col gap-1 text-xs text-dim">
+            Strikes before you&rsquo;re out
+            <select
+              name="strikes"
+              defaultValue="1"
+              className="min-h-11 rounded-lg border border-chalk/25 bg-elev px-3 text-sm text-chalk"
+            >
+              <option value="1">1 — classic, one loss and you&rsquo;re done</option>
+              <option value="2">2 — one mulligan</option>
+              <option value="3">3</option>
+            </select>
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-chalk">
+            <input type="checkbox" name="reuse" /> Teams may be used more than once
+          </label>
+          <p className="text-[11px] leading-snug text-dim">
+            A tie counts against you, and a week you don&rsquo;t pick counts as a loss once every
+            game in it has kicked off.
+          </p>
+        </fieldset>
+      )}
       <fieldset className="flex flex-col gap-1.5">
         <legend className="mb-1 text-xs text-dim">Who can see it</legend>
         <label className="flex items-center gap-2 text-sm text-chalk">

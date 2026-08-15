@@ -4,10 +4,10 @@ import { BRAND } from "../lib/brand";
 /** PWA manifest — home-screen install is a spec §8 requirement (mobile-first). */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "The CFB Slate",
-    short_name: "CFB Slate",
+    name: "The Slate",
+    short_name: "The Slate",
     description:
-      "College football ratings, edges, pick'em, and the crew ledger — what matters right now, every Saturday.",
+      "College football and NFL ratings, edges, pick'em, and the crew ledger — what matters right now, every game day.",
     // The hub, not the slate: an installed app opens on what you have going
     // on, with the slate one tap away from it.
     start_url: "/",

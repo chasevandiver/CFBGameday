@@ -1,6 +1,17 @@
 import { ArrowRight, Crown } from "lucide-react";
 import Link from "next/link";
 import { ShareButton } from "../ShareButton";
+import { WeekJump } from "./WeekJump";
+import {
+  boardRunsIn,
+  firstRegular,
+  sameWeek,
+  stQuery,
+  weekIndex,
+  weekLabel,
+  weekQuery,
+  type WeekRef,
+} from "../../lib/group-weeks";
 import type { GroupWeek } from "../../lib/groups";
 import { DEFAULT_TZ, kickParts, tzLabel } from "../../lib/kick";
 import { formatRecord, type Tally } from "../../lib/records";
@@ -24,8 +35,9 @@ import { formatRecord, type Tally } from "../../lib/records";
  */
 export function WeekHero({
   slug,
-  week,
-  currentWeek,
+  weekRef: current,
+  weeks,
+  currentRef,
   groupWeek,
   gameCount,
   pickSlots,
@@ -38,8 +50,15 @@ export function WeekHero({
   league = "cfb",
 }: {
   slug: string;
-  week: number;
-  currentWeek: number;
+  /** The week in view, season type included — never a bare number (see
+   *  lib/group-weeks.ts for the defect that came of carrying one). Not spelled
+   *  `ref`: React reserves that prop name. */
+  weekRef: WeekRef;
+  /** The league's whole calendar in playing order: the chevrons walk it, so
+   *  the last preseason week steps forward into Week 1 instead of nowhere. */
+  weeks: WeekRef[];
+  /** Where the live calendar is pointing, for the "back to now" escape. */
+  currentRef: WeekRef;
   groupWeek: GroupWeek | null;
   gameCount: number;
   /** Picks this board actually offers — games times their live markets. */
@@ -58,7 +77,17 @@ export function WeekHero({
   const done = target > 0 && myPickCount >= target;
   const pct = target > 0 ? Math.min(100, Math.round((myPickCount / target) * 100)) : 0;
   const kick = firstKick === null ? null : kickParts(firstKick, DEFAULT_TZ);
-  const lq = league === "nfl" ? "&league=nfl" : "";
+  const week = current.week;
+  const leagueQ = league === "nfl" ? "nfl" : null;
+  const href = (to: WeekRef, extra: Record<string, string | null> = {}) =>
+    `/groups/${slug}${weekQuery(to, { league: leagueQ, ...extra })}`;
+  const i = weekIndex(weeks, current);
+  const prev = i > 0 ? weeks[i - 1] : null;
+  const next = i >= 0 && i < weeks.length - 1 ? weeks[i + 1] : null;
+  // Pick'em boards do not run in the preseason — the RPC refuses one. Saying so
+  // is the difference between "out of season" and "this page is broken".
+  const noBoard = !boardRunsIn(current);
+  const opener = firstRegular(weeks);
 
   return (
     <div className="glass-wrap" data-tint="position" style={{ "--aura-strength": 0.3 } as React.CSSProperties}>
@@ -69,28 +98,28 @@ export function WeekHero({
       <section className="card relative overflow-hidden p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <span className="flex items-center gap-1.5">
-            {week > 1 && (
+            {prev && (
               <Link
-                href={`/groups/${slug}?week=${week - 1}${lq}`}
-                aria-label={`Week ${week - 1}`}
+                href={href(prev)}
+                aria-label={weekLabel(prev, league)}
                 className="stat inline-flex min-h-11 min-w-8 items-center justify-center text-sm text-dim hover:text-chalk"
               >
                 ‹
               </Link>
             )}
-            <h2 className="text-lg leading-none">Week {week}</h2>
-            {week < 20 && (
+            <h2 className="text-lg leading-none">{weekLabel(current, league)}</h2>
+            {next && (
               <Link
-                href={`/groups/${slug}?week=${week + 1}${lq}`}
-                aria-label={`Week ${week + 1}`}
+                href={href(next)}
+                aria-label={weekLabel(next, league)}
                 className="stat inline-flex min-h-11 min-w-8 items-center justify-center text-sm text-dim hover:text-chalk"
               >
                 ›
               </Link>
             )}
-            {week !== currentWeek && (
+            {!sameWeek(current, currentRef) && (
               <Link
-                href={league === "nfl" ? `/groups/${slug}?league=nfl` : `/groups/${slug}`}
+                href={href(currentRef)}
                 className="stat text-[10.5px] uppercase tracking-wider text-accent hover:underline"
               >
                 back to now
@@ -105,13 +134,33 @@ export function WeekHero({
           )}
         </div>
 
-        {groupWeek === null ? (
+        {noBoard ? (
+          /* The preseason is real football with real lines — the slate and the
+             ledger both carry it — but a pick'em board is not offered for it,
+             and until now the page said "Week 2 isn't set up yet" and let the
+             admin walk into an RPC that refuses. */
           <div className="mt-3">
-            <p className="text-sm text-chalk">Week {week} isn&rsquo;t set up yet.</p>
+            <p className="text-sm text-chalk">Pick&rsquo;em doesn&rsquo;t run in the preseason.</p>
+            <p className="mt-1 text-sm text-dim">
+              These games are on the slate and count on your ledger — there is just no board for
+              them.{" "}
+              {opener && (
+                <Link
+                  href={href(opener)}
+                  className="font-medium text-accent underline-offset-2 hover:underline"
+                >
+                  {weekLabel(opener, league)} opens the season →
+                </Link>
+              )}
+            </p>
+          </div>
+        ) : groupWeek === null ? (
+          <div className="mt-3">
+            <p className="text-sm text-chalk">{weekLabel(current, league)} isn&rsquo;t set up yet.</p>
             <p className="mt-1 text-sm text-dim">
               {isAdmin ? (
                 <Link
-                  href={`/groups/${slug}/settings?week=${week}${lq}`}
+                  href={`/groups/${slug}/settings${weekQuery(current, { league: leagueQ })}`}
                   className="font-medium text-accent underline-offset-2 hover:underline"
                 >
                   Choose the games and bet types →
@@ -122,7 +171,9 @@ export function WeekHero({
             </p>
           </div>
         ) : gameCount === 0 ? (
-          <p className="mt-3 text-sm text-dim">No games in play for week {week}.</p>
+          <p className="mt-3 text-sm text-dim">
+            No games in play for {weekLabel(current, league).toLowerCase()}.
+          </p>
         ) : (
           <>
             <div className="mt-3 flex items-end justify-between gap-3">
@@ -166,9 +217,10 @@ export function WeekHero({
         )}
 
         <div className="mt-3.5 flex flex-wrap items-center gap-2">
+          <WeekJump base={`/groups/${slug}`} weeks={weeks} current={current} sport={league} league={leagueQ} />
           {groupWeek !== null && gameCount > 0 && (
             <Link
-              href={`/groups/${slug}/picks?week=${week}${lq}`}
+              href={`/groups/${slug}/picks${weekQuery(current, { league: leagueQ })}`}
               className="stat inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink sm:flex-none"
             >
               {signedIn ? (myPickCount > 0 ? "Review picks" : "Make picks") : "See the board"}
@@ -176,7 +228,7 @@ export function WeekHero({
             </Link>
           )}
           <Link
-            href={`/groups/${slug}/week/${week}?view=pick${lq}`}
+            href={`/groups/${slug}/week/${week}?view=pick${stQuery(current)}${league === "nfl" ? "&league=nfl" : ""}`}
             className="stat inline-flex min-h-11 items-center rounded-lg border border-chalk/20 px-3.5 text-sm text-chalk hover:border-chalk/50"
           >
             Who picked what

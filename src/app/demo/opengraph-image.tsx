@@ -12,7 +12,7 @@ import { ImageResponse } from "next/og";
  * Code-generated, like the root tile: no asset, no external font fetch.
  */
 export const runtime = "edge";
-export const alt = "The CFB Slate — a live demo with invented games and invented money";
+export const alt = "The Slate — a live demo with invented games and invented money";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -77,7 +77,7 @@ export default function Image() {
             Sample data
           </div>
           <div style={{ fontSize: 88, fontWeight: 800, lineHeight: 1.05, marginTop: 18 }}>
-            The CFB Slate
+            The Slate
           </div>
           <div style={{ fontSize: 31, color: DIM, marginTop: 18, lineHeight: 1.35 }}>
             A Saturday, mid-afternoon — every game you have money on, and whether it’s covering.
