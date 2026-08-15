@@ -6,6 +6,24 @@
 -- 0013 already made the column unwritable, so knowing is not becoming — but it
 -- is an inventory of who to go after, and it is free to close.
 --
+-- ## Split from the revoke on purpose (deploy ordering)
+--
+-- This migration only ADDS: the function and its grants. The revoke that
+-- actually closes the hole is 0052, and they are separate files because the
+-- order across a deploy matters and a single migration cannot be half-applied.
+--
+--   1. apply THIS  — inert against the running code, which still SELECTs the
+--                    column and still may
+--   2. deploy      — the new code calls the function, which now exists
+--   3. apply 0052  — takes the column away, with nothing left reading it
+--
+-- Run as one migration, the middle step has no safe position: applied before
+-- the deploy it breaks every admin gate (the old code's SELECT is denied), and
+-- applied after it leaves a window where the new code asks for a function that
+-- is not there. `lib/admin.ts` fails closed, so that window is admins quietly
+-- losing their admin links rather than an error — which is worse, being the
+-- kind of thing nobody reports.
+--
 -- ## Why a function instead of just revoking the column
 --
 -- Seven call sites gate on this flag by SELECTing it as the signed-in user.
@@ -44,14 +62,3 @@ $$;
 
 revoke execute on function public.is_current_user_admin() from public, anon;
 grant  execute on function public.is_current_user_admin() to authenticated;
-
--- Now the column itself. Same shape as 0013:26 and 0040:28 — the table-level
--- grant has to go before the column grants can bite, because a column-level
--- revoke against a live table-level SELECT is a no-op.
---
--- Every column except `is_admin`. `created_at` is included because it was
--- readable before and nothing here is trying to narrow the surface further
--- than the flag; this migration has one subject.
-revoke select on public.profiles from authenticated;
-grant  select (id, display_name, favorite_team_ids, timezone, created_at)
-  on public.profiles to authenticated;

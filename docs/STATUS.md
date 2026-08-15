@@ -935,10 +935,15 @@ Two items remain open; the closed ones are kept for the record.
       assertions, 225 total. The `admin-wagers` mock needed its `rpc` stub
       taught to answer, or four "an admin can do X" tests would have gone green
       by denying everyone.
-      *(Not applied to the live project. **Apply order matters**: 0050 revokes a
-      column the currently-deployed code still SELECTs, so applying it before
-      this branch deploys would 403 every admin gate. Same trap 0039/0040/0041
-      had, recorded in §1.)* · done
+      **Split across two migrations so the deploy has a safe order.** 0050 only
+      adds the function and is inert against the running code; **0052** does the
+      revoke and goes last. As one file the middle step had no safe position —
+      applied before the deploy it denies the old code's `select("is_admin")`
+      and breaks every admin gate, applied after it leaves a window where the
+      new code asks for a function that is not there. `lib/admin.ts` fails
+      closed, so that window would be admins quietly losing their admin links
+      rather than seeing an error, which is worse for being unreportable.
+      Order: **0050 → deploy → 0052.** · done
       The half of P2-2/SEC-08 that migration 0040 deliberately did not close.
       **Given a box 2026-08-14: it was described as "still queued below" in the
       P2-5… P2-2 row and in §8, and it was not below.** By this file's own rule —
