@@ -124,9 +124,16 @@ export function LoginForm({ linkFailed }: { linkFailed: boolean }) {
       <p className="stat text-sm tracking-[0.3em] text-accent uppercase">Game day, every day</p>
       <h1 className="text-4xl sm:text-5xl">The Slate</h1>
       {/* the login page had no way back to the public site (audit 08/UX-19) */}
-      <a href="/slate" className="stat text-xs text-accent underline-offset-2 hover:underline">
-        Browse this week&rsquo;s slate without signing in →
-      </a>
+      <div className="flex flex-col items-center gap-2">
+        <a href="/slate" className="stat text-xs text-accent underline-offset-2 hover:underline">
+          Browse this week&rsquo;s slate without signing in →
+        </a>
+        {/* Someone who followed a shared link and landed on a form has been
+            sold nothing yet. This is the way back to the pitch. */}
+        <a href="/welcome" className="stat text-xs text-dim underline-offset-2 hover:text-chalk">
+          What is The Slate?
+        </a>
+      </div>
 
       {status === "sent" ? (
         <div className="max-w-sm rounded-lg border border-accent/40 bg-surface p-6">

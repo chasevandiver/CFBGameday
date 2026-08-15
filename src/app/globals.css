@@ -131,8 +131,16 @@ html[data-theme="light"] {
    docs/BRAND.md §5. Charcoal dark and light are the product's own two themes
    and are untouched; this is the identity palette offered alongside them, so
    the app can be made to match its own icon without that being forced on
-   anyone. Everything below is an override of the dark defaults above. */
-html[data-theme="field"] {
+   anyone. Everything below is an override of the dark defaults above.
+
+   `.brand-surface` is the same palette pinned to an element instead of to the
+   document — `/welcome`, the marketing page, which is a launch surface and
+   colours from the identity (§31) the way the share card does, whatever theme
+   the visitor happens to be carrying. It shares this selector rather than
+   restating the values, so the two cannot drift: there is one Field palette in
+   this file and two ways to ask for it. */
+html[data-theme="field"],
+.brand-surface {
   color-scheme: dark;
 
   --bg: #020a08;
@@ -175,7 +183,10 @@ html[data-theme="field"] {
    because Graduate is considerably wider. */
 html[data-theme="field"] h1,
 html[data-theme="field"] h2,
-html[data-theme="field"] .display {
+html[data-theme="field"] .display,
+.brand-surface h1,
+.brand-surface h2,
+.brand-surface .display {
   font-family: var(--font-display-brand), var(--font-body), sans-serif;
   letter-spacing: 0.005em;
   font-weight: 400;
@@ -185,13 +196,24 @@ html[data-theme="field"] .display {
    puts every number on the mono — Graduate has no tabular figures and a
    varsity ornament on the 1 that has no business in a live score. The cover
    word is italic, and Graduate has none. */
-html[data-theme="field"] .scorebug {
+html[data-theme="field"] .scorebug,
+.brand-surface .scorebug {
   font-family: var(--font-numeric), monospace;
   font-weight: 600;
   letter-spacing: -0.03em;
 }
-html[data-theme="field"] .cover-word {
+html[data-theme="field"] .cover-word,
+.brand-surface .cover-word {
   font-family: var(--font-body), sans-serif;
+}
+
+/* A page-sized `.brand-surface` paints its own ground, but the body behind it
+   is still the visitor's theme — so an overscroll bounce on iOS flashes
+   charcoal (or, in light mode, white) above a near-black page. Same value as
+   the Field `--bg` above; it cannot be read from the token because that token
+   is declared on the element, not on the body. */
+body:has(.brand-surface) {
+  background: #020a08;
 }
 
 @theme inline {

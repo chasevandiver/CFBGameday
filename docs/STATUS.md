@@ -2922,6 +2922,20 @@ here so they aren't rediscovered as bugs.
   the `touch-action` on `html, body` in `globals.css`, and the `gesture*`
   handler. The `web-design-guidelines` review will flag this every time it runs;
   that is correct and is not a reason to stop running it.
+- **Nothing on the site defines a `:focus-visible` style** — every button and
+  link on every page rides the browser's default ring, and the only `focus:`
+  rule in the codebase is the skip link's. Surfaced by the design review on
+  `/welcome` (2026-08-15) and recorded rather than fixed there: adding rings to
+  the one new page would have made it the only page with them, which is the seam
+  DESIGN.md's "would someone notice" check exists to catch. Fixing it properly
+  is one rule in `globals.css` applied everywhere, on the accent token, and it
+  is a whole-product change. Owner call. · S
+- **The invite address is printed in plain text on a public page.** `/welcome`
+  offers `mailto:` twice (`INVITE_EMAIL` in `components/welcome/parts.tsx`),
+  which is a scrape target. Accepted deliberately: the alternative offered was a
+  capture form, which is a new public write endpoint and a bigger surface than
+  the spam it avoids, and obfuscating a mailto in markup stops no scraper worth
+  the name. One constant to change if it ever starts costing anything.
 - **The blind reads `start_ts`, not status.** A game whose `status` goes final
   while `start_ts` is stale stays hidden. Left as-is: one source of truth in a
   security boundary beats two.

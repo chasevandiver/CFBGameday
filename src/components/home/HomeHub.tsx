@@ -724,12 +724,24 @@ export function HomeDashboard({
             Sign in and this page carries the games you have money or a pick on, your groups and
             where you sit in them, and your season record.
           </p>
-          <Link
-            href="/login"
-            className="stat mt-3 inline-flex min-h-11 items-center rounded-lg border border-chalk/20 px-3.5 text-sm text-chalk hover:border-chalk/50"
-          >
-            Sign in
-          </Link>
+          {/* Two ways forward, because a signed-out visitor is one of two
+              people: someone who has an account and wants past this card, and
+              someone who has never seen the site and has no idea what it is.
+              The second one is who /welcome was written for. */}
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+            <Link
+              href="/login"
+              className="stat inline-flex min-h-11 items-center rounded-lg border border-chalk/20 px-3.5 text-sm text-chalk hover:border-chalk/50"
+            >
+              Sign in
+            </Link>
+            <Link
+              href="/welcome"
+              className="stat inline-flex min-h-11 items-center rounded-lg px-3.5 text-sm text-accent hover:underline"
+            >
+              New here? What this is →
+            </Link>
+          </div>
         </section>
       ) : (
         /* Your action on the left, where you stand on the right — the hub is
