@@ -3013,6 +3013,27 @@ verified, merged, and live behind its own route".
       the 2,759 backfilled games. Owner chose to drop the spread outright
       rather than fall back to it, so every puzzle reads the same way.
 
+- [x] **GTG-6 — practice rounds**, 2026-08-17, owner request ("a way to play
+      for fun that won't count"). `/api/guess-game/practice`, stateless and
+      **with no write in the file** — points come from `gtg_leaderboard()` over
+      `gtg_guesses`, which only the daily route writes, so "doesn't count" is
+      the absence of an INSERT rather than a rule to remember. Today's game is
+      filtered out of the pool before the pick (`practicePool`, pure and
+      tested against 300 seeds) so no practice round can spoil the shared one.
+      The client holds the round and sends its own attempt count, which is
+      safe only because nothing is scored — stated in the header so nobody
+      copies the pattern to the daily. Reads are shared with the daily route
+      via the new `src/lib/guess-game-data.ts`, extracted so the two cannot
+      drift.
+- [x] **GTG-7 — crests on the puzzle**, 2026-08-17, owner request. `TeamMark`
+      (logo, colored-monogram fallback) on the type-ahead rows, the guess
+      history, the clue that names the visitors, and the reveal. `GtgHint`
+      gained an explicit `team` field rather than the client scraping a school
+      name out of the clue text, and it only ever carries a team the clue has
+      already given away — the home crest is gated on `done` alongside the
+      name, since a logo gives away exactly as much. 264 of 266 CFB teams have
+      artwork; the other two fall back to the monogram.
+
 **Arcade calibration**
 - [ ] **UX-41 — re-check the arcade weights after Week 6.** The four weights
       in `ARCADE` equalise each game's *theoretical* weekly ceiling into

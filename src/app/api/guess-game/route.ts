@@ -4,12 +4,9 @@ import {
   gtgPayload,
   gtgVerdict,
   pickDailyGame,
-  recordEntering,
-  type RecordGameLike,
-  type GtgAnswerCtx,
   type GtgRowState,
 } from "../../../lib/guess-game";
-import { NFL_ID_OFFSET } from "../../../lib/league";
+import { answerFor, cfbDeck, resolveTeam } from "../../../lib/guess-game-data";
 import { productDate } from "../../../lib/streak";
 import { createClient } from "../../../lib/supabase/server";
 import { createServiceClient } from "../../../lib/supabase/service";
@@ -26,125 +23,18 @@ export const dynamic = "force-dynamic";
  * Writes run on the service client (gtg_guesses revokes member writes —
  * 0059); identity comes from the session, so the service write is always
  * scoped to the caller's own row.
+ *
+ * **This is the only place the feature writes.** Practice mode next door
+ * shares every read through `guess-game-data.ts` and has no write at all,
+ * which is what makes "practice does not touch your score" a property of the
+ * code rather than a promise in a comment.
  */
 
 type GtgRow = GtgRowState;
 
-/**
- * The deck: every CFB regular-season final we hold a score for.
- *
- * This used to be `for (const season of [2023, 2024, 2025])`, and that literal
- * was the whole bug: the three seasons it named were never backfilled into
- * this database, so the deck was empty and the page said "no puzzle today"
- * every day since R2-C3 shipped. Worse, it could not heal — when 2026
- * finishes, its games are season 2026 and the list would still be asking for
- * 2023.
- *
- * So the seasons are DISCOVERED rather than declared. Whatever CFB seasons
- * exist get played; a backfill widens the deck by landing rows, and the
- * season now being played widens it every Saturday. Rendezvous hashing is
- * what makes a growing deck safe — a new candidate only ever changes the days
- * it would itself have won, so yesterday's puzzle never moves.
- *
- * Read per season rather than in one query: a season is ~870 regular-season
- * games and PostgREST caps a response at 1000 rows, so one query over all of
- * them would silently truncate — and a silently truncated deck is a deck that
- * still works, which is the kind of bug nobody finds.
- *
- * Cached per instance per day — but **an empty deck is never cached**, and
- * that exception is the lesson of this whole bug rather than a micro-
- * optimisation. An empty deck is not a valid state to hold on to: it means
- * either something is wrong or a backfill is in flight, and both want the next
- * request to look again. Caching it pins "no puzzle today" onto a warm
- * instance for the rest of the day, so landing 2,700 games changes nothing
- * until that instance happens to recycle — the exact shape of failure that
- * made the original bug invisible for weeks. A non-empty deck is worth caching
- * because it only ever grows, and the rendezvous pick is deterministic anyway.
- */
-let deckCache: { day: string; ids: number[] } | null = null;
-
-async function cfbDeck(db: ReturnType<typeof createServiceClient>): Promise<number[]> {
-  const { data: seasonRows } = await db
-    .from("seasons")
-    .select("id")
-    .lt("id", NFL_ID_OFFSET)
-    .order("id");
-
-  const ids: number[] = [];
-  for (const s of (seasonRows ?? []) as Array<{ id: number }>) {
-    const { data } = await db
-      .from("games")
-      .select("id")
-      .eq("season_id", s.id)
-      .eq("season_type", "regular")
-      .eq("status", "final")
-      // A "final" with no score cannot answer its own first hint.
-      .not("home_points", "is", null)
-      .not("away_points", "is", null);
-    for (const r of (data ?? []) as Array<{ id: number }>) ids.push(r.id);
-  }
-  return ids;
-}
-
-async function dayAnswer(
-  db: ReturnType<typeof createServiceClient>,
-  day: string,
-): Promise<GtgAnswerCtx | null> {
-  if (!deckCache || deckCache.day !== day) {
-    const ids = await cfbDeck(db);
-    // See the header: an empty deck is a state to retry, not to remember.
-    if (ids.length > 0) deckCache = { day, ids };
-    else deckCache = null;
-  }
-  const deck = deckCache?.ids ?? [];
-  const gameId = pickDailyGame(day, deck);
-  if (gameId === null) return null;
-
-  const { data: game } = await db
-    .from("games")
-    .select("id, season_id, week, start_ts, home_team_id, away_team_id, home_points, away_points")
-    .eq("id", gameId)
-    .maybeSingle();
-  if (!game || game.home_points === null || game.away_points === null) return null;
-
-  const [{ data: teams }, { data: priorRows }] = await Promise.all([
-    db
-      .from("teams")
-      .select("id, school, conference")
-      .in("id", [game.home_team_id, game.away_team_id]),
-    /* The home team's season up to this kickoff — the clue that replaced the
-       closing spread, which no backfilled puzzle could ever answer. Bounded
-       by construction: at most a dozen or so rows, and none at all in week 0. */
-    game.start_ts === null
-      ? Promise.resolve({ data: [] })
-      : db
-          .from("games")
-          .select("home_team_id, away_team_id, home_points, away_points")
-          .eq("season_id", game.season_id)
-          .eq("status", "final")
-          .lt("start_ts", game.start_ts)
-          .or(`home_team_id.eq.${game.home_team_id},away_team_id.eq.${game.home_team_id}`),
-  ]);
-  const teamById = new Map(
-    ((teams ?? []) as Array<{ id: number; school: string; conference: string | null }>).map(
-      (t) => [t.id, t],
-    ),
-  );
-  const home = teamById.get(game.home_team_id);
-  const away = teamById.get(game.away_team_id);
-  if (!home || !away) return null;
-
-  return {
-    homeTeamId: game.home_team_id,
-    homeConference: home.conference,
-    homeSchool: home.school,
-    awaySchool: away.school,
-    homePoints: game.home_points,
-    awayPoints: game.away_points,
-    season: game.season_id,
-    week: game.week,
-    homeRecord: recordEntering((priorRows ?? []) as RecordGameLike[], game.home_team_id),
-  };
+async function dayAnswer(db: ReturnType<typeof createServiceClient>, day: string) {
+  const gameId = pickDailyGame(day, await cfbDeck(db, day));
+  return gameId === null ? null : answerFor(db, gameId);
 }
 
 async function userAndRow(day: string) {
@@ -198,36 +88,13 @@ export async function POST(req: NextRequest) {
   const answer = await dayAnswer(service, day);
   if (!answer) return NextResponse.json({ error: "No puzzle today" }, { status: 404 });
 
-  // Resolve the school. Exact-insensitive on school or abbreviation first,
-  // then a contains match if it is unambiguous.
-  const { data: exact } = await service
-    .from("teams")
-    .select("id, school, conference")
-    .eq("sport", "cfb")
-    .or(`school.ilike.${guessName},abbreviation.ilike.${guessName}`)
-    .limit(2);
-  let team = (exact ?? [])[0] as
-    | { id: number; school: string; conference: string | null }
-    | undefined;
-  if (!team) {
-    const { data: fuzzy } = await service
-      .from("teams")
-      .select("id, school, conference")
-      .eq("sport", "cfb")
-      .ilike("school", `%${guessName}%`)
-      .limit(2);
-    const rows = (fuzzy ?? []) as Array<{ id: number; school: string; conference: string | null }>;
-    if (rows.length === 1) team = rows[0];
-    else if (rows.length > 1) {
-      return NextResponse.json(
-        { error: `“${guessName}” matches more than one school — be more specific` },
-        { status: 422 },
-      );
-    }
+  // A guess that does not resolve costs no attempt — it never reaches the
+  // write below. That is what makes a typo free.
+  const resolved = await resolveTeam(service, guessName);
+  if ("error" in resolved) {
+    return NextResponse.json({ error: resolved.error }, { status: resolved.status });
   }
-  if (!team) {
-    return NextResponse.json({ error: `No school matching “${guessName}”` }, { status: 422 });
-  }
+  const team = resolved.team;
 
   const verdict = gtgVerdict({ id: team.id, conference: team.conference }, answer);
   const next: GtgRow = {

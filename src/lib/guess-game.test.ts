@@ -8,6 +8,7 @@ import {
   gtgVerdict,
   pickDailyGame,
   matchSchools,
+  practicePool,
   recordEntering,
   recordLine,
   type GtgAnswerCtx,
@@ -25,14 +26,48 @@ const ANSWER: GtgAnswerCtx = {
   homeRecord: { wins: 4, losses: 1 },
 };
 
+describe("practicePool — the no-spoilers guarantee", () => {
+  const deck = Array.from({ length: 400 }, (_, i) => i + 1);
+
+  it("no seed can reach today's game", () => {
+    // The property, checked the only way worth checking it: pick today, then
+    // try to land on it from every direction.
+    const today = pickDailyGame("2026-08-17", deck)!;
+    const pool = practicePool(deck, today);
+    const seeds = Array.from({ length: 300 }, (_, i) => `p-seed-${i}`);
+    expect(seeds.map((s) => pickDailyGame(s, pool))).not.toContain(today);
+  });
+
+  it("drops exactly one game and keeps the rest", () => {
+    const today = pickDailyGame("2026-08-17", deck)!;
+    const pool = practicePool(deck, today);
+    expect(pool).toHaveLength(deck.length - 1);
+    expect(pool).not.toContain(today);
+  });
+
+  it("still gives a full pool when there is no puzzle today", () => {
+    expect(practicePool(deck, null)).toEqual(deck);
+  });
+
+  it("hands back nothing when the deck was already empty", () => {
+    expect(practicePool([], null)).toEqual([]);
+  });
+});
+
 describe("matchSchools", () => {
+  const opt = (school: string, abbreviation: string | null) => ({
+    school,
+    abbreviation,
+    logo_url: null,
+    color: null,
+  });
   const schools = [
-    { school: "North Carolina", abbreviation: "UNC" },
-    { school: "North Texas", abbreviation: "UNT" },
-    { school: "Texas", abbreviation: "TEX" },
-    { school: "Texas A&M", abbreviation: "TAMU" },
-    { school: "Northwestern", abbreviation: "NW" },
-    { school: "Auburn", abbreviation: "AUB" },
+    opt("North Carolina", "UNC"),
+    opt("North Texas", "UNT"),
+    opt("Texas", "TEX"),
+    opt("Texas A&M", "TAMU"),
+    opt("Northwestern", "NW"),
+    opt("Auburn", "AUB"),
   ];
   const names = (q: string, limit?: number) =>
     matchSchools(q, schools, limit).map((s) => s.school);
@@ -66,8 +101,8 @@ describe("matchSchools", () => {
   });
 
   it("tolerates a team with no abbreviation", () => {
-    expect(matchSchools("val", [{ school: "Valparaiso", abbreviation: null }])).toHaveLength(1);
-    expect(matchSchools("x", [{ school: "Valparaiso", abbreviation: null }])).toEqual([]);
+    expect(matchSchools("val", [opt("Valparaiso", null)])).toHaveLength(1);
+    expect(matchSchools("x", [opt("Valparaiso", null)])).toEqual([]);
   });
 });
 

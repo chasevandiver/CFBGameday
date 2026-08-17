@@ -6,13 +6,21 @@ import type { TeamView } from "../../lib/slate";
 /**
  * Team logo with a colored-monogram fallback and a subtle team-color glow.
  * `size` is the box in px; the glow reads on dark and stays quiet on light.
+ *
+ * The prop is the four fields it actually paints rather than a whole
+ * `TeamView`, so callers that hold a name and a logo — the daily puzzle's
+ * guess list, for one — can use it without inventing ranks and a mascot they
+ * do not have. Every existing caller passes a TeamView, which still satisfies
+ * this.
  */
+export type MarkTeam = Pick<TeamView, "school" | "abbr" | "color" | "logo">;
+
 export function TeamMark({
   team,
   size = 32,
   glow = false,
 }: {
-  team: TeamView;
+  team: MarkTeam;
   size?: number;
   glow?: boolean;
 }) {

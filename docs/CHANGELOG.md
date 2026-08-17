@@ -296,6 +296,54 @@ false`. The NFL was. Swept for the same shape elsewhere: `queries.ts:844`
 already filters by sport, and the four scripts that write `is_current: true`
 each own exactly one season row. This was the only unscoped runtime read.
 
+### Aug 17 — GTG-6/7: practice rounds, and crests on the puzzle
+
+**Practice: the archive, for fun, scored by nobody.** The ask was "a way to
+play for fun that won't count towards the season score so I can keep trying it
+out", and the design follows from taking that literally.
+
+*It cannot touch your score because there is no write in the file.* Points come
+from `gtg_leaderboard()`, which aggregates `gtg_guesses`, which only the daily
+route ever writes. "Practice doesn't count" is therefore the absence of an
+INSERT — a property visible in a diff — rather than a rule somebody has to keep
+remembering.
+
+*Today's game is excluded, and that is the point.* A practice round that served
+up the daily puzzle would spoil the only part of this feature that is shared.
+`practicePool` is pure, exported and tested by picking today's game and then
+trying to land on it from 300 different seeds. A comment claiming the route
+filters it out would not have been worth anything.
+
+*Stateless, and the header says why that is allowed here.* The client holds the
+round and tells the server how many guesses it has spent. That trusts the
+client with its own attempt count, which is fine precisely because nothing is
+scored — lying to a practice round only spoils it for the liar — and the
+alternative is a table, a cleanup job and RLS bought for nothing. The daily
+puzzle, which IS scored, keeps its state in the database where the client
+cannot reach it. Both halves are written down so nobody copies the loose
+pattern onto the strict one.
+
+Reads are now shared through **`src/lib/guess-game-data.ts`** — the deck query,
+the answer context (including the record clue) and the guess resolver. Extracted
+rather than copied: a practice round that resolved guesses differently from the
+daily one would stop being practice for it.
+
+**Crests.** `TeamMark` — which already had the logo, the team-colour monogram
+fallback and the broken-image guard — now appears on the type-ahead rows, the
+guess history, the clue that names the visitors, and the reveal. Its prop type
+widened from `TeamView` to the four fields it actually paints, so a caller
+holding a name and a logo does not have to invent a rank and a mascot.
+
+Two spoiler details. `GtgHint` gained an explicit `team` field instead of the
+client scraping a school name out of the clue text — parsing a sentence for a
+team name works until a school has "State" in it twice — and it only ever
+carries a team the clue has already revealed. The home crest ships in
+`answerTeams`, gated on `done` in the same expression as `answer`, so one
+condition governs both: a future edit cannot reveal the crest while withholding
+the name. A logo gives away exactly as much as a name does.
+
+264 of 266 CFB teams have artwork; the other two get the monogram.
+
 ### Aug 17 — GTG-4/5: a type-ahead on the guess box, and a clue that was a shrug
 
 Two owner reports from the first real play, and the second one was a defect.

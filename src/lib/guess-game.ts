@@ -39,6 +39,18 @@ export function pickDailyGame(day: string, candidateIds: number[]): number | nul
   return bestId;
 }
 
+/**
+ * The pool a practice round draws from: the deck minus today's puzzle.
+ *
+ * Pure and exported for one reason — this is the no-spoilers guarantee. A
+ * practice round that handed you the game everybody is playing together today
+ * would ruin the only part of this feature that is shared, and "the route
+ * filters it out" is a claim worth a test rather than a comment.
+ */
+export function practicePool(deck: number[], todaysGameId: number | null): number[] {
+  return todaysGameId === null ? deck : deck.filter((id) => id !== todaysGameId);
+}
+
 export interface GtgAnswerCtx {
   homeTeamId: number;
   homeConference: string | null;
@@ -115,6 +127,17 @@ export function gtgVerdict(guess: GtgGuessTeam, answer: GtgAnswerCtx): GtgVerdic
 export interface GtgHint {
   label: string;
   value: string;
+  /**
+   * The school this clue is ABOUT, when it is about one — so the client can
+   * put a mark beside it. Named explicitly rather than left for the client to
+   * scrape out of `value`: parsing a sentence for a team name is the kind of
+   * thing that works until a school has "State" in it twice.
+   *
+   * Only ever a team the clue has already given away. The home team never
+   * appears here before the game is over — that is the whole anti-spoiler
+   * design, and a logo is as much of a giveaway as a name.
+   */
+  team?: string;
 }
 
 export const GTG_MAX_ATTEMPTS = 6;
@@ -122,6 +145,11 @@ export const GTG_MAX_ATTEMPTS = 6;
 export interface SchoolOption {
   school: string;
   abbreviation: string | null;
+  /** For the mark beside a guess. Null on the two teams ESPN has no art for;
+   *  `TeamMark` falls back to a colored monogram, which is why colour rides
+   *  along and is never null in practice. */
+  logo_url: string | null;
+  color: string | null;
 }
 
 /**
@@ -183,7 +211,7 @@ export function gtgHints(answer: GtgAnswerCtx, attempts: number): GtgHint[] {
     { label: "Home team", value: recordLine(answer.homeRecord) },
     { label: "When", value: `${answer.season}, week ${answer.week}` },
     { label: "Home conference", value: answer.homeConference ?? "Independent" },
-    { label: "The visitors", value: answer.awaySchool },
+    { label: "The visitors", value: answer.awaySchool, team: answer.awaySchool },
   ];
   // Hint 0 always; one more per attempt spent, capped at the ladder.
   return ladder.slice(0, Math.min(1 + attempts, ladder.length));
@@ -212,6 +240,10 @@ export function gtgPayload(day: string, row: GtgRowState, answer: GtgAnswerCtx) 
     guesses: row.guesses.map((g) => ({ name: g.name, verdict: g.verdict })),
     hints: gtgHints(answer, row.attempts),
     answer: done ? `${answer.awaySchool} @ ${answer.homeSchool}` : null,
+    /* The same two names in a shape the client can hang marks on. Gated on
+       `done` exactly like `answer` is — one condition, both fields, so a
+       future edit cannot reveal the crest while withholding the name. */
+    answerTeams: done ? { away: answer.awaySchool, home: answer.homeSchool } : null,
   };
 }
 

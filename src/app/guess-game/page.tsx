@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { AppNav } from "../../components/AppNav";
 import { GamesScopePicker } from "../../components/games/GamesScopePicker";
+import { GtgPractice } from "../../components/GtgPractice";
 import { GuessGamePlay } from "../../components/GuessGamePlay";
 import type { SchoolOption } from "../../lib/guess-game";
 import {
@@ -56,7 +57,11 @@ export default async function GuessGamePage({
         // every CFB school, which narrows the answer exactly as much as
         // knowing college football exists. The server still resolves the
         // guess — see `matchSchools`.
-        supabase.from("teams").select("school, abbreviation").eq("sport", "cfb").order("school"),
+        supabase
+          .from("teams")
+          .select("school, abbreviation, logo_url, color")
+          .eq("sport", "cfb")
+          .order("school"),
       ])
     : [{ data: [] }, { userIds: null, nameById: new Map<string, string>() }, { data: [] }];
   const { userIds, nameById } = roster;
@@ -93,7 +98,10 @@ export default async function GuessGamePage({
         )}
 
         {user ? (
-          <GuessGamePlay schools={(schoolRows ?? []) as SchoolOption[]} />
+          <>
+            <GuessGamePlay schools={(schoolRows ?? []) as SchoolOption[]} />
+            <GtgPractice schools={(schoolRows ?? []) as SchoolOption[]} />
+          </>
         ) : (
           <div className="card px-6 py-12 text-center">
             <p className="display text-lg text-chalk/80">Today&rsquo;s puzzle is waiting</p>

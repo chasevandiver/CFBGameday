@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, Copy } from "lucide-react";
+import { TeamMark, type MarkTeam } from "./slate/TeamMark";
 import { useEffect, useState, useTransition } from "react";
 import {
   GTG_MAX_ATTEMPTS,
@@ -17,8 +18,9 @@ interface GtgState {
   solved: boolean;
   done: boolean;
   guesses: Array<{ name: string; verdict: GtgVerdict }>;
-  hints: Array<{ label: string; value: string }>;
+  hints: Array<{ label: string; value: string; team?: string }>;
   answer: string | null;
+  answerTeams: { away: string; home: string } | null;
 }
 
 /**
@@ -101,6 +103,22 @@ export function GuessGamePlay({ schools }: { schools: SchoolOption[] }) {
   if (!state) return <p className="text-sm text-dim">Loading today’s puzzle…</p>;
 
   const cell = (v: GtgVerdict) => (v === "correct" ? "🟩" : v === "conference" ? "🟨" : "⬛");
+
+  /* Crests come from the same school list the type-ahead uses, joined on the
+     name the SERVER returned — `teams.school` on both sides, so it is an exact
+     match rather than a fuzzy one. A school we somehow cannot find just
+     renders without a mark; a missing logo is not worth a broken row. */
+  const byName = new Map(schools.map((s) => [s.school, s]));
+  const mark = (school: string | undefined): MarkTeam | null => {
+    const o = school === undefined ? undefined : byName.get(school);
+    if (!o) return null;
+    return {
+      school: o.school,
+      abbr: o.abbreviation ?? o.school.slice(0, 3).toUpperCase(),
+      color: o.color,
+      logo: o.logo_url,
+    };
+  };
   // Already-guessed schools drop out: re-guessing one is a wasted attempt, and
   // the server would accept it.
   const spent = new Set(state.guesses.map((g) => g.name));
@@ -114,10 +132,11 @@ export function GuessGamePlay({ schools }: { schools: SchoolOption[] }) {
         <h2 className="mb-2 text-sm text-accent">The clues</h2>
         <ul className="flex flex-col gap-1.5">
           {state.hints.map((h) => (
-            <li key={h.label} className="text-sm">
-              <span className="stat mr-2 text-[10px] font-semibold uppercase tracking-wider text-chalk/55">
+            <li key={h.label} className="flex items-center gap-2 text-sm">
+              <span className="stat w-[104px] shrink-0 text-[10px] font-semibold uppercase tracking-wider text-chalk/55">
                 {h.label}
               </span>
+              {mark(h.team) && <TeamMark team={mark(h.team)!} size={20} />}
               <span className="text-chalk">{h.value}</span>
             </li>
           ))}
@@ -134,8 +153,9 @@ export function GuessGamePlay({ schools }: { schools: SchoolOption[] }) {
         {state.guesses.length > 0 && (
           <ul className="mb-3 flex flex-col gap-1">
             {state.guesses.map((g, i) => (
-              <li key={i} className="flex items-center gap-2 text-sm">
+              <li key={i} className="flex min-h-8 items-center gap-2 text-sm">
                 <span aria-hidden>{cell(g.verdict)}</span>
+                {mark(g.name) && <TeamMark team={mark(g.name)!} size={22} />}
                 <span className="font-sans text-chalk/80">{g.name}</span>
                 {g.verdict === "conference" && (
                   <span className="text-xs text-chalk/50">right conference</span>
@@ -147,10 +167,24 @@ export function GuessGamePlay({ schools }: { schools: SchoolOption[] }) {
 
         {state.done ? (
           <div>
-            <p className="text-sm text-chalk">
-              {state.solved ? "Got it." : "Out of guesses."}{" "}
-              <span className="font-semibold">{state.answer}</span>
-            </p>
+            <p className="text-sm text-chalk">{state.solved ? "Got it." : "Out of guesses."}</p>
+            {state.answerTeams ? (
+              <p className="mt-2 flex flex-wrap items-center gap-2">
+                {mark(state.answerTeams.away) && (
+                  <TeamMark team={mark(state.answerTeams.away)!} size={30} />
+                )}
+                <span className="font-sans text-sm text-chalk/80">{state.answerTeams.away}</span>
+                <span className="stat text-xs text-dim">at</span>
+                {mark(state.answerTeams.home) && (
+                  <TeamMark team={mark(state.answerTeams.home)!} size={34} glow />
+                )}
+                <span className="font-sans text-sm font-semibold text-chalk">
+                  {state.answerTeams.home}
+                </span>
+              </p>
+            ) : (
+              <p className="mt-1 text-sm font-semibold text-chalk">{state.answer}</p>
+            )}
             <button
               onClick={share}
               className="mt-3 flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-ink"
@@ -203,9 +237,10 @@ export function GuessGamePlay({ schools }: { schools: SchoolOption[] }) {
                         setGuess(s.school);
                         setPicking(false);
                       }}
-                      className="flex min-h-11 w-full items-center justify-between gap-3 px-3 text-left text-sm text-chalk hover:bg-chalk/10"
+                      className="flex min-h-11 w-full items-center gap-2.5 px-3 text-left text-sm text-chalk hover:bg-chalk/10"
                     >
-                      <span className="truncate">{s.school}</span>
+                      {mark(s.school) && <TeamMark team={mark(s.school)!} size={20} />}
+                      <span className="flex-1 truncate">{s.school}</span>
                       {s.abbreviation && (
                         <span className="stat shrink-0 text-[11px] text-dim">{s.abbreviation}</span>
                       )}
