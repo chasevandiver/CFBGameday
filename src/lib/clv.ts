@@ -80,6 +80,34 @@ export function modelClv(
   return spreadClv(edge < 0 ? "home" : "away", frozenSpread, closeSpread);
 }
 
+/**
+ * CLV of the model's lean measured from the OPENER to the close (03:M-5).
+ *
+ * `modelClv` above grades the freeze-time number. This one asks the earlier
+ * question: had you taken the model's side of the OPENING line, what was that
+ * price worth by kickoff? The side is therefore the model's disagreement with
+ * the opener, not with the freeze-time market — the two can differ when the
+ * line crosses the model's number mid-week.
+ *
+ * Why it exists: the one real residual from the 2023–25 edge post-mortem is
+ * that the market drifts toward the model after the opener — the 4+ bucket
+ * went 51.8% with avg CLV +0.27, and every bucket was positive — and the
+ * close absorbs all of it. The pre-registered in-season rule lives on the
+ * Receipts surface that renders this number.
+ *
+ * Null when any number is missing or the model sat exactly on the opener.
+ */
+export function openerClv(
+  modelSpread: number | null,
+  openSpread: number | null,
+  closeSpread: number | null,
+): number | null {
+  if (modelSpread === null || openSpread === null || closeSpread === null) return null;
+  const edgeVsOpen = modelSpread - openSpread;
+  if (edgeVsOpen === 0) return null;
+  return spreadClv(edgeVsOpen < 0 ? "home" : "away", openSpread, closeSpread);
+}
+
 /** Rounded to the hundredth for numeric(5,2) storage. */
 export function roundClv(v: number): number {
   return Math.round(v * 100) / 100;

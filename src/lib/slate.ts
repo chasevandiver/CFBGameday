@@ -665,6 +665,20 @@ export function pickHero(games: GameView[]): GameView | null {
   return best && bestScore > 0 ? best : null;
 }
 
+/**
+ * Model spread − consensus opener, the disagreement the opener test grades
+ * (03:M-5). Distinct from `prediction.edge`, which is measured against the
+ * freeze-time market: the 2023–25 finding that survives (the 4+ bucket:
+ * 51.8%, +0.27 avg CLV) is specifically about the OPENING number, and the
+ * two can disagree once the line has moved. Null without both numbers.
+ */
+export function edgeVsOpener(g: GameView): number | null {
+  const open = g.lines.spreadOpen;
+  const spread = g.prediction?.spread ?? null;
+  if (open === null || spread === null) return null;
+  return Math.round((spread - open) * 10) / 10;
+}
+
 /** Signed movement from open to current (home perspective); null if unknown. */
 export function spreadMove(g: GameView): number | null {
   const { spread, spreadOpen } = g.lines;

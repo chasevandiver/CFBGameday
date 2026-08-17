@@ -1359,8 +1359,16 @@ Two items remain open; the closed ones are kept for the record.
       rest/travel tuner · S each
 - [ ] **02:§2b** Promote `warnIfTooGood` / negative-coefficient checks to
       CI-failing assertions · S–M
-- [ ] **03:M-5** Opener-relative CLV aggregate on Receipts (+1.0 / n ≥ 200,
-      pre-registered) · S to code, meaningful with in-season data
+- [x] **03:M-5 — opener-relative CLV aggregate, surface shipped 2026-08-17.**
+      Receipts now grades every frozen lean from the opener to the close
+      (`openerClv`, `src/lib/clv.ts` — the side is the model's disagreement
+      with the OPENING number, which can differ from its freeze-time side),
+      with the 4+ bucket broken out and the pre-registered rule printed
+      beside the tiles: strategy conversation only at ≥ +1.0 sustained over
+      n ≥ 200 leans; ≤ +0.3 by n = 200 replicates the backtest and closes the
+      question (~mid-October earliest). The box tracks the surface; the
+      decision itself is registered-not-run in the changelog decisions table,
+      and no parameter moves on either outcome.
 - [ ] **02:M-07 / 03:M-9b** "incl. adj" beside adjusted spreads + an admin
       warning that the spec's magnitudes are unvalidated · S
 - [ ] **02:M-08** In-sample caveat on the Receipts explainer · S
@@ -1979,7 +1987,17 @@ viewer's own bets, not the whole sheet.
 - [ ] **F3** Injury/news LLM scan producer · M–L
 - [ ] **F4/F5/F6** Rooting guide; playoff race tracker; homepage-by-day · M each
 - [ ] **F9** Ratings sparklines — needs weekly rating history
-- [ ] **F11** §5.1 soft-market taxonomy content on `/edges` — editorial
+- [x] **F11 — §5.1 soft-market taxonomy on `/edges`, shipped 2026-08-17.**
+      Renders as an editorial section with the honest framing (softness is a
+      structural claim about the market, profit is not claimed, CLV is the
+      only verification — §11.1), and the two tags the data can actually
+      derive — G5-vs-G5 and Tue/Wed weekday (`src/lib/soft-markets.ts`,
+      tested) — mark flagged rows. Backup-QB and derivative items stay words
+      by design: nothing in the database knows a depth chart. The page now
+      also leads with the 4+-vs-opener bucket (03:M-5's residual, 51.8% /
+      +0.27), and deliberately gives no other bucket a heading — the splits
+      that looked bettable were hunted and were noise ("beware the bucket
+      that clears").
 - [ ] **F12** Preseason team pages freeze at Week-1 kickoff · M
 - [x] **F16 — systems on slate cards. The component existed; the gate was the
       bug.** Fixed 2026-08-15, and the row's framing ("the game page has it")
