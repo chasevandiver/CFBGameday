@@ -103,6 +103,27 @@ describe("jobs.yml scheduler wiring", () => {
     expect(dispatchOptions().filter((t) => !runnable.has(t))).toEqual([]);
   });
 
+  it("lets a typed task reach the runner, and refuses a hostile one", () => {
+    // OPS-14: the dropdown has a hard ceiling (the mobile form renders ~12 of
+    // 35 options), so `task_override` is the way to reach the rest. Two
+    // properties matter and both are easy to lose in an edit.
+    const block = YML.split("workflow_dispatch:")[1].split("\n  schedule:")[0];
+    expect(block).toContain("task_override:");
+
+    const resolve = YML.split("- name: Resolve task from schedule")[1].split("- name: Run job")[0];
+    const script = resolve.split("run: |")[1];
+
+    // Read through env, and never spliced into the script: `${{ inputs.* }}`
+    // inside a `run:` body is textual substitution, which for a free-text
+    // input is shell injection. The env binding is the safe form, so it is
+    // asserted in the step header and forbidden in the body.
+    expect(resolve).toContain("TASK_OVERRIDE: ${{ inputs.task_override }}");
+    expect(script).not.toContain("inputs.task_override");
+    expect(script).toContain("${TASK_OVERRIDE:-$TASK_CHOICE}");
+    // …and constrained to the shape a job name can have before it goes on.
+    expect(script).toContain("*[!a-z0-9-]*");
+  });
+
   it("keeps the accidental default read-only", () => {
     // `task` is required with no `default:`, so GitHub pre-selects whatever is
     // at the top and a "Run workflow" tap that never opens the dropdown runs

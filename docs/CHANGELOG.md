@@ -231,10 +231,29 @@ without `--force`, so a stray tap costs one `seasons` read and three counts.
 `backup` keeps the top slot — `task` is required with no `default:`, so the
 first option is what a "Run workflow" tap runs without ever opening the
 dropdown, and a new test pins it there now that reordering this list is a thing
-we do. The underlying ceiling is recorded as **OPS-14**: ordering around a
-twelve-item window is a workaround, and the jobs.yml comment that has warned
-about this since `backup` sat at position 14 was describing a hard limit, not a
-quirk.
+we do.
+
+**Then a second screenshot, and the reorder was not enough.** The push had
+landed two minutes earlier (verified: `7d6a5b1` on `origin/main`, the option at
+position two) and GitHub's form was still serving a cached definition. Waiting
+out a cache is not a fix, and reordering a list is not one either — it just
+moves which two thirds are unreachable.
+
+So **OPS-14 is closed properly**: a `task_override` free-text input that wins
+over the dropdown when non-empty. Type the name, any job is reachable, from any
+device. The dropdown stays exactly as it was — it is the discoverable list, and
+it keeps `backup` first for the accidental-default rule — and a blank override
+changes nothing about the existing flow.
+
+Two things it does carefully. The value is read through `env:` rather than
+`${{ inputs.task_override }}` inside the `run:` body, because a `${{ }}` in a
+script body is textual substitution and free text spliced into a shell is
+injection; and it is constrained to `[a-z0-9-]+` before it reaches the step
+that interpolates it. Dispatch requires write access, so this is not a hostile
+input boundary — it is the difference between a typo that fails loudly and a
+typo that runs something. `jobs-yml.test.ts` asserts the env binding is present
+AND that the pattern is absent from the script body, which is the half that
+would rot silently.
 
 Found while reading, reported, and then **fixed on the owner's call** — see the
 next entry.

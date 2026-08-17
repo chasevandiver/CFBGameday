@@ -2972,18 +2972,19 @@ verified, merged, and live behind its own route".
       is missing FCS programs from those years, which is tolerable for a puzzle
       deck but worth knowing before anything else reads historical games.
       Move the option back down the list once this is done.
-- [ ] **OPS-14 — the dispatch list is 34 long and the phone shows 12.** Owner
-      hit this trying to run `backfill-games` at position 34: GitHub's mobile
-      workflow form renders about a dozen choices and stops, so two thirds of
-      this list cannot be reached from a phone at all. The jobs.yml comment has
-      warned since `backup` sat at 14 and was unfindable — that was treated as
-      a visibility quirk and it is actually a hard ceiling. Ordering around it
-      is a workaround, not a fix. The real options are a second workflow whose
-      list is short, or a `task` free-text input instead of a `choice` (which
-      trades the typo-proofing the enum buys — `run-job.ts` already rejects an
-      unknown task by name, so the cost is a red run rather than a wrong one).
-      Not urgent: everything scheduled runs on cron, and dispatch is for
-      one-offs.
+- [x] **OPS-14 — the dispatch list is 34 long and the phone shows 12**,
+      2026-08-17, owner-reported with a screenshot. GitHub's mobile workflow
+      form renders about a dozen choices and stops, so two thirds of the list
+      cannot be reached from a phone at all. The jobs.yml comment had warned
+      since `backup` sat at 14 and was unfindable — that was written up as a
+      visibility quirk and is actually a hard ceiling; reordering around it is
+      a workaround, not a fix. Fixed with a `task_override` free-text input
+      that wins over the dropdown when non-empty, so any job is reachable by
+      typing its name. The dropdown is untouched (still the discoverable list,
+      still `backup`-first for the accidental-default rule). Read through
+      `env:` rather than `${{ }}` inside the `run:` body — free text spliced
+      into a shell is injection — and constrained to `[a-z0-9-]+` before it
+      reaches the runner. Both properties are pinned by `jobs-yml.test.ts`.
 
 **Arcade calibration**
 - [ ] **UX-41 — re-check the arcade weights after Week 6.** The four weights
