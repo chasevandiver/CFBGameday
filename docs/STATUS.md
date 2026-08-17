@@ -2842,14 +2842,20 @@ conversions, turnovers, time of possession.
       stat differently — the same problem `scoring.ts` solved for plays. Do it
       after Week 0, when there is real data to check the parse against. · **M**
 
-**Round 2 — post-launch batches** — built on branch
-`claude/ultimate-football-site-b8tzog` (2026-08-17), per `docs/ROADMAP.md`.
-Code and migrations are complete and tested on the branch; **nothing merges
-before Week 0**, so every box here means "built and verified on the branch,
-awaiting the post-launch merge". Merge as four sequential PRs (A→B→C→D),
-apply each PR's migrations with its deploy, and watch the first `job_runs`
-row of each new cron before calling its batch done. New crons are inert until
-merged.
+**Round 2 batches** — built on branch `claude/ultimate-football-site-b8tzog`
+(2026-08-17), per `docs/ROADMAP.md`. **Merged to main 2026-08-17 by owner
+decision**, overriding this section's original "nothing merges before Week 0"
+posture — knowingly, with the reasoning that twelve days of preseason and the
+Aug 22–23 dress rehearsal exercise the new code better than a cold
+post-launch landing. The order the migrations demanded was honored and
+verified in the apply-then-verify style §1 uses: migrations 0054–0059 and
+0061 were applied to production FIRST (supabase_migrations went 52 → 59
+rows; all 8 new functions and all 3 new `bets` columns confirmed present by
+direct query; the security advisors surfaced nothing beyond the pre-existing
+definer-RPC pattern), and only then did main fast-forward. `streak` and
+`guess-lines` were dispatched once at merge so the watchdog's never-run
+check could not fire before their first crons. Every box below means "built,
+verified, merged, and live behind its own route".
 
 - [x] **R2-A1** NFL standings: `/standings?sport=nfl`, divisions from
       `teams.conference`, ties count half, preseason excluded, no rating
