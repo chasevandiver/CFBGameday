@@ -296,6 +296,38 @@ false`. The NFL was. Swept for the same shape elsewhere: `queries.ts:844`
 already filters by sport, and the four scripts that write `is_current: true`
 each own exactly one season row. This was the only unscoped runtime read.
 
+### Aug 17 — GTG-2/3: the deck is filled, and an empty one is no longer cached
+
+`backfill-games` ran green at 19:03 UTC. **2,759 games** — 2023 (909), 2024
+(918), 2025 (932) — of which **2,624** are deck-eligible: regular-season finals
+carrying a score. The puzzle has candidates for the first time since it
+shipped.
+
+**Five games dropped**, total, across three seasons, for referencing a team not
+in `teams` (1 / 2 / 2). The drop path was built expecting far worse — the
+reasoning was that a 2023 FCS opponent who never played an FBS team in 2026
+would be missing — and the reference sync's FCS coverage turned out to be
+better than that. The guard was still right to build: five silent FK failures
+mid-batch would have left three seasons half-loaded, and the count is what
+turns a guess about coverage into a number.
+
+**Then the failure mode that was still live.** `deckCache` is per-instance per
+day. Any warm instance that read the deck between the deploy and the backfill
+had cached `[]` for 2026-08-17 — and would have gone on answering "no puzzle
+today" for the rest of the day no matter how many games landed, until it
+happened to recycle. That is precisely the shape that hid GTG-1 for weeks: a
+correct-looking empty state, no error, nothing to notice.
+
+So an empty deck is **never cached** now. It is not a valid state to hold: it
+means something is wrong or a backfill is in flight, and both want the next
+request to look again. A non-empty deck is still cached, because it only ever
+grows and the rendezvous pick is deterministic regardless.
+
+Verified end to end as far as it can be from here: the backfill's own
+`job_runs.detail`, then the route's exact query predicates re-run against
+production (2,624 rows). The payload itself needs a session, so the last hop is
+the owner opening the page.
+
 ### Aug 17 — Round 3, Batch E3: the Arcade, and trophies that can be taken away
 
 Four games with four separate boards is four things to check, and no answer

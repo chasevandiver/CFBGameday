@@ -50,8 +50,15 @@ type GtgRow = GtgRowState;
  * them would silently truncate — and a silently truncated deck is a deck that
  * still works, which is the kind of bug nobody finds.
  *
- * Cached per instance per day. The rendezvous pick is deterministic anyway;
- * the cache only saves the candidate read.
+ * Cached per instance per day — but **an empty deck is never cached**, and
+ * that exception is the lesson of this whole bug rather than a micro-
+ * optimisation. An empty deck is not a valid state to hold on to: it means
+ * either something is wrong or a backfill is in flight, and both want the next
+ * request to look again. Caching it pins "no puzzle today" onto a warm
+ * instance for the rest of the day, so landing 2,700 games changes nothing
+ * until that instance happens to recycle — the exact shape of failure that
+ * made the original bug invisible for weeks. A non-empty deck is worth caching
+ * because it only ever grows, and the rendezvous pick is deterministic anyway.
  */
 let deckCache: { day: string; ids: number[] } | null = null;
 
@@ -83,9 +90,13 @@ async function dayAnswer(
   day: string,
 ): Promise<GtgAnswerCtx | null> {
   if (!deckCache || deckCache.day !== day) {
-    deckCache = { day, ids: await cfbDeck(db) };
+    const ids = await cfbDeck(db);
+    // See the header: an empty deck is a state to retry, not to remember.
+    if (ids.length > 0) deckCache = { day, ids };
+    else deckCache = null;
   }
-  const gameId = pickDailyGame(day, deckCache.ids);
+  const deck = deckCache?.ids ?? [];
+  const gameId = pickDailyGame(day, deck);
   if (gameId === null) return null;
 
   const { data: game } = await db

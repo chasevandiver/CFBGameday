@@ -2964,14 +2964,24 @@ verified, merged, and live behind its own route".
       there was no cadence to miss. Seasons are now **discovered** from the
       `seasons` table, migration **0063** seeds 2023–25 (`is_current` false —
       the pointer resolves on that flag), and `backfill-games` lands the games.
-- [ ] **GTG-2 — run `backfill-games` to actually fill the deck.** One dispatch:
-      Actions → Jobs → Run workflow → `backfill-games`, now **second in the
-      list**. Until it runs, the puzzle stays empty — 0063 only makes the rows
-      insertable. Idempotent; a loaded season is skipped without `--force`.
-      Check the run's `dropped_unknown_team` count: a large one means `teams`
-      is missing FCS programs from those years, which is tolerable for a puzzle
-      deck but worth knowing before anything else reads historical games.
-      Move the option back down the list once this is done.
+- [x] **GTG-2 — the deck is filled**, 2026-08-17. `backfill-games` ran green
+      at 19:03 UTC: **2,759 games** across 2023 (909), 2024 (918) and 2025
+      (932), of which **2,624** are deck-eligible (regular-season finals with a
+      score). Only **5 games** were dropped for an unknown team across all
+      three seasons — the `teams` table's FCS coverage turned out to be far
+      better than the drop path assumed, so nothing further is needed there.
+      Two follow-ups landed with it: the deck no longer caches an EMPTY result
+      (below), and `backfill-games` can move back down the dispatch list now
+      that it is dead weight.
+- [x] **GTG-3 — an empty deck is no longer cached**, 2026-08-17. `deckCache` is
+      per-instance per-day, so a warm instance that read the deck between the
+      deploy and the backfill would have pinned "no puzzle today" for the rest
+      of the day — landing 2,700 games would have changed nothing until it
+      recycled. That is the same shape of invisibility that hid GTG-1 for
+      weeks. An empty deck now forces a re-read on the next request; a
+      non-empty one is still cached, since it only ever grows. Not covered by
+      a unit test — the deck read lives inside the route, and routes are the
+      known §5 gap (`§23 #42`), not something to restructure for this.
 - [x] **OPS-14 — the dispatch list is 34 long and the phone shows 12**,
       2026-08-17, owner-reported with a screenshot. GitHub's mobile workflow
       form renders about a dozen choices and stops, so two thirds of the list
