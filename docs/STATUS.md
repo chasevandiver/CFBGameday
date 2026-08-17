@@ -2941,6 +2941,24 @@ verified, merged, and live behind its own route".
       Four allow-listed emoji, toggle semantics, `ReactionBar` on the game
       page's crew picks. Bets have the schema; more surfaces post-launch.
 
+**The daily puzzle's deck**
+- [x] **GTG-1 — Guess the Game had no deck, and the deck could not heal**,
+      2026-08-17, owner-reported ("it says there's no puzzle today, why not?").
+      The route built its candidates from a literal `[2023, 2024, 2025]`; those
+      seasons were never ingested here, so the deck was empty every day since
+      R2-C3 — and it could not self-heal, because 2026's games are season 2026
+      and the list did not name it. Nothing went red: the puzzle has no job, so
+      there was no cadence to miss. Seasons are now **discovered** from the
+      `seasons` table, migration **0063** seeds 2023–25 (`is_current` false —
+      the pointer resolves on that flag), and `backfill-games` lands the games.
+- [ ] **GTG-2 — run `backfill-games` to actually fill the deck.** One dispatch:
+      Actions → Jobs → Run workflow → `backfill-games`. Until it runs, the
+      puzzle stays empty — 0063 only makes the rows insertable. Idempotent; a
+      loaded season is skipped without `--force`. Check the run's
+      `dropped_unknown_team` count: a large one means `teams` is missing FCS
+      programs from those years, which is tolerable for a puzzle deck but worth
+      knowing before anything else reads historical games.
+
 **Arcade calibration**
 - [ ] **UX-41 — re-check the arcade weights after Week 6.** The four weights
       in `ARCADE` equalise each game's *theoretical* weekly ceiling into

@@ -22,6 +22,7 @@ import {
   watchdogJob,
   weatherJob,
 } from "./lib/jobs-core";
+import { backfillGamesJob } from "./lib/backfill";
 import { guessLinesJob, streakJob } from "./lib/daily-games";
 import { sixPackJob } from "./lib/six-pack";
 import { NFL_SEASON } from "./lib/nfl";
@@ -61,6 +62,9 @@ async function main() {
     // The weekly one (R3-E2): Tuesday generates, Sun/Mon grade. Both halves
     // are idempotent, so a missed run costs latency and never correctness.
     "six-pack": sixPackJob,
+    // Dispatch-only (no cron): finished seasons do not change, so this is
+    // run by hand when the puzzle deck needs widening. See scripts/lib/backfill.ts.
+    "backfill-games": backfillGamesJob,
   } as const;
   const job = jobs[task as keyof typeof jobs];
   if (!job) throw new Error(`unknown task "${task}" (${Object.keys(jobs).join("|")})`);

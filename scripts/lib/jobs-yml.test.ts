@@ -103,6 +103,16 @@ describe("jobs.yml scheduler wiring", () => {
     expect(dispatchOptions().filter((t) => !runnable.has(t))).toEqual([]);
   });
 
+  it("keeps backfill-games dispatchable and unscheduled", () => {
+    // A finished season does not change, so re-pulling three of them on a
+    // cron would spend CFBD calls to learn nothing. The property worth
+    // pinning is the ABSENCE: if somebody gives this a schedule, they also
+    // have to decide its watchdog horizon, and a job with no cadence cannot
+    // be late. Dispatchable-and-runnable is covered by the two tests above.
+    expect(dispatchOptions()).toContain("backfill-games");
+    expect(resolveBranches().some((b) => b.task === "backfill-games")).toBe(false);
+  });
+
   it("never lets two tasks claim the same cron", () => {
     // The P2-10 trap: `0 10 * * 6` is the weather cron, so adding it to the
     // refresh-lines pattern would not give Saturday two jobs — it would take

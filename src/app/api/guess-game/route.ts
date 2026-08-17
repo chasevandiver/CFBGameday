@@ -8,6 +8,7 @@ import {
   type GtgAnswerCtx,
   type GtgRowState,
 } from "../../../lib/guess-game";
+import { NFL_ID_OFFSET } from "../../../lib/league";
 import { productDate } from "../../../lib/streak";
 import { createClient } from "../../../lib/supabase/server";
 import { createServiceClient } from "../../../lib/supabase/service";
@@ -28,27 +29,61 @@ export const dynamic = "force-dynamic";
 
 type GtgRow = GtgRowState;
 
-/** The deck: regular-season CFB finals from the 2023–25 backfill. Cached per
- *  instance per day — the rendezvous pick is deterministic anyway; the cache
- *  only saves the candidate read. */
+/**
+ * The deck: every CFB regular-season final we hold a score for.
+ *
+ * This used to be `for (const season of [2023, 2024, 2025])`, and that literal
+ * was the whole bug: the three seasons it named were never backfilled into
+ * this database, so the deck was empty and the page said "no puzzle today"
+ * every day since R2-C3 shipped. Worse, it could not heal — when 2026
+ * finishes, its games are season 2026 and the list would still be asking for
+ * 2023.
+ *
+ * So the seasons are DISCOVERED rather than declared. Whatever CFB seasons
+ * exist get played; a backfill widens the deck by landing rows, and the
+ * season now being played widens it every Saturday. Rendezvous hashing is
+ * what makes a growing deck safe — a new candidate only ever changes the days
+ * it would itself have won, so yesterday's puzzle never moves.
+ *
+ * Read per season rather than in one query: a season is ~870 regular-season
+ * games and PostgREST caps a response at 1000 rows, so one query over all of
+ * them would silently truncate — and a silently truncated deck is a deck that
+ * still works, which is the kind of bug nobody finds.
+ *
+ * Cached per instance per day. The rendezvous pick is deterministic anyway;
+ * the cache only saves the candidate read.
+ */
 let deckCache: { day: string; ids: number[] } | null = null;
+
+async function cfbDeck(db: ReturnType<typeof createServiceClient>): Promise<number[]> {
+  const { data: seasonRows } = await db
+    .from("seasons")
+    .select("id")
+    .lt("id", NFL_ID_OFFSET)
+    .order("id");
+
+  const ids: number[] = [];
+  for (const s of (seasonRows ?? []) as Array<{ id: number }>) {
+    const { data } = await db
+      .from("games")
+      .select("id")
+      .eq("season_id", s.id)
+      .eq("season_type", "regular")
+      .eq("status", "final")
+      // A "final" with no score cannot answer its own first hint.
+      .not("home_points", "is", null)
+      .not("away_points", "is", null);
+    for (const r of (data ?? []) as Array<{ id: number }>) ids.push(r.id);
+  }
+  return ids;
+}
 
 async function dayAnswer(
   db: ReturnType<typeof createServiceClient>,
   day: string,
 ): Promise<GtgAnswerCtx | null> {
   if (!deckCache || deckCache.day !== day) {
-    const ids: number[] = [];
-    for (const season of [2023, 2024, 2025]) {
-      const { data } = await db
-        .from("games")
-        .select("id")
-        .eq("season_id", season)
-        .eq("season_type", "regular")
-        .eq("status", "final");
-      for (const r of (data ?? []) as Array<{ id: number }>) ids.push(r.id);
-    }
-    deckCache = { day, ids };
+    deckCache = { day, ids: await cfbDeck(db) };
   }
   const gameId = pickDailyGame(day, deckCache.ids);
   if (gameId === null) return null;

@@ -166,6 +166,67 @@ shipping it.
 
 ## Log
 
+### Aug 17 — GTG-1: the puzzle had no deck, and the deck could not heal
+
+Owner question — "it says there's no puzzle today, why not?" — and the answer
+was not "today". Guess the Game has said that every day since R2-C3 shipped.
+
+**The literal was the bug.** `src/app/api/guess-game/route.ts` built its
+candidate deck with `for (const season of [2023, 2024, 2025])`. Those three
+seasons were never ingested into this database — `games` holds 2026 CFB and
+2026 NFL and nothing else — so the deck was an empty array, `pickDailyGame`
+returned null, and the page rendered its honest empty state forever. No error,
+no failed job, no watchdog lane: the puzzle has no job at all, because
+selection is a rendezvous hash computed on read. Nothing was ever going to go
+red.
+
+**And it could not fix itself.** When 2026 finishes, those games are season
+2026, which the list does not name. A backfill alone would have bought three
+seasons and then quietly starved again.
+
+So the seasons are now **discovered, not declared**: the route reads the CFB
+season rows and plays whatever exists. A backfill widens the deck by landing
+rows; the season being played widens it every Saturday. Rendezvous hashing is
+exactly what makes a growing deck safe — a new candidate only changes the days
+it would itself have won, so yesterday's puzzle never moves. Finals with no
+score are excluded, since a scoreless "final" cannot answer its own first hint.
+
+Read per season rather than in one query, and the comment says why: a season is
+~870 regular-season games against PostgREST's 1000-row cap, so one query over
+all of them would **silently truncate** — and a silently truncated deck still
+works, which is the kind of bug nobody finds.
+
+**Migration 0063** seeds the 2023–25 season rows with their real Week 0 dates
+(all Saturdays: 08-26, 08-24, 08-23) and `is_current` **false**. That flag is
+load-bearing: two rows already carry true, and `fetchCurrentSeasonWeek`
+resolves the pointer with `is_current = true AND sport = ?`. Verified after
+applying — still exactly one current row per sport.
+
+**`backfill-games`**, dispatch-only, is the job that lands the games. Two
+refusals are written into it:
+
+* **It never touches `seasons`.** `scripts/sync-reference.ts:17` hardcodes
+  `is_current: true` and `week0_start: '2026-08-29'`, so aiming the reference
+  sync at 2024 would give that season the wrong Week 0 *and* steal the live
+  pointer. The season rows come from the migration instead.
+* **It drops games whose teams it does not know**, and counts them.
+  `games.home_team_id` references `teams(id)`, and a 2023 FCS opponent that
+  never played an FBS team in 2026 is not in those 298 rows. A silent FK
+  failure mid-batch leaves a season half-loaded; a puzzle deck does not need
+  the Week 2 buy game.
+
+**No cron, deliberately** — a finished season does not change, so scheduling a
+re-pull would spend CFBD calls to learn nothing, and a job with no cadence
+cannot be late (no watchdog horizon to invent). `jobs-yml.test.ts` pins the
+absence, because that is the property a future edit would break by accident.
+Re-running is idempotent: a season already loaded is skipped unless `--force`.
+
+Also recorded, found while reading and **not fixed** — out of scope here:
+`src/app/actions/adjustments.ts:36` resolves the current season with
+`is_current = true` and no `sport` filter, then `.maybeSingle()`. Two rows have
+carried true since the NFL landed, so that read is already ambiguous. It
+predates this work and 0063 does not worsen it (the three new rows are false).
+
 ### Aug 17 — Round 3, Batch E3: the Arcade, and trophies that can be taken away
 
 Four games with four separate boards is four things to check, and no answer
