@@ -1,6 +1,7 @@
 import { Skull, Trophy, Users } from "lucide-react";
 import Link from "next/link";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { GroupArcade } from "../../../components/games/GroupArcade";
 import { GroupSwitcher, JoinCode } from "../../../components/group/GroupForms";
 import { SurvivorPicker, type PickableGame } from "../../../components/group/SurvivorPicker";
 import { WeekJump } from "../../../components/group/WeekJump";
@@ -245,6 +246,17 @@ export async function SurvivorHome({
           </>
         )}
       </section>
+
+      {/* The daily games, scored for this roster — a survivor pool has no
+          board, but it has people, and that is all the arcade needs. */}
+      <GroupArcade
+        supabase={supabase}
+        groupId={group.id}
+        groupName={group.name}
+        slug={group.slug}
+        userId={userId}
+        members={members}
+      />
     </main>
   );
 }

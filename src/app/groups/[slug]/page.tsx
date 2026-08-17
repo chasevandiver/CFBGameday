@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { AppNav } from "../../../components/AppNav";
 import { BettingHome } from "./BettingHome";
 import { SurvivorHome } from "./SurvivorHome";
+import { GroupArcade } from "../../../components/games/GroupArcade";
 import { GroupSwitcher, JoinCode } from "../../../components/group/GroupForms";
 import { MemberCard, WeekHero } from "../../../components/group/GroupHub";
 import type { PickRow } from "../../../lib/db-types";
@@ -328,6 +329,16 @@ export default async function GroupHomePage({
             ))}
           </ul>
         </section>
+
+        {/* ---- the arcade ---- */}
+        <GroupArcade
+          supabase={supabase}
+          groupId={active.id}
+          groupName={active.name}
+          slug={slug}
+          userId={user?.id ?? null}
+          members={members}
+        />
 
         {/* ---- admin ---- */}
         {active.role === "admin" && (

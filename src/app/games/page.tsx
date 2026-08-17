@@ -1,12 +1,14 @@
 import { cookies } from "next/headers";
 import { AppNav } from "../../components/AppNav";
 import { GamesHub } from "../../components/games/GamesHub";
+import { fetchArcade } from "../../lib/arcade-data";
 import { fetchGamesHub } from "../../lib/games-hub";
 import {
   GAMES_SCOPE_COOKIE,
   resolveGameScope,
   scopeLabel,
   scopeParam,
+  scopeRoster,
 } from "../../lib/games-scope";
 import { ACTIVE_GROUP_COOKIE, fetchMyGroups } from "../../lib/groups";
 import { createClient } from "../../lib/supabase/server";
@@ -46,6 +48,9 @@ export default async function GamesPage({
     fetchGamesHub(supabase, user?.id ?? null),
   ]);
   const scope = resolveGameScope(mine, groupParam ?? null, remembered);
+  // The arcade needs the resolved roster, so it waits on the scope — the two
+  // reads above do not, which is why they run first rather than in one batch.
+  const arcade = await fetchArcade(supabase, await scopeRoster(supabase, scope), user?.id ?? null);
 
   return (
     <>
@@ -53,6 +58,7 @@ export default async function GamesPage({
       <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
         <GamesHub
           state={state}
+          arcade={arcade}
           groups={mine.map((m) => ({ slug: m.slug, name: m.name }))}
           activeParam={scopeParam(scope)}
           scopeName={scopeLabel(scope)}

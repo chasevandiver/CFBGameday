@@ -166,6 +166,87 @@ shipping it.
 
 ## Log
 
+### Aug 17 — Round 3, Batch E3: the Arcade, and trophies that can be taken away
+
+Four games with four separate boards is four things to check, and no answer
+to the only question a crew actually asks: who is winning. The Arcade is one
+standing across all four, per pool — on `/games` and on every group hub.
+
+**The one number that matters is the ceiling.** Guess the Game is daily and
+cheap to win; left unweighted it decides the arcade inside a month, and the
+arcade quietly becomes "whoever plays that one the most". So the weights
+equalise each game's *weekly ceiling* into [60,70] — streak 10 a win (70),
+puzzle points × 1.67 (70), lines `max(0, 7.5 − 1.5·error)` over an eight-game
+slate (60), six-pack 8 a correct answer plus 12 for a clean sheet (60) — and
+`weeklyCeiling()` is exported for one reason: its test fails first if a weight
+change ever breaks the band. This is calibration against a *theoretical*
+ceiling, not against what people score, which is a real difference and is why
+**UX-41** is queued to re-check it after Week 6.
+
+**It imports scoring; it does not re-implement it** — `pool-machine.ts`'s
+discipline. Streak points fold through `streakFold`, so there is one
+definition of what a run is. Guess the Game's points arrive as the column
+`gtg_leaderboard()` already computed in SQL: there is deliberately **no
+`7 − attempts` arithmetic anywhere in TypeScript**, because a copy of that
+formula in a second language is exactly the thing that drifts silently and
+re-scores a season. The six-pack's weeks fold through `entryScore`, which
+already owns the void accounting.
+
+**No participation floor, and that is the decision.** The total is cumulative,
+so somebody who joins in November is rankable from their first day — they
+simply have fewer points, like a late-joining pick'em member has fewer wins.
+A floor would make them *literally unrankable*, which is the failure worth
+avoiding; `n` and `perWeek` ride along so a strong newcomer is visible without
+distorting the season total. Floors stay where they belong, on rate boards
+(the mean-error list, n ≥ 5).
+
+**Every total renders its four components.** A row that shows only a sum
+invites the question it cannot answer, and at crew size the answer is three
+short numbers.
+
+**Trophies are derived, never stored** — the survivor and streak rule, for the
+fourth time. Seven pure predicates over rows the arcade already fetched:
+Perfect Call, Sharp Eye, Ice Cold, Iron Man, Unbroken, Six-Pack, Regular. The
+consequence is deliberate and correct: **a trophy can be taken away.** If a
+re-grade means your run was never really ten long, the badge vanishes, because
+it was only ever a statement about the data — and the test that proves it
+flips a result, watches the badge go, and restores it.
+
+**The shelf is yours, and the reason is RLS, not preference.** `gtg_guesses`
+is own-rows-only (0059); other members' puzzle results reach the app solely
+through `gtg_leaderboard()`'s aggregates, which never expose per-day attempts.
+So Ice Cold is underivable for anyone but the viewer, and a shelf rendered for
+someone else would be *silently incomplete* — a badge they earned quietly
+failing to appear, which is worse than no shelf at all. Crew-wide trophies
+would need a definer aggregate over `gtg_guesses`; that is a migration, and one
+to take only if somebody asks.
+
+**One gap, closed rather than papered over.** `weeksPlayed` counts weeks from
+the dated rows a viewer can see — streak days, and the `created_at` of line
+guesses and six-pack entries. Guess the Game contributes no readable date for
+other members, so a puzzle-only player's denominator would collapse to one and
+flatter their rate. `gtg_leaderboard()`'s `played` count closes it: twenty
+daily puzzles cannot fit inside one week, so `ceil(played / 7)` is a true lower
+bound and the denominator takes the larger of the two.
+
+**Rejected:**
+* **`current + best` for the streak.** It double-counts a live run and it can
+  go DOWN when you lose. A cumulative total that decreases is one nobody
+  trusts, and every other component here is monotone — which the monotonicity
+  test now pins. `current` and `best` stay visible on the Streak board, where
+  they are that game's own currency.
+* **A run multiplier** (`10 + 2·min(current−1, 5)`). It compounds for whoever
+  is already ahead, which is precisely wrong for a 5–15 person crew whose
+  point is that everyone keeps playing.
+* **A participation floor on the arcade**, above.
+* **Per-member trophy chips on the standings**, above.
+
+No migration. `src/lib/arcade.ts`, `trophies.ts` and `arcade-data.ts` (the
+reads, including the scope filter — a product filter over rows RLS already
+allows, never a boundary), `ArcadeBoard`/`GroupArcade`, and the group-hub
+section placed after the survivor and betting early branches so it renders for
+**all three kinds of group**: the arcade needs a roster, not a board.
+
 ### Aug 17 — Round 3, Batch E2: the Six-Pack
 
 A fourth game, and the first weekly one: six questions on the week, free to

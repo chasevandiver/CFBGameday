@@ -1,5 +1,7 @@
 import Link from "next/link";
+import type { ArcadeData } from "../../lib/arcade-data";
 import { gamesHubRows, type GamesHubState } from "../../lib/games-hub";
+import { ArcadeBoard } from "./ArcadeBoard";
 import { GamesScopePicker } from "./GamesScopePicker";
 
 /**
@@ -14,12 +16,14 @@ import { GamesScopePicker } from "./GamesScopePicker";
  */
 export function GamesHub({
   state,
+  arcade,
   groups,
   activeParam,
   scopeName,
   signedIn,
 }: {
   state: GamesHubState;
+  arcade: ArcadeData;
   groups: Array<{ slug: string; name: string }>;
   activeParam: string;
   scopeName: string;
@@ -71,6 +75,13 @@ export function GamesHub({
           </li>
         ))}
       </ul>
+
+      <ArcadeBoard
+        standings={arcade.standings}
+        trophies={arcade.trophies}
+        scopeName={scopeName}
+        signedIn={signedIn}
+      />
 
       {!signedIn && (
         <p className="mt-4 text-sm text-dim">

@@ -1,6 +1,7 @@
 import { Ticket, Users } from "lucide-react";
 import Link from "next/link";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { GroupArcade } from "../../../components/games/GroupArcade";
 import { GroupSwitcher, JoinCode } from "../../../components/group/GroupForms";
 import {
   PairPanel,
@@ -223,6 +224,16 @@ export async function BettingHome({
           </p>
         </section>
       )}
+
+      {/* Same roster, different game. A betting group's members play the
+          daily four too, and this is where they find out who's winning. */}
+      <GroupArcade
+        supabase={supabase}
+        groupId={group.id}
+        groupName={group.name}
+        slug={group.slug}
+        userId={userId}
+      />
     </main>
   );
 }

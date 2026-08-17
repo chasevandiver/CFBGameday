@@ -2941,6 +2941,19 @@ verified, merged, and live behind its own route".
       Four allow-listed emoji, toggle semantics, `ReactionBar` on the game
       page's crew picks. Bets have the schema; more surfaces post-launch.
 
+**Arcade calibration**
+- [ ] **UX-41 — re-check the arcade weights after Week 6.** The four weights
+      in `ARCADE` equalise each game's *theoretical* weekly ceiling into
+      [60,70], which is the right thing to pin before any data exists but is
+      not the same as equalising what people actually score. If by Week 6 one
+      column dominates every total, the ceiling was the wrong invariant and
+      the weights should be refit against observed medians — recorded in the
+      changelog either way, including "no change". `weeklyCeiling()`'s test
+      is what makes such a change deliberate rather than incidental. Related
+      and cheap if it ever matters: crew-wide trophies would need a definer
+      aggregate over `gtg_guesses` exposing min-attempts-on-solve, which is
+      the only reason the shelf is viewer-only today.
+
 **Round 3 — the Games section** — owner request 2026-08-17: the R2-C games
 were undiscoverable (URL-only plus a 12px line on the hub) and every board
 was site-wide, so there was no way to compete inside a pool. Built on
@@ -2966,11 +2979,19 @@ was site-wide, so there was no way to compete inside a pool. Built on
       assertions in the same commit. ⚠️ 0062 applies to production BEFORE the
       E2 deploy — the page selects `six_pack_questions`. Dispatch `six-pack`
       once at merge.
-- [ ] **R3-E3** Arcade standings and trophies — `src/lib/arcade.ts` (weekly
+- [x] **R3-E3** Arcade standings and trophies — `src/lib/arcade.ts` (weekly
       ceilings equalised into [60,70]; imports `streakFold` and consumes the
       GtG points column rather than re-deriving either), `src/lib/trophies.ts`
       (derived predicates, never stored), sections on `/games` and the group
-      hub for all three group kinds.
+      hub for all three group kinds. **No migration.** The four component
+      columns render beside every total — a sum with no breakdown invites the
+      question it cannot answer — and there is no participation floor, because
+      a floor makes a November joiner literally unrankable; `n` and `perWeek`
+      answer the same question without hiding anyone. The trophy shelf is the
+      **viewer's own**: `gtg_guesses` is own-rows-only under RLS (0059), so a
+      shelf rendered for another member would silently omit Ice Cold, and a
+      badge that quietly fails to appear is worse than no shelf. Re-check the
+      weights against real numbers after Week 6 — **UX-41** below.
 
 ## 5. Not built, by choice
 
