@@ -221,11 +221,46 @@ cannot be late (no watchdog horizon to invent). `jobs-yml.test.ts` pins the
 absence, because that is the property a future edit would break by accident.
 Re-running is idempotent: a season already loaded is skipped unless `--force`.
 
-Also recorded, found while reading and **not fixed** — out of scope here:
-`src/app/actions/adjustments.ts:36` resolves the current season with
-`is_current = true` and no `sport` filter, then `.maybeSingle()`. Two rows have
-carried true since the NFL landed, so that read is already ambiguous. It
-predates this work and 0063 does not worsen it (the three new rows are false).
+Found while reading, reported, and then **fixed on the owner's call** — see the
+next entry.
+
+### Aug 17 — ADJ-1: manual rating adjustments have been broken since the NFL landed
+
+Found while auditing what migration 0063 might disturb, and it turned out to
+predate it by weeks.
+
+`src/app/actions/adjustments.ts` resolved the season with `is_current = true`
+and **no sport filter**, then `.maybeSingle()`. Since migration 0041 gave the
+NFL its own season row, two rows carry true — and `.maybeSingle()` over two
+rows is a PostgREST **error**, not a coin flip. So `season` came back null and
+the action returned "No current season configured" for every adjustment
+anybody has tried to make since.
+
+Two things made it invisible. The failure mode is a polite message rather than
+a crash, and the message points at the wrong thing entirely — it reads like a
+seeding problem, so the natural next move is to go stare at a `seasons` table
+that is in fact correct. And SPEC §2.2 adjustments are a Thursday-before-the-
+freeze tool: nobody had reached for it yet this season.
+
+The fix is `.eq("sport", "cfb")`, and CFB is the right answer rather than a
+tiebreak: `rating_adjustments` feeds the ratings replay, which is CFB-only
+(`ratings-update` runs against `SEASON`). Same shape as
+`fetchCurrentSeasonWeek` at `queries.ts:842` — one definition of how a season
+pointer resolves. The "no season" message now says CFB, so the next time this
+does fail it points somewhere true.
+
+**The regression test is the deliverable**, because the bug is invisible
+without one — and it needed care to be worth anything. `FakeSupabase`'s
+`maybeSingle()` is more forgiving than PostgREST: it returns the first match
+instead of erroring, so a naively seeded fixture would pass against the broken
+code. The NFL row is therefore seeded **first**, which makes an unscoped query
+pick it and the two versions distinguishable. Verified by reverting the fix:
+`expected 102026 to be 2026`.
+
+Migration 0063's past seasons were never part of this — they are `is_current
+false`. The NFL was. Swept for the same shape elsewhere: `queries.ts:844`
+already filters by sport, and the four scripts that write `is_current: true`
+each own exactly one season row. This was the only unscoped runtime read.
 
 ### Aug 17 — Round 3, Batch E3: the Arcade, and trophies that can be taken away
 

@@ -32,12 +32,28 @@ export async function addAdjustment(
   }
   if (!reason.trim()) return { ok: false, message: "A reason is required — receipts culture" };
 
+  /* The sport filter is not optional, and leaving it off did not degrade —
+     it broke the feature outright.
+
+     `is_current` is per sport: 2026 CFB and 2026 NFL both carry true, and have
+     since the NFL landed (migration 0041). `.maybeSingle()` over two rows is a
+     PostgREST error, not a coin flip, so `season` came back null and every
+     manual adjustment has been answering "No current season configured" —
+     a message that reads like a seeding problem and sent you to look at the
+     wrong table. Migration 0063's past seasons are `is_current false` and were
+     never part of this; the NFL was.
+
+     CFB is the right answer rather than a tiebreak: `rating_adjustments` feeds
+     the ratings replay, which is CFB-only (`ratings-update` runs against
+     `SEASON`). Same shape as `fetchCurrentSeasonWeek` — one definition of how
+     a season pointer resolves, which is `queries.ts:842`. */
   const { data: season } = await supabase
     .from("seasons")
     .select("id")
     .eq("is_current", true)
+    .eq("sport", "cfb")
     .maybeSingle();
-  if (!season) return { ok: false, message: "No current season configured" };
+  if (!season) return { ok: false, message: "No current CFB season configured" };
 
   const { error } = await supabase.from("rating_adjustments").insert({
     season_id: season.id,

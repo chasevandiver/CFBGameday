@@ -2941,6 +2941,19 @@ verified, merged, and live behind its own route".
       Four allow-listed emoji, toggle semantics, `ReactionBar` on the game
       page's crew picks. Bets have the schema; more surfaces post-launch.
 
+**Admin**
+- [x] **ADJ-1 — manual rating adjustments were broken, and had been since the
+      NFL landed**, 2026-08-17. `addAdjustment` resolved the season with
+      `is_current = true` and no `sport` filter, then `.maybeSingle()` — which
+      over two true rows (2026 CFB and 2026 NFL, since migration 0041) is a
+      PostgREST error, so every adjustment answered "No current season
+      configured". Invisible because the failure is a polite message pointing
+      at a `seasons` table that is actually correct, and because nobody had
+      reached for a §2.2 adjustment yet this season. Fixed with the sport
+      filter (CFB, because the ratings replay is CFB-only) and a regression
+      test that seeds the NFL row first so it can tell the two versions apart.
+      Only unscoped runtime read of `is_current` in the codebase.
+
 **The daily puzzle's deck**
 - [x] **GTG-1 — Guess the Game had no deck, and the deck could not heal**,
       2026-08-17, owner-reported ("it says there's no puzzle today, why not?").
