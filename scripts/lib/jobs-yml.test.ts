@@ -103,6 +103,16 @@ describe("jobs.yml scheduler wiring", () => {
     expect(dispatchOptions().filter((t) => !runnable.has(t))).toEqual([]);
   });
 
+  it("keeps the accidental default read-only", () => {
+    // `task` is required with no `default:`, so GitHub pre-selects whatever is
+    // at the top and a "Run workflow" tap that never opens the dropdown runs
+    // it. That used to be `refresh-lines` — a live job that writes snapshots
+    // and chains freeze-groups. Reordering this list is a legitimate thing to
+    // do (the mobile form only renders ~12 options, so what is reachable is a
+    // real constraint); putting something that writes at the top is not.
+    expect(dispatchOptions()[0]).toBe("backup");
+  });
+
   it("keeps backfill-games dispatchable and unscheduled", () => {
     // A finished season does not change, so re-pulling three of them on a
     // cron would spend CFBD calls to learn nothing. The property worth

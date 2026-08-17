@@ -2965,12 +2965,25 @@ verified, merged, and live behind its own route".
       `seasons` table, migration **0063** seeds 2023–25 (`is_current` false —
       the pointer resolves on that flag), and `backfill-games` lands the games.
 - [ ] **GTG-2 — run `backfill-games` to actually fill the deck.** One dispatch:
-      Actions → Jobs → Run workflow → `backfill-games`. Until it runs, the
-      puzzle stays empty — 0063 only makes the rows insertable. Idempotent; a
-      loaded season is skipped without `--force`. Check the run's
-      `dropped_unknown_team` count: a large one means `teams` is missing FCS
-      programs from those years, which is tolerable for a puzzle deck but worth
-      knowing before anything else reads historical games.
+      Actions → Jobs → Run workflow → `backfill-games`, now **second in the
+      list**. Until it runs, the puzzle stays empty — 0063 only makes the rows
+      insertable. Idempotent; a loaded season is skipped without `--force`.
+      Check the run's `dropped_unknown_team` count: a large one means `teams`
+      is missing FCS programs from those years, which is tolerable for a puzzle
+      deck but worth knowing before anything else reads historical games.
+      Move the option back down the list once this is done.
+- [ ] **OPS-14 — the dispatch list is 34 long and the phone shows 12.** Owner
+      hit this trying to run `backfill-games` at position 34: GitHub's mobile
+      workflow form renders about a dozen choices and stops, so two thirds of
+      this list cannot be reached from a phone at all. The jobs.yml comment has
+      warned since `backup` sat at 14 and was unfindable — that was treated as
+      a visibility quirk and it is actually a hard ceiling. Ordering around it
+      is a workaround, not a fix. The real options are a second workflow whose
+      list is short, or a `task` free-text input instead of a `choice` (which
+      trades the typo-proofing the enum buys — `run-job.ts` already rejects an
+      unknown task by name, so the cost is a red run rather than a wrong one).
+      Not urgent: everything scheduled runs on cron, and dispatch is for
+      one-offs.
 
 **Arcade calibration**
 - [ ] **UX-41 — re-check the arcade weights after Week 6.** The four weights

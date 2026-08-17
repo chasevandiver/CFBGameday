@@ -221,6 +221,21 @@ cannot be late (no watchdog horizon to invent). `jobs-yml.test.ts` pins the
 absence, because that is the property a future edit would break by accident.
 Re-running is idempotent: a season already loaded is skipped unless `--force`.
 
+**Follow-up the same day: it was unreachable.** Shipped at the bottom of the
+choice list, which was the wrong call — GitHub's *mobile* dispatch form renders
+about twelve options and then stops, and the list is 34 long. A dispatch-only
+job the owner cannot start from a phone is not a job. Moved to position two,
+which it earns under this list's own rule rather than by convenience: the rule
+is "order by what is safe to run by mistake", and a loaded season is skipped
+without `--force`, so a stray tap costs one `seasons` read and three counts.
+`backup` keeps the top slot — `task` is required with no `default:`, so the
+first option is what a "Run workflow" tap runs without ever opening the
+dropdown, and a new test pins it there now that reordering this list is a thing
+we do. The underlying ceiling is recorded as **OPS-14**: ordering around a
+twelve-item window is a workaround, and the jobs.yml comment that has warned
+about this since `backup` sat at position 14 was describing a hard limit, not a
+quirk.
+
 Found while reading, reported, and then **fixed on the owner's call** — see the
 next entry.
 

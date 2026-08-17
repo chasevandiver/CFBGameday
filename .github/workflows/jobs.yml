@@ -54,6 +54,17 @@ on:
           # Also on the Sunday 15:00 UTC cron. Only copy of
           # predictions/picks/bets outside the 7-day PITR window.
           - backup
+          # SECOND, and not because it runs often — it runs once. GitHub's
+          # mobile dispatch form renders about TWELVE options and then stops,
+          # so this list's back half is unreachable from a phone. At position
+          # 34 this job could not be started by the person who needs to start
+          # it, which is the whole point of a dispatch-only job.
+          #
+          # It also earns the slot under this list's actual rule (safe to run
+          # by mistake, see above): a loaded season is skipped without
+          # --force, so a stray tap costs one seasons read and three counts.
+          # Move it back down once the deck is filled and it is dead weight.
+          - backfill-games
           - refresh-lines
           - refresh-lines-burst
           - sync-games
@@ -113,9 +124,6 @@ on:
           - guess-lines
           - streak
           - six-pack
-          # Dispatch-only, and deliberately last: a full re-pull of every past
-          # season. Idempotent (a loaded season is skipped without --force).
-          - backfill-games
   schedule:
     # Lines 2x daily (8am/6pm ET) — display freshness only
     - cron: "0 12,22 * * *"
