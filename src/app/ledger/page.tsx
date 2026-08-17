@@ -9,6 +9,7 @@ import { RetagBetButton } from "../../components/RetagBetButton";
 import { ShareImageButton } from "../../components/ShareImageButton";
 import { StatTile } from "../../components/StatTile";
 import { UnitsCurve } from "../../components/UnitsCurve";
+import { MarkFutureButton } from "../../components/MarkFutureButton";
 import { VoidBetButton } from "../../components/VoidBetButton";
 import { TailFadeAudit, type AuditGroup, type PairRow, type RelationRow } from "../../components/TailFadeAudit";
 import { type BetRow, type TeamRow } from "../../lib/db-types";
@@ -495,14 +496,40 @@ export default async function LedgerPage({
                     {b.result ??
                       (() => {
                         const status = liveStatusFor(b);
-                        return status ? (
-                          <LiveStatusChip prefix="" status={status} />
-                        ) : (
-                          <span className="text-chalk/40">open</span>
-                        );
+                        if (status) return <LiveStatusChip prefix="" status={status} />;
+                        // Open futures carry their manual mark (R2-A4) and a
+                        // staleness nudge — the honest substitute for the
+                        // auto-marking job that was rejected (no odds source).
+                        if (b.bet_type === "future") {
+                          const staleMs = 14 * 24 * 3600 * 1000;
+                          const since = Date.parse(b.marked_at ?? b.placed_at);
+                          const stale = Date.now() - since > staleMs;
+                          return (
+                            <span className="text-chalk/40">
+                              open
+                              {/* != null: undefined too, so a deploy that
+                                  outruns 0055 renders "open", not "marked
+                                  undefined" */}
+                              {b.marked_odds != null && (
+                                <span className="normal-case">
+                                  {" "}
+                                  · marked {b.marked_odds > 0 ? "+" : ""}
+                                  {b.marked_odds}
+                                </span>
+                              )}
+                              {stale && (
+                                <span className="normal-case text-accent/70"> · mark it</span>
+                              )}
+                            </span>
+                          );
+                        }
+                        return <span className="text-chalk/40">open</span>;
                       })()}
                   </td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
+                    {!b.voided_at && !b.result && b.bet_type === "future" && (
+                      <MarkFutureButton betId={b.id} markedOdds={b.marked_odds} />
+                    )}
                     {!b.voided_at && !b.result && <VoidBetButton betId={b.id} />}
                     {/* ADM-1. Admin-only, and in every state — a graded or
                         voided test bet is exactly the row that needs removing,

@@ -15,6 +15,7 @@ import {
   type PickCoverView,
 } from "../../lib/live-status";
 import { betPrefix, liveStake, pickPrefix, settledStake } from "../../lib/stake";
+import { watchLabel } from "../../lib/watch-on";
 import { RATING_SCALES, systemMargin } from "../../lib/rating-scales";
 import {
   atsResult,
@@ -332,7 +333,13 @@ function CardHeader({
       <div className="flex items-center gap-2">
         <WeatherFlag game={game} />
         {game.tv && (
-          <span className="stat flex shrink-0 items-center gap-1 text-[11px] font-medium text-dim">
+          // title carries the where-to-watch resolution (R2-A5) — the card
+          // itself stays exactly as wide as before; the full "CBS · Paramount+"
+          // renders on the game page where there is room.
+          <span
+            title={watchLabel(game.tv) ?? undefined}
+            className="stat flex shrink-0 items-center gap-1 text-[11px] font-medium text-dim"
+          >
             <Tv size={12} aria-hidden />
             {game.tv}
           </span>

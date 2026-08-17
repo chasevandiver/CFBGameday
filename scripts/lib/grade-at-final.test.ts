@@ -405,3 +405,172 @@ describe("the last game of a slate", () => {
     expect(db.readCount("line_snapshots")).toBe(before);
   });
 });
+
+describe("gradeGames — team totals and first halves (R2-A4)", () => {
+  /* One final, 27–20 home, whose scoring_plays fully explain the board:
+     halftime 17–3. Plus a second final whose plays DON'T (one captured play
+     for a 21–14 game) — its first-half bet must stay open, not be guessed. */
+  const gapSeed = () => ({
+    games: [
+      {
+        id: 402,
+        season_id: 2026,
+        week: 2,
+        status: "final",
+        home_points: 27,
+        away_points: 20,
+        start_ts: KICKOFF,
+      },
+      {
+        id: 403,
+        season_id: 2026,
+        week: 2,
+        status: "final",
+        home_points: 21,
+        away_points: 14,
+        start_ts: KICKOFF,
+      },
+    ],
+    scoring_plays: [
+      { game_id: 402, sequence: 1, period: 1, home_points: 7, away_points: 0 },
+      { game_id: 402, sequence: 2, period: 1, home_points: 7, away_points: 3 },
+      { game_id: 402, sequence: 3, period: 2, home_points: 17, away_points: 3 },
+      { game_id: 402, sequence: 4, period: 3, home_points: 17, away_points: 13 },
+      { game_id: 402, sequence: 5, period: 4, home_points: 24, away_points: 13 },
+      { game_id: 402, sequence: 6, period: 4, home_points: 24, away_points: 20 },
+      { game_id: 402, sequence: 7, period: 4, home_points: 27, away_points: 20 },
+      // 403: the final says 21–14; this is the only play we captured.
+      { game_id: 403, sequence: 1, period: 1, home_points: 7, away_points: 0 },
+    ],
+    line_snapshots: [],
+    picks: [],
+    bets: [
+      // Home team total over 24.5 — home scored 27.
+      {
+        id: 901,
+        game_id: 402,
+        bet_type: "team_total",
+        side: "over",
+        team_side: "home",
+        line_taken: 24.5,
+        odds: -110,
+        units: 1,
+        result: null,
+        voided_at: null,
+        clv: null,
+        closing_line: null,
+        payout_units: null,
+      },
+      // Legacy team total: the subject team lives only in the description.
+      {
+        id: 902,
+        game_id: 402,
+        bet_type: "team_total",
+        side: "under",
+        team_side: null,
+        line_taken: 24.5,
+        odds: -110,
+        units: 1,
+        result: null,
+        voided_at: null,
+        clv: null,
+        closing_line: null,
+        payout_units: null,
+      },
+      // 1H home -7, stored home-perspective; halftime 17–3 covers.
+      {
+        id: 903,
+        game_id: 402,
+        bet_type: "first_half",
+        side: "home",
+        team_side: null,
+        line_taken: -7,
+        odds: -110,
+        units: 2,
+        result: null,
+        voided_at: null,
+        clv: null,
+        closing_line: null,
+        payout_units: null,
+      },
+      // 1H bet on the game whose plays can't prove the half.
+      {
+        id: 904,
+        game_id: 403,
+        bet_type: "first_half",
+        side: "away",
+        team_side: null,
+        line_taken: 3,
+        odds: -110,
+        units: 1,
+        result: null,
+        voided_at: null,
+        clv: null,
+        closing_line: null,
+        payout_units: null,
+      },
+    ],
+  });
+
+  it("settles a team total on the subject team's points, CLV null by design", async () => {
+    const db = new FakeSupabase(gapSeed());
+    const out = (await gradeGames(asClient(db), [402, 403])) as { betsGraded: number };
+
+    expect(out.betsGraded).toBe(2); // 901 and 903
+
+    const tt = db.rows("bets").find((b) => b.id === 901)!;
+    expect(tt.result).toBe("win");
+    expect(tt.payout_units).toBe(0.91);
+    expect(tt.clv).toBe(null);
+    expect(tt.closing_line).toBe(null);
+  });
+
+  it("skips a legacy team total with no structured team — never guesses", async () => {
+    const db = new FakeSupabase(gapSeed());
+    await gradeGames(asClient(db), [402, 403]);
+    expect(db.rows("bets").find((b) => b.id === 902)!.result).toBe(null);
+  });
+
+  it("settles a first half only when scoring_plays prove the halftime score", async () => {
+    const db = new FakeSupabase(gapSeed());
+    await gradeGames(asClient(db), [402, 403]);
+
+    // 402: halftime 17–3, home -7 covers by 7. Two units at -110 pay 1.82.
+    const fh = db.rows("bets").find((b) => b.id === 903)!;
+    expect(fh.result).toBe("win");
+    expect(fh.payout_units).toBe(1.82);
+
+    // 403: the plays under-explain the final; the bet stays open for manual
+    // settle rather than being graded off an invented half.
+    expect(db.rows("bets").find((b) => b.id === 904)!.result).toBe(null);
+  });
+
+  it("reads scoring_plays only when a first_half bet is ungraded", async () => {
+    const db = new FakeSupabase(gapSeed());
+    await gradeGames(asClient(db), [402, 403]);
+    const before = db.readCount("scoring_plays");
+    await gradeGames(asClient(db), [402, 403]);
+    // Second pass: 901/903 settled; 902/904 remain, but only 904 is
+    // first_half, so exactly one more chunked read happens.
+    expect(db.readCount("scoring_plays")).toBe(before + 1);
+  });
+
+  /* The byte-parity claim for the shared path: the ORIGINAL seed — spread bet,
+     total pick, captured close — settles identically with the new branches in
+     the loop. The numbers here are copied from "settles a final's bet and
+     pick" above; if this ever disagrees with that test, the new branches
+     leaked into the old types. */
+  it("changes nothing about how spread/total/moneyline settle", async () => {
+    const db = new FakeSupabase(seed());
+    const out = (await gradeGames(asClient(db), [401])) as {
+      betsGraded: number;
+      picksGraded: number;
+    };
+    expect(out.betsGraded).toBe(1);
+    expect(out.picksGraded).toBe(1);
+    const bet = db.rows("bets")[0];
+    expect(bet.result).toBe("win");
+    expect(bet.payout_units).toBe(1.82);
+    expect(bet.closing_line).toBe(-4.5);
+  });
+});

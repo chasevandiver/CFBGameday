@@ -13,7 +13,9 @@
  * both call `coverMargin` in `cover.ts`; this one is the settlement.
  */
 
+import { buildBoxScore } from "./boxscore";
 import { coverMargin } from "./cover";
+import type { ScoringPlayRow } from "./scoring";
 
 export type PickMarket = "spread" | "total" | "straight_up";
 export type PickResult = "win" | "loss" | "push";
@@ -53,4 +55,51 @@ export function gradePick(
   if (side !== "over" && side !== "under") return null;
   const diff = side === "over" ? homePoints + awayPoints - line : line - (homePoints + awayPoints);
   return diff > 0 ? "win" : diff < 0 ? "loss" : "push";
+}
+
+/**
+ * A team total settles on one team's points (R2-A4). The subject team travels
+ * in `bets.team_side` (0055) — rows from before that column, where the team
+ * lives only in free-text `description`, are not auto-gradable and never
+ * reach this function.
+ */
+export function gradeTeamTotal(
+  side: "over" | "under",
+  line: number,
+  teamPoints: number,
+): PickResult {
+  const diff = side === "over" ? teamPoints - line : line - teamPoints;
+  return diff > 0 ? "win" : diff < 0 ? "loss" : "push";
+}
+
+export interface HalfScore {
+  home: number;
+  away: number;
+}
+
+/**
+ * The halftime score, ONLY when it is provable (R2-A4).
+ *
+ * `scoring_plays` yields an exact H1 split iff the stored plays fully explain
+ * the final scoreboard: `buildBoxScore` puts each play's points in its period,
+ * and the placed cells must sum to the scoreboard EXACTLY, both directions —
+ * under (a missed play, or one with a null period that can't land in any
+ * cell) and over (a reversed score the feed logged and never took back;
+ * `unaccounted` clamps at zero, so it alone would wave that case through).
+ * Any mismatch means some points are in an unknown quarter, and a first-half
+ * number derived from that is a guess wearing a score. Null here means
+ * "leave it for manual settle", never "assume".
+ */
+export function firstHalfScore(
+  plays: ScoringPlayRow[],
+  homePoints: number,
+  awayPoints: number,
+): HalfScore | null {
+  const box = buildBoxScore(plays, homePoints, awayPoints, "final", null);
+  const placed = (cells: Array<number | null>) =>
+    cells.reduce<number>((t, c) => t + (c ?? 0), 0);
+  if (placed(box.home.cells) !== box.home.total || placed(box.away.cells) !== box.away.total)
+    return null;
+  const half = (cells: Array<number | null>) => (cells[0] ?? 0) + (cells[1] ?? 0);
+  return { home: half(box.home.cells), away: half(box.away.cells) };
 }

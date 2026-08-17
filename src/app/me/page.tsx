@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AppNav } from "../../components/AppNav";
+import { CalendarSettings } from "../../components/CalendarSettings";
 import { ProfileSettings, type FavTeam } from "../../components/ProfileSettings";
 import { PushSettings } from "../../components/PushSettings";
 import type { TeamRow } from "../../lib/db-types";
@@ -26,8 +27,16 @@ export default async function MePage() {
   // tenth and last — and the one a `select("is_admin")` grep does not find,
   // because it was a name inside a multi-column list. Left as it was, 0050
   // would have made this page throw rather than degrade.
-  const [{ data: profile }, { data: teamRows }, { data: prefRows }, { data: defaultRows }, isAdmin] =
-    await Promise.all([
+  const [
+    { data: profile },
+    { data: teamRows },
+    { data: prefRows },
+    { data: defaultRows },
+    isAdmin,
+    // First visit mints the feed token, later visits return it (0054). A null
+    // (RPC missing/failing) hides the card rather than rendering a dead URL.
+    { data: calendarToken },
+  ] = await Promise.all([
     supabase
       .from("profiles")
       .select("display_name, favorite_team_ids, timezone")
@@ -41,6 +50,7 @@ export default async function MePage() {
     supabase.from("notification_prefs").select("kind, enabled").eq("user_id", user.id),
     supabase.from("notification_settings").select("kind, default_enabled"),
     isCurrentUserAdmin(supabase),
+    supabase.rpc("ensure_calendar_token"),
   ]);
 
   // An absent pref row means "never touched"; the kind's default decides.
@@ -72,6 +82,7 @@ export default async function MePage() {
           timezone={tzOf(profile?.timezone)}
         />
         <PushSettings prefs={prefs} defaults={defaults} />
+        {typeof calendarToken === "string" && <CalendarSettings token={calendarToken} />}
         {isAdmin && (
           <p className="mt-6 text-xs text-dim">
             <Link href="/admin" className="text-accent underline-offset-2 hover:underline">

@@ -308,3 +308,63 @@ select public.expect_denied('nor edit one that is there', :ann::uuid,
 select pg_temp.raises('the same play cannot land twice',
   $$insert into scoring_plays (game_id, sequence, play_text, home_points, away_points, source)
     values (777, 0, 'duplicate', 7, 0, 'cfbd')$$);
+
+-- ---------------------------------------------------------------------------
+-- R2-A4 (0055): marking a future is the second permitted edit — and only that.
+-- ---------------------------------------------------------------------------
+
+\echo '# marking futures'
+begin;
+  select test_as(:bob::uuid);
+  insert into bets (season_id, user_id, bet_type, description, units, odds, reason_tag)
+  values (2026, :bob::uuid, 'future', 'UGA to win it all +900', 1, 900, 'feel');
+  select id as futbet from bets
+    where user_id = :bob::uuid and bet_type = 'future'
+    order by id desc limit 1 \gset
+
+  update bets set marked_odds = 450 where id = :futbet;
+  select pg_temp.chk('an open future takes a mark, and the trigger stamps marked_at',
+    (select marked_odds = 450 and marked_at is not null and result is null
+     from bets where id = :futbet));
+
+  update bets set marked_odds = null where id = :futbet;
+  select pg_temp.chk('a null mark clears marked_at too',
+    (select marked_odds is null and marked_at is null
+     from bets where id = :futbet));
+
+  -- A mark that tries to smuggle a grade: the trigger rebuilds NEW from OLD,
+  -- so everything except the mark is discarded silently.
+  update bets set marked_odds = 300, payout_units = 99, units = 50 where id = :futbet;
+  select pg_temp.chk('a mark cannot carry a payout or a resize along',
+    (select marked_odds = 300 and payout_units is null and units = 1
+     from bets where id = :futbet));
+rollback;
+
+begin;
+  select test_as(:bob::uuid);
+  insert into bets (season_id, user_id, game_id, bet_type, description, side,
+                    line_taken, odds, units, reason_tag)
+  values (2026, :bob::uuid, 301, 'spread', 'UGA -3.5', 'home', -3.5, -110, 1, 'feel');
+  select id as spreadbet from bets
+    where user_id = :bob::uuid and bet_type = 'spread'
+    order by id desc limit 1 \gset
+  select pg_temp.raises('marking a non-future is still append-only',
+    'update bets set marked_odds = 450 where id = ' || :spreadbet);
+rollback;
+
+\echo '# team_side arrives structured and constrained'
+begin;
+  select test_as(:bob::uuid);
+  insert into bets (season_id, user_id, game_id, bet_type, description, side,
+                    team_side, line_taken, odds, units, reason_tag)
+  values (2026, :bob::uuid, 301, 'team_total', 'UGA team total o24.5', 'over',
+          'home', 24.5, -110, 1, 'feel');
+  select pg_temp.chk('a team_total stores its subject team',
+    (select team_side = 'home' from bets
+      where user_id = :bob::uuid and bet_type = 'team_total'));
+  select pg_temp.raises('team_side rejects anything but home/away',
+    $$insert into bets (season_id, user_id, game_id, bet_type, description, side,
+                        team_side, line_taken, odds, units, reason_tag)
+      values (2026, '22222222-2222-2222-2222-222222222222', 301, 'team_total',
+              'bad', 'over', 'both', 24.5, -110, 1, 'feel')$$);
+rollback;

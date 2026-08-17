@@ -7,6 +7,7 @@ import type { GameRow } from "../../lib/db-types";
 import type { PickMarket } from "../../lib/grade";
 import { DEFAULT_TZ, kickDateLong, kickParts, periodLabel, tzLabel } from "../../lib/kick";
 import { statusForBet, statusForPick } from "../../lib/live-status";
+import { watchLabel } from "../../lib/watch-on";
 import {
   fmtPct,
   fmtSpread,
@@ -239,7 +240,9 @@ export function GameHeader({
           {tv && (
             <span className="stat flex items-center gap-1">
               <Tv size={12} aria-hidden />
-              {tv}
+              {/* Full where-to-watch resolution (R2-A5): the game page has the
+                  room the slate card doesn't. Unmapped networks render alone. */}
+              {watchLabel(tv)}
             </span>
           )}
         </div>

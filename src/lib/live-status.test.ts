@@ -122,7 +122,11 @@ describe("statusForBet", () => {
   });
 
   it("skips untrackable types and incomplete rows", () => {
+    // team_total and first_half now GRADE at final (R2-A4) but stay untracked
+    // live — the full-game score this function receives cannot price either,
+    // so the live card must not fight the grader.
     expect(statusForBet(bet({ betType: "first_half" }), 28, 20)).toBeNull();
+    expect(statusForBet(bet({ betType: "team_total", side: "over", line: 24.5 }), 28, 20)).toBeNull();
     expect(statusForBet(bet({ betType: "future", side: null, line: null }), 28, 20)).toBeNull();
     expect(statusForBet(bet({ side: null }), 28, 20)).toBeNull();
     expect(statusForBet(bet({ line: null }), 28, 20)).toBeNull();

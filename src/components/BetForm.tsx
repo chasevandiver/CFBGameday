@@ -120,6 +120,17 @@ export function BetForm({ seasonId, games = [] }: { seasonId: number; games?: Be
             </select>
           </Field>
         )}
+        {betType === "team_total" && (
+          // R2-A4: the subject of a team total, structured so the grader can
+          // settle it — before 0055 the team lived only in the description.
+          <Field label="Whose total" htmlFor="bet-team-side">
+            <select id="bet-team-side" name="team_side" className={input} defaultValue="">
+              <option value="">Team…</option>
+              <option value="away">{game ? game.awayAbbr : "Away"}</option>
+              <option value="home">{game ? game.homeAbbr : "Home"}</option>
+            </select>
+          </Field>
+        )}
         <Field label="Line" htmlFor="bet-line" hint="as your ticket reads">
           <input
             id="bet-line"

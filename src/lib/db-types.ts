@@ -223,6 +223,11 @@ export interface BetRow {
   payout_units: number | null;
   voided_at: string | null;
   confidence: ConfidenceTier;
+  /** team_total only: whose total (R2-A4, 0055). Null on legacy rows. */
+  team_side: "home" | "away" | null;
+  /** future only: last manual mark-to-market, American odds (R2-A4, 0055). */
+  marked_odds: number | null;
+  marked_at: string | null;
 }
 
 /**

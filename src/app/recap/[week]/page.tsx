@@ -10,6 +10,7 @@ import type {
   TeamRow,
 } from "../../../lib/db-types";
 import { required } from "../../../lib/db-result";
+import { isSport, type Sport } from "../../../lib/league";
 import { fetchCurrentSeasonWeek, fetchProfiles } from "../../../lib/queries";
 import { formatRecord, tallyBy } from "../../../lib/records";
 import { fmtPct } from "../../../lib/slate";
@@ -21,9 +22,15 @@ type RecapTeam = Pick<TeamRow, "id" | "school" | "abbreviation" | "logo_url">;
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata({ params }: { params: Promise<{ week: string }> }) {
-  const { week } = await params;
-  return { title: `Week ${week} recap` };
+export async function generateMetadata({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ week: string }>;
+  searchParams: Promise<{ sport?: string }>;
+}) {
+  const [{ week }, { sport }] = await Promise.all([params, searchParams]);
+  return { title: sport === "nfl" ? `NFL week ${week} recap` : `Week ${week} recap` };
 }
 
 const abbrOf = (t: Pick<TeamRow, "school" | "abbreviation"> | undefined): string =>
@@ -32,21 +39,39 @@ const abbrOf = (t: Pick<TeamRow, "school" | "abbreviation"> | undefined): string
 /**
  * The Sunday page: model report card, biggest upsets, rating movers, and the
  * crew's CLV leaders for one week — the recap the weekly rhythm was missing.
+ *
+ * Sport-aware since R2-A2: `?sport=nfl` recaps the NFL week — finals, bad
+ * beats caught live, and the crew's record/CLV. The model sections (report
+ * card, upsets, movers) are CFB-only by design: no NFL predictions or ratings
+ * exist, so those reads are skipped for the NFL rather than empty-tolerated.
+ * `?st=post` addresses the postseason (NFL playoff rounds store weeks 1–4).
  */
-export default async function RecapPage({ params }: { params: Promise<{ week: string }> }) {
-  const { week: weekParam } = await params;
+export default async function RecapPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ week: string }>;
+  searchParams: Promise<{ sport?: string; st?: string }>;
+}) {
+  const [{ week: weekParam }, { sport: sportParam, st: stParam }] = await Promise.all([
+    params,
+    searchParams,
+  ]);
   const week = Number(weekParam);
   if (!isValidWeek(week)) notFound();
+  const sport: Sport = isSport(sportParam) ? sportParam : "cfb";
+  const seasonType = stParam === "post" ? "postseason" : "regular";
+  const sportQS = sport === "nfl" ? "?sport=nfl" : "";
 
   const supabase = await createClient();
-  const { seasonId } = await fetchCurrentSeasonWeek(supabase);
+  const { seasonId } = await fetchCurrentSeasonWeek(supabase, sport);
 
   const gamesRes = await supabase
     .from("games")
     .select("*")
     .eq("season_id", seasonId)
     .eq("week", week)
-    .eq("season_type", "regular");
+    .eq("season_type", seasonType);
   // The recap IS these games and the picks on them; a failed read must not
   // render as "no games that week" (db-result.ts).
   const games = required<GameRow>(gamesRes, "games").filter(
@@ -56,7 +81,9 @@ export default async function RecapPage({ params }: { params: Promise<{ week: st
   const gameById = new Map(games.map((g) => [g.id, g]));
 
   const [predsRes, teamsRes, picksRes, ratingsRes, profiles, flipsRes] = await Promise.all([
-    gameIds.length
+    // Frozen predictions are CFB-only — for the NFL the read is skipped, not
+    // empty-tolerated, so required() below never sees an NFL miss.
+    gameIds.length && sport === "cfb"
       ? supabase
           .from("predictions")
           .select("*")
@@ -73,11 +100,13 @@ export default async function RecapPage({ params }: { params: Promise<{ week: st
     gameIds.length
       ? supabase.from("picks").select("*").in("game_id", gameIds).not("result", "is", null)
       : Promise.resolve({ data: [] }),
-    supabase
-      .from("ratings")
-      .select("team_id, week, overall")
-      .eq("season_id", seasonId)
-      .in("week", [week, week + 1]),
+    sport === "cfb"
+      ? supabase
+          .from("ratings")
+          .select("team_id, week, overall")
+          .eq("season_id", seasonId)
+          .in("week", [week, week + 1])
+      : Promise.resolve({ data: [] }),
     fetchProfiles(supabase),
     // Late swings caught live by the scoreboard poll (0026) — oldest first,
     // so the last one in a game is the one that stuck.
@@ -199,10 +228,18 @@ export default async function RecapPage({ params }: { params: Promise<{ week: st
       <AppNav />
       <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
         <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
-          <h1 className="text-2xl">Week {week} recap</h1>
+          <h1 className="text-2xl">
+            {sport === "nfl" ? "NFL week" : "Week"} {week} recap
+          </h1>
           <div className="flex items-center gap-3 text-xs">
+            <Link
+              href={sport === "nfl" ? "/recap" : "/recap?sport=nfl"}
+              className="text-dim hover:text-chalk"
+            >
+              {sport === "nfl" ? "College" : "NFL"}
+            </Link>
             {week > 1 && (
-              <Link href={`/recap/${week - 1}`} className="text-dim hover:text-chalk">
+              <Link href={`/recap/${week - 1}${sportQS}`} className="text-dim hover:text-chalk">
                 ← week {week - 1}
               </Link>
             )}
@@ -215,7 +252,10 @@ export default async function RecapPage({ params }: { params: Promise<{ week: st
           </div>
         </div>
         <p className="mb-5 text-sm text-dim">
-          {games.length} finals · model graded on frozen numbers only.
+          {games.length} finals
+          {sport === "cfb"
+            ? " · model graded on frozen numbers only."
+            : " · scores, bad beats and the crew — no model, by design."}
         </p>
 
         {noData ? (
@@ -225,19 +265,21 @@ export default async function RecapPage({ params }: { params: Promise<{ week: st
           </div>
         ) : (
           <>
-            {/* Report card */}
-            <section className="card mb-4 p-4">
-              <h2 className="mb-3 text-sm text-accent">Model report card</h2>
-              <div className="stat grid grid-cols-3 gap-2 text-center text-xs">
-                <Card label="Favorites SU" value={suW + suL ? `${suW}–${suL}` : "–"} />
-                <Card label="Leans ATS" value={atsW + atsL ? `${atsW}–${atsL}` : "–"} />
-                <Card
-                  label="Flagged edges"
-                  value={flaggedW + flaggedL ? `${flaggedW}–${flaggedL}` : "–"}
-                  sub={flaggedW + flaggedL ? "needs >52.4%" : "none graded"}
-                />
-              </div>
-            </section>
+            {/* Report card — CFB only; there is no NFL model to grade. */}
+            {sport === "cfb" && (
+              <section className="card mb-4 p-4">
+                <h2 className="mb-3 text-sm text-accent">Model report card</h2>
+                <div className="stat grid grid-cols-3 gap-2 text-center text-xs">
+                  <Card label="Favorites SU" value={suW + suL ? `${suW}–${suL}` : "–"} />
+                  <Card label="Leans ATS" value={atsW + atsL ? `${atsW}–${atsL}` : "–"} />
+                  <Card
+                    label="Flagged edges"
+                    value={flaggedW + flaggedL ? `${flaggedW}–${flaggedL}` : "–"}
+                    sub={flaggedW + flaggedL ? "needs >52.4%" : "none graded"}
+                  />
+                </div>
+              </section>
+            )}
 
             {/* Upsets */}
             {upsets.length > 0 && (

@@ -2842,6 +2842,69 @@ conversions, turnovers, time of possession.
       stat differently — the same problem `scoring.ts` solved for plays. Do it
       after Week 0, when there is real data to check the parse against. · **M**
 
+**Round 2 — post-launch batches** — built on branch
+`claude/ultimate-football-site-b8tzog` (2026-08-17), per `docs/ROADMAP.md`.
+Code and migrations are complete and tested on the branch; **nothing merges
+before Week 0**, so every box here means "built and verified on the branch,
+awaiting the post-launch merge". Merge as four sequential PRs (A→B→C→D),
+apply each PR's migrations with its deploy, and watch the first `job_runs`
+row of each new cron before calling its batch done. New crons are inert until
+merged.
+
+- [x] **R2-A1** NFL standings: `/standings?sport=nfl`, divisions from
+      `teams.conference`, ties count half, preseason excluded, no rating
+      column (CFB-only data). Pure fold in `src/lib/standings.ts`.
+- [x] **R2-A2** NFL recap: `/recap/[week]?sport=nfl` — finals, bad beats,
+      crew CLV; model sections skipped before their `required()` reads.
+      `?st=post` addresses playoffs. NFL upsets-by-close deferred: the
+      stale-close guard lives in jobs-core and a display copy would drift.
+- [x] **R2-A3** Calendar feeds: migration 0054 (`calendar_tokens`, RPC-only
+      writes), `/api/calendar/[token]` (service client, uniform 404), pure
+      `src/lib/ics.ts`, card in `/me`. DB suite `calendar.sql` (12).
+- [x] **R2-A4** Grade the gaps: migration 0055 (`team_side`, `marked_odds`,
+      `marked_at`; trigger rebased on 0045's — the retag branch survives, the
+      bets suite proves it). team_total settles on its subject team;
+      first_half settles only when `scoring_plays` prove the half exactly
+      (over-count included — `unaccounted` clamps and would wave it through);
+      legacy rows skip, never guess. **Futures auto-marking rejected** (no
+      odds source in the sanctioned wrappers — the PUSH-11 silent-no-op
+      shape); manual mark + staleness nudge in the ledger instead. ⚠️ 0055
+      must apply before or with the A4 deploy: the grader selects
+      `team_side`.
+- [x] **R2-A5** Where-to-watch: `src/lib/watch-on.ts` network→service map,
+      full label on the game page, `title` on the slate chip (no layout
+      shift), .ics descriptions. Unmapped renders the network alone.
+- [ ] **R2-B1** Day-aware home: `src/lib/home-today.ts` planner (DoW in
+      `DEFAULT_TZ`, never server UTC) + `TodayCard` atop the hub.
+- [ ] **R2-B2** The Tuesday Drop: migration 0056 (`rating_drops`),
+      `scripts/generate-drop.ts` (skips without writing when ratings are
+      stale), Drop section on `/ratings`, cron `drop` Mon 15:00 UTC —
+      **verify ANTHROPIC_API_KEY in the step env** (PUSH-11).
+- [ ] **R2-C1** Guess the Lines: migration 0057, RPC refuses once a snapshot
+      exists, job selects Monday / scores as lines post, `/guess-lines` page,
+      "sharpest eye" board. DB suite mirrors `hidden-picks.sql`.
+- [ ] **R2-C2** The Streak: migration 0058, daily job (grade yesterday,
+      select tomorrow, void passes through), derived streak math,
+      `/streak` page, watchdog row. Offseason other-sports expansion is an
+      open question, not built.
+- [ ] **R2-C3** Guess the Game: migration 0059, rendezvous-hash daily
+      selection (no job), server-authoritative `/api/guess-game` (the
+      anti-spoiler route test is the proof), emoji share string.
+- [ ] **R2-D1** Crew splits: migration 0060 `group_game_splits` (0051's
+      contract; rows only when `picks_revealed` — **pre-kick splits for
+      hidden groups rejected**, aggregate is reverse-engineerable at crew
+      size), `SplitBar` on card + game page. DB suite `crew-splits.sql`.
+- [ ] **R2-D2** Pool Machine: `src/lib/pool-machine.ts` importing
+      `records.ts` scoring (parity test = drift alarm), what-if toggles on
+      the group week page.
+- [ ] **R2-D3** Win-the-pool %: `src/lib/pool-odds.ts` seeded Monte Carlo
+      over frozen win probs / market-implied; "—" unless all remaining picks
+      visible or locked; delta pushes deferred (push kinds are their own
+      verified system).
+- [ ] **R2-D4** Reactions: migration 0061, insert gated by
+      `reaction_subject_visible` (a reaction on a hidden pick is an existence
+      leak), `ReactionBar` on wagers/picks surfaces.
+
 ## 5. Not built, by choice
 
 Additive features, no defect behind any of them. Verified still open 2026-08-12.

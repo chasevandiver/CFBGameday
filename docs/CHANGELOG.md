@@ -166,6 +166,50 @@ shipping it.
 
 ## Log
 
+### Aug 17 — Round 2, Batch A: NFL parity pages, calendar feeds, grading gaps, where-to-watch
+
+Owner decision: build the ROADMAP.md feature set now, on
+`claude/ultimate-football-site-b8tzog`, **merge deferred past Week 0**. This
+entry is Batch A (R2-A1…A5 in `docs/STATUS.md` §4); nothing here touches a
+launch path in a way the old fixtures don't pin.
+
+**What shipped (on the branch).** `/standings?sport=nfl` — divisions from
+`teams.conference`, ties worth half, preseason excluded, the W-L fold
+extracted pure into `src/lib/standings.ts`. `/recap/[week]?sport=nfl` —
+finals, bad beats (the NFL board shares `applyScoreboard`, so `cover_flips`
+carries NFL rows), crew CLV; the model sections branch away *before* their
+`required()` reads. Calendar feeds — migration 0054, `/api/calendar/[token]`
+on the service client (the `api/push/resubscribe` posture), RFC 5545 builder
+in `src/lib/ics.ts` with octet-correct folding, a card in `/me`;
+`supabase/tests/calendar.sql` proves the token's containment. Grading gaps —
+migration 0055 adds `team_side`/`marked_odds`/`marked_at`; the grader settles
+team totals on their subject team and first halves **only when
+`scoring_plays` prove the halftime score exactly, both directions** (the
+under-count case is a missed play; the over-count case is a reversed score
+the feed never took back, which `unaccounted`'s zero-clamp alone would wave
+through). Legacy team totals (team_side null) skip rather than guess.
+Where-to-watch — `src/lib/watch-on.ts`, full label on the game page, `title`
+on the slate chip so the card's width is untouched.
+
+**Two rejections, recorded so they are not relitigated:**
+
+1. **Futures auto-marking.** Neither sanctioned feed module (`src/lib/cfbd.ts`,
+   `src/lib/espn.ts`) carries futures odds, so a weekly mark job would fetch
+   nothing and record green runs — the PUSH-11 silent-no-op shape, built on
+   purpose this time. The ledger takes a **manual** mark (one prompt, the
+   0055 trigger stamps `marked_at`) and nags at >14 days stale.
+2. **NFL upsets-by-close on the recap.** The stale-close guard
+   (`closingConsensus`, 6h) lives in jobs-core; a display-side copy in the
+   page would be the drift the consensus extraction (audit #43) exists to
+   prevent. Deferred until the guard moves somewhere shared, rather than
+   shipped wrong.
+
+**One near-miss worth the sentence:** the first cut of 0055 re-created
+`enforce_bet_void_only` from 0013's shape and silently destroyed 0045's
+retag branch — caught by the existing `bets.sql` suite before it ever ran
+anywhere real. The landed function is 0045's definition plus the mark branch,
+and the suite now pins all three permitted edits (44 assertions).
+
 ### Aug 15 — `/welcome`, the page for people who have never seen this
 
 Owner request: a marketing page for anyone not signed in, and a way for the

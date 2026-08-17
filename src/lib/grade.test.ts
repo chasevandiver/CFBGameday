@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { gradePick } from "./grade";
+import { firstHalfScore, gradePick, gradeTeamTotal } from "./grade";
+import type { ScoringPlayRow } from "./scoring";
 
 // Spreads are home-perspective everywhere in this codebase: negative means the
 // home team is favoured. Each case states the bet in plain terms first, the way
@@ -80,5 +81,80 @@ describe("gradePick — refusals", () => {
     expect(gradePick("spread", "over", -3, 24, 21)).toBeNull();
     expect(gradePick("total", "home", 52, 24, 21)).toBeNull();
     expect(gradePick("straight_up", "under", null, 24, 21)).toBeNull();
+  });
+});
+
+describe("gradeTeamTotal (R2-A4)", () => {
+  it("settles on one team's points only", () => {
+    // Home team over 27.5 in a 31–24 game: home scored 31.
+    expect(gradeTeamTotal("over", 27.5, 31)).toBe("win");
+    expect(gradeTeamTotal("under", 27.5, 31)).toBe("loss");
+    // Away under 27.5: away scored 24.
+    expect(gradeTeamTotal("under", 27.5, 24)).toBe("win");
+  });
+  it("pushes on the number", () => {
+    expect(gradeTeamTotal("over", 24, 24)).toBe("push");
+    expect(gradeTeamTotal("under", 24, 24)).toBe("push");
+  });
+});
+
+describe("firstHalfScore (R2-A4)", () => {
+  const play = (over: Partial<ScoringPlayRow>): ScoringPlayRow => ({
+    game_id: 1,
+    sequence: 1,
+    period: 1,
+    clock: null,
+    scoring_team_id: null,
+    play_type: "TD",
+    play_text: "touchdown",
+    home_points: 7,
+    away_points: 0,
+    source: "test",
+    ...over,
+  });
+
+  it("proves the half when every point is placed", () => {
+    const plays = [
+      play({ sequence: 1, period: 1, home_points: 7, away_points: 0 }),
+      play({ sequence: 2, period: 2, home_points: 7, away_points: 3 }),
+      play({ sequence: 3, period: 3, home_points: 14, away_points: 3 }),
+      play({ sequence: 4, period: 4, home_points: 14, away_points: 10 }),
+    ];
+    expect(firstHalfScore(plays, 14, 10)).toEqual({ home: 7, away: 3 });
+  });
+
+  it("refuses when the plays under-explain the scoreboard (a missed play)", () => {
+    const plays = [play({ sequence: 1, period: 1, home_points: 7, away_points: 0 })];
+    // Final says 14–10; stored plays only account for 7–0.
+    expect(firstHalfScore(plays, 14, 10)).toBeNull();
+  });
+
+  it("refuses when a play's period is unknown — its points fit no half", () => {
+    const plays = [
+      play({ sequence: 1, period: null, home_points: 7, away_points: 0 }),
+      play({ sequence: 2, period: 3, home_points: 14, away_points: 0 }),
+    ];
+    expect(firstHalfScore(plays, 14, 0)).toBeNull();
+  });
+
+  it("refuses when the plays OVER-explain the scoreboard (a reversed score never taken back)", () => {
+    // Feed logged 21 home points across the quarters; the final says 14.
+    // `unaccounted` clamps at zero, so this is the case the exact-equality
+    // check exists for.
+    const plays = [
+      play({ sequence: 1, period: 1, home_points: 7, away_points: 0 }),
+      play({ sequence: 2, period: 1, home_points: 14, away_points: 0 }),
+      play({ sequence: 3, period: 2, home_points: 21, away_points: 0 }),
+    ];
+    expect(firstHalfScore(plays, 14, 0)).toBeNull();
+  });
+
+  it("an overtime score lands outside the half but still must be placed", () => {
+    const plays = [
+      play({ sequence: 1, period: 1, home_points: 7, away_points: 0 }),
+      play({ sequence: 2, period: 2, home_points: 7, away_points: 7 }),
+      play({ sequence: 3, period: 5, home_points: 13, away_points: 7 }),
+    ];
+    expect(firstHalfScore(plays, 13, 7)).toEqual({ home: 7, away: 7 });
   });
 });

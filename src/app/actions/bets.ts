@@ -64,6 +64,12 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
     gameSeasonId = game.season_id;
   }
   const side = ["home", "away", "over", "under"].includes(sideRaw) ? sideRaw : null;
+  // Whose total a team_total settles on (R2-A4, 0055). Only meaningful for
+  // that type; anything else stores null so the grader's skip-don't-guess
+  // posture for legacy rows stays observable in the data.
+  const teamSideRaw = String(formData.get("team_side") ?? "").trim();
+  const teamSide =
+    betType === "team_total" && ["home", "away"].includes(teamSideRaw) ? teamSideRaw : null;
 
   const { error } = await supabase.from("bets").insert({
     season_id: gameSeasonId ?? seasonId,
@@ -72,6 +78,7 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
     bet_type: betType,
     description,
     side,
+    team_side: teamSide,
     line_taken: storedLine(betType, side, lineRaw === "" ? null : Number(lineRaw)),
     odds,
     units,
@@ -79,6 +86,33 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
     confidence,
   });
 
+  if (error) return { ok: false, message: error.message };
+  revalidatePath("/ledger");
+  return { ok: true };
+}
+
+/**
+ * Mark an open future to market (R2-A4). Manual by design — auto-marking was
+ * rejected because no sanctioned feed carries futures odds (see 0055 and the
+ * changelog entry). The 0055 trigger is the enforcement: only marked_odds
+ * moves, only on an OPEN future, only the owner's own row (0018's policy).
+ */
+export async function markFuture(betId: number, odds: number | null): Promise<BetActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Sign in first" };
+  if (!Number.isInteger(betId)) return { ok: false, message: "Bad bet" };
+  if (odds !== null && (!Number.isFinite(odds) || Math.abs(odds) < 100)) {
+    return { ok: false, message: "American odds, e.g. +450 or -120" };
+  }
+
+  const { error } = await supabase
+    .from("bets")
+    .update({ marked_odds: odds })
+    .eq("id", betId)
+    .eq("user_id", user.id);
   if (error) return { ok: false, message: error.message };
   revalidatePath("/ledger");
   return { ok: true };

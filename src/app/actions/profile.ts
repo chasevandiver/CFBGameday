@@ -92,3 +92,22 @@ export async function updateTimezone(formData: FormData): Promise<ProfileResult>
   revalidatePath("/ledger");
   return { ok: true };
 }
+
+/**
+ * New feed URL, old one dead (R2-A3). Rotation is the revocation story for a
+ * leaked calendar link, so it is deliberately one tap with no confirm step —
+ * the cost of rotating by accident is re-subscribing one calendar.
+ */
+export async function rotateCalendarToken(): Promise<ProfileResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Not signed in" };
+
+  const { error } = await supabase.rpc("rotate_calendar_token");
+  if (error) return { ok: false, message: error.message };
+
+  revalidatePath("/me");
+  return { ok: true };
+}

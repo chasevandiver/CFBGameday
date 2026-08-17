@@ -24,7 +24,13 @@ import { cfbdScoringOffense, cfbdScoringPlays } from "../../src/lib/scoring";
 import { modelClv, roundClv, spreadClv, totalClv } from "../../src/lib/clv";
 import { consensusFromSnapshots, SNAPSHOT_COLS } from "../../src/lib/consensus";
 import { clockToSeconds, coverMargin, spreadCoverSide, totalCoverSide } from "../../src/lib/cover";
-import { gradePick, type PickMarket } from "../../src/lib/grade";
+import {
+  firstHalfScore,
+  gradePick,
+  gradeTeamTotal,
+  type HalfScore,
+  type PickMarket,
+} from "../../src/lib/grade";
 import { keepLastPlay } from "../../src/lib/live-play";
 import { notifyBadBeats, notifyWatchdog, type FlipNotice } from "./notify-jobs";
 import { buildTeamNameIndex } from "../../src/lib/rankings";
@@ -1171,7 +1177,7 @@ async function settleGames(db: SupabaseClient, allGames: SettleGameRow[]): Promi
 
     const { data: betRows, error: betsErr } = await db
       .from("bets")
-      .select("id, game_id, bet_type, side, line_taken, odds, units, result")
+      .select("id, game_id, bet_type, side, team_side, line_taken, odds, units, result")
       .in("game_id", finalIds)
       .is("result", null)
       .is("voided_at", null);
@@ -1209,6 +1215,42 @@ async function settleGames(db: SupabaseClient, allGames: SettleGameRow[]): Promi
       const g = gameById.get(gameId);
       return closingConsensus(snapsByGame.get(gameId) ?? [], g?.start_ts ?? null);
     };
+
+    // First-half bets need the halftime score, which only `scoring_plays` can
+    // prove (R2-A4). One chunked read covering just the games that carry an
+    // ungraded first_half bet — most grade passes read nothing here. A game
+    // whose plays can't prove the split (firstHalfScore null) stays out of
+    // the map and its bets stay ungraded for manual settle, never guessed.
+    const fhGameIds = [
+      ...new Set(
+        bets.filter((b) => b.bet_type === "first_half").map((b) => b.game_id as number),
+      ),
+    ];
+    const halfByGame = new Map<number, HalfScore>();
+    for (let i = 0; i < fhGameIds.length; i += 300) {
+      // No .order(): buildBoxScore sorts by sequence itself.
+      const { data: playRows, error: playsErr } = await db
+        .from("scoring_plays")
+        .select("game_id, sequence, period, clock, scoring_team_id, play_type, play_text, home_points, away_points, source")
+        .in("game_id", fhGameIds.slice(i, i + 300));
+      if (playsErr) throw new Error(`grading: scoring_plays read failed: ${playsErr.message}`);
+      const byGame = new Map<number, typeof playRows>();
+      for (const p of playRows ?? []) {
+        const arr = byGame.get(p.game_id as number) ?? [];
+        arr.push(p);
+        byGame.set(p.game_id as number, arr);
+      }
+      for (const [gid, plays] of byGame) {
+        const g = gameById.get(gid);
+        if (!g) continue;
+        const half = firstHalfScore(
+          (plays ?? []) as Parameters<typeof firstHalfScore>[0],
+          g.home_points as number,
+          g.away_points as number,
+        );
+        if (half) halfByGame.set(gid, half);
+      }
+    }
 
     // Model CLV. The leans are published as information rather than bets, so
     // the ATS column can't carry the model's scoreboard on its own — CLV asks
@@ -1301,6 +1343,31 @@ async function settleGames(db: SupabaseClient, allGames: SettleGameRow[]): Promi
         // closing price we do not capture — spec §5.3 — so it stays null rather
         // than being invented from the spread.
         result = margin === 0 ? "push" : (margin > 0) === (b.side === "home") ? "win" : "loss";
+      } else if (
+        b.bet_type === "team_total" &&
+        line !== null &&
+        (b.side === "over" || b.side === "under") &&
+        (b.team_side === "home" || b.team_side === "away")
+      ) {
+        // R2-A4. Legacy rows (team_side null — the subject team lives only in
+        // the description) fall through ungraded for manual settle: skipping
+        // beats guessing. No closing team-total is captured, so CLV stays null.
+        const teamPts =
+          b.team_side === "home" ? (g.home_points as number) : (g.away_points as number);
+        result = gradeTeamTotal(b.side, line, teamPts);
+      } else if (
+        b.bet_type === "first_half" &&
+        line !== null &&
+        (b.side === "home" || b.side === "away")
+      ) {
+        // R2-A4. Settles only when scoring_plays PROVE the halftime score
+        // (see firstHalfScore); otherwise the row stays for manual settle.
+        // No closing 1H line is captured, so CLV stays null.
+        const half = halfByGame.get(b.game_id as number);
+        if (half) {
+          const cm = coverMargin(b.side, line, half.home, half.away);
+          result = cm > 0 ? "win" : cm < 0 ? "loss" : "push";
+        }
       }
       if (result === null) continue;
       const units = Number(b.units);
