@@ -784,25 +784,23 @@ export function HomeDashboard({
     <>
       {note}
       <TodayCard today={data.today} demo={demo} />
-      {/* The daily game layer (R2-C1..C3): a quiet line, not a section — nav
-          is full and these earn their tap through the habit, not a banner. */}
+      {/* The game layer (R3-E1). This was three 12px links in a paragraph —
+          well under DESIGN.md's 44px rule, which the hub had no business
+          breaking. One row, one target, and the Games tab is the real
+          entrance now. */}
       {!demo && (
-        <p className="mb-4 px-1 text-xs text-chalk/55">
-          <span className="stat mr-2 text-[10px] font-semibold uppercase tracking-wider">
-            Daily games
+        <Link
+          href="/games"
+          className="card card-hover mb-4 flex min-h-16 items-center justify-between gap-3 px-4 py-3"
+        >
+          <span className="min-w-0">
+            <span className="block text-sm text-chalk">Games</span>
+            <span className="mt-0.5 block truncate text-xs text-dim">
+              The Streak, Guess the Lines, Guess the Game, the Six-Pack.
+            </span>
           </span>
-          <Link href="/guess-lines" className="text-chalk/80 underline-offset-2 hover:text-accent hover:underline">
-            Guess the Lines
-          </Link>
-          <span aria-hidden> · </span>
-          <Link href="/streak" className="text-chalk/80 underline-offset-2 hover:text-accent hover:underline">
-            The Streak
-          </Link>
-          <span aria-hidden> · </span>
-          <Link href="/guess-game" className="text-chalk/80 underline-offset-2 hover:text-accent hover:underline">
-            Guess the Game
-          </Link>
-        </p>
+          <ArrowRight className="h-4 w-4 shrink-0 text-chalk/40" aria-hidden />
+        </Link>
       )}
       <HomeHero
         week={data.week}

@@ -1,4 +1,4 @@
-import { BarChart3, Home, Receipt, TrendingUp, Users } from "lucide-react";
+import { BarChart3, Gamepad2, Home, Receipt, TrendingUp, Users } from "lucide-react";
 import type { ComponentType } from "react";
 
 export interface NavItem {
@@ -14,6 +14,17 @@ export interface NavItem {
    * wordmark, the auth button and the theme toggle.
    */
   mobileOnly?: true;
+  /**
+   * More-sheet only: no desktop tab and no bottom-bar slot.
+   *
+   * Added for `/edges` (UX-33, answered 2026-08-17). Edges are information,
+   * not a destination — `--diagnose-edges` measured flagged edges at 49.2%
+   * against the close, which is why the changelog demoted them from bets in
+   * the first place. A permanent tab is the strongest destination claim the
+   * app can make, and Games earns it more. The flag exists rather than
+   * deleting the item because `/edges` must stay reachable and linked.
+   */
+  overflowOnly?: true;
   icon?: ComponentType<{ size?: number | string; "aria-hidden"?: boolean }>;
 }
 
@@ -26,7 +37,17 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { label: "Home", href: "/", primary: true, mobileOnly: true, icon: Home },
   { label: "Slate", href: "/slate", also: ["/game"], primary: true, icon: BarChart3 },
-  { label: "Edges", href: "/edges", icon: TrendingUp },
+  // The game layer, one tab (R3-E1). `also` covers the four game routes so
+  // playing one keeps the tab lit; `/games` cannot collide with Slate's
+  // `/game` because isNavItemActive matches exact-or-slash, never bare prefix.
+  {
+    label: "Games",
+    href: "/games",
+    also: ["/guess-lines", "/streak", "/guess-game", "/six-pack"],
+    primary: true,
+    icon: Gamepad2,
+  },
+  { label: "Edges", href: "/edges", overflowOnly: true, icon: TrendingUp },
   { label: "Rankings", href: "/rankings" },
   { label: "Ratings", href: "/ratings" },
   { label: "Standings", href: "/standings" },
@@ -38,7 +59,7 @@ export const NAV_ITEMS: NavItem[] = [
 
 export const PRIMARY_ITEMS = NAV_ITEMS.filter((i) => i.primary);
 export const SECONDARY_ITEMS = NAV_ITEMS.filter((i) => !i.primary);
-export const DESKTOP_ITEMS = NAV_ITEMS.filter((i) => !i.mobileOnly);
+export const DESKTOP_ITEMS = NAV_ITEMS.filter((i) => !i.mobileOnly && !i.overflowOnly);
 
 /**
  * True when `pathname` is this item's route or one of its detail routes.

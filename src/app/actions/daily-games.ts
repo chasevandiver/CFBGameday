@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
+import { EVERYONE, GAMES_SCOPE_COOKIE } from "../../lib/games-scope";
 import { createClient } from "../../lib/supabase/server";
 
 /**
@@ -12,6 +14,31 @@ import { createClient } from "../../lib/supabase/server";
 export interface DailyGameResult {
   ok: boolean;
   message?: string;
+}
+
+const A_YEAR = 60 * 60 * 24 * 365;
+
+/**
+ * Remember which pool the viewer competes in on the game layer (R3-E1).
+ *
+ * The ONLY writer of `cfb_games` — `setActiveGroup` owns `cfb_group`, and a
+ * `?g=` in a URL writes neither. Tapping a chip is a choice and is what
+ * lands here; following a link is a view and is not.
+ */
+export async function setGamesScope(scope: string): Promise<void> {
+  const value = scope === EVERYONE ? EVERYONE : scope.trim();
+  if (!value || (value !== EVERYONE && !/^[a-z0-9-]{1,64}$/.test(value))) return;
+  (await cookies()).set(GAMES_SCOPE_COOKIE, value, {
+    path: "/",
+    maxAge: A_YEAR,
+    sameSite: "lax",
+  });
+  // Every game page and the hub read it.
+  revalidatePath("/games");
+  revalidatePath("/guess-lines");
+  revalidatePath("/streak");
+  revalidatePath("/guess-game");
+  revalidatePath("/six-pack");
 }
 
 export async function submitLineGuess(gameId: number, guess: number): Promise<DailyGameResult> {

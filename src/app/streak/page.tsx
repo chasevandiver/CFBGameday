@@ -1,7 +1,16 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { AppNav } from "../../components/AppNav";
+import { GamesScopePicker } from "../../components/games/GamesScopePicker";
 import { StreakCard } from "../../components/StreakCard";
-import { fetchProfiles } from "../../lib/queries";
+import {
+  GAMES_SCOPE_COOKIE,
+  resolveGameScope,
+  scopeLabel,
+  scopeParam,
+  scopeRoster,
+} from "../../lib/games-scope";
+import { ACTIVE_GROUP_COOKIE, fetchMyGroups } from "../../lib/groups";
 import { productDate, streakFold, type StreakPickLike } from "../../lib/streak";
 import { createClient } from "../../lib/supabase/server";
 
@@ -15,7 +24,12 @@ export const metadata = { title: "The Streak" };
  * back to protect. Derived from graded picks on every read, never stored.
  * A day with no matchup is dormant, not broken.
  */
-export default async function StreakPage() {
+export default async function StreakPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ g?: string }>;
+}) {
+  const { g: groupParam } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -25,20 +39,30 @@ export default async function StreakPage() {
   // must agree with each other (react-hooks/purity flags a second read).
   const now = new Date();
   const today = productDate(now);
-  const [{ data: dayRow }, picksRes, profiles] = await Promise.all([
+  const jar = await cookies();
+  const remembered =
+    jar.get(GAMES_SCOPE_COOKIE)?.value ?? jar.get(ACTIVE_GROUP_COOKIE)?.value ?? null;
+  const mine = await fetchMyGroups(supabase, user?.id ?? null);
+  const scope = resolveGameScope(mine, groupParam ?? null, remembered);
+
+  const [{ data: dayRow }, picksRes, roster] = await Promise.all([
     supabase.from("streak_days").select("day, game_id").eq("day", today).maybeSingle(),
     // RLS: own always, others post-kickoff. Graded history feeds the board.
     supabase.from("streak_picks").select("user_id, day, side, result"),
-    fetchProfiles(supabase),
+    scopeRoster(supabase, scope),
   ]);
 
-  const picks = (picksRes.data ?? []) as Array<{
+  const { userIds, nameById } = roster;
+  const allPicks = (picksRes.data ?? []) as Array<{
     user_id: string;
     day: string;
     side: "home" | "away";
     result: "win" | "loss" | "void" | null;
   }>;
-  const nameById = new Map(profiles.map((p) => [p.id, p.display_name]));
+  // The pool filter (R3-E1). A product filter over rows RLS already allows —
+  // never a security boundary. `userIds === null` is the everyone view and
+  // takes the unfiltered path this page always had.
+  const picks = userIds === null ? allPicks : allPicks.filter((p) => userIds.includes(p.user_id));
 
   // Today's matchup, if the job selected one.
   let matchup: {
@@ -97,11 +121,23 @@ export default async function StreakPage() {
     <>
       <AppNav />
       <main id="main" className="mx-auto w-full max-w-2xl flex-1 px-4 py-6">
-        <h1 className="mb-1 text-2xl">The Streak</h1>
-        <p className="mb-5 text-sm text-dim">
+        <div className="mb-1 flex items-baseline justify-between gap-3">
+          <h1 className="text-2xl">The Streak</h1>
+          <Link href="/games" className="stat text-xs text-dim hover:text-chalk">
+            ← Games
+          </Link>
+        </div>
+        <p className="mb-4 text-sm text-dim">
           One matchup a day, straight up, either league. Wins build the run; one miss resets it;
           a postponed game or a tie breaks nothing.
         </p>
+
+        {user && (
+          <GamesScopePicker
+            groups={mine.map((m) => ({ slug: m.slug, name: m.name }))}
+            activeParam={scopeParam(scope)}
+          />
+        )}
 
         <section className="card mb-4 p-4">
           <h2 className="mb-2 text-sm text-accent">Today</h2>
@@ -128,9 +164,15 @@ export default async function StreakPage() {
           )}
         </section>
 
-        {board.length > 0 && (
-          <section className="card p-4">
-            <h2 className="mb-2 text-sm text-accent">The board</h2>
+        <section className="card p-4">
+          <h2 className="mb-2 text-sm text-accent">The board — {scopeLabel(scope)}</h2>
+          {board.length === 0 ? (
+            <p className="text-sm text-dim">
+              {scope.kind === "group"
+                ? `Nobody in ${scope.group.name} has played yet.`
+                : "Nobody has played yet."}
+            </p>
+          ) : (
             <ul className="flex flex-col gap-1">
               {board.map((b) => (
                 <li key={b.name} className="stat flex items-center justify-between text-sm">
@@ -144,8 +186,8 @@ export default async function StreakPage() {
                 </li>
               ))}
             </ul>
-          </section>
-        )}
+          )}
+        </section>
       </main>
     </>
   );

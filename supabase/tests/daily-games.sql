@@ -231,3 +231,34 @@ begin;
   select pg_temp.chk('taking a reaction back works',
     not exists (select 1 from reactions where subject_id = :'annpick'));
 rollback;
+
+-- ---------------------------------------------------------------------------
+-- R3-E1: roster scoping is a PRODUCT FILTER, not a security boundary.
+-- ---------------------------------------------------------------------------
+-- The Games tab narrows each board to one pool's roster by filtering on
+-- user_id (src/lib/games-scope.ts, the shape betting-groups.ts uses for the
+-- unhideable ledger). Nothing about RLS changes, and this block exists to say
+-- so out loud: a row outside your pool is still READABLE once the game
+-- reveals — it is simply not shown. If someone later mistakes the pool filter
+-- for a privacy control, this assertion is what contradicts them.
+
+\echo '# roster scoping (R3-E1)'
+\o /dev/null
+-- Both have a graded guess on 402, whose line has posted (so it is revealed).
+insert into line_guesses (user_id, game_id, season_id, week, guess, abs_error, graded_at)
+values (:ann::uuid, 402, 2026, 2, -3.5, 0.5, now()),
+       (:bob::uuid, 402, 2026, 2,  1.0, 5.0, now());
+\o
+
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.chk('a revealed guess outside your pool is still readable — the filter is a product choice',
+    exists (select 1 from line_guesses where user_id = :bob::uuid and game_id = 402));
+  -- What the page actually renders for a pool of just ann: the same rows,
+  -- narrowed by user_id in the query. Proven here as arithmetic, not policy.
+  select pg_temp.chk('filtering to a roster of one returns exactly that row',
+    (select count(*) = 1 from line_guesses
+      where game_id = 402 and user_id = any (array[:ann::uuid])));
+  select pg_temp.chk('and the unfiltered (everyone) read still returns both',
+    (select count(*) = 2 from line_guesses where game_id = 402));
+rollback;

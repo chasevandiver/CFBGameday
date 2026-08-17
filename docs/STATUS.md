@@ -1011,7 +1011,7 @@ These block nothing today but change what gets built. Recommendations are from
 | **Q6 / SEC-13** | TBD kickoffs (`start_ts` null) — policy before Aug 29 | **Keep as-is.** Un-pickable, un-removable, stays blind, no close and therefore no CLV, but still frozen. Every branch fails closed, which is right for a security boundary and a receipt. Cost: a TBD game is un-pickable until CFBD firms the time, which `sync-games` does daily. |
 | ~~**Q9**~~ | ~~Duplicate frozen predictions~~ | **Answered and done 2026-08-12** — cleared via migration 0028. DB-2 turned out not to be a defect at all. See §2.1b. |
 | ~~**BRAND-1**~~ | ~~Recolour before Aug 29 or after?~~ | **Answered 2026-08-12: now.** Owner call, against the recommendation below; shipped the same day. Original note: **After.** `docs/BRAND.md` §5 replaces every surface colour and §12 swaps the display face — that is every page, 17 days out, against DESIGN.md's "build one screen, get it approved, then propagate". Both near-blacks read as black on a phone, so nothing looks broken today; the visible tell is the two golds (`#E8B93D` vs `#f2b63c`) side by side. Queued as BRAND-2/BRAND-3. |
-| **UX-33** | Does `/edges` keep a permanent bottom-nav slot now that edges are demoted to information? | Owner call. |
+| ~~**UX-33**~~ | ~~Does `/edges` keep a permanent bottom-nav slot now that edges are demoted to information?~~ | **Answered 2026-08-17: no — and it gives up its desktop tab too.** Owner call, taken with R3-E1. Games becomes the fifth bottom-bar primary and takes the desktop tab `/edges` vacates; `/edges` moves to the More sheet via a new `overflowOnly` flag and stays linked. The reasoning is `--diagnose-edges` already in the changelog: flagged edges went 49.2% against the close, so edges are information, and a permanent tab is the strongest destination claim the app can make. Cost, stated: six bottom cells is ~62px each at 375px (~53px at 320px) against a 64px bar — inside DESIGN.md's 44px rule — and `/edges` is now two taps from anywhere. `nav-items.test.ts` pins both lists literally rather than by count, so the next change here has to be deliberate. |
 | **09:§3** | Re-verify current Supabase free-tier limits against the pricing page | Human, 0.25 h. |
 | **OPS-1b** | Dispatch one deliberately-failing run and confirm who receives the email | Human, 0.25 h. Pairs with P1-8. |
 
@@ -2940,6 +2940,29 @@ verified, merged, and live behind its own route".
       identically — the existence-oracle proof is in `daily-games.sql`.
       Four allow-listed emoji, toggle semantics, `ReactionBar` on the game
       page's crew picks. Bets have the schema; more surfaces post-launch.
+
+**Round 3 — the Games section** — owner request 2026-08-17: the R2-C games
+were undiscoverable (URL-only plus a 12px line on the hub) and every board
+was site-wide, so there was no way to compete inside a pool. Built on
+`claude/games-section`, per `docs/ROADMAP.md` §10.
+
+- [x] **R3-E1** The Games tab, hub and group scoping. `/games` (loader +
+      `GamesHub`, the `HomeHub` split), `src/lib/games-scope.ts` (pure
+      precedence + the roster read), a pool picker on all four game surfaces,
+      and all three boards roster-scoped. **No migration** — the roster IS the
+      scope, exactly as `betting-groups.ts` says of `bets`: you play once and
+      your result ranks in every pool you're in. Nav gains `overflowOnly`,
+      Games takes the fifth bottom slot, `/edges` moves to the More sheet
+      (UX-33, answered above). The hub's 12px games line became a 64px row —
+      it had been under DESIGN.md's 44px rule since R2-C shipped it.
+- [ ] **R3-E2** The Six-Pack — migration 0062, weekly six-question slate
+      generated from the lines DB, RPC-only entry, derived lock and rollover,
+      `six-pack` job on two crons.
+- [ ] **R3-E3** Arcade standings and trophies — `src/lib/arcade.ts` (weekly
+      ceilings equalised into [60,70]; imports `streakFold` and consumes the
+      GtG points column rather than re-deriving either), `src/lib/trophies.ts`
+      (derived predicates, never stored), sections on `/games` and the group
+      hub for all three group kinds.
 
 ## 5. Not built, by choice
 

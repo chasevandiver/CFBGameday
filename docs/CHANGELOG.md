@@ -166,6 +166,64 @@ shipping it.
 
 ## Log
 
+### Aug 17 — Round 3, Batch E1: the Games tab, and Edges gives up its slot
+
+Owner report, and a fair one: the R2-C games were undiscoverable — reachable
+by URL or by a line of 12px links on the hub — and **every leaderboard was
+site-wide**, so there was no way to compete inside a pool. R3-E1 is the tab,
+the hub, and the scoping.
+
+**UX-33, answered.** The open question was whether `/edges` keeps a bottom-nav
+slot now that edges are information. The answer is no, and it gives up its
+desktop tab too: the bar holds four plus More, the desktop strip already
+truncated Receipts at 768px, and `--diagnose-edges` (49.2% against the close,
+n=1801) is exactly why edges stopped being a destination. Games takes the
+fifth bottom slot and the vacated desktop tab; `/edges` moves to the More
+sheet behind a new `overflowOnly` flag — a demotion, not a deletion, and a
+test pins that it stays reachable. Cost stated rather than buried: six cells
+is ~62px each at 375px and ~53px at 320px, both inside DESIGN.md's 44px rule
+against a 64px bar. **The six-cell bar has not been seen rendered — that
+check is manual and is not claimed as tested.**
+
+**The nav tests now name their items.** Both slot assertions counted before
+(`DESKTOP_ITEMS` had length `NAV_ITEMS.length - 1`). A count cannot tell
+"Edges left" from "Games arrived" — it would have passed unchanged through
+this exact swap, which is how a semantic change hides behind a green test.
+Both are literal label lists now, each with a comment saying what the list
+means. Added with them: the `/games` vs `/game/:id` collision pins, because
+Slate owns `/game` as a detail route and nothing said the two could not
+fight.
+
+**Scoping: no migration, because the roster is the scope.** `betting-groups.ts`
+already settled this argument for `bets` — "a betting group stores nothing of
+its own beyond its roster" — and the games work the same way: you play once,
+and `WHERE user_id IN (roster)` ranks that one play inside every pool you're
+in. A `group_id` column would let one day's streak pick exist three times with
+three results, which is a worse product and a worse schema. The new
+`daily-games.sql` block says out loud that this is a **product filter, not a
+security boundary**: it asserts that a revealed row outside your pool is still
+readable, so nobody later mistakes the filter for privacy.
+
+**Two cookies, one writer each.** `cfb_games` (this) and `cfb_group` (the
+slate) are separate because the pool you play the arcade with and the pool you
+bet with are legitimately different, and because the everyone-sentinel written
+into `cfb_group` would make the slate's `resolveActiveGroup` fall through to
+`mine[0]`. `cfb_games` falls back to `cfb_group` when unset, so a one-group
+member lands on their pool having touched nothing — the owner's ask, verbatim.
+A `?g=` is a view and writes neither, the rule the slate already documents.
+
+**Rejected: `gtg_leaderboard(p_group uuid)`.** A security-definer function with
+a group argument and no membership gate is a leak; with a gate it is a new
+signature, new grants, a new DB block and an overload-ambiguity risk — for a
+fifteen-row board that is already site-wide. The page filters the RPC's
+aggregates instead, which keeps E1 migration-free. Trip-wire written into the
+code: revisit past ~100 accounts, or if that board ever returns more than
+aggregates.
+
+Also fixed: the hub's games line was three 12px links in a paragraph, well
+under DESIGN.md's 44px rule — a defect R2-C introduced and this replaces with
+one 64px row.
+
 ### Aug 17 — Round 2, Batch D: scenario engines and the social layer
 
 The last batch (R2-D1…D4, STATUS §4 Round 2), and the one where two planned

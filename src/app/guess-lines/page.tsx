@@ -1,8 +1,18 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { AppNav } from "../../components/AppNav";
+import { GamesScopePicker } from "../../components/games/GamesScopePicker";
 import { GuessLineCard } from "../../components/GuessLineCard";
 import { openingSpread, SNAPSHOT_COLS, type SnapshotLike } from "../../lib/consensus";
-import { fetchCurrentSeasonWeek, fetchProfiles } from "../../lib/queries";
+import {
+  GAMES_SCOPE_COOKIE,
+  resolveGameScope,
+  scopeLabel,
+  scopeParam,
+  scopeRoster,
+} from "../../lib/games-scope";
+import { ACTIVE_GROUP_COOKIE, fetchMyGroups } from "../../lib/groups";
+import { fetchCurrentSeasonWeek } from "../../lib/queries";
 import { fmtSpread } from "../../lib/slate";
 import { createClient } from "../../lib/supabase/server";
 
@@ -36,11 +46,22 @@ interface GuessRow {
  * enforces it; this page just renders the two states). Others' guesses stay
  * hidden until then — after the reveal, copying is worthless.
  */
-export default async function GuessLinesPage() {
+export default async function GuessLinesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ g?: string }>;
+}) {
+  const { g: groupParam } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  const jar = await cookies();
+  const remembered =
+    jar.get(GAMES_SCOPE_COOKIE)?.value ?? jar.get(ACTIVE_GROUP_COOKIE)?.value ?? null;
+  const myGroups = await fetchMyGroups(supabase, user?.id ?? null);
+  const scope = resolveGameScope(myGroups, groupParam ?? null, remembered);
 
   // Both leagues' current weeks; NFL absent is a state, not an error.
   const cfb = await fetchCurrentSeasonWeek(supabase);
@@ -68,7 +89,7 @@ export default async function GuessLinesPage() {
     ((r.data ?? []) as Array<{ game_id: number }>).map((x) => x.game_id),
   );
 
-  const [gamesRes, guessesRes, snapsRes, profiles, seasonGuessRes] = await Promise.all([
+  const [gamesRes, guessesRes, snapsRes, roster, seasonGuessRes] = await Promise.all([
     slateGameIds.length
       ? supabase
           .from("games")
@@ -84,13 +105,17 @@ export default async function GuessLinesPage() {
     slateGameIds.length
       ? supabase.from("line_snapshots").select(SNAPSHOT_COLS).in("game_id", slateGameIds)
       : Promise.resolve({ data: [] }),
-    fetchProfiles(supabase),
+    scopeRoster(supabase, scope),
     // Season board: every graded guess, either league, this calendar year.
     supabase
       .from("line_guesses")
       .select("user_id, abs_error")
       .not("graded_at", "is", null),
   ]);
+  const { userIds, nameById } = roster;
+  /** The pool filter (R3-E1): a product filter over rows RLS already allows,
+   *  never a security boundary. Null = everyone, the pre-scoping path. */
+  const inScope = (uid: string) => userIds === null || userIds.includes(uid);
 
   const games = (gamesRes.data ?? []) as SlateGameRow[];
   const teamIds = [...new Set(games.flatMap((g) => [g.home_team_id, g.away_team_id]))];
@@ -102,8 +127,6 @@ export default async function GuessLinesPage() {
       (t) => [t.id, t.abbreviation ?? t.school],
     ),
   );
-  const nameById = new Map(profiles.map((p) => [p.id, p.display_name]));
-
   const snapsByGame = new Map<number, SnapshotLike[]>();
   for (const s of (snapsRes.data ?? []) as Array<SnapshotLike & { game_id: number }>) {
     const arr = snapsByGame.get(s.game_id) ?? [];
@@ -128,6 +151,7 @@ export default async function GuessLinesPage() {
   const byUser = new Map<string, { n: number; sum: number }>();
   for (const r of seasonRows) {
     if (r.abs_error === null) continue;
+    if (!inScope(r.user_id)) continue;
     const t = byUser.get(r.user_id) ?? { n: 0, sum: 0 };
     t.n += 1;
     t.sum += Number(r.abs_error);
@@ -141,11 +165,23 @@ export default async function GuessLinesPage() {
     <>
       <AppNav />
       <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
-        <h1 className="mb-1 text-2xl">Guess the Lines</h1>
-        <p className="mb-5 text-sm text-dim">
+        <div className="mb-1 flex items-baseline justify-between gap-3">
+          <h1 className="text-2xl">Guess the Lines</h1>
+          <Link href="/games" className="stat text-xs text-dim hover:text-chalk">
+            ← Games
+          </Link>
+        </div>
+        <p className="mb-4 text-sm text-dim">
           Call the spread before the books hang one. Guesses grade against the opening line and
           close forever the moment a number posts. Season board is mean error — sharpest eye wins.
         </p>
+
+        {user && (
+          <GamesScopePicker
+            groups={myGroups.map((m) => ({ slug: m.slug, name: m.name }))}
+            activeParam={scopeParam(scope)}
+          />
+        )}
 
         {games.length === 0 && (
           <div className="card px-6 py-12 text-center">
@@ -194,7 +230,7 @@ export default async function GuessLinesPage() {
               {revealed.map((g) => {
                 const openLine = openingSpread(snapsByGame.get(g.id) ?? []);
                 const rows = guesses
-                  .filter((x) => x.game_id === g.id)
+                  .filter((x) => x.game_id === g.id && inScope(x.user_id))
                   .sort(
                     (a, b) => (a.abs_error ?? Infinity) - (b.abs_error ?? Infinity),
                   );
@@ -242,9 +278,17 @@ export default async function GuessLinesPage() {
           </section>
         )}
 
-        {board.length > 0 && (
-          <section className="card p-4">
-            <h2 className="mb-2 text-sm text-accent">Sharpest eye — season</h2>
+        <section className="card p-4">
+          <h2 className="mb-2 text-sm text-accent">
+            Sharpest eye — season, {scopeLabel(scope)}
+          </h2>
+          {board.length === 0 ? (
+            <p className="text-sm text-dim">
+              {scope.kind === "group"
+                ? `Nobody in ${scope.group.name} has a graded guess yet.`
+                : "No graded guesses yet."}
+            </p>
+          ) : (
             <ul className="flex flex-col gap-1">
               {board.map((b, i) => (
                 <li key={b.name} className="stat flex items-center justify-between text-sm">
@@ -257,8 +301,8 @@ export default async function GuessLinesPage() {
                 </li>
               ))}
             </ul>
-          </section>
-        )}
+          )}
+        </section>
       </main>
     </>
   );
