@@ -166,6 +166,43 @@ shipping it.
 
 ## Log
 
+### Aug 17 — Round 2, Batch D: scenario engines and the social layer
+
+The last batch (R2-D1…D4, STATUS §4 Round 2), and the one where two planned
+designs got smaller on contact with the code — recorded here so they are not
+re-proposed at full size.
+
+**Crew splits, without the migration.** The plan carried a 0051-style definer
+fn (`group_game_splits`) emitting side splits gated on `picks_revealed`.
+Building it revealed it answered nothing RLS doesn't already answer: once a
+game reveals, the caller can read every pick row and aggregate them; before
+it reveals in a hidden group, the split is exactly what we'd REJECTED
+(reverse-engineerable at crew size, given the public count). And the week
+board's MatchupCard already draws the halves and the lean bar. So: **no
+migration**, and the genuinely missing half shipped instead — **crew money**
+on the game page, tickets vs units by side from the crew-readable ledger
+(`moneySplits`, markets with 2+ bets). People check splits to locate
+themselves, not to predict.
+
+**The Pool Machine + win-the-week %.** Toggle who covers; the race re-sorts.
+Scoring is imported from records.ts and the parity test (no toggles ⇒ the
+graded standings, at `PICKEM_WIN_PAYOUT` exactly) is the drift alarm. Totals
+stay pending under any toggle — a side cannot answer a number — and the UI
+says so, as it says hidden picks aren't in the projection. The % column is a
+seeded Monte Carlo (deterministic under test) over the pending picks: frozen
+`homeWinProb` where a prediction exists, market-implied via the published
+logistic slope otherwise, and coin flips for covers and totals — pricing
+those better than 50/50 being ~impossible is this site's founding evidence,
+so the simulation says so too.
+
+**Reactions, not a chat room.** Migration 0061. The design decision worth
+the sentence: visibility is **invoker** semantics — the policy asks "can the
+CALLER see this pick/bet" under the caller's own RLS, so reacting to a
+blind-hidden pick refuses byte-identically to reacting to a pick that does
+not exist (proven in `daily-games.sql`). Four allow-listed emoji, tap to
+give, tap to take back, no free text anywhere. The conversation stays in the
+group chat; the receipts get to feel it.
+
 ### Aug 17 — Round 2, Batch C: the daily game layer
 
 Three games that exist only inside the crew, built entirely from data already

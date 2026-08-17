@@ -159,3 +159,75 @@ select public.expect_denied('direct gtg insert -> denied', :bob::uuid,
 select public.expect_denied('anon cannot execute the leaderboard', null,
   $q$select * from gtg_leaderboard()$q$,
   'permission denied');
+
+-- ---------------------------------------------------------------------------
+-- R2-D4 (0061): reactions — visibility rides the subject's own RLS.
+-- ---------------------------------------------------------------------------
+-- The hidden-pick case is the one that matters: reacting to a pick the blind
+-- still hides must refuse EXACTLY like reacting to a pick that does not
+-- exist, or the reaction table becomes an existence oracle for the blind.
+
+\echo '# reactions'
+\o /dev/null
+-- A blind group with a pick from ann on the not-yet-kicked game 402
+-- (it has a line, which make_pick requires; 401 deliberately has none).
+begin;
+  select test_as(:ann::uuid);
+  select create_group('Blind Crew', 'private') as rgrp \gset
+  select set_group_week_config(:'rgrp'::uuid, 2026, 2, 'regular', 'full_slate', null,
+                               array['spread']);
+  select update_group(:'rgrp'::uuid, 'Blind Crew', 'private', true);
+commit;
+select join_code as rcode from groups where id = :'rgrp'::uuid \gset
+begin;
+  select test_as(:bob::uuid);
+  select join_group(:'rcode');
+commit;
+begin;
+  select test_as(:ann::uuid);
+  select make_pick(:'rgrp'::uuid, 402, 'spread', 'home');
+commit;
+select id as annpick from picks
+  where user_id = :ann::uuid and game_id = 402 \gset
+\o
+
+begin;
+  select test_as(:ann::uuid);
+  insert into reactions (user_id, subject, subject_id, emoji)
+  values (:ann::uuid, 'pick', :'annpick', 'fire');
+  select pg_temp.chk('the owner can react to their own (visible) pick',
+    exists (select 1 from reactions where subject_id = :'annpick'));
+commit;
+
+select public.expect_denied('bob reacting to a pick the blind hides -> refused', :bob::uuid,
+  $q$insert into reactions (user_id, subject, subject_id, emoji)
+     values ('22222222-2222-2222-2222-222222222222', 'pick', $q$ || :'annpick' || $q$, 'skull')$q$,
+  'row-level security');
+select public.expect_denied('and a pick that does not exist refuses IDENTICALLY', :bob::uuid,
+  $q$insert into reactions (user_id, subject, subject_id, emoji)
+     values ('22222222-2222-2222-2222-222222222222', 'pick', 999999, 'skull')$q$,
+  'row-level security');
+
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.chk('bob cannot see the reaction on the hidden pick either',
+    not exists (select 1 from reactions where subject_id = :'annpick'));
+  select pg_temp.chk('and cannot tell it from a reaction that is not there',
+    not exists (select 1 from reactions where subject_id = 999999));
+rollback;
+
+select public.expect_denied('reacting as someone else -> refused', :bob::uuid,
+  $q$insert into reactions (user_id, subject, subject_id, emoji)
+     values ('11111111-1111-1111-1111-111111111111', 'pick', $q$ || :'annpick' || $q$, 'ice')$q$,
+  'row-level security');
+select public.expect_denied('an emoji off the allow-list -> refused', :ann::uuid,
+  $q$insert into reactions (user_id, subject, subject_id, emoji)
+     values ('11111111-1111-1111-1111-111111111111', 'pick', $q$ || :'annpick' || $q$, 'thumbsup')$q$,
+  'check constraint');
+
+begin;
+  select test_as(:ann::uuid);
+  delete from reactions where subject = 'pick' and subject_id = :'annpick' and emoji = 'fire';
+  select pg_temp.chk('taking a reaction back works',
+    not exists (select 1 from reactions where subject_id = :'annpick'));
+rollback;

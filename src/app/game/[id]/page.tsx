@@ -48,6 +48,8 @@ import {
   type TeamView,
 } from "../../../lib/slate";
 import { clockTime, kickParts, tzLabel, DEFAULT_TZ } from "../../../lib/kick";
+import { moneySplits } from "../../../lib/splits";
+import { ReactionBar } from "../../../components/ReactionBar";
 import { createClient } from "../../../lib/supabase/server";
 import { hasCalibratedTotals } from "../../../model/ratings";
 import { isCurrentUserAdmin } from "../../../lib/admin";
@@ -126,7 +128,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     .maybeSingle<GameRow>();
   if (!game) notFound();
 
-  const [teamsRes, linesRes, predRes, picksRes, scoringRes, betsRes, profilesRes, weatherRes, questionsRes, pollsRes, systemsRes, rivalryRes] = await Promise.all([
+  const [teamsRes, linesRes, predRes, picksRes, scoringRes, betsRes, crewBetsRes, profilesRes, weatherRes, questionsRes, pollsRes, systemsRes, rivalryRes] = await Promise.all([
     supabase.from("teams").select("*").in("id", [game.home_team_id, game.away_team_id]),
     supabase.from("line_snapshots").select("*").eq("game_id", gameId),
     supabase
@@ -153,6 +155,14 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
           // record of what you had on the game, not just an open-bets list.
           .is("voided_at", null)
       : Promise.resolve({ data: [], error: null }),
+    // Crew money (R2-D1): every non-voided bet on the game — bets are
+    // crew-readable by design (0001, the unhideable ledger), so the split is
+    // an aggregation of rows the viewer already may read.
+    supabase
+      .from("bets")
+      .select("bet_type, side, units")
+      .eq("game_id", gameId)
+      .is("voided_at", null),
     // names only — this page renders display_name and nothing else (09/P-5)
     supabase.from("profiles").select("id, display_name"),
     supabase.from("weather_forecasts").select("*").eq("game_id", gameId).maybeSingle(),
@@ -270,6 +280,34 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     line: b.line_taken === null ? null : Number(b.line_taken),
     result: b.result,
   }));
+
+  // Crew money (R2-D1): tickets and units by side, markets with 2+ bets only.
+  const crewMoney = moneySplits(
+    (crewBetsRes.data ?? []) as Array<{ bet_type: string; side: string | null; units: number }>,
+  );
+
+  // Reactions on this game's picks (R2-D4). RLS already scopes the read to
+  // subjects the viewer may see (0061's invoker check), so the page just
+  // groups what comes back. Bets have the schema too; the pick rows are the
+  // surface that renders names, so they get the bar first.
+  const { data: reactionRows } = picks.length
+    ? await supabase
+        .from("reactions")
+        .select("user_id, subject_id, emoji")
+        .eq("subject", "pick")
+        .in("subject_id", picks.map((p) => p.id))
+    : { data: [] };
+  const reactionsByPick = new Map<number, { counts: Record<string, number>; mine: string[] }>();
+  for (const r of (reactionRows ?? []) as Array<{
+    user_id: string;
+    subject_id: number;
+    emoji: string;
+  }>) {
+    const entry = reactionsByPick.get(r.subject_id) ?? { counts: {}, mine: [] };
+    entry.counts[r.emoji] = (entry.counts[r.emoji] ?? 0) + 1;
+    if (user && r.user_id === user.id) entry.mine.push(r.emoji);
+    reactionsByPick.set(r.subject_id, entry);
+  }
 
   // systems side-by-side (spec §2.4): latest value per system per team
   const sysLatest = new Map<string, number>();
@@ -464,8 +502,17 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             ) : (
               <ul className="flex flex-col gap-1.5">
                 {crewPicks.map((p) => (
-                  <li key={p.id} className="stat flex justify-between text-sm">
-                    <span>{profiles.get(p.user_id)?.display_name ?? "?"}</span>
+                  <li key={p.id} className="stat flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
+                    <span className="flex items-center gap-2">
+                      {profiles.get(p.user_id)?.display_name ?? "?"}
+                      <ReactionBar
+                        subject="pick"
+                        subjectId={p.id}
+                        counts={reactionsByPick.get(p.id)?.counts ?? {}}
+                        mine={reactionsByPick.get(p.id)?.mine ?? []}
+                        signedIn={!!user}
+                      />
+                    </span>
                     <span>
                       {pickText(p, home.abbr, away.abbr)}
                       {p.result && (
@@ -488,6 +535,49 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             )}
           </div>
         </section>
+
+        {/* Crew money (R2-D1): tickets vs units by side. People check splits
+            to locate themselves, not to predict — "you're with the crew" or
+            "you're fading seven units" is the story. Renders only when a
+            market carries two or more bets; the ledger is crew-readable by
+            design, so this aggregates nothing the viewer couldn't read. */}
+        {crewMoney.length > 0 && (
+          <section className="card mb-4 p-4">
+            <h2 className="mb-2 text-sm text-accent">Crew money</h2>
+            <ul className="flex flex-col gap-2.5">
+              {crewMoney.map((s) => {
+                const teamSided = s.betType !== "total";
+                const aLabel = teamSided ? home.abbr : "Over";
+                const bLabel = teamSided ? away.abbr : "Under";
+                const totalUnits = s.a.units + s.b.units;
+                return (
+                  <li key={s.betType}>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className="stat text-[10px] uppercase tracking-wider text-chalk/40">
+                        {s.betType === "moneyline" ? "Moneyline" : s.betType === "total" ? "Total" : "Spread"}
+                      </p>
+                      <p className="stat text-[11px] text-chalk/70">
+                        {aLabel} {s.a.n} {s.a.n === 1 ? "bet" : "bets"} / {s.a.units}u ·{" "}
+                        {bLabel} {s.b.n} {s.b.n === 1 ? "bet" : "bets"} / {s.b.units}u
+                      </p>
+                    </div>
+                    {totalUnits > 0 && (
+                      <div
+                        aria-hidden
+                        className="mt-1 h-[3px] overflow-hidden rounded-full bg-chalk/15"
+                      >
+                        <span
+                          className="block h-full bg-accent"
+                          style={{ width: `${(s.a.units / totalUnits) * 100}%` }}
+                        />
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
 
         {/* Your bets — the ledger side, deliberately its own section.
             Bets and pick'em are independent: a bet needs no group, can sit on

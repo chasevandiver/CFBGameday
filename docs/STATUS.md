@@ -2908,20 +2908,32 @@ merged.
       by test), server-authoritative `/api/guess-game` (the anti-spoiler
       contract is a pure test: unsolved payloads never contain the home
       school), six guesses, hint ladder, spoiler-free emoji share string.
-- [ ] **R2-D1** Crew splits: migration 0060 `group_game_splits` (0051's
-      contract; rows only when `picks_revealed` — **pre-kick splits for
-      hidden groups rejected**, aggregate is reverse-engineerable at crew
-      size), `SplitBar` on card + game page. DB suite `crew-splits.sql`.
-- [ ] **R2-D2** Pool Machine: `src/lib/pool-machine.ts` importing
-      `records.ts` scoring (parity test = drift alarm), what-if toggles on
-      the group week page.
-- [ ] **R2-D3** Win-the-pool %: `src/lib/pool-odds.ts` seeded Monte Carlo
-      over frozen win probs / market-implied; "—" unless all remaining picks
-      visible or locked; delta pushes deferred (push kinds are their own
-      verified system).
-- [ ] **R2-D4** Reactions: migration 0061, insert gated by
-      `reaction_subject_visible` (a reaction on a hidden pick is an existence
-      leak), `ReactionBar` on wagers/picks surfaces.
+- [x] **R2-D1** Crew splits — smaller than planned, and better for it. The
+      planned migration 0060 (`group_game_splits` definer fn) was REJECTED
+      during build: pick splits computable under RLS are exactly the splits
+      the design permits (pre-kick hidden splits stay rejected — reverse-
+      engineerable at crew size), and MatchupCard's MarketSplit already
+      renders them with the lean bar. What actually shipped: **crew money**
+      on the game page — tickets vs units by side (`src/lib/splits.ts`,
+      markets with 2+ bets), from the crew-readable ledger.
+- [x] **R2-D2** Pool Machine: `src/lib/pool-machine.ts` imports `tally` from
+      records.ts, never re-implements (the no-toggles parity test is the
+      drift alarm); `<PoolMachine>` in a `<details>` on the group week board
+      — toggle who covers, the race re-sorts. Totals stay pending under any
+      toggle (a side can't answer a number); hidden picks aren't in the
+      projection and the UI says so.
+- [x] **R2-D3** Win-the-week %: `src/lib/pool-odds.ts` seeded Monte Carlo
+      (mulberry32, deterministic in tests) over the board's pending picks —
+      frozen `homeWinProb` where it exists, market-implied via the published
+      logistic slope otherwise, coin flips for covers/totals (the founding
+      evidence says so). Rendered as the % column in the Pool Machine.
+      Delta pushes deferred (push kinds are their own verified system).
+- [x] **R2-D4** Reactions: migration 0061 — visibility is INVOKER semantics
+      (`reaction_subject_visible` asks "can the caller see the subject" under
+      the caller's own RLS), so a hidden pick and a nonexistent one refuse
+      identically — the existence-oracle proof is in `daily-games.sql`.
+      Four allow-listed emoji, toggle semantics, `ReactionBar` on the game
+      page's crew picks. Bets have the schema; more surfaces post-launch.
 
 ## 5. Not built, by choice
 

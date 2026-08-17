@@ -7,12 +7,14 @@ import {
   type MatchupPick,
 } from "../../../../../components/group/MatchupCard";
 import { CancelPickButton } from "../../../../../components/group/CancelPickButton";
+import { PoolMachine } from "../../../../../components/group/PoolMachine";
 import type { CoverFlipRow, PickRow } from "../../../../../lib/db-types";
 import type { PickMarket } from "../../../../../lib/grade";
 import { fetchGroupMembers, fetchGroupWeek, groupLeague, resolveActiveGroup } from "../../../../../lib/groups";
+import { impliedHomeProb } from "../../../../../lib/pool-odds";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../../../lib/queries";
 import { EMPTY_TALLY, formatRecord, tallyBy } from "../../../../../lib/records";
-import { pickSideLabel, type GameView } from "../../../../../lib/slate";
+import { isDead, pickSideLabel, type GameView } from "../../../../../lib/slate";
 import { createClient } from "../../../../../lib/supabase/server";
 import {
   parseWeekRef,
@@ -177,6 +179,34 @@ export default async function GroupWeekPage({
     }
   }
 
+  // The Pool Machine + win-the-week % (R2-D2/D3): the page hands the client
+  // component exactly what it already renders — graded tallies, the visible
+  // ungraded picks, and one outcome probability per remaining game (frozen
+  // prediction where there is one, market-implied otherwise).
+  const pendingPicks = picks
+    .filter(counts)
+    .filter((p) => p.result === null)
+    .filter((p) => {
+      const g = gameById.get(p.game_id);
+      return g !== undefined && g.status !== "final" && !isDead(g);
+    })
+    .map((p) => ({
+      userId: p.user_id,
+      gameId: p.game_id,
+      market: p.market as PickMarket,
+      side: p.side,
+      units: Number(p.units ?? 1),
+    }));
+  const machineGameIds = new Set(pendingPicks.map((p) => p.gameId));
+  const machineGames = boardGames
+    .filter((g) => machineGameIds.has(g.id))
+    .map((g) => ({
+      id: g.id,
+      awayAbbr: g.away.abbr,
+      homeAbbr: g.home.abbr,
+      homeWinProb: g.prediction?.homeWinProb ?? impliedHomeProb(g.lines.spread),
+    }));
+
   const toMatchupPick = (p: PickRow): MatchupPick => ({
     id: p.id,
     userId: p.user_id,
@@ -226,6 +256,15 @@ export default async function GroupWeekPage({
           {members.length === 1 ? "member" : "members"}
           {orphans.length > 0 && ` · ${orphans.length} no longer in play`}
         </p>
+
+        <PoolMachine
+          members={members.map((m) => ({ userId: m.userId, name: m.name }))}
+          base={[...weekTallies.entries()]}
+          pending={pendingPicks}
+          games={machineGames}
+          viewerId={user?.id ?? null}
+          hiddenNote={active.picksHiddenUntilKickoff}
+        />
 
         <div className="mb-5 flex gap-2" role="group" aria-label="View">
           <ViewTab slug={slug} week={week} view="person" active={view === "person"}>
