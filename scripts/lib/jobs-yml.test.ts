@@ -148,4 +148,8 @@ describe("jobs.yml scheduler wiring", () => {
     expect(resolve("15 19 * * 6")).toBe("notify-log-bets");
     expect(resolve("15 23 * * 6")).toBe("notify-log-bets");
   });
+
+  it("routes the Tuesday Drop cron (R2-B2) — same seam, same net", () => {
+    expect(resolve("0 15 * * 1")).toBe("drop");
+  });
 });

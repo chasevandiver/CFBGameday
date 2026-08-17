@@ -19,6 +19,7 @@ import { fetchBettingSheet, byUnits } from "./betting-groups";
 import { spreadClv, totalClv } from "./clv";
 import type { GroupWeekConfigRow, PickMarket } from "./db-types";
 import { fetchMyGroups, type GroupSummary } from "./groups";
+import { planToday, type TodayBlock } from "./home-today";
 import { seasonIdsForYear, seasonYearOf } from "./league";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "./queries";
 import {
@@ -106,6 +107,8 @@ export interface HomeData {
   pickGroupCount: number;
   /** Cumulative units from the bet ledger, oldest settled bet first. */
   curve: number[];
+  /** The day-aware block the hub leads with (R2-B1). */
+  today: TodayBlock;
 }
 
 /* ---- pure helpers (unit-tested in home.test.ts) ------------------------- */
@@ -377,13 +380,27 @@ export async function fetchHomeData(
   );
   const actionWeekGameIds = new Set([...weekGameIds, ...nflWeekGameIds]);
 
+  // This week's Tuesday Drop (R2-B2). A missing table — a deploy that outran
+  // migration 0056 — comes back as an error with null data, which reads as
+  // "no drop yet": exactly the degradation wanted.
+  const { data: dropRow } = await supabase
+    .from("rating_drops")
+    .select("week")
+    .eq("season_id", seasonId)
+    .eq("week", week)
+    .maybeSingle();
+  const hasDrop = dropRow !== null && dropRow !== undefined;
+
+  const fetchedAt = new Date().toISOString();
+  const weekLiveCount = weekGames.filter((g) => g.status === "in_progress").length;
+
   const empty: HomeData = {
     seasonId,
     week,
     seasonType,
-    fetchedAt: new Date().toISOString(),
+    fetchedAt,
     firstKick,
-    liveCount: weekGames.filter((g) => g.status === "in_progress").length,
+    liveCount: weekLiveCount,
     weekGameCount: weekGames.length,
     positions: [],
     openBetCount: 0,
@@ -395,6 +412,15 @@ export async function fetchHomeData(
     picks: EMPTY_TALLY,
     pickGroupCount: 0,
     curve: [],
+    today: planToday({
+      fetchedAt,
+      liveCount: weekLiveCount,
+      nextKick: firstKick,
+      weekGameCount: weekGames.length,
+      progress: [],
+      hasDrop,
+      signedIn: false,
+    }),
   };
   if (!userId) return empty;
 
@@ -596,6 +622,22 @@ export async function fetchHomeData(
     positions = buildPositions(actionGames, homePicks, homeBets);
   }
 
+  // The signed-in block sees both leagues the way homeRefreshTier does: live
+  // positions count (a Sunday NFL position is "live now" even with the CFB
+  // week idle, minus overlap with the CFB week's own count), and a scheduled
+  // position's kickoff competes with the CFB week's for "next up".
+  const positionLive = positions.filter(
+    (p) => p.game.status === "in_progress" && !weekGameIds.has(p.game.id),
+  ).length;
+  const nowMs = Date.parse(fetchedAt);
+  const nextKick =
+    [
+      firstKick,
+      ...positions.filter((p) => p.game.status === "scheduled").map((p) => p.game.startTs),
+    ]
+      .filter((ts): ts is string => ts !== null && Date.parse(ts) > nowMs)
+      .sort()[0] ?? null;
+
   return {
     ...empty,
     positions,
@@ -608,5 +650,14 @@ export async function fetchHomeData(
     picks: picksTally,
     pickGroupCount,
     curve,
+    today: planToday({
+      fetchedAt,
+      liveCount: weekLiveCount + positionLive,
+      nextKick,
+      weekGameCount: weekGames.length,
+      progress,
+      hasDrop,
+      signedIn: true,
+    }),
   };
 }

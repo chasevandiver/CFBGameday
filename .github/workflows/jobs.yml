@@ -67,6 +67,7 @@ on:
           - freeze-groups
           - questions
           - verdicts
+          - drop
           # Read-only preview: builds the preseason ratings and prints the
           # ranking table to the log. Writes JSON to a scratch dir that is
           # thrown away with the runner — nothing reaches the database.
@@ -250,6 +251,12 @@ on:
     # Three Questions per game, Friday morning after the freeze (LLM; green
     # no-op until the ANTHROPIC_API_KEY secret exists)
     - cron: "0 9 * * 5"
+    # The Tuesday Drop (R2-B2): the ratings-update paragraph, Monday 15:00 UTC
+    # — two hours after Sunday's ratings land would be Sunday; Monday gives the
+    # grading chain a full day of slack, and the hub features it Tuesday. The
+    # producer skips loudly when the ratings week hasn't advanced (an upstream
+    # failure must stay the visible event) and is idempotent per week.
+    - cron: "0 15 * * 1"
     # Preseason refresh, daily at 11am UTC through most of August. CFBD
     # publishes the preseason inputs (talent, returning production, coach
     # moves) on its own schedule during the summer, and a rating built before
@@ -321,6 +328,7 @@ jobs:
             "0 6 1 * *") echo "task=keepalive" >> "$GITHUB_OUTPUT" ;;
             "0 3 * * 5") echo "task=freeze" >> "$GITHUB_OUTPUT" ;;
             "0 9 * * 5") echo "task=questions" >> "$GITHUB_OUTPUT" ;;
+            "0 15 * * 1") echo "task=drop" >> "$GITHUB_OUTPUT" ;;
             "0 11 1-27 8 *") echo "task=preseason-refresh" >> "$GITHUB_OUTPUT" ;;
             "") echo "task=${{ inputs.task }}" >> "$GITHUB_OUTPUT" ;;
             *) echo "task=unknown" >> "$GITHUB_OUTPUT" ;;
@@ -464,11 +472,13 @@ jobs:
               else
                 npx tsx scripts/load-preseason.ts --dir "$DIR"
               fi ;;
-            questions|verdicts)
+            questions|verdicts|drop)
               if [ -z "$ANTHROPIC_API_KEY" ]; then
                 echo "ANTHROPIC_API_KEY not set — skipping LLM generation"
               elif [ "${{ steps.task.outputs.task }}" = "questions" ]; then
                 npx tsx scripts/generate-questions.ts
+              elif [ "${{ steps.task.outputs.task }}" = "drop" ]; then
+                npx tsx scripts/generate-drop.ts
               else
                 npx tsx scripts/generate-verdicts.ts
               fi ;;

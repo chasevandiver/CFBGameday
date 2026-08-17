@@ -2874,12 +2874,17 @@ merged.
 - [x] **R2-A5** Where-to-watch: `src/lib/watch-on.ts` network→service map,
       full label on the game page, `title` on the slate chip (no layout
       shift), .ics descriptions. Unmapped renders the network alone.
-- [ ] **R2-B1** Day-aware home: `src/lib/home-today.ts` planner (DoW in
-      `DEFAULT_TZ`, never server UTC) + `TodayCard` atop the hub.
-- [ ] **R2-B2** The Tuesday Drop: migration 0056 (`rating_drops`),
-      `scripts/generate-drop.ts` (skips without writing when ratings are
-      stale), Drop section on `/ratings`, cron `drop` Mon 15:00 UTC —
-      **verify ANTHROPIC_API_KEY in the step env** (PUSH-11).
+- [x] **R2-B1** Day-aware home: `src/lib/home-today.ts` planner (DoW in
+      `DEFAULT_TZ`, never server UTC; live beats the calendar, due picks
+      beat a kickoff, quiet renders nothing) + `TodayCard` atop the hub.
+      Demo pins `{kind: "live"}` so it looks the same on a Tuesday.
+- [x] **R2-B2** The Tuesday Drop: migration 0056 (`rating_drops`, read-only
+      to the app), `scripts/generate-drop.ts` (arithmetic pure in
+      `scripts/lib/drop.ts`; skips loudly when the ratings week hasn't
+      advanced or there's nothing defensible to argue), Drop section on
+      `/ratings`, hub Tuesday block links it. Cron `drop` Mon 15:00 UTC in
+      the questions/verdicts script branch — ANTHROPIC_API_KEY confirmed in
+      the job env (jobs.yml:280); `jobs-yml.test.ts` routes the cron.
 - [ ] **R2-C1** Guess the Lines: migration 0057, RPC refuses once a snapshot
       exists, job selects Monday / scores as lines post, `/guess-lines` page,
       "sharpest eye" board. DB suite mirrors `hidden-picks.sql`.

@@ -697,5 +697,8 @@ export function demoHomeData(now: number): HomeData {
     picks: sampleTally(31, 19, 1, 6.4, 0.31),
     pickGroupCount: 2,
     curve: DEMO_CURVE,
+    // The demo's Saturday always has a live board, so the today block is
+    // pinned rather than computed — the demo must look the same on a Tuesday.
+    today: { kind: "live", liveCount: games.filter((g) => g.status === "in_progress").length },
   };
 }

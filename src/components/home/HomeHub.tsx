@@ -8,6 +8,7 @@ import { TeamScoreLine } from "../slate/TeamLine";
 import { StatTile } from "../StatTile";
 import { UnitsCurve } from "../UnitsCurve";
 import { heldVsNow, splitPositions, type GroupStanding, type HomeBet, type HomeData, type HomePick, type Position, type WeekProgress } from "../../lib/home";
+import type { TodayBlock } from "../../lib/home-today";
 import { DEFAULT_TZ, kickParts, periodLabel, tzLabel } from "../../lib/kick";
 import { statusForBet, statusForPick, tintFor } from "../../lib/live-status";
 import { cardStake } from "../../lib/stake";
@@ -67,6 +68,83 @@ function MaybeLink({
     <Link href={href} className={className}>
       {children}
     </Link>
+  );
+}
+
+/**
+ * The day-aware strip (R2-B1): one line answering the day's question, above
+ * the hero. `planToday` (src/lib/home-today.ts) decides which; this renders
+ * it. A quiet day renders nothing — the hub must not grow a box of filler.
+ */
+export function TodayCard({
+  today,
+  tz = DEFAULT_TZ,
+  demo = false,
+}: {
+  today: TodayBlock;
+  tz?: string;
+  demo?: boolean;
+}) {
+  if (today.kind === "quiet") return null;
+
+  const body = (() => {
+    switch (today.kind) {
+      case "live":
+        return {
+          href: "/slate?sport=live",
+          label: "Live now",
+          copy: `${today.liveCount} ${today.liveCount === 1 ? "game" : "games"} playing — the board is moving.`,
+        };
+      case "results":
+        return {
+          href: "/recap",
+          label: "The weekend, graded",
+          copy: "Results, receipts, and who took the week.",
+        };
+      case "drop":
+        return {
+          href: "/ratings",
+          label: "The Tuesday Drop",
+          copy: today.hasDrop
+            ? "New ratings are up — the movers, and the week’s argument."
+            : "Ratings update lands today.",
+        };
+      case "board": {
+        const owed = today.due.reduce((t, p) => t + Math.max(0, (p.target ?? 0) - p.made), 0);
+        return {
+          href: "/groups",
+          label: "The board is open",
+          copy:
+            today.due.length === 0
+              ? "Lines are up. Your picks are in."
+              : `${owed} ${owed === 1 ? "pick" : "picks"} still open across ${today.due.length} ${today.due.length === 1 ? "pool" : "pools"}.`,
+        };
+      }
+      case "kickoff": {
+        const kick = kickParts(today.at, tz);
+        return {
+          href: "/slate",
+          label: "Next kickoff",
+          copy: `${kick.day} ${kick.time} ${tzLabel(tz)}.`,
+        };
+      }
+    }
+  })();
+
+  return (
+    <MaybeLink
+      href={body.href}
+      inert={demo}
+      className="card mb-4 flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:border-accent/40"
+    >
+      <p className="min-w-0 text-sm">
+        <span className="stat mr-2 text-[10px] font-semibold uppercase tracking-wider text-accent">
+          {body.label}
+        </span>
+        <span className="text-chalk/80">{body.copy}</span>
+      </p>
+      <ArrowRight className="h-4 w-4 shrink-0 text-chalk/40" aria-hidden />
+    </MaybeLink>
   );
 }
 
@@ -705,6 +783,7 @@ export function HomeDashboard({
   return (
     <>
       {note}
+      <TodayCard today={data.today} demo={demo} />
       <HomeHero
         week={data.week}
         positionCount={data.positions.length}

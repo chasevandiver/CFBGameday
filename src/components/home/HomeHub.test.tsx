@@ -34,6 +34,7 @@ const empty = (over: Partial<HomeData> = {}): HomeData => ({
   picks: EMPTY_TALLY,
   pickGroupCount: 0,
   curve: [],
+  today: { kind: "quiet" },
   ...over,
 });
 
@@ -101,5 +102,51 @@ describe("HomeDashboard", () => {
     render(<HomeDashboard data={demoHomeData(NOW)} signedIn />);
     expect(screen.getAllByText("Saturday Boys").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Work Pool").length).toBeGreaterThan(0);
+  });
+});
+
+describe("TodayCard (R2-B1)", () => {
+  it("renders nothing on a quiet day — the hub grows no filler", () => {
+    render(<HomeDashboard data={empty({ today: { kind: "quiet" } })} signedIn />);
+    expect(screen.queryByText(/Live now|Tuesday Drop|weekend, graded/)).toBeNull();
+  });
+
+  it("leads with live football", () => {
+    render(
+      <HomeDashboard
+        data={empty({ today: { kind: "live", liveCount: 3 } })}
+        signedIn
+      />,
+    );
+    expect(screen.getByText("Live now")).toBeDefined();
+    expect(screen.getByText(/3 games playing/)).toBeDefined();
+  });
+
+  it("Wednesday's board block counts what is still owed", () => {
+    render(
+      <HomeDashboard
+        data={empty({
+          today: {
+            kind: "board",
+            due: [{ name: "Crew", slug: "crew", made: 2, target: 5 }],
+          },
+        })}
+        signedIn
+      />,
+    );
+    expect(screen.getByText(/3 picks still open across 1 pool/)).toBeDefined();
+  });
+
+  it("goes inert on the demo — a strip, not a dead link", () => {
+    render(
+      <HomeDashboard
+        data={empty({ today: { kind: "results" } })}
+        signedIn
+        demo
+        slateHref="/demo/slate"
+      />,
+    );
+    const label = screen.getByText("The weekend, graded");
+    expect(label.closest("a")).toBeNull();
   });
 });

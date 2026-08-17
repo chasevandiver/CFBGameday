@@ -78,7 +78,7 @@ export default async function RatingsPage() {
   const showSplit = splitInformative(current.map(half));
 
   const teamIds = current.map((r) => r.team_id);
-  const [teamsRes, compsRes, pollsRes] = await Promise.all([
+  const [teamsRes, compsRes, pollsRes, dropRes] = await Promise.all([
     // The six columns the row mapper below reads, not all nine — this pulls
     // every FBS team, so mascot/classification/alt_color were ~138 rows of
     // payload nothing rendered. Its two siblings in this Promise.all were
@@ -96,6 +96,15 @@ export default async function RatingsPage() {
       .select("week, poll, team_id, rank")
       .eq("season_id", seasonId)
       .eq("season_type", "regular"),
+    // The Tuesday Drop (R2-B2). A missing table — deploy ahead of 0056 — or a
+    // week without one both arrive as null data, and the section simply
+    // doesn't render.
+    supabase
+      .from("rating_drops")
+      .select("week, content, generated_at")
+      .eq("season_id", seasonId)
+      .eq("week", latestWeek)
+      .maybeSingle(),
   ]);
   type RatingTeam = Pick<
     TeamRow,
@@ -109,6 +118,12 @@ export default async function RatingsPage() {
     (pollsRes.data ?? []) as Array<{ week: number; poll: string; team_id: number; rank: number }>,
   );
   const pollName = pollShortName(poll);
+
+  const drop = (dropRes?.data ?? null) as {
+    week: number;
+    content: { headline?: string; defense?: string };
+    generated_at: string;
+  } | null;
 
   const rows: RatingRow[] = current.flatMap((r) => {
     const team = teams.get(r.team_id);
@@ -156,6 +171,17 @@ export default async function RatingsPage() {
               : `${latestWeek === 0 ? "preseason" : `through week ${latestWeek}`} · model ${MODEL_VERSION}`}
           </p>
         </div>
+        {/* The Tuesday Drop (R2-B2): the week's argument, above the table it
+            defends. Renders only when this week's row exists — no filler. */}
+        {!empty && drop?.content?.headline && drop?.content?.defense && (
+          <section className="card mb-4 p-4">
+            <p className="stat mb-1 text-[10px] font-semibold uppercase tracking-wider text-accent">
+              The Tuesday Drop · week {drop.week}
+            </p>
+            <h2 className="mb-2 text-lg text-chalk">{drop.content.headline}</h2>
+            <p className="text-sm leading-relaxed text-chalk/80">{drop.content.defense}</p>
+          </section>
+        )}
         {empty ? (
           <div className="card px-6 py-12 text-center">
             <p className="display text-lg text-chalk/80">No ratings yet</p>

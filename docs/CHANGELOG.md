@@ -166,6 +166,35 @@ shipping it.
 
 ## Log
 
+### Aug 17 — Round 2, Batch B: the day-aware home and the Tuesday Drop
+
+The daily-rhythm pair (R2-B1/B2, STATUS §4 Round 2), same branch and same
+merge-deferred posture as Batch A.
+
+**Day-aware home.** `planToday` (`src/lib/home-today.ts`, pure) decides which
+question the hub leads with: Mon results · Tue the Drop · Wed the board ·
+Thu–Sun the next kickoff — with two priorities that beat the calendar: live
+football first (MNF is a Monday), and picks still owed beat a kickoff that
+hasn't happened (lock beats watch). Day-of-week is computed in `DEFAULT_TZ`,
+never server UTC — Tuesday 00:30 UTC is Monday evening in Chicago, and a
+block that flips a night early answers tomorrow's question today. A quiet
+week renders nothing; the demo pins the live block so it reads the same any
+day. The signed-in block counts live positions across both leagues the same
+way `homeRefreshTier` does, for the same Aug-14 reason.
+
+**The Tuesday Drop.** The ratings update becomes a named event: migration
+0056 (`rating_drops`, one row per season+week, app reads only),
+`scripts/generate-drop.ts` mirroring the verdicts producer, arithmetic pure
+in `scripts/lib/drop.ts` (movers = newest ratings week vs previous; dissent =
+poll rank − model rank via the `/rankings` machinery). The paragraph defends
+ONE position — the largest poll gap ≥ 3, else the biggest mover — and the
+producer **skips loudly instead of writing** when the ratings week hasn't
+advanced or nothing is defensible: a drop confidently defending stale
+ratings would hide exactly the upstream failure that should be visible.
+Cron `0 15 * * 1` lands in the same commit as its `jobs-yml.test.ts` route
+assertion (the SCHED-1/P1-9b/PUSH-11 seam); `ANTHROPIC_API_KEY` was verified
+present in the job step's env rather than assumed.
+
 ### Aug 17 — Round 2, Batch A: NFL parity pages, calendar feeds, grading gaps, where-to-watch
 
 Owner decision: build the ROADMAP.md feature set now, on
