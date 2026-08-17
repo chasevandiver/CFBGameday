@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AppNav } from "../../components/AppNav";
-import { summarizeClv } from "../../lib/clv";
+import { openerClv, summarizeClv } from "../../lib/clv";
 import type { GameRow, PredictionRow, TeamRow } from "../../lib/db-types";
 import { DEFAULT_TZ, kickDateLong, kickParts, tzLabel } from "../../lib/kick";
 import { required } from "../../lib/db-result";
@@ -26,11 +26,13 @@ type ReceiptPred = Pick<
   PredictionRow,
   | "game_id"
   | "clv"
+  | "close_spread"
   | "created_at"
   | "edge"
   | "edge_flag"
   | "home_win_prob"
   | "model_version"
+  | "open_spread"
   | "spread"
   | "vegas_spread"
 >;
@@ -75,7 +77,7 @@ export default async function ReceiptsPage() {
   const predRes = await supabase
     .from("predictions")
     .select(
-      "game_id, clv, created_at, edge, edge_flag, home_win_prob, model_version, spread, vegas_spread",
+      "game_id, clv, close_spread, created_at, edge, edge_flag, home_win_prob, model_version, open_spread, spread, vegas_spread",
     )
     .eq("frozen", true)
     .eq("season_id", seasonId)
@@ -165,6 +167,23 @@ export default async function ReceiptsPage() {
   // Graded by the Sunday job (scripts/lib/jobs-core.ts), null until then.
   const clv = summarizeClv(receipts.map((r) => (r.pred.clv === null ? null : Number(r.pred.clv))));
 
+  // The opener test (03:M-5). Measured from the OPENER to the close — the one
+  // residual signal the 2023–25 edge post-mortem left standing — with its
+  // decision rule pre-registered before any 2026 data existed. Both numbers
+  // come from the same rows the freeze and the Sunday grader already write;
+  // nothing here touches the model.
+  const openerReads = receipts.map((r) => {
+    const model = Number(r.pred.spread);
+    const open = r.pred.open_spread === null ? null : Number(r.pred.open_spread);
+    const close = r.pred.close_spread === null ? null : Number(r.pred.close_spread);
+    return {
+      clv: openerClv(model, open, close),
+      big: open !== null && Math.abs(model - open) >= 4,
+    };
+  });
+  const openerAll = summarizeClv(openerReads.map((x) => x.clv));
+  const openerBig = summarizeClv(openerReads.filter((x) => x.big).map((x) => x.clv));
+
   return (
     <>
       <AppNav />
@@ -237,6 +256,63 @@ export default async function ReceiptsPage() {
               captured near that kickoff — those games stay ungraded rather than being measured
               against a days-old line.
             </p>
+
+            {/* 03:M-5. The rule below was fixed before any 2026 data existed —
+                do not move the thresholds to fit the season. Grading code:
+                openerClv in src/lib/clv.ts; open_spread/close_spread are
+                written by the freeze and the Sunday grader (migration 0019). */}
+            <div className="mt-4 border-t border-chalk/8 pt-4">
+              <h3 className="mb-3 text-sm text-accent">The opener test · pre-registered</h3>
+              <div className="stat grid grid-cols-1 gap-2 text-center text-xs sm:grid-cols-2">
+                <CalStat
+                  label="CLV vs the opener"
+                  value={
+                    openerAll.avg === null
+                      ? "–"
+                      : `${openerAll.avg > 0 ? "+" : ""}${openerAll.avg.toFixed(2)} pts`
+                  }
+                  sub={openerAll.n === 0 ? "graded Sunday after kickoff" : `n = ${openerAll.n} model leans`}
+                  tone={
+                    openerAll.avg === null
+                      ? undefined
+                      : openerAll.avg > 0
+                        ? "win"
+                        : openerAll.avg < 0
+                          ? "loss"
+                          : undefined
+                  }
+                />
+                <CalStat
+                  label="4+ pt disagreements"
+                  value={
+                    openerBig.avg === null
+                      ? "–"
+                      : `${openerBig.avg > 0 ? "+" : ""}${openerBig.avg.toFixed(2)} pts`
+                  }
+                  sub={openerBig.n === 0 ? "none graded yet" : `n = ${openerBig.n}`}
+                  tone={
+                    openerBig.avg === null
+                      ? undefined
+                      : openerBig.avg > 0
+                        ? "win"
+                        : openerBig.avg < 0
+                          ? "loss"
+                          : undefined
+                  }
+                />
+              </div>
+              <p className="mt-3 text-[11px] leading-relaxed text-dim">
+                The one finding the 2023–25 post-mortem left standing: the market drifted toward
+                the model <em>after the opener</em> — the 4+ bucket went 51.8% with +0.27 CLV a
+                lean, and every bucket was positive — and the close absorbed all of it. The rule
+                was fixed before
+                this season kicked off: this becomes a strategy conversation only if CLV vs the
+                opener sustains <span className="text-chalk/80">≥ +1.0 over n ≥ 200 leans</span>;
+                at ≤ +0.3 by n = 200 it has replicated the backtest and the question closes. One
+                honesty note either way: the opener here is when-the-book-posted, not a bettable
+                timestamped price, so even a pass is evidence — not a wager.
+              </p>
+            </div>
           </section>
         )}
 

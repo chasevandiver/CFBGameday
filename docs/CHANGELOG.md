@@ -69,8 +69,10 @@ model exactly. Each is documented in place so it isn't rediscovered.
 
 ## Decisions log
 
-Twelve experiments, each with a decision rule fixed **before** the run. Four
-shipped; one (`--tune-fcs`) has its rule registered and has not been run yet.
+Thirteen experiments, each with a decision rule fixed **before** the run. Four
+shipped; two have their rules registered and are not yet decided — `--tune-fcs`
+(queued post-Week 0) and the opener test (decided by in-season data,
+~mid-October at the earliest).
 
 | Experiment | Result | Verdict |
 |---|---|---|
@@ -86,6 +88,7 @@ shipped; one (`--tune-fcs`) has its rule registered and has not been run yet.
 | `--diagnose-tiers` (chain grid) | Cross-tier G5-signed edge, wks 1–4: bare chain **+7.08 (t=14.8)**; best variant (0.7·finals+0.3·talent) still **+4.81 (t=10.6)**. On the 2026 wk-1 market all six constructions land **+9.7…+10.4** — incl. α=0 (pure SP+ baseline) and FCS −25/−35. | Rejected as fixes: **no prior-chain construction moves the 2026 number.** `REPLAY_SHARE` stays 0.5 (re-tested, not re-litigated). Root cause isolated to pool-LEVEL regression, not the blend. |
 | `--tune-fcs` | **Not yet run** — the flag, the bucket rule and the pre-registered criteria landed 2026-08-13; the run is queued for after Week 0. Closest existing number: `--diagnose-tiers` scored FCS −25/−35 as two of its six constructions and **none of the six moved the 2026 cross-tier figure** (all landed +9.7…+10.4). That was a different question — pool level, not FBS-vs-FCS accuracy — so it does not settle this one, but it is the reason not to assume the spec's values are right. | Pending. Both params ship at −30 (identity), so nothing depends on the answer. Gate 0 is a two-sample \|t\| ≥ 2 between the buckets' vs-actual bias at the flat anchor; failing it ships nothing and answers Q4 **on evidence** rather than by deferral. |
 | `--tune-tier-recenter` | Market-anchored: wks 2–4 cross-tier edge (out-of-fit) **+5.41 → +0.78 (t=1.5)**; wks 1–4 bias vs actual **−6.31 (t −4.7) → −1.57 (t −1.2)**; P4vP4 +0.51 unmoved; pooled MAE **13.22 → 13.14**, NLL **0.4994 → 0.4956**; worst bucket 2.7. Static δ=4 matches on 2023–25 but under-corrects 2026 by ~6 (fits: +4.4 '24, +4.7 '25, **+10.4 '26**). | **Shipped (2026.5.0).** All four pre-registered criteria passed; market-anchored chosen over a constant because the offseason P4/G5 divergence is accelerating. |
+| Opener test (03:M-5) | **Registered, not yet decided.** Surface shipped 2026-08-17: Receipts grades every frozen lean opener → close (`openerClv`), 4+ bucket broken out. Backtest residual it tests: 4+ bucket **51.8%, avg CLV +0.27**, every bucket positive — real drift, all absorbed by the close. | Pending, rule fixed before any 2026 data: strategy conversation only at avg CLV vs opener ≥ **+1.0** over n ≥ 200 leans (~mid-Oct earliest); **abandon** at ≤ +0.3 by n = 200 — that replicates the backtest. Read-side only; no parameter moves on either outcome. CFBD's opener is when-posted, not a bettable price, so even a pass is evidence, not a wager. |
 
 ### Why edges are not bets
 
@@ -165,6 +168,48 @@ shipping it.
 ---
 
 ## Log
+
+### Aug 17 — M-5 + F11: the opener test on Receipts, the soft map on Edges
+
+The owner asked the fair question — if flagged edges went 49.2%, can't we
+carve out the buckets that hit and list those as bets? The decisions log
+already answers it ("beware the bucket that clears": the 6–10 band's 53.5% is
+the winner of a five-way lottery, ~1 SE over break-even, non-monotonic, and
+contradicted by the regression), so what shipped instead is the two things the
+evidence does support — both already tracked, neither touching the model.
+
+**03:M-5 — the opener test.** Receipts now grades every frozen lean from the
+OPENER to the close (`openerClv` in `src/lib/clv.ts`; the side is the model's
+disagreement with the opening number, which can differ from its freeze-time
+side once the line crosses the model mid-week). Two tiles — all leans, and
+the 4+ bucket the backtest residual lives in (51.8%, avg CLV +0.27, every
+bucket positive) — with the pre-registered rule printed beside them so the
+thresholds cannot quietly move to fit the season. Read-side only: the freeze
+and the Sunday grader were already writing `open_spread` and `close_spread`
+(migration 0019); nothing new is stored.
+
+**F11 — the §5.1 taxonomy.** `/edges` now leads with the 4+-vs-opener bucket
+(`edgeVsOpener` in `src/lib/slate.ts`, distinct from `edge` for the same
+crossing reason), keeps every other flag deliberately unbucketed, and closes
+with the soft-market map: G5/FCS, weekday MACtion, September rosters, backup
+QBs, small-conference totals, August win totals. The two tags the data can
+derive — G5-vs-G5 and Tue/Wed kicks — mark flagged rows
+(`src/lib/soft-markets.ts`, tested, Thursday/Friday excluded as national
+broadcast windows); the judgment calls stay editorial, because nothing in the
+database knows a depth chart. Page framing throughout: softness is a
+structural claim about the market's attention, profit is not claimed, CLV is
+the only verification (§11.1). Rows with an opener also print the price story
+("opened −3.5 · now −4.5 · toward the model") on the same ≥1.5-pt bar
+`spreadMoveRead` uses everywhere else.
+
+`tierOf`/`tierMatchup` moved from `scripts/lib/tiers.ts` to
+`src/lib/tiers.ts` on the way — the dependency runs scripts → src, never the
+reverse (`src/lib/void.ts` records the precedent) — with the build-time pool
+re-levelling staying in scripts behind a re-export, so no script import
+changed.
+
+No `DEFAULT_PARAMS` value moved. The decisions table gains the opener test as
+registered-not-run, next to `--tune-fcs`.
 
 ### Aug 17 — GTG-1: the puzzle had no deck, and the deck could not heal
 

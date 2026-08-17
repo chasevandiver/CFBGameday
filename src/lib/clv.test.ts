@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { modelClv, roundClv, spreadClv, summarizeClv, totalClv } from "./clv";
+import { modelClv, openerClv, roundClv, spreadClv, summarizeClv, totalClv } from "./clv";
 
 // The four worked examples. These are the whole point of the module: the sign
 // was inverted in all four branches of jobs-core.ts until 2026-08-07 and no
@@ -94,6 +94,36 @@ describe("modelClv", () => {
     // Flagged edges are |edge| >= 2. CLV is measurable on every disagreement,
     // and restricting to flags throws away most of the sample.
     expect(modelClv(-0.5, -7, -7.5)).toBe(0.5);
+  });
+});
+
+describe("openerClv", () => {
+  it("is positive when the market drifted toward the model's side of the opener", () => {
+    // Opener home −3, model says home −7 → the model's side of the opener is
+    // home. Closes −5: a home backer at the opener laid 3 where the close
+    // lays 5. This is the drift the 2023–25 post-mortem measured at +0.27.
+    expect(openerClv(-7, -3, -5)).toBe(2);
+  });
+
+  it("is negative when the market moved away from the model", () => {
+    // Opener home −3, model home −7, closes home −1: the opener's price got
+    // better after the fact — taking the model's side early cost 2 points.
+    expect(openerClv(-7, -3, -1)).toBe(-2);
+  });
+
+  it("takes its side from the opener, not the freeze-time market", () => {
+    // Model −4, opened −2, closed −5. Against the opener the model leans home
+    // (−4 < −2) even though against that close it would lean away. The opener
+    // test grades the early read, so this is home's +3, not away's −3.
+    expect(openerClv(-4, -2, -5)).toBe(3);
+    expect(openerClv(-4, -2, -5)).toBe(spreadClv("home", -2, -5));
+  });
+
+  it("returns null when a number is missing or the model sat on the opener", () => {
+    expect(openerClv(null, -3, -5)).toBeNull();
+    expect(openerClv(-7, null, -5)).toBeNull(); // opener never captured
+    expect(openerClv(-7, -3, null)).toBeNull(); // no closing snapshot
+    expect(openerClv(-3, -3, -5)).toBeNull(); // no disagreement — no side
   });
 });
 
