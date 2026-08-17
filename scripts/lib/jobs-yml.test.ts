@@ -152,4 +152,14 @@ describe("jobs.yml scheduler wiring", () => {
   it("routes the Tuesday Drop cron (R2-B2) — same seam, same net", () => {
     expect(resolve("0 15 * * 1")).toBe("drop");
   });
+
+  /**
+   * R3-E2. Landing here in the same commit as the crons is the whole point:
+   * a declared cron with no resolve branch is a red run every Tuesday, and
+   * this seam has produced SCHED-1, P1-9b and PUSH-11.
+   */
+  it("routes both Six-Pack crons — generate Tuesday, grade Sun/Mon", () => {
+    expect(resolve("0 17 * * 2")).toBe("six-pack");
+    expect(resolve("30 14 * * 0,1")).toBe("six-pack");
+  });
 });

@@ -2955,9 +2955,17 @@ was site-wide, so there was no way to compete inside a pool. Built on
       Games takes the fifth bottom slot, `/edges` moves to the More sheet
       (UX-33, answered above). The hub's 12px games line became a 64px row —
       it had been under DESIGN.md's 44px rule since R2-C shipped it.
-- [ ] **R3-E2** The Six-Pack — migration 0062, weekly six-question slate
-      generated from the lines DB, RPC-only entry, derived lock and rollover,
-      `six-pack` job on two crons.
+- [x] **R3-E2** The Six-Pack — migration 0062 (`six_pack_slates`/
+      `questions`/`entries`; **no `locks_at`, no `group_id`, no rollover
+      counter** — all four derived), `submit_six_pack` RPC taking all six at
+      once with seven refusals, pure rules in `src/lib/six-pack.ts` (the
+      closure rule: every question settles from the slate's own games), the
+      `six-pack` job with a repair path, `/six-pack` + `SixPackForm`, and the
+      watchdog's weekly+seasonal lane. Crons `0 17 * * 2` (generate) and
+      `30 14 * * 0,1` (grade) landed with their `jobs-yml.test.ts` route
+      assertions in the same commit. ⚠️ 0062 applies to production BEFORE the
+      E2 deploy — the page selects `six_pack_questions`. Dispatch `six-pack`
+      once at merge.
 - [ ] **R3-E3** Arcade standings and trophies — `src/lib/arcade.ts` (weekly
       ceilings equalised into [60,70]; imports `streakFold` and consumes the
       GtG points column rather than re-deriving either), `src/lib/trophies.ts`

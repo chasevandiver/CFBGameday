@@ -23,6 +23,7 @@ import {
   weatherJob,
 } from "./lib/jobs-core";
 import { guessLinesJob, streakJob } from "./lib/daily-games";
+import { sixPackJob } from "./lib/six-pack";
 import { NFL_SEASON } from "./lib/nfl";
 import { notifyLogBetsJob, notifyPicksDueJob } from "./lib/notify-jobs";
 
@@ -57,6 +58,9 @@ async function main() {
     // grading sweeps anything the last run left pending.
     "guess-lines": guessLinesJob,
     streak: streakJob,
+    // The weekly one (R3-E2): Tuesday generates, Sun/Mon grade. Both halves
+    // are idempotent, so a missed run costs latency and never correctness.
+    "six-pack": sixPackJob,
   } as const;
   const job = jobs[task as keyof typeof jobs];
   if (!job) throw new Error(`unknown task "${task}" (${Object.keys(jobs).join("|")})`);

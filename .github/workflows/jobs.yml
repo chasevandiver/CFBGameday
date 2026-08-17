@@ -112,6 +112,7 @@ on:
           - cfb-scoring
           - guess-lines
           - streak
+          - six-pack
   schedule:
     # Lines 2x daily (8am/6pm ET) — display freshness only
     - cron: "0 12,22 * * *"
@@ -268,6 +269,14 @@ on:
     # The Streak (R2-C2): daily — grade yesterday's pick, select tomorrow's
     # matchup. 14:00 UTC is morning in DEFAULT_TZ, after the overnight finals.
     - cron: "0 14 * * *"
+    # The Six-Pack (R3-E2). Tuesday 17:00 UTC generates the week's six
+    # questions — after Monday's guess-lines selection and after that day's
+    # 12:00 line refresh, so line_consensus already carries the spread and
+    # total the cover/total questions freeze onto themselves. Sun/Mon 14:30
+    # sweep the grading behind the weekend's finals. Both halves are
+    # idempotent, so a missed run costs latency, never correctness.
+    - cron: "0 17 * * 2"
+    - cron: "30 14 * * 0,1"
     # Preseason refresh, daily at 11am UTC through most of August. CFBD
     # publishes the preseason inputs (talent, returning production, coach
     # moves) on its own schedule during the summer, and a rating built before
@@ -342,6 +351,7 @@ jobs:
             "0 15 * * 1") echo "task=drop" >> "$GITHUB_OUTPUT" ;;
             "30 16 * * 1,2,3") echo "task=guess-lines" >> "$GITHUB_OUTPUT" ;;
             "0 14 * * *") echo "task=streak" >> "$GITHUB_OUTPUT" ;;
+            "0 17 * * 2"|"30 14 * * 0,1") echo "task=six-pack" >> "$GITHUB_OUTPUT" ;;
             "0 11 1-27 8 *") echo "task=preseason-refresh" >> "$GITHUB_OUTPUT" ;;
             "") echo "task=${{ inputs.task }}" >> "$GITHUB_OUTPUT" ;;
             *) echo "task=unknown" >> "$GITHUB_OUTPUT" ;;
@@ -366,7 +376,7 @@ jobs:
             nfl-sync-games) npx tsx scripts/nfl-sync-games.ts ;;
             nfl-refresh-lines) npx tsx scripts/nfl-refresh-lines.ts ;;
             scoreboard-loop) npx tsx scripts/scoreboard-loop.ts --minutes 63 ;;
-            sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze|freeze-groups|watchdog|notify-picks-due|notify-log-bets|nfl-grade|nfl-scoring|cfb-scoring|guess-lines|streak) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
+            sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze|freeze-groups|watchdog|notify-picks-due|notify-log-bets|nfl-grade|nfl-scoring|cfb-scoring|guess-lines|streak|six-pack) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
             # Keep-alive: touch nothing, just make the run green so GitHub's
             # 60-day inactivity timer resets. No DB, no CFBD.
             keepalive) echo "keep-alive tick $(date -u +%Y-%m-%d) — resets the Actions inactivity clock" ;;

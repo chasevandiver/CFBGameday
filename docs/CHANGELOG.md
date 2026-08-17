@@ -166,6 +166,55 @@ shipping it.
 
 ## Log
 
+### Aug 17 — Round 3, Batch E2: the Six-Pack
+
+A fourth game, and the first weekly one: six questions on the week, free to
+play, scored in points. Migration 0062 — whose header records that **0060 was
+deliberately never created** (the R2-D1 crew-splits function was rejected
+during that build and 0061 took the number).
+
+**The closure rule is the whole design.** Every question settles exclusively
+from the slate's own six games — no league-wide scans — so the grader's read
+set is exactly the games the slate names and no question can wait forever on
+data that never arrives. The kinds are `winner`, `cover`, `total`, `margin`
+and a slate-wide `high_game` whose candidates are the games the other five
+already named.
+
+**Rejected, and worth naming because they are the obvious ones:** total
+touchdowns, first scorer, longest play, turnovers, halftime leaders. They
+need stats we do not store (`game_team_stats` is unbuilt — SCORE-3), and a
+question that grades only when an ingest happened to fire is worse than no
+question. Revisit only if SCORE-3 is ever built.
+
+**Four things it deliberately does not store**, each the same mistake in a
+different hat: no `locks_at` (the lock is `min(start_ts)` over the slate's
+games, computed live — a stored lock is what a rescheduled kickoff
+contradicts), no `group_id` (R3-E1's rule: the roster is the scope), no
+rollover counter, and no stored perfect-week flag. The rollover — "nobody's
+cleared it in four weeks" — is a fold over graded slates, so a re-grade moves
+it, and its test proves exactly that by flipping a result.
+
+**Void accounting, stated because it decides who gets a clean sheet.** A push
+on a cover or total, a tie, and any dead game grade `void`, and a void drops
+out of BOTH the numerator and the perfect bar: five-for-five on a
+five-gradable week IS a clean sheet. Same rule the streak uses — a dead game
+breaks no run, and it must not take somebody's perfect week either.
+
+**Writes are all-or-nothing.** `submit_six_pack` takes all six answers in one
+call and refuses seven ways: not signed in, no such slate, a partial entry,
+nothing to lock against, kickoff (with TBD counting as locked — the
+fail-closed convention picks already use), a choice the question never
+offered, and once grading has begun. Six separate inserts would let one fail
+and leave a half-answered week; `supabase/tests/six-pack.sql` pins all of it
+plus the blind (21 assertions).
+
+The cron seam got the treatment it has earned three times over (SCHED-1,
+P1-9b, PUSH-11): schedule, resolve case, run-job case, dispatch list and both
+`jobs-yml.test.ts` route assertions in one commit. The watchdog lane is
+weekly *and* seasonal like the notify jobs — an hours horizon would go red
+every week from January to August until nobody read it — with the same
+never-run exemption the streak earned.
+
 ### Aug 17 — Round 3, Batch E1: the Games tab, and Edges gives up its slot
 
 Owner report, and a fair one: the R2-C games were undiscoverable — reachable

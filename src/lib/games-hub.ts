@@ -127,7 +127,7 @@ export async function fetchGamesHub(
 ): Promise<GamesHubState> {
   const today = productDate(new Date());
 
-  const [slateRes, myGuessRes, streakDayRes, myStreakRes, gtgRes] = await Promise.all([
+  const [slateRes, myGuessRes, streakDayRes, myStreakRes, gtgRes, sixPackRes] = await Promise.all([
     supabase.from("guess_line_slates").select("game_id"),
     userId
       ? supabase.from("line_guesses").select("game_id, abs_error").eq("user_id", userId)
@@ -144,7 +144,38 @@ export async function fetchGamesHub(
           .eq("day", today)
           .maybeSingle()
       : Promise.resolve({ data: null }),
+    // The newest slate (R3-E2). A missing table — a deploy ahead of migration
+    // 0062 — comes back as null and reads as "no slate yet". Plain reads
+    // rather than a PostgREST embed: the entries need the viewer's own rows
+    // only, and an embed would pull everyone's for RLS to trim.
+    supabase
+      .from("six_pack_slates")
+      .select("id, week")
+      .order("week", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
+
+  const sixPackSlate = (sixPackRes?.data ?? null) as { id: number; week: number } | null;
+  const [myEntriesRes, questionCountRes] = sixPackSlate
+    ? await Promise.all([
+        userId
+          ? supabase
+              .from("six_pack_entries")
+              .select("idx, result")
+              .eq("slate_id", sixPackSlate.id)
+              .eq("user_id", userId)
+          : Promise.resolve({ data: [] }),
+        supabase.from("six_pack_questions").select("idx").eq("slate_id", sixPackSlate.id),
+      ])
+    : [{ data: [] }, { data: [] }];
+  const myEntries = (myEntriesRes.data ?? []) as Array<{
+    idx: number;
+    result: "correct" | "wrong" | "void" | null;
+  }>;
+  const questionCount = ((questionCountRes.data ?? []) as Array<{ idx: number }>).length;
+  const gradedCorrect = myEntries.filter((e) => e.result === "correct").length;
+  const anyGraded = myEntries.some((e) => e.result !== null);
 
   const slateIds = new Set(
     ((slateRes.data ?? []) as Array<{ game_id: number }>).map((r) => r.game_id),
@@ -181,8 +212,11 @@ export async function fetchGamesHub(
       solved: gtg?.solved_at != null,
       played: gtg != null,
     },
-    // R3-E2 fills this in; until the Six-Pack ships there is no slate to owe.
-    sixPack: { open: false, entered: false, correct: null },
+    sixPack: {
+      open: questionCount > 0,
+      entered: myEntries.length > 0,
+      correct: anyGraded ? gradedCorrect : null,
+    },
     signedIn: userId !== null,
   };
 }

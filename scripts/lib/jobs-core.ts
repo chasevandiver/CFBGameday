@@ -216,6 +216,8 @@ export function watchdogVerdict(
     nflGrade?: number;
     /** R2-C2. Daily and unconditional — the run itself is what's checked. */
     streak?: number;
+    /** R3-E2. Weekly AND seasonal, so it takes the notify-jobs horizon. */
+    sixPack?: number;
   },
   gameLive: boolean,
   /** Any scheduled game inside the next week. Gates the weekly notify jobs. */
@@ -253,6 +255,18 @@ export function watchdogVerdict(
     problems.push(`notify-picks-due: games this week and no successful run in ${Math.round(agesH.picksDue!)}h`);
   if (gamesThisWeek && (agesH.logBets ?? 0) > WEEKLY)
     problems.push(`notify-log-bets: games this week and no successful run in ${Math.round(agesH.logBets!)}h`);
+  // The Six-Pack is weekly and seasonal for the same reason the notify jobs
+  // are: correctly silent from January to August, so an hours horizon would
+  // go red every week for eight months until nobody read it. Never-run
+  // (Infinity) is exempt like the streak's — a new job's first cron has not
+  // come yet, and that gap closes itself.
+  if (
+    gamesThisWeek &&
+    agesH.sixPack !== undefined &&
+    Number.isFinite(agesH.sixPack) &&
+    agesH.sixPack > WEEKLY
+  )
+    problems.push(`six-pack: games this week and no successful run in ${Math.round(agesH.sixPack)}h`);
 
   // The NFL lane (NFL-22). Until 2026-08-14 none of it was watched at all, so
   // any of these could stop and nothing would go red.
@@ -328,6 +342,7 @@ export async function watchdogJob(db: SupabaseClient): Promise<Json> {
       nflLinesClose: await lastOkAgeH("nfl-lines-close"),
       nflGrade: await lastOkAgeH("nfl-grade"),
       streak: await lastOkAgeH("streak"),
+      sixPack: await lastOkAgeH("six-pack"),
     },
     (live ?? []).length > 0,
     (upcoming ?? []).length > 0,

@@ -59,6 +59,35 @@ export async function submitLineGuess(gameId: number, guess: number): Promise<Da
   return { ok: true };
 }
 
+/**
+ * The week's six answers, in one call (R3-E2). A courier — the RPC is the
+ * boundary: it owns the lock, the choice validation and the all-or-nothing
+ * write. This only checks the shape it can check for free.
+ */
+export async function submitSixPack(
+  slateId: number,
+  choices: string[],
+): Promise<DailyGameResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Sign in to play" };
+  if (!Number.isInteger(slateId)) return { ok: false, message: "Bad slate" };
+  if (!Array.isArray(choices) || choices.some((c) => typeof c !== "string" || c === "")) {
+    return { ok: false, message: "Answer all six" };
+  }
+
+  const { error } = await supabase.rpc("submit_six_pack", {
+    p_slate: slateId,
+    p_choices: choices,
+  });
+  if (error) return { ok: false, message: error.message };
+  revalidatePath("/six-pack");
+  revalidatePath("/games");
+  return { ok: true };
+}
+
 export async function makeStreakPick(
   day: string,
   side: "home" | "away",

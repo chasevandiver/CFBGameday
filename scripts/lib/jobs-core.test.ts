@@ -227,6 +227,26 @@ describe("watchdogVerdict (audit 07/OPS-1c)", () => {
     expect(watchdogVerdict({ ...fresh, refreshLines: Infinity }, false)[0]).toMatch(/refresh-lines/);
   });
 
+  describe("the six-pack lane (R3-E2)", () => {
+    it("says nothing when the caller omits it", () => {
+      expect(watchdogVerdict({ ...fresh }, false, true)).toEqual([]);
+    });
+    it("stays quiet before the first run, like the streak", () => {
+      expect(watchdogVerdict({ ...fresh, sixPack: Infinity }, false, true)).toEqual([]);
+    });
+    it("flags a stale run while there are games this week", () => {
+      expect(watchdogVerdict({ ...fresh, sixPack: 9 * 24 }, false, true)[0]).toMatch(/six-pack/);
+    });
+    it("is silent out of season, however long it has been quiet", () => {
+      // The notify-jobs lesson: correctly silent from January to August, so
+      // an hours horizon would go red weekly until nobody read it.
+      expect(watchdogVerdict({ ...fresh, sixPack: 200 * 24 }, false, false)).toEqual([]);
+    });
+    it("tolerates a run that slipped a day", () => {
+      expect(watchdogVerdict({ ...fresh, sixPack: 7.5 * 24 }, false, true)).toEqual([]);
+    });
+  });
+
   describe("the streak lane (R2-C2)", () => {
     it("stays quiet before the FIRST run — a new job's cron hasn't come yet", () => {
       expect(watchdogVerdict({ ...fresh, streak: Infinity }, false)).toEqual([]);
