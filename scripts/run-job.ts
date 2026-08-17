@@ -22,6 +22,7 @@ import {
   watchdogJob,
   weatherJob,
 } from "./lib/jobs-core";
+import { guessLinesJob, streakJob } from "./lib/daily-games";
 import { NFL_SEASON } from "./lib/nfl";
 import { notifyLogBetsJob, notifyPicksDueJob } from "./lib/notify-jobs";
 
@@ -52,6 +53,10 @@ async function main() {
     // gated on the score having moved, so an idle run costs no external call.
     "nfl-scoring": (db: Parameters<typeof nflScoringJob>[0]) => nflScoringJob(db, NFL_SEASON),
     "cfb-scoring": (db: Parameters<typeof cfbScoringJob>[0]) => cfbScoringJob(db, SEASON),
+    // The daily game layer (R2-C1/C2). Selection is idempotent per week/day;
+    // grading sweeps anything the last run left pending.
+    "guess-lines": guessLinesJob,
+    streak: streakJob,
   } as const;
   const job = jobs[task as keyof typeof jobs];
   if (!job) throw new Error(`unknown task "${task}" (${Object.keys(jobs).join("|")})`);

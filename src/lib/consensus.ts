@@ -63,6 +63,28 @@ export function snapToHalf(v: number): number {
  */
 export const SNAPSHOT_COLS = "game_id, provider, spread, spread_open, total, captured_at";
 
+/**
+ * The OPENING line (R2-C1): the number a line guess grades against, shared by
+ * the grading job and the reveal display so they cannot disagree. NFL
+ * snapshots carry the book's own opener (`spread_open`) and the consensus
+ * `open` is a true open; CFB snapshots don't, and there the honest proxy is
+ * the EARLIEST capture per provider — the same first-snapshot convention the
+ * receipts use. Mixing the two (consensus `open` falls back to the CURRENT
+ * spread when spread_open is null) would grade a guess against a line that
+ * had already moved.
+ */
+export function openingSpread(snapshots: SnapshotLike[]): number | null {
+  if (snapshots.some((s) => s.spread_open !== null && s.spread_open !== undefined)) {
+    return consensusFromSnapshots(snapshots).open;
+  }
+  const earliest = new Map<string, SnapshotLike>();
+  for (const s of snapshots) {
+    const prev = earliest.get(s.provider);
+    if (!prev || s.captured_at < prev.captured_at) earliest.set(s.provider, s);
+  }
+  return consensusFromSnapshots([...earliest.values()]).spread;
+}
+
 export function consensusFromSnapshots(snapshots: SnapshotLike[], before?: string): Consensus {
   const latestByProvider = new Map<string, SnapshotLike>();
   for (const s of snapshots) {

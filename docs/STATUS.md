@@ -2885,16 +2885,29 @@ merged.
       `/ratings`, hub Tuesday block links it. Cron `drop` Mon 15:00 UTC in
       the questions/verdicts script branch — ANTHROPIC_API_KEY confirmed in
       the job env (jobs.yml:280); `jobs-yml.test.ts` routes the cron.
-- [ ] **R2-C1** Guess the Lines: migration 0057, RPC refuses once a snapshot
-      exists, job selects Monday / scores as lines post, `/guess-lines` page,
-      "sharpest eye" board. DB suite mirrors `hidden-picks.sql`.
-- [ ] **R2-C2** The Streak: migration 0058, daily job (grade yesterday,
-      select tomorrow, void passes through), derived streak math,
-      `/streak` page, watchdog row. Offseason other-sports expansion is an
-      open question, not built.
-- [ ] **R2-C3** Guess the Game: migration 0059, rendezvous-hash daily
-      selection (no job), server-authoritative `/api/guess-game` (the
-      anti-spoiler route test is the proof), emoji share string.
+- [x] **R2-C1** Guess the Lines: migration 0057 (`guess_line_slates` +
+      `line_guesses`, RPC `make_line_guess` refuses the moment ANY snapshot
+      exists — the race with the lines refresh is unrepresentable in the
+      direction that matters), job `guess-lines` (Mon select top-8 marquee
+      CFB + all NFL, Tue/Wed grade vs the open — `openingSpread` in
+      consensus.ts: true opens where `spread_open` exists, earliest-capture
+      proxy for CFB), `/guess-lines` page with the reveal and the
+      "sharpest eye" board. Cron `30 16 * * 1,2,3` + jobs-yml route. DB
+      suite `daily-games.sql`.
+- [x] **R2-C2** The Streak: migration 0058 (`streak_days` + `streak_picks`,
+      kickoff lock in the RPC, 0023-shape reveal), job `streak` daily
+      (grade yesterday — tie/dead → void passes through; select today-if-
+      missed and tomorrow, most-marquee across both leagues), streak math
+      DERIVED in `src/lib/streak.ts`, `/streak` page, watchdog absence row
+      (30h). Cron `0 14 * * *`. ⚠️ at merge, dispatch `streak` once so the
+      watchdog's never-run check doesn't fire before the first cron.
+      Offseason other-sports expansion: open question, not built.
+- [x] **R2-C3** Guess the Game: migration 0059 (`gtg_guesses` own-row only +
+      `gtg_leaderboard` definer fn), rendezvous-hash daily selection over
+      the 2023–25 CFB backfill (no job; stable under deck growth — pinned
+      by test), server-authoritative `/api/guess-game` (the anti-spoiler
+      contract is a pure test: unsolved payloads never contain the home
+      school), six guesses, hint ladder, spoiler-free emoji share string.
 - [ ] **R2-D1** Crew splits: migration 0060 `group_game_splits` (0051's
       contract; rows only when `picks_revealed` — **pre-kick splits for
       hidden groups rejected**, aggregate is reverse-engineerable at crew

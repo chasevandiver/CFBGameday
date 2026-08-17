@@ -166,6 +166,46 @@ shipping it.
 
 ## Log
 
+### Aug 17 — Round 2, Batch C: the daily game layer
+
+Three games that exist only inside the crew, built entirely from data already
+in Postgres (R2-C1/C2/C3, STATUS §4 Round 2). All free-to-play, scored in
+points — no units, no stakes, no "lock of the week" copy (BRAND §16).
+
+**Guess the Lines.** Submit your spread before the books hang one; grade
+against the OPEN; season board ranks mean absolute error. The integrity rule
+is enforced from both sides: the RPC refuses a guess the moment any
+`line_snapshots` row exists, and the selection job never picks a game that
+has one — so the race between Monday's selection and the 12:00 UTC lines
+refresh is harmless one way and unrepresentable the other (proven in
+`daily-games.sql`). The grading number is `openingSpread` in consensus.ts —
+true opens where `spread_open` exists (NFL), earliest-capture proxy
+otherwise (CFB) — shared by the job and the reveal display so they cannot
+disagree. Selection: top-8 marquee CFB (poll-rank quality, with #25 floored
+at the unranked baseline — watchability's raw curve scores #25 below
+unranked, harmless in a display sort, wrong as a selector's dominant term)
+plus the whole NFL week.
+
+**The Streak.** One curated matchup a day, either league, straight up. The
+streak is DERIVED from graded picks on every read (`src/lib/streak.ts`) —
+a stored counter is the second source of truth the survivor build already
+declined. A tie, postponement or cancellation voids and passes through:
+a run is broken by a wrong answer, never by a dead game. Kickoff lock and
+post-kickoff reveal mirror 0023/0038. The daily job also backfills a missed
+"today" while its game hasn't kicked. Watchdog gains a 30h absence row.
+
+**Guess the Game.** One historical game a day from the 2023–25 backfill,
+selected by RENDEZVOUS HASH — `argmax hash(day:id)` — so the deck growing by
+a season never reshuffles other days' puzzles (pinned by test). Six guesses
+at the home team; each miss buys the next hint (score → spread → season/week
+→ conference → visitors — the ladder never names the answer). The play
+surface is a route, not page props: the answer is server-side until the game
+ends, and the anti-spoiler contract is a pure test over `gtgPayload`. Share
+string is the Wordle lesson: emoji rows, no names, safe for the group chat.
+
+Product-day arithmetic (`productDate`) lives once in `src/lib/streak.ts` and
+the jobs import it — the page and the job must agree on what "today" means.
+
 ### Aug 17 — Round 2, Batch B: the day-aware home and the Tuesday Drop
 
 The daily-rhythm pair (R2-B1/B2, STATUS §4 Round 2), same branch and same

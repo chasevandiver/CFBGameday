@@ -784,6 +784,26 @@ export function HomeDashboard({
     <>
       {note}
       <TodayCard today={data.today} demo={demo} />
+      {/* The daily game layer (R2-C1..C3): a quiet line, not a section — nav
+          is full and these earn their tap through the habit, not a banner. */}
+      {!demo && (
+        <p className="mb-4 px-1 text-xs text-chalk/55">
+          <span className="stat mr-2 text-[10px] font-semibold uppercase tracking-wider">
+            Daily games
+          </span>
+          <Link href="/guess-lines" className="text-chalk/80 underline-offset-2 hover:text-accent hover:underline">
+            Guess the Lines
+          </Link>
+          <span aria-hidden> · </span>
+          <Link href="/streak" className="text-chalk/80 underline-offset-2 hover:text-accent hover:underline">
+            The Streak
+          </Link>
+          <span aria-hidden> · </span>
+          <Link href="/guess-game" className="text-chalk/80 underline-offset-2 hover:text-accent hover:underline">
+            Guess the Game
+          </Link>
+        </p>
+      )}
       <HomeHero
         week={data.week}
         positionCount={data.positions.length}

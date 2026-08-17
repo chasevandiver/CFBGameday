@@ -214,6 +214,8 @@ export function watchdogVerdict(
     nflRefreshLines?: number;
     nflLinesClose?: number;
     nflGrade?: number;
+    /** R2-C2. Daily and unconditional — the run itself is what's checked. */
+    streak?: number;
   },
   gameLive: boolean,
   /** Any scheduled game inside the next week. Gates the weekly notify jobs. */
@@ -224,6 +226,12 @@ export function watchdogVerdict(
     problems.push(`refresh-lines: no successful run in ${Math.round(agesH.refreshLines)}h`);
   if (agesH.syncGames > 30)
     problems.push(`sync-games: no successful run in ${Math.round(agesH.syncGames)}h`);
+  // The streak's daily run is unconditional (dormant days still run and
+  // select nothing), so its freshness check is too — same 30h slack as
+  // sync-games for a daily cron. Omitted by a caller = not checked, like the
+  // NFL lane.
+  if (agesH.streak !== undefined && agesH.streak > 30)
+    problems.push(`streak: no successful run in ${Math.round(agesH.streak)}h`);
   // Scoreboard only owes freshness while something is actually on.
   if (gameLive && agesH.scoreboard > 1.5)
     problems.push(
@@ -315,6 +323,7 @@ export async function watchdogJob(db: SupabaseClient): Promise<Json> {
       nflRefreshLines: await lastOkAgeH("nfl-refresh-lines"),
       nflLinesClose: await lastOkAgeH("nfl-lines-close"),
       nflGrade: await lastOkAgeH("nfl-grade"),
+      streak: await lastOkAgeH("streak"),
     },
     (live ?? []).length > 0,
     (upcoming ?? []).length > 0,
