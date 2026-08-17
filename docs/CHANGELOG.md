@@ -296,6 +296,36 @@ false`. The NFL was. Swept for the same shape elsewhere: `queries.ts:844`
 already filters by sport, and the four scripts that write `is_current: true`
 each own exactly one season row. This was the only unscoped runtime read.
 
+### Aug 17 — A pass over STATUS.md itself, and two things it was getting wrong
+
+Owner asked whether everything from this session was actually recorded. It
+was — all thirteen IDs are present and correctly boxed — but checking properly
+turned up three problems, two of them pre-existing.
+
+**§5's route-test row had been wrong for three days.** It read "41 test files,
+585 tests, none exercise a route". The counts were stale (91 files, 1,239
+tests), and "none" stopped being true on 2026-08-14 when
+`api/share-card/route.test.ts` landed — a file whose own header says *"the first
+test in the repo that exercises a route (docs/STATUS.md §23 #42)"*. So the
+claim was contradicted by the very commit it was describing. That row's stated
+purpose is "named, not rounded up", which makes a stale number in it worse than
+a stale number anywhere else in the file.
+
+The row now also carries the evidence this session produced for why the gap
+matters: **GTG-1 and GTG-3 both lived inside a route**, and neither was
+reachable from a unit test. The puzzle answered "no puzzle today" every day for
+weeks with the whole suite green.
+
+**A live follow-up was buried inside a checked box.** GTG-2 was ticked, and its
+last sentence said `backfill-games` could move back down the dispatch list —
+which is work nobody would ever see again, because a checked box means done.
+AGENTS.md's rule is that if work isn't in this file it isn't tracked; a
+follow-up hidden inside a completed item is the same failure with extra steps.
+It is **OPS-15** now, unchecked, with the constraint that matters written down
+(the reorder has to keep `backup` first, which `jobs-yml.test.ts` pins).
+
+No code changed.
+
 ### Aug 17 — GTG-6/7: practice rounds, and crests on the puzzle
 
 **Practice: the archive, for fun, scored by nobody.** The ask was "a way to

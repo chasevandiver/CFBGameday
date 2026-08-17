@@ -2954,6 +2954,13 @@ verified, merged, and live behind its own route".
       test that seeds the NFL row first so it can tell the two versions apart.
       Only unscoped runtime read of `is_current` in the codebase.
 
+- [ ] **OPS-15 — move `backfill-games` back down the dispatch list.** It sits
+      at position two so the owner could reach it from a phone (OPS-14); the
+      deck is filled now, so it is dead weight above eleven jobs that get run
+      far more often. Not urgent, and not free either — `jobs-yml.test.ts`
+      pins `backup` first, so the reorder has to keep it there. Do this the
+      next time the workflow file is open for another reason.
+
 **The daily puzzle's deck**
 - [x] **GTG-1 — Guess the Game had no deck, and the deck could not heal**,
       2026-08-17, owner-reported ("it says there's no puzzle today, why not?").
@@ -2970,9 +2977,8 @@ verified, merged, and live behind its own route".
       score). Only **5 games** were dropped for an unknown team across all
       three seasons — the `teams` table's FCS coverage turned out to be far
       better than the drop path assumed, so nothing further is needed there.
-      Two follow-ups landed with it: the deck no longer caches an EMPTY result
-      (below), and `backfill-games` can move back down the dispatch list now
-      that it is dead weight.
+      One follow-up landed with it — the deck no longer caches an EMPTY result
+      (GTG-3 below); the other is queued as OPS-15.
 - [x] **GTG-3 — an empty deck is no longer cached**, 2026-08-17. `deckCache` is
       per-instance per-day, so a warm instance that read the deck between the
       deploy and the backfill would have pinned "no puzzle today" for the rest
@@ -3096,7 +3102,7 @@ Additive features, no defect behind any of them. Verified still open 2026-08-12.
 | §23 #44 | Generated db types — `src/lib/db-types.ts` is still hand-written | Drift risk is real but slow; `next typegen` in CI covers the route layer only |
 | §23 #45 | ⌘K quick-switcher + keyboard navigation | Table stakes for a "command center", zero users blocked today |
 | §23 #31 | BetForm game **search** — labels, validation and the −3d/+9d window shipped; the picker is a plain `<select>` | Fine at 60 games/week |
-| §23 #42 | **Route smoke tests** — 41 test files, 585 tests, none exercise a route | The one partial that touches correctness; named, not rounded up |
+| §23 #42 | **Route smoke tests** — 91 test files, 1,239 tests. Exactly one exercises a route (`api/share-card`, 2026-08-14); the claim here said "none" until 2026-08-17, which was wrong the day after it was written. The gap now has evidence: **GTG-1 and GTG-3 both lived inside a route** and neither was reachable from a unit test — the puzzle said "no puzzle today" for weeks with every test green | The one partial that touches correctness; named, not rounded up |
 
 **Explicit slip order** if time runs out (`SPEC.md` §10, Buffer — cited by
 section rather than by line, because the 08-13 §8 amendments moved it from 253
