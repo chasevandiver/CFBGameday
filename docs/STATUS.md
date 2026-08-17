@@ -2996,6 +2996,23 @@ verified, merged, and live behind its own route".
       into a shell is injection — and constrained to `[a-z0-9-]+` before it
       reaches the runner. Both properties are pinned by `jobs-yml.test.ts`.
 
+- [x] **GTG-4 — the guess box has a type-ahead**, 2026-08-17, owner question
+      ("if I put UNT and it's North Texas will that count?"). It already did —
+      the route matches school and abbreviation, and an unresolvable guess
+      costs no attempt — but nothing about the box said so. `matchSchools`
+      (pure, tested) filters the 266 CFB schools as you type and shows each
+      abbreviation beside its school. Absolutely positioned so the guess
+      history does not move; tapping fills rather than submits, because six
+      guesses is not enough to spend one on a fat-finger. A full dropdown was
+      rejected: 266 rows on a phone, and it turns recall into recognition.
+- [x] **GTG-5 — the "closing spread" clue was a shrug on every puzzle**,
+      2026-08-17, owner-reported. `line_snapshots` holds zero rows for
+      2023–25 (the backfill landed games, not lines), so the rung bought by the
+      first wrong guess always read "no line survives for this one". Replaced
+      by the home team's record coming in, computable for the first time from
+      the 2,759 backfilled games. Owner chose to drop the spread outright
+      rather than fall back to it, so every puzzle reads the same way.
+
 **Arcade calibration**
 - [ ] **UX-41 — re-check the arcade weights after Week 6.** The four weights
       in `ARCADE` equalise each game's *theoretical* weekly ceiling into

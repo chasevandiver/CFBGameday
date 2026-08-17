@@ -1,10 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { consensusFromSnapshots, SNAPSHOT_COLS, type SnapshotLike } from "../../../lib/consensus";
 import {
   GTG_MAX_ATTEMPTS,
   gtgPayload,
   gtgVerdict,
   pickDailyGame,
+  recordEntering,
+  type RecordGameLike,
   type GtgAnswerCtx,
   type GtgRowState,
 } from "../../../lib/guess-game";
@@ -101,17 +102,28 @@ async function dayAnswer(
 
   const { data: game } = await db
     .from("games")
-    .select("id, season_id, week, home_team_id, away_team_id, home_points, away_points")
+    .select("id, season_id, week, start_ts, home_team_id, away_team_id, home_points, away_points")
     .eq("id", gameId)
     .maybeSingle();
   if (!game || game.home_points === null || game.away_points === null) return null;
 
-  const [{ data: teams }, { data: snaps }] = await Promise.all([
+  const [{ data: teams }, { data: priorRows }] = await Promise.all([
     db
       .from("teams")
       .select("id, school, conference")
       .in("id", [game.home_team_id, game.away_team_id]),
-    db.from("line_snapshots").select(SNAPSHOT_COLS).eq("game_id", gameId),
+    /* The home team's season up to this kickoff — the clue that replaced the
+       closing spread, which no backfilled puzzle could ever answer. Bounded
+       by construction: at most a dozen or so rows, and none at all in week 0. */
+    game.start_ts === null
+      ? Promise.resolve({ data: [] })
+      : db
+          .from("games")
+          .select("home_team_id, away_team_id, home_points, away_points")
+          .eq("season_id", game.season_id)
+          .eq("status", "final")
+          .lt("start_ts", game.start_ts)
+          .or(`home_team_id.eq.${game.home_team_id},away_team_id.eq.${game.home_team_id}`),
   ]);
   const teamById = new Map(
     ((teams ?? []) as Array<{ id: number; school: string; conference: string | null }>).map(
@@ -131,7 +143,7 @@ async function dayAnswer(
     awayPoints: game.away_points,
     season: game.season_id,
     week: game.week,
-    spread: consensusFromSnapshots((snaps ?? []) as SnapshotLike[]).spread,
+    homeRecord: recordEntering((priorRows ?? []) as RecordGameLike[], game.home_team_id),
   };
 }
 

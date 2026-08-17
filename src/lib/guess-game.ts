@@ -48,7 +48,51 @@ export interface GtgAnswerCtx {
   awayPoints: number;
   season: number;
   week: number;
-  spread: number | null;
+  /** The home team's record BEFORE this game. Replaced the closing spread. */
+  homeRecord: TeamRecord;
+}
+
+export interface TeamRecord {
+  wins: number;
+  losses: number;
+}
+
+export interface RecordGameLike {
+  home_team_id: number;
+  away_team_id: number;
+  home_points: number | null;
+  away_points: number | null;
+}
+
+/**
+ * A team's record over the games given — which the caller has already
+ * narrowed to the same season and to kickoffs before the puzzle's own.
+ *
+ * "Coming in" rather than the final record on purpose: it is the number you
+ * would have known watching that day, and it does not give away how the
+ * season ended. A game with no score is skipped rather than counted as a
+ * loss, and a tie counts as neither — college football has not had one since
+ * 1995, but the shape of the data still permits it and inventing a loss from
+ * one would be a lie in a clue.
+ */
+export function recordEntering(games: RecordGameLike[], teamId: number): TeamRecord {
+  let wins = 0;
+  let losses = 0;
+  for (const g of games) {
+    if (g.home_points === null || g.away_points === null) continue;
+    const isHome = g.home_team_id === teamId;
+    if (!isHome && g.away_team_id !== teamId) continue;
+    const mine = isHome ? g.home_points : g.away_points;
+    const theirs = isHome ? g.away_points : g.home_points;
+    if (mine > theirs) wins++;
+    else if (mine < theirs) losses++;
+  }
+  return { wins, losses };
+}
+
+/** How a record reads as a clue. A blank one is a season opener, and says so. */
+export function recordLine(r: TeamRecord): string {
+  return r.wins + r.losses === 0 ? "opening the season" : `${r.wins}-${r.losses} coming in`;
 }
 
 export interface GtgGuessTeam {
@@ -75,6 +119,52 @@ export interface GtgHint {
 
 export const GTG_MAX_ATTEMPTS = 6;
 
+export interface SchoolOption {
+  school: string;
+  abbreviation: string | null;
+}
+
+/**
+ * Type-ahead matching for the guess box.
+ *
+ * **A convenience, never the authority.** The route resolves a guess against
+ * `teams` on the server and is the only thing that decides what was guessed;
+ * this exists so nobody has to wonder whether the box wants "UNT" or "North
+ * Texas" (it takes either — the server matches school AND abbreviation). If
+ * the two ever disagree the server wins and the worst case is a suggestion
+ * that does not resolve, which costs no attempt.
+ *
+ * Ranked so the thing you are typing toward surfaces first: an exact hit,
+ * then a school starting with what you typed, then an abbreviation starting
+ * with it, then anything containing it. Ties keep alphabetical order, which
+ * is the order the caller supplies.
+ */
+export function matchSchools(
+  query: string,
+  options: SchoolOption[],
+  limit = 6,
+): SchoolOption[] {
+  const q = query.trim().toLowerCase();
+  if (q.length === 0) return [];
+
+  const rank = (o: SchoolOption): number => {
+    const school = o.school.toLowerCase();
+    const abbr = (o.abbreviation ?? "").toLowerCase();
+    if (school === q || (abbr !== "" && abbr === q)) return 0;
+    if (school.startsWith(q)) return 1;
+    if (abbr !== "" && abbr.startsWith(q)) return 2;
+    if (school.includes(q)) return 3;
+    return 4;
+  };
+
+  return options
+    .map((o, i) => ({ o, r: rank(o), i }))
+    .filter((x) => x.r < 4)
+    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .slice(0, limit)
+    .map((x) => x.o);
+}
+
 /**
  * The reveal ladder. Hint 0 is free; each wrong guess buys the next. The
  * away team is the last hint before the final guess — at that point the
@@ -84,13 +174,13 @@ export const GTG_MAX_ATTEMPTS = 6;
 export function gtgHints(answer: GtgAnswerCtx, attempts: number): GtgHint[] {
   const ladder: GtgHint[] = [
     { label: "Final score", value: `${answer.homePoints}–${answer.awayPoints} (home–away)` },
-    {
-      label: "Closing spread",
-      value:
-        answer.spread === null
-          ? "no line survives for this one"
-          : `home ${answer.spread > 0 ? "+" : ""}${answer.spread}`,
-    },
+    /* This rung used to be the closing spread, and on a backfilled puzzle it
+       was always "no line survives for this one" — `line_snapshots` holds
+       nothing for 2023–25, because the backfill landed games and not lines.
+       So the rung your FIRST wrong guess bought was a shrug. The home team's
+       record coming in is always computable from games we now hold, and it is
+       a better clue besides: it is what you would have known that day. */
+    { label: "Home team", value: recordLine(answer.homeRecord) },
     { label: "When", value: `${answer.season}, week ${answer.week}` },
     { label: "Home conference", value: answer.homeConference ?? "Independent" },
     { label: "The visitors", value: answer.awaySchool },

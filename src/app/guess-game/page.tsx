@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AppNav } from "../../components/AppNav";
 import { GamesScopePicker } from "../../components/games/GamesScopePicker";
 import { GuessGamePlay } from "../../components/GuessGamePlay";
+import type { SchoolOption } from "../../lib/guess-game";
 import {
   GAMES_SCOPE_COOKIE,
   resolveGameScope,
@@ -18,10 +19,11 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Guess the Game" };
 
 /**
- * The daily puzzle (R2-C3): one game from the 2023–25 backfill, same for
- * everyone, six guesses at the home team, one clue bought per miss. The play
- * itself runs through /api/guess-game so the answer never ships to the
- * client early; this page is the shell and the leaderboard.
+ * The daily puzzle (R2-C3): one game from every completed CFB season we hold,
+ * same for everyone, six guesses at the home team, one clue bought per miss.
+ * The play itself runs through /api/guess-game so the answer never ships to
+ * the client early; this page is the shell, the type-ahead's options and the
+ * leaderboard.
  */
 export default async function GuessGamePage({
   searchParams,
@@ -46,9 +48,17 @@ export default async function GuessGamePage({
   // without a membership gate is a leak, with one it is a new signature plus
   // grants plus tests for a fifteen-row board. Revisit past ~100 accounts, or
   // if this board ever shows anything beyond aggregates.
-  const [{ data: boardRows }, roster] = user
-    ? await Promise.all([supabase.rpc("gtg_leaderboard"), scopeRoster(supabase, scope)])
-    : [{ data: [] }, { userIds: null, nameById: new Map<string, string>() }];
+  const [{ data: boardRows }, roster, { data: schoolRows }] = user
+    ? await Promise.all([
+        supabase.rpc("gtg_leaderboard"),
+        scopeRoster(supabase, scope),
+        // The type-ahead's options (266 rows, ~8KB). Not a spoiler: it is
+        // every CFB school, which narrows the answer exactly as much as
+        // knowing college football exists. The server still resolves the
+        // guess — see `matchSchools`.
+        supabase.from("teams").select("school, abbreviation").eq("sport", "cfb").order("school"),
+      ])
+    : [{ data: [] }, { userIds: null, nameById: new Map<string, string>() }, { data: [] }];
   const { userIds, nameById } = roster;
   const board = ((boardRows ?? []) as Array<{
     user_id: string;
@@ -83,7 +93,7 @@ export default async function GuessGamePage({
         )}
 
         {user ? (
-          <GuessGamePlay />
+          <GuessGamePlay schools={(schoolRows ?? []) as SchoolOption[]} />
         ) : (
           <div className="card px-6 py-12 text-center">
             <p className="display text-lg text-chalk/80">Today&rsquo;s puzzle is waiting</p>

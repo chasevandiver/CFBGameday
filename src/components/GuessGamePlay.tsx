@@ -2,7 +2,13 @@
 
 import { Check, Copy } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
-import { GTG_MAX_ATTEMPTS, gtgShareString, type GtgVerdict } from "../lib/guess-game";
+import {
+  GTG_MAX_ATTEMPTS,
+  gtgShareString,
+  matchSchools,
+  type GtgVerdict,
+  type SchoolOption,
+} from "../lib/guess-game";
 
 interface GtgState {
   day: string;
@@ -20,12 +26,15 @@ interface GtgState {
  * this component never sees the answer until the server says the game is
  * over, which is the whole anti-spoiler design.
  */
-export function GuessGamePlay() {
+export function GuessGamePlay({ schools }: { schools: SchoolOption[] }) {
   const [state, setState] = useState<GtgState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [guess, setGuess] = useState("");
   const [pending, startTransition] = useTransition();
   const [copied, setCopied] = useState(false);
+  // Closed after a pick or a submit, so the list does not hang around over the
+  // guess history once you have chosen.
+  const [picking, setPicking] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,6 +77,7 @@ export function GuessGamePlay() {
       }
       setState(body);
       setGuess("");
+      setPicking(false);
     });
   };
 
@@ -91,6 +101,12 @@ export function GuessGamePlay() {
   if (!state) return <p className="text-sm text-dim">Loading today’s puzzle…</p>;
 
   const cell = (v: GtgVerdict) => (v === "correct" ? "🟩" : v === "conference" ? "🟨" : "⬛");
+  // Already-guessed schools drop out: re-guessing one is a wasted attempt, and
+  // the server would accept it.
+  const spent = new Set(state.guesses.map((g) => g.name));
+  const suggestions = picking
+    ? matchSchools(guess, schools).filter((s) => !spent.has(s.school))
+    : [];
 
   return (
     <div className="flex flex-col gap-4">
@@ -144,13 +160,20 @@ export function GuessGamePlay() {
             </button>
           </div>
         ) : (
-          <div className="flex gap-2">
+          <div className="relative flex gap-2">
             <input
               value={guess}
-              onChange={(e) => setGuess(e.target.value)}
+              onChange={(e) => {
+                setGuess(e.target.value);
+                setPicking(true);
+              }}
               onKeyDown={(e) => e.key === "Enter" && submit()}
-              placeholder="Guess the home team — e.g. Auburn"
+              placeholder="Guess the home team — e.g. Auburn or AUB"
               aria-label="Guess the home team"
+              autoComplete="off"
+              role="combobox"
+              aria-expanded={suggestions.length > 0}
+              aria-controls="gtg-suggestions"
               className="min-w-0 flex-1 rounded-lg border border-chalk/12 bg-elev px-3 py-2 text-sm text-chalk placeholder:text-chalk/35 focus:border-accent focus-visible:outline-2 focus-visible:outline-accent"
             />
             <button
@@ -160,6 +183,37 @@ export function GuessGamePlay() {
             >
               Guess
             </button>
+
+            {/* Absolutely positioned on purpose: a list that pushes the guess
+                history down every keystroke is the layout shift DESIGN.md
+                rules out. Tapping fills the box and stops there rather than
+                submitting — six guesses is not enough to spend one on a
+                fat-finger. */}
+            {suggestions.length > 0 && (
+              <ul
+                id="gtg-suggestions"
+                role="listbox"
+                className="absolute top-full left-0 right-0 z-20 mt-1 overflow-hidden rounded-lg border border-chalk/15 bg-elev shadow-lg"
+              >
+                {suggestions.map((s) => (
+                  <li key={s.school} role="option" aria-selected={false}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGuess(s.school);
+                        setPicking(false);
+                      }}
+                      className="flex min-h-11 w-full items-center justify-between gap-3 px-3 text-left text-sm text-chalk hover:bg-chalk/10"
+                    >
+                      <span className="truncate">{s.school}</span>
+                      {s.abbreviation && (
+                        <span className="stat shrink-0 text-[11px] text-dim">{s.abbreviation}</span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
         {error && <p className="mt-2 text-xs text-loss">{error}</p>}

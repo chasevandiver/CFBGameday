@@ -296,6 +296,51 @@ false`. The NFL was. Swept for the same shape elsewhere: `queries.ts:844`
 already filters by sport, and the four scripts that write `is_current: true`
 each own exactly one season row. This was the only unscoped runtime read.
 
+### Aug 17 — GTG-4/5: a type-ahead on the guess box, and a clue that was a shrug
+
+Two owner reports from the first real play, and the second one was a defect.
+
+**"How picky is the spelling — does UNT work?"** It did already: the route
+matches case-insensitively against `school` AND `abbreviation` before it tries
+anything fuzzy, and a guess it cannot resolve returns 422 *before* `attempts`
+is incremented, so a typo costs nothing. But "it already works, trust me" is
+not an answer anybody can see from the guess box, so the box now says so:
+`matchSchools` filters the 266 CFB schools as you type, ranked exact → school
+prefix → abbreviation prefix → contains, and each row shows the abbreviation
+beside the school so the "UNT" affordance is visible rather than folklore.
+
+Two deliberate restraints. The list is **absolutely positioned**, because a
+list that pushes the guess history down on every keystroke is exactly the
+layout shift DESIGN.md rules out. And tapping a suggestion **fills the box and
+stops** rather than submitting — six guesses is not enough to spend one on a
+fat-finger. Schools already guessed are filtered out, since re-guessing one is
+a wasted attempt the server would happily accept.
+
+A full dropdown was **rejected**, and not on effort: 266 rows is punishing on a
+phone, and scrolling a list until something looks right turns recall into
+recognition, which is a materially easier game than the one being played.
+
+**"There was no closing line available."** Correct, and it always will be:
+`line_snapshots` holds **zero** rows for 2023, 2024 and 2025 — the backfill
+landed games, not lines, and nobody is going back for three seasons of dead
+markets. So the second rung of the ladder — the one your FIRST wrong guess buys
+— could only ever read "no line survives for this one". Six guesses, five clues,
+one of them a shrug.
+
+It is now the home team's record **coming in**, which the 2,759 backfilled
+games make computable for the first time. Coming-in rather than final on
+purpose: it is what you would have known watching that day, and it does not
+give away how the season ended. A game with nothing behind it reads "opening
+the season" rather than a uselessly literal "0-0". A game with no score is
+skipped rather than counted as a loss, and a tie counts as neither — CFB has
+not had one since 1995, but the data shape still permits it and inventing a
+defeat inside a clue would be a lie.
+
+The owner chose to drop the spread rung entirely rather than fall back to it
+when a line exists, so every puzzle now reads the same way regardless of which
+season it came from. That also removes the `line_snapshots` read from the
+route.
+
 ### Aug 17 — GTG-2/3: the deck is filled, and an empty one is no longer cached
 
 `backfill-games` ran green at 19:03 UTC. **2,759 games** — 2023 (909), 2024

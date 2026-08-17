@@ -7,6 +7,9 @@ import {
   gtgShareString,
   gtgVerdict,
   pickDailyGame,
+  matchSchools,
+  recordEntering,
+  recordLine,
   type GtgAnswerCtx,
 } from "./guess-game";
 
@@ -19,8 +22,103 @@ const ANSWER: GtgAnswerCtx = {
   awayPoints: 20,
   season: 2024,
   week: 6,
-  spread: -14.5,
+  homeRecord: { wins: 4, losses: 1 },
 };
+
+describe("matchSchools", () => {
+  const schools = [
+    { school: "North Carolina", abbreviation: "UNC" },
+    { school: "North Texas", abbreviation: "UNT" },
+    { school: "Texas", abbreviation: "TEX" },
+    { school: "Texas A&M", abbreviation: "TAMU" },
+    { school: "Northwestern", abbreviation: "NW" },
+    { school: "Auburn", abbreviation: "AUB" },
+  ];
+  const names = (q: string, limit?: number) =>
+    matchSchools(q, schools, limit).map((s) => s.school);
+
+  it("finds a school by its abbreviation — the UNT question", () => {
+    expect(names("UNT")).toEqual(["North Texas"]);
+    expect(names("unt")).toEqual(["North Texas"]);
+  });
+
+  it("puts an exact hit first even when others contain it", () => {
+    // "Texas" is also inside "North Texas" and "Texas A&M".
+    expect(names("Texas")[0]).toBe("Texas");
+  });
+
+  it("prefers a prefix over a mid-string match", () => {
+    const out = names("north");
+    expect(out.slice(0, 3)).toEqual(["North Carolina", "North Texas", "Northwestern"]);
+  });
+
+  it("still surfaces a mid-string match when nothing starts with it", () => {
+    expect(names("A&M")).toEqual(["Texas A&M"]);
+  });
+
+  it("returns nothing for an empty or whitespace query", () => {
+    expect(names("")).toEqual([]);
+    expect(names("   ")).toEqual([]);
+  });
+
+  it("caps the list so it never covers the page", () => {
+    expect(names("a", 3).length).toBeLessThanOrEqual(3);
+  });
+
+  it("tolerates a team with no abbreviation", () => {
+    expect(matchSchools("val", [{ school: "Valparaiso", abbreviation: null }])).toHaveLength(1);
+    expect(matchSchools("x", [{ school: "Valparaiso", abbreviation: null }])).toEqual([]);
+  });
+});
+
+describe("recordEntering", () => {
+  const g = (h: number, a: number, hp: number | null, ap: number | null) => ({
+    home_team_id: h,
+    away_team_id: a,
+    home_points: hp,
+    away_points: ap,
+  });
+
+  it("counts wins and losses from either side of the ball", () => {
+    // 61 wins at home, wins on the road, loses at home.
+    const r = recordEntering([g(61, 2, 30, 10), g(3, 61, 7, 21), g(61, 4, 13, 20)], 61);
+    expect(r).toEqual({ wins: 2, losses: 1 });
+  });
+
+  it("ignores games the team was not in", () => {
+    expect(recordEntering([g(1, 2, 30, 10)], 61)).toEqual({ wins: 0, losses: 0 });
+  });
+
+  it("skips a game with no score rather than scoring it a loss", () => {
+    // A cancelled or unposted final must not invent a defeat in a CLUE.
+    expect(recordEntering([g(61, 2, null, null), g(61, 3, 20, 10)], 61)).toEqual({
+      wins: 1,
+      losses: 0,
+    });
+  });
+
+  it("counts a tie as neither", () => {
+    expect(recordEntering([g(61, 2, 17, 17)], 61)).toEqual({ wins: 0, losses: 0 });
+  });
+
+  it("reads as a season opener when there is nothing behind it", () => {
+    // The week-0 case, which is the one a bare "0-0" would have made useless.
+    expect(recordLine(recordEntering([], 61))).toBe("opening the season");
+    expect(recordLine({ wins: 4, losses: 1 })).toBe("4-1 coming in");
+  });
+});
+
+describe("the hint ladder", () => {
+  it("buys the home team's record with the first miss, never a shrug", () => {
+    // The rung that replaced the closing spread: `line_snapshots` is empty for
+    // every backfilled season, so that clue could only ever say "no line
+    // survives for this one" — a wasted rung on every puzzle.
+    const hints = gtgHints({ ...ANSWER, homeRecord: { wins: 4, losses: 1 } }, 1);
+    expect(hints).toHaveLength(2);
+    expect(hints[1]!.value).toBe("4-1 coming in");
+    expect(JSON.stringify(hints)).not.toContain("no line survives");
+  });
+});
 
 describe("pickDailyGame (rendezvous)", () => {
   const ids = Array.from({ length: 500 }, (_, i) => i + 1);
