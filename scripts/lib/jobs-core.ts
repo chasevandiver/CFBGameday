@@ -229,8 +229,12 @@ export function watchdogVerdict(
   // The streak's daily run is unconditional (dormant days still run and
   // select nothing), so its freshness check is too — same 30h slack as
   // sync-games for a daily cron. Omitted by a caller = not checked, like the
-  // NFL lane.
-  if (agesH.streak !== undefined && agesH.streak > 30)
+  // NFL lane. Infinity (never ran) is ALSO not checked, unlike the others:
+  // a brand-new job's first cron hasn't come yet, and flagging the gap
+  // between its deploy and its first firing would page someone over a state
+  // that resolves itself within a day. Once it has run once, silence past
+  // 30h is a real absence and trips normally.
+  if (agesH.streak !== undefined && Number.isFinite(agesH.streak) && agesH.streak > 30)
     problems.push(`streak: no successful run in ${Math.round(agesH.streak)}h`);
   // Scoreboard only owes freshness while something is actually on.
   if (gameLive && agesH.scoreboard > 1.5)

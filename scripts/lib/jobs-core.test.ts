@@ -227,6 +227,18 @@ describe("watchdogVerdict (audit 07/OPS-1c)", () => {
     expect(watchdogVerdict({ ...fresh, refreshLines: Infinity }, false)[0]).toMatch(/refresh-lines/);
   });
 
+  describe("the streak lane (R2-C2)", () => {
+    it("stays quiet before the FIRST run — a new job's cron hasn't come yet", () => {
+      expect(watchdogVerdict({ ...fresh, streak: Infinity }, false)).toEqual([]);
+    });
+    it("but a job that HAS run and then went silent past 30h trips", () => {
+      expect(watchdogVerdict({ ...fresh, streak: 31 }, false)[0]).toMatch(/streak/);
+    });
+    it("and a fresh run is quiet", () => {
+      expect(watchdogVerdict({ ...fresh, streak: 2 }, false)).toEqual([]);
+    });
+  });
+
   // PUSH-10. The notify jobs are weekly and seasonal: silent all offseason on
   // purpose, so they are gated on there being something to notify about rather
   // than on an hours horizon.
