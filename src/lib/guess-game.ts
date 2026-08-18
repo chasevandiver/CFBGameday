@@ -13,6 +13,9 @@
  * by attempt count. See 0059's header.
  */
 
+import { EMPTY_STATS, type GtgStats } from "./gtg-stats";
+import type { Region } from "./regions";
+
 export type GtgVerdict = "correct" | "conference" | "miss";
 
 /** FNV-1a 32-bit — tiny, stable, and plenty for picking a game a day. */
@@ -54,6 +57,8 @@ export function practicePool(deck: number[], todaysGameId: number | null): numbe
 export interface GtgAnswerCtx {
   homeTeamId: number;
   homeConference: string | null;
+  /** Census region of the home team's own stadium. Null if unresolvable. */
+  homeRegion: Region | null;
   homeSchool: string;
   awaySchool: string;
   homePoints: number;
@@ -62,6 +67,9 @@ export interface GtgAnswerCtx {
   week: number;
   /** The home team's record BEFORE this game. Replaced the closing spread. */
   homeRecord: TeamRecord;
+  /** This game's kickoff, so a guessed team's record can be cut to the same
+   *  instant. ISO, or null on the handful of rows with no kickoff. */
+  startTs: string | null;
 }
 
 export interface TeamRecord {
@@ -110,6 +118,10 @@ export function recordLine(r: TeamRecord): string {
 export interface GtgGuessTeam {
   id: number;
   conference: string | null;
+  /** Undefined when the caller did not resolve it; null when it resolved to
+   *  nothing. Both leave the chip undecided — see `gtgMarks`. */
+  region?: Region | null;
+  record?: TeamRecord | null;
 }
 
 /** How one guess lands: the team, the right conference, or nothing. */
@@ -218,7 +230,7 @@ export function gtgHints(answer: GtgAnswerCtx, attempts: number): GtgHint[] {
 }
 
 export interface GtgRowState {
-  guesses: Array<{ name: string; verdict: GtgVerdict }>;
+  guesses: GtgStoredGuess[];
   attempts: number;
   solved_at: string | null;
 }
@@ -228,7 +240,13 @@ export interface GtgRowState {
  * the contract: the answer appears ONLY once the game is over. The route
  * returns exactly this.
  */
-export function gtgPayload(day: string, row: GtgRowState, answer: GtgAnswerCtx) {
+export function gtgPayload(
+  day: string,
+  row: GtgRowState,
+  answer: GtgAnswerCtx,
+  /** The caller's own record across every day they have played. */
+  stats: GtgStats = EMPTY_STATS,
+) {
   const solved = row.solved_at !== null;
   const done = solved || row.attempts >= GTG_MAX_ATTEMPTS;
   return {
@@ -237,13 +255,23 @@ export function gtgPayload(day: string, row: GtgRowState, answer: GtgAnswerCtx) 
     maxAttempts: GTG_MAX_ATTEMPTS,
     solved,
     done,
-    guesses: row.guesses.map((g) => ({ name: g.name, verdict: g.verdict })),
+    /* Copied field by field rather than passed through, so a column added to
+       the stored row cannot reach the client by accident. The two chip marks
+       are safe to send: they compare the team you already named against an
+       answer you already guessed at, and say nothing about who it is. */
+    guesses: row.guesses.map((g) => ({
+      name: g.name,
+      verdict: g.verdict,
+      region: g.region,
+      record: g.record,
+    })),
     hints: gtgHints(answer, row.attempts),
     answer: done ? `${answer.awaySchool} @ ${answer.homeSchool}` : null,
     /* The same two names in a shape the client can hang marks on. Gated on
        `done` exactly like `answer` is — one condition, both fields, so a
        future edit cannot reveal the crest while withholding the name. */
     answerTeams: done ? { away: answer.awaySchool, home: answer.homeSchool } : null,
+    stats,
   };
 }
 
@@ -309,31 +337,77 @@ export interface GtgChip {
 }
 
 /**
- * How one guess reads as three chips.
+ * What one guess is worth, as the three things the board shows.
  *
- * **Only CONF is real today, and that is a data limit rather than a style
- * choice.** The server verdicts a guess as correct / same-conference / miss
- * (`gtgVerdict`) and the payload carries nothing else about the team you
- * named — not its region, not its record — so REGION and RECORD cannot be
- * compared without the route returning them. They render `unknown` rather
- * than `miss`, because a dark chip means "your team is not in their
- * conference" and claiming that about a comparison nobody made is a lie in
- * the only feedback this game gives.
+ * `verdict` stays exactly what it was — the route's scoring reads it and
+ * nothing about points has changed. The two new marks sit beside it rather
+ * than inside it for that reason: a chip is presentation, a verdict is the
+ * score, and folding them together would put the leaderboard one refactor
+ * away from a design decision.
  *
- * The exception is a correct guess: the team you named IS the answer, so
- * every attribute matches by definition and all three light.
+ * **Undecidable is a real answer here.** A team whose region cannot be
+ * resolved (no home venue on file, an international kickoff, a state CFBD
+ * never sent) gets `unknown`, not `miss`. Painting a dark chip would claim a
+ * comparison nobody performed, and this row is the only feedback the game
+ * gives. The same goes for a record the caller did not look up.
  *
- * When the route grows those two fields this becomes a real three-way
- * comparison and nothing above it changes — that is why the chip state is a
- * three-valued type instead of a boolean.
+ * The one shortcut: a correct guess lights all three unconditionally. The
+ * team you named IS the answer, so every attribute matches by definition —
+ * and it should not go grey because that school happens to have a venue row
+ * with no state.
  */
-export function gtgChips(verdict: GtgVerdict): GtgChip[] {
-  const conf: GtgChipState = verdict === "miss" ? "miss" : "hit";
-  const rest: GtgChipState = verdict === "correct" ? "hit" : "unknown";
+export function gtgMarks(guess: GtgGuessTeam, answer: GtgAnswerCtx): GtgMarks {
+  const verdict = gtgVerdict(guess, answer);
+  if (verdict === "correct") return { verdict, region: "hit", record: "hit" };
+
+  const region: GtgChipState =
+    guess.region == null || answer.homeRegion == null
+      ? "unknown"
+      : guess.region === answer.homeRegion
+        ? "hit"
+        : "miss";
+
+  const record: GtgChipState =
+    guess.record == null
+      ? "unknown"
+      : guess.record.wins === answer.homeRecord.wins &&
+          guess.record.losses === answer.homeRecord.losses
+        ? "hit"
+        : "miss";
+
+  return { verdict, region, record };
+}
+
+export interface GtgMarks {
+  verdict: GtgVerdict;
+  region: GtgChipState;
+  record: GtgChipState;
+}
+
+/**
+ * One stored guess. `region` and `record` are optional because rows written
+ * before they existed do not carry them — jsonb, so there was no migration to
+ * backfill and no reason to invent one. An old row reads `unknown` on those
+ * two chips, which is exactly what it knows.
+ */
+export interface GtgStoredGuess {
+  name: string;
+  verdict: GtgVerdict;
+  region?: GtgChipState;
+  record?: GtgChipState;
+}
+
+/** How one stored guess reads as three chips. */
+export function gtgChips(guess: GtgStoredGuess): GtgChip[] {
+  const trivially: GtgChipState | null = guess.verdict === "correct" ? "hit" : null;
   return [
-    { key: "conf", label: "Conf", state: conf },
-    { key: "region", label: "Region", state: rest },
-    { key: "record", label: "Record", state: rest },
+    {
+      key: "conf",
+      label: "Conf",
+      state: guess.verdict === "miss" ? "miss" : "hit",
+    },
+    { key: "region", label: "Region", state: trivially ?? guess.region ?? "unknown" },
+    { key: "record", label: "Record", state: trivially ?? guess.record ?? "unknown" },
   ];
 }
 
@@ -358,13 +432,13 @@ const SHARE_CELL: Record<GtgChipState, string> = {
  */
 export function gtgShareBlock(
   day: string,
-  verdicts: GtgVerdict[],
+  guesses: GtgStoredGuess[],
   solved: boolean,
   streak = 0,
 ): string {
-  const score = solved ? `${verdicts.length}/${GTG_MAX_ATTEMPTS}` : `X/${GTG_MAX_ATTEMPTS}`;
-  const grid = verdicts
-    .map((v) => gtgChips(v).map((c) => SHARE_CELL[c.state]).join(""))
+  const score = solved ? `${guesses.length}/${GTG_MAX_ATTEMPTS}` : `X/${GTG_MAX_ATTEMPTS}`;
+  const grid = guesses
+    .map((g) => gtgChips(g).map((c) => SHARE_CELL[c.state]).join(""))
     .join("\n");
   const footer = streak > 0 ? `\nStreak ${streak}` : "";
   return `Guess the Game · ${day} · ${score}\n${grid}${footer}`;

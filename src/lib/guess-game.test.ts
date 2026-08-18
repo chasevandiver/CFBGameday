@@ -5,6 +5,7 @@ import {
   gtgHints,
   gtgPayload,
   gtgChips,
+  gtgMarks,
   gtgShareBlock,
   parseFinalScore,
   gtgVerdict,
@@ -19,6 +20,7 @@ import {
 const ANSWER: GtgAnswerCtx = {
   homeTeamId: 61,
   homeConference: "SEC",
+  homeRegion: "South",
   homeSchool: "Georgia",
   awaySchool: "Auburn",
   homePoints: 27,
@@ -26,7 +28,15 @@ const ANSWER: GtgAnswerCtx = {
   season: 2024,
   week: 6,
   homeRecord: { wins: 4, losses: 1 },
+  startTs: "2024-10-05T19:30:00Z",
 };
+
+/** A stored guess, as the route writes it. */
+const played = (
+  verdict: "correct" | "conference" | "miss",
+  region?: "hit" | "miss" | "unknown",
+  record?: "hit" | "miss" | "unknown",
+) => ({ name: "Some School", verdict, region, record });
 
 describe("practicePool — the no-spoilers guarantee", () => {
   const deck = Array.from({ length: 400 }, (_, i) => i + 1);
@@ -234,6 +244,38 @@ describe("gtgPayload — the anti-spoiler contract", () => {
     expect(json).not.toContain(ANSWER.homeSchool);
     expect(JSON.parse(json).answer).toBeNull();
   });
+
+  it("the answer context's own new fields never reach the client", () => {
+    /* `homeRegion` and `startTs` were added to GtgAnswerCtx for the chips
+       (GTG-9). Neither is a hint. A kickoff timestamp beside a final score
+       identifies the game outright, which is a worse leak than the school
+       name — so this pins that the payload copies fields rather than
+       spreading the context. */
+    const json = JSON.stringify(
+      gtgPayload("2026-09-01", { guesses: [], attempts: 2, solved_at: null }, ANSWER),
+    );
+    expect(json).not.toContain(ANSWER.startTs!);
+    expect(json).not.toContain("homeRegion");
+    expect(json).not.toContain("South");
+  });
+
+  it("carries the stored chip marks for each guess, and no more", () => {
+    const p = gtgPayload(
+      "2026-09-01",
+      {
+        guesses: [{ name: "Auburn", verdict: "conference", region: "hit", record: "miss" }],
+        attempts: 1,
+        solved_at: null,
+      },
+      ANSWER,
+    );
+    expect(p.guesses[0]).toEqual({
+      name: "Auburn",
+      verdict: "conference",
+      region: "hit",
+      record: "miss",
+    });
+  });
   it("the answer appears once solved, and once out of guesses", () => {
     const solved = gtgPayload(
       "2026-09-01",
@@ -263,32 +305,108 @@ describe("parseFinalScore", () => {
   });
 });
 
-describe("gtgChips", () => {
-  it("a correct guess lights all three: the team IS the answer", () => {
-    expect(gtgChips("correct").map((c) => c.state)).toEqual(["hit", "hit", "hit"]);
+describe("gtgMarks", () => {
+  const guess = (over: Partial<Parameters<typeof gtgMarks>[0]> = {}) =>
+    gtgMarks({ id: 99, conference: "Big Ten", ...over }, ANSWER);
+
+  it("compares region and record for real", () => {
+    expect(guess({ region: "South", record: { wins: 4, losses: 1 } })).toEqual({
+      verdict: "miss",
+      region: "hit",
+      record: "hit",
+    });
+    expect(guess({ region: "West", record: { wins: 2, losses: 3 } })).toEqual({
+      verdict: "miss",
+      region: "miss",
+      record: "miss",
+    });
   });
-  it("only CONF is ever decided on a wrong guess — the payload carries no more", () => {
-    expect(gtgChips("conference").map((c) => c.state)).toEqual(["hit", "unknown", "unknown"]);
-    expect(gtgChips("miss").map((c) => c.state)).toEqual(["miss", "unknown", "unknown"]);
+
+  it("a record must match on BOTH halves", () => {
+    expect(guess({ record: { wins: 4, losses: 2 } }).record).toBe("miss");
+    expect(guess({ record: { wins: 3, losses: 1 } }).record).toBe("miss");
+  });
+
+  it("an unresolvable attribute is undecided, never a miss", () => {
+    // A dark chip claims "not this". Nobody performed that comparison.
+    expect(guess({}).region).toBe("unknown");
+    expect(guess({ region: null }).region).toBe("unknown");
+    expect(guess({ record: null }).record).toBe("unknown");
+    expect(gtgMarks({ id: 99, conference: "SEC", region: "South" }, { ...ANSWER, homeRegion: null }))
+      .toHaveProperty("region", "unknown");
+  });
+
+  it("a correct guess lights all three even when the data is missing", () => {
+    // The team you named IS the answer; a venue row with no state must not
+    // grey out the winning row.
+    expect(gtgMarks({ id: ANSWER.homeTeamId, conference: null }, ANSWER)).toEqual({
+      verdict: "correct",
+      region: "hit",
+      record: "hit",
+    });
+  });
+
+  it("leaves the verdict exactly as gtgVerdict decides it — points are unchanged", () => {
+    for (const g of [
+      { id: ANSWER.homeTeamId, conference: null },
+      { id: 99, conference: "SEC" },
+      { id: 99, conference: "Big Ten" },
+    ]) {
+      expect(gtgMarks(g, ANSWER).verdict).toBe(gtgVerdict(g, ANSWER));
+    }
+  });
+});
+
+describe("gtgChips", () => {
+  it("renders the marks the row was stored with", () => {
+    expect(gtgChips(played("miss", "hit", "miss")).map((c) => c.state)).toEqual([
+      "miss",
+      "hit",
+      "miss",
+    ]);
+    expect(gtgChips(played("conference", "miss", "hit")).map((c) => c.state)).toEqual([
+      "hit",
+      "miss",
+      "hit",
+    ]);
+  });
+
+  it("a correct guess lights all three: the team IS the answer", () => {
+    expect(gtgChips(played("correct")).map((c) => c.state)).toEqual(["hit", "hit", "hit"]);
+  });
+
+  it("a row written before the marks existed reads undecided, not wrong", () => {
+    // jsonb, so old rows simply have no region/record. That is what they know.
+    expect(gtgChips({ name: "Old", verdict: "miss" }).map((c) => c.state)).toEqual([
+      "miss",
+      "unknown",
+      "unknown",
+    ]);
   });
 });
 
 describe("gtgShareBlock", () => {
   it("is spoiler-free: a chip grid and the score, no names", () => {
-    const s = gtgShareBlock("2026-09-01", ["miss", "conference", "correct"], true, 4);
-    expect(s).toBe(
-      "Guess the Game · 2026-09-01 · 3/6\n⬛⬜⬜\n🟨⬜⬜\n🟨🟨🟨\nStreak 4",
+    const s = gtgShareBlock(
+      "2026-09-01",
+      [played("miss", "miss", "miss"), played("conference", "hit", "miss"), played("correct")],
+      true,
+      4,
     );
+    expect(s).toBe("Guess the Game · 2026-09-01 · 3/6\n⬛⬛⬛\n🟨🟨⬛\n🟨🟨🟨\nStreak 4");
     expect(s).not.toContain("Georgia");
-    expect(s).not.toContain("Auburn");
+    expect(s).not.toContain("Some School");
+  });
+  it("an undecided chip shares as its own square, not as a miss", () => {
+    expect(gtgShareBlock("2026-09-01", [played("miss")], false)).toContain("⬛⬜⬜");
   });
   it("a bust shares as X, and no streak line when there is no streak", () => {
-    const s = gtgShareBlock("2026-09-01", ["miss", "miss"], false);
+    const s = gtgShareBlock("2026-09-01", [played("miss"), played("miss")], false);
     expect(s).toContain("X/6");
     expect(s).not.toContain("Streak");
   });
   it("only the rows actually played — Wordle's shape, not six every time", () => {
-    const s = gtgShareBlock("2026-09-01", ["correct"], true, 1);
+    const s = gtgShareBlock("2026-09-01", [played("correct")], true, 1);
     expect(s.split("\n")).toHaveLength(3);
   });
 });

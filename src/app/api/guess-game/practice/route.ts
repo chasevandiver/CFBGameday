@@ -2,12 +2,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   GTG_MAX_ATTEMPTS,
   gtgHints,
-  gtgVerdict,
+  gtgMarks,
   pickDailyGame,
   practicePool,
   type GtgAnswerCtx,
 } from "../../../../lib/guess-game";
-import { answerFor, cfbDeck, resolveTeam } from "../../../../lib/guess-game-data";
+import { answerFor, cfbDeck, recordFor, resolveTeam, teamRegion } from "../../../../lib/guess-game-data";
 import { productDate } from "../../../../lib/streak";
 import { createClient } from "../../../../lib/supabase/server";
 import { createServiceClient } from "../../../../lib/supabase/service";
@@ -118,10 +118,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: resolved.error }, { status: resolved.status });
   }
 
-  const verdict = gtgVerdict(
-    { id: resolved.team.id, conference: resolved.team.conference },
+  /* Scored on all three axes exactly like the daily (GTG-9) — practice that
+     showed two dead chips would be practice for a different game. Still no
+     write: these are computed and returned, never stored. */
+  const [region, record] = await Promise.all([
+    teamRegion(service, resolved.team.id),
+    recordFor(service, resolved.team.id, answer.season, answer.startTs),
+  ]);
+  const marks = gtgMarks(
+    { id: resolved.team.id, conference: resolved.team.conference, region, record },
     answer,
   );
+  const verdict = marks.verdict;
   const spent = attempts + 1;
   const solved = verdict === "correct";
   const done = solved || spent >= GTG_MAX_ATTEMPTS;
@@ -130,6 +138,8 @@ export async function POST(req: NextRequest) {
     seed,
     name: resolved.team.school,
     verdict,
+    region: marks.region,
+    record: marks.record,
     attempts: spent,
     maxAttempts: GTG_MAX_ATTEMPTS,
     solved,

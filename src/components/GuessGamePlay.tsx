@@ -1,19 +1,14 @@
 "use client";
 
 import { Check, Copy } from "lucide-react";
-import { useEffect, useState, useSyncExternalStore, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import {
   GTG_MAX_ATTEMPTS,
   gtgShareBlock,
-  type GtgVerdict,
+  type GtgStoredGuess,
   type SchoolOption,
 } from "../lib/guess-game";
-import {
-  commitDay,
-  getServerStatsSnapshot,
-  getStatsSnapshot,
-  subscribeStats,
-} from "../lib/gtg-stats";
+import { EMPTY_STATS, type GtgStats } from "../lib/gtg-stats";
 import { ClueSlots } from "./guess/ClueSlots";
 import { EndState } from "./guess/EndState";
 import { GuessInput } from "./guess/GuessInput";
@@ -28,10 +23,12 @@ interface GtgState {
   maxAttempts: number;
   solved: boolean;
   done: boolean;
-  guesses: Array<{ name: string; verdict: GtgVerdict }>;
+  guesses: GtgStoredGuess[];
   hints: Array<{ label: string; value: string; team?: string }>;
   answer: string | null;
   answerTeams: { away: string; home: string } | null;
+  /** The caller's record across every day, folded server-side (GTG-10). */
+  stats: GtgStats;
 }
 
 /**
@@ -42,9 +39,13 @@ interface GtgState {
  * Redesigned as a game rather than a form: the score is the hero, the clue
  * slots are visible before you have bought them, and a guess reads as three
  * fixed chips instead of a coloured square and a sentence. Every piece below
- * is presentational and lives in `./guess/`; the fetch, the transition and
- * the payload shape are untouched, and the answer still arrives exactly when
- * it always did.
+ * is presentational and lives in `./guess/`.
+ *
+ * The payload now also carries the caller's standing (GTG-10) and each
+ * guess's region and record marks (GTG-9), both computed server-side. The
+ * component holds no derived state for either — a streak folded on the
+ * client was the thing that made it device-local, and a chip recomputed on
+ * the client would need the answer.
  */
 export function GuessGamePlay({ schools }: { schools: SchoolOption[] }) {
   const [state, setState] = useState<GtgState | null>(null);
@@ -55,9 +56,6 @@ export function GuessGamePlay({ schools }: { schools: SchoolOption[] }) {
   // Closed after a pick or a submit, so the list does not hang around over the
   // guess history once you have chosen.
   const [picking, setPicking] = useState(false);
-  /* The device-local record (`gtg-stats.ts`), read as the external store it
-     actually is rather than copied into state by an effect. */
-  const stats = useSyncExternalStore(subscribeStats, getStatsSnapshot, getServerStatsSnapshot);
   /* Which clue slot the last submit revealed. Set in the submit handler, not
      derived from `attempts`, because the flip must play on the guess that
      bought the clue and not on a reload three slots later — the attempt count
@@ -85,14 +83,6 @@ export function GuessGamePlay({ schools }: { schools: SchoolOption[] }) {
       cancelled = true;
     };
   }, []);
-
-  /* The only place a day reaches the record. Idempotent by day (`recordDay`),
-     so a refetch, a re-render or a second tab cannot count today twice — which
-     is what makes it safe to run on every payload rather than on a
-     transition. */
-  useEffect(() => {
-    if (state?.done) commitDay(state.day, state.solved, state.attempts);
-  }, [state]);
 
   const submit = () => {
     const g = guess.trim();
@@ -126,12 +116,7 @@ export function GuessGamePlay({ schools }: { schools: SchoolOption[] }) {
 
   const share = async () => {
     if (!state) return;
-    const text = gtgShareBlock(
-      state.day,
-      state.guesses.map((g) => g.verdict),
-      state.solved,
-      stats.streak,
-    );
+    const text = gtgShareBlock(state.day, state.guesses, state.solved, state.stats?.streak ?? 0);
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -184,7 +169,7 @@ export function GuessGamePlay({ schools }: { schools: SchoolOption[] }) {
         {state.guesses.length > 0 && (
           <ul className="mb-4 flex flex-col gap-1.5">
             {state.guesses.map((g, i) => (
-              <GuessRow key={i} index={i} name={g.name} verdict={g.verdict} mark={mark} />
+              <GuessRow key={i} index={i} guess={g} mark={mark} />
             ))}
           </ul>
         )}
@@ -195,7 +180,7 @@ export function GuessGamePlay({ schools }: { schools: SchoolOption[] }) {
             attempts={state.attempts}
             teams={state.answerTeams}
             fallbackAnswer={state.answer}
-            stats={stats}
+            stats={state.stats ?? EMPTY_STATS}
             mark={mark}
           >
             <button

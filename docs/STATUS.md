@@ -3078,34 +3078,50 @@ verified, merged, and live behind its own route".
       themes: no tap target under 44px, no horizontal overflow, all five
       animations wired and covered by the global reduced-motion clamp.
 
-- [ ] **GTG-9 — two of the three guess chips have no data behind them.**
-      Opened by GTG-8. The redesign asks each guess to report CONF, REGION and
-      RECORD against the answer, and the payload supports exactly one of them:
-      `gtgVerdict` returns correct / conference / miss, and nothing about the
-      guessed team's region or record reaches the client. Rather than paint a
-      dark chip for a comparison nobody made, `gtgChips` gives those two a
-      third `unknown` state (dashed, dimmed, "not compared" to a screen
-      reader) on every row except a correct guess, where all three match by
-      definition. The fix is small and belongs to the route, not the
-      component: return the guessed team's conference-region and
-      record-entering alongside the verdict, then flip the two `unknown`s in
-      `gtgChips` to a real comparison. Nothing above that function changes —
-      the chip state is already three-valued for this reason. **Held because
-      the brief for GTG-8 was explicitly presentation-only**; it is a data
-      change, and it should be a deliberate one.
+- [x] **GTG-9 — all three guess chips are real comparisons**, 2026-08-18,
+      opened by GTG-8 and closed the same day on owner instruction. The
+      redesign asks each guess to report CONF, REGION and RECORD against the
+      answer and only CONF had data behind it. Both are now computed
+      server-side and **stored** with the guess, so a reload shows the row you
+      saw when you guessed and a GET does not re-derive six historical
+      comparisons.
+      **RECORD** compares the guessed team's record entering the puzzle's own
+      kickoff against the home team's — the same cut, via one shared
+      `recordFor`, because a full-season record measured against a mid-season
+      one would light at random. Both halves must match.
+      **REGION** is Census region (`src/lib/regions.ts`), derived from the
+      modal state of the team's non-neutral home venues. Not from the
+      conference: the Big Ten reaches both coasts and the ACC holds a
+      California school, so a conference-derived region would be wrong about
+      exactly the realignments a fan notices first. Neutral sites are excluded
+      so a Dublin opener does not move a school.
+      **No migration.** The marks ride in the existing `guesses` jsonb; a row
+      written before today has no marks and reads "not compared", which is
+      what it knows. The chip state stayed three-valued, so an unresolvable
+      region (no home venue on file, no state on the venue) is still undecided
+      rather than a dark chip claiming "not this". Practice scores the same
+      three axes and still has no write in the file.
 
-- [ ] **GTG-10 — streak, best solve and distribution are device-local.**
-      Opened by GTG-8. The end state's stats strip needs three numbers no
-      payload carries: `gtg_leaderboard()` aggregates points / solved / played
-      per user and nothing per-day, so a streak and a distribution cannot be
-      derived from anything the client receives. `src/lib/gtg-stats.ts` folds
-      each finished day into localStorage instead. The cost is real and stated
-      on the screen ("Kept on this device"): a second phone starts at zero and
-      clearing site data resets it. The real fix is a definer aggregate over
-      `gtg_guesses` returning per-day solved/attempts for the caller, which
-      `recordDay` can then be pointed at unchanged — it is already a pure fold
-      over one day at a time for that reason. Same hold as GTG-9: the brief
-      was presentation-only.
+- [x] **GTG-10 — the record follows the account, not the browser**,
+      2026-08-18, opened by GTG-8 and closed the same day on owner
+      instruction. Streak, best solve and the solve distribution were folded
+      into localStorage because no payload carried a per-day history; a second
+      phone started at zero. `/api/guess-game` now folds the caller's own
+      `gtg_guesses` rows into the payload. **No migration and no new definer
+      function** — the route already reads that table through the service
+      client scoped to the session's user, so this is one more read on a query
+      path that was always the caller's own data, and a year of play is 365
+      rows of three columns.
+      The arithmetic did not move: `recordDay` is unchanged from the
+      localStorage version and `gtgStanding` is that reduce with the rows
+      sorted, which is why the edge-case tests (month boundaries, busts, gaps)
+      carried over intact. Sorting is the route's job to get wrong and the
+      fold's job to survive — `recordDay` refuses a day it has already passed,
+      so a newest-first feed would report "played once", and there is a test
+      for exactly that. Days still in progress are filtered out before the
+      fold: counting today's two wrong guesses as a bust would zero the streak
+      of anyone who opened the puzzle and walked away. The "Kept on this
+      device" line is gone with the storage it described.
 
 **Arcade calibration**
 - [ ] **UX-41 — re-check the arcade weights after Week 6.** The four weights

@@ -169,6 +169,80 @@ shipping it.
 
 ## Log
 
+### Aug 18 — GTG-9 + GTG-10: the two chips and the streak get real data
+
+The redesign below shipped with two holes it was honest about: two of the
+three guess chips had nothing behind them, and the stats strip folded into
+localStorage. Owner asked for both properly. Neither needed a migration, which
+is the part worth recording.
+
+**GTG-9 — REGION and RECORD are real comparisons.**
+
+*RECORD* compares the guessed team's record entering the puzzle's own kickoff
+against the home team's, both cut by one shared `recordFor`. That sharing is
+the whole correctness argument: a guessed team's full-season record measured
+against a home team's mid-season record would light more or less at random,
+and the two used to be computed in different places. Both halves must match —
+4-2 does not hit 4-1.
+
+*REGION* is Census region, derived in `src/lib/regions.ts` from the modal state
+of the team's **non-neutral home venues** (`games.venue_id → venues.state`).
+Two decisions inside that sentence:
+
+- **Not from the conference.** The obvious cheap implementation is a
+  conference → region table, and it is wrong now in a way a fan spots
+  instantly: the Big Ten reaches both coasts, the ACC holds a California
+  school. Region is geography.
+- **Neutral sites excluded.** A team that opens in Dublin or plays a September
+  game in Arlington has not moved, and over a short sample one such row can
+  flip a mode. Counted per game rather than per distinct venue, so a borrowed
+  stadium in one season does not weigh the same as the real home field.
+
+The marks are **stored** with the guess, not recomputed on read: a reload must
+show the row you saw when you guessed, and recomputing would put two region
+lookups per historical guess on every GET. They ride in the existing `guesses`
+jsonb, so there is no migration and a row written before today simply has no
+marks — which reads as "not compared", the truth about it. The chip state
+stayed three-valued for the same reason it was three-valued before: a team
+with no home venue on file still cannot be placed, and a dark chip would
+claim a comparison nobody performed. `venues.state` comes from CFBD and is not
+guaranteed, so that path is reachable rather than theoretical.
+
+Cost: two extra reads per guess, on POST only, bounded by six guesses a day.
+Region is cached per instance and never invalidated, which is safe because a
+school does not change region and the map is bounded by the 266 CFB teams.
+
+Practice scores all three axes the same way — practice that showed two dead
+chips would be practice for a different game — and still contains no write,
+which remains the structural reason it cannot touch anyone's points.
+
+**GTG-10 — the record follows the account.**
+
+`/api/guess-game` now folds the caller's own `gtg_guesses` rows into the
+payload. **No migration and no definer function**: the route already reads
+that table through the service client scoped to the session's user, so this is
+one more read on a query path that was always the caller's own data. A year of
+play is 365 rows of three columns.
+
+The arithmetic did not move. `recordDay` is byte-identical to the localStorage
+version and `gtgStanding` is that reduce with the rows sorted — which is why
+its edge cases (month boundaries, busts, gaps) kept their tests rather than
+being re-derived. The sort is load-bearing and now has its own test:
+`recordDay` refuses a day it has already passed, so a newest-first feed would
+fold one row and report "played once" rather than erroring.
+
+One rule worth naming because it is invisible in the diff: **days still in
+progress are filtered out before the fold.** A row with two wrong guesses and
+no `solved_at` is not a bust yet, and counting it as one would zero the streak
+of anyone who opened the puzzle and walked away from it.
+
+The anti-spoiler contract picked up two new assertions rather than being
+trusted. `GtgAnswerCtx` gained `homeRegion` and `startTs` for the chips, and a
+kickoff timestamp printed beside a final score identifies the game outright —
+a worse leak than the school name. `gtgPayload` copies fields rather than
+spreading the context, and there is now a test that fails if that ever
+changes.
+
 ### Aug 18 — GTG-8: Guess the Game, redesigned as a game
 
 Owner brief, one sentence of which is the whole diagnosis: "the current

@@ -14,7 +14,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { NFL_ID_OFFSET } from "./league";
-import { recordEntering, type GtgAnswerCtx, type RecordGameLike } from "./guess-game";
+import { recordEntering, type GtgAnswerCtx, type RecordGameLike, type TeamRecord } from "./guess-game";
+import { modalRegion, type Region } from "./regions";
 
 /**
  * The deck: every CFB regular-season final we hold a score for.
@@ -71,6 +72,89 @@ export async function cfbDeck(db: SupabaseClient, day: string): Promise<number[]
   return ids;
 }
 
+/**
+ * A team's record coming into a given kickoff, in a given season.
+ *
+ * Extracted from `answerFor` when the RECORD chip arrived (GTG-9): the home
+ * team's record is a clue and a guessed team's record is a comparison, and
+ * the two must be cut the same way or the chip compares a full-season record
+ * against a mid-season one and lights at random. One function, one meaning of
+ * "record", both callers.
+ *
+ * Bounded by construction — at most a dozen or so rows, none at all in week 0.
+ * A game with no kickoff cannot bound anything, so it returns 0-0 rather than
+ * counting the whole season.
+ */
+export async function recordFor(
+  db: SupabaseClient,
+  teamId: number,
+  seasonId: number,
+  startTs: string | null,
+): Promise<TeamRecord> {
+  if (startTs === null) return { wins: 0, losses: 0 };
+  const { data } = await db
+    .from("games")
+    .select("home_team_id, away_team_id, home_points, away_points")
+    .eq("season_id", seasonId)
+    .eq("status", "final")
+    .lt("start_ts", startTs)
+    .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`);
+  return recordEntering((data ?? []) as RecordGameLike[], teamId);
+}
+
+/**
+ * Where a team plays, as a Census region.
+ *
+ * `teams` has no state column and no region column, so this is derived from
+ * where the team's home games are actually played: their non-neutral home
+ * venues, then the modal state of those. Neutral sites are excluded on
+ * purpose — a team that opens in Dublin or plays a September game in Arlington
+ * has not moved, and one such row is enough to flip a mode computed over a
+ * short sample.
+ *
+ * Null when nothing resolves (no home venue on file, no state on the venue),
+ * and the chip stays undecided rather than guessing. That is the honest
+ * failure and it is reachable: `venues.state` comes from CFBD and is not
+ * guaranteed.
+ *
+ * Cached per instance and never invalidated. A school does not change region,
+ * and the map is bounded by the 266 CFB teams.
+ */
+const regionCache = new Map<number, Region | null>();
+
+export async function teamRegion(db: SupabaseClient, teamId: number): Promise<Region | null> {
+  const hit = regionCache.get(teamId);
+  if (hit !== undefined) return hit;
+
+  const { data: homeGames } = await db
+    .from("games")
+    .select("venue_id")
+    .eq("home_team_id", teamId)
+    .eq("neutral_site", false)
+    .not("venue_id", "is", null)
+    .limit(40);
+
+  const venueIds = [
+    ...new Set(((homeGames ?? []) as Array<{ venue_id: number }>).map((g) => g.venue_id)),
+  ];
+  if (venueIds.length === 0) {
+    regionCache.set(teamId, null);
+    return null;
+  }
+
+  const { data: venues } = await db.from("venues").select("id, state").in("id", venueIds);
+  const stateById = new Map(
+    ((venues ?? []) as Array<{ id: number; state: string | null }>).map((v) => [v.id, v.state]),
+  );
+  /* Counted per GAME rather than per distinct venue, so a one-off season in a
+     borrowed stadium does not weigh the same as the real home field. */
+  const region = modalRegion(
+    ((homeGames ?? []) as Array<{ venue_id: number }>).map((g) => stateById.get(g.venue_id) ?? null),
+  );
+  regionCache.set(teamId, region);
+  return region;
+}
+
 /** Everything a puzzle needs to cut its clues. Null if the game is unusable. */
 export async function answerFor(
   db: SupabaseClient,
@@ -83,24 +167,10 @@ export async function answerFor(
     .maybeSingle();
   if (!game || game.home_points === null || game.away_points === null) return null;
 
-  const [{ data: teams }, { data: priorRows }] = await Promise.all([
-    db
-      .from("teams")
-      .select("id, school, conference")
-      .in("id", [game.home_team_id, game.away_team_id]),
-    /* The home team's season up to this kickoff — the clue that replaced the
-       closing spread, which no backfilled puzzle could ever answer. Bounded by
-       construction: at most a dozen or so rows, and none at all in week 0. */
-    game.start_ts === null
-      ? Promise.resolve({ data: [] })
-      : db
-          .from("games")
-          .select("home_team_id, away_team_id, home_points, away_points")
-          .eq("season_id", game.season_id)
-          .eq("status", "final")
-          .lt("start_ts", game.start_ts)
-          .or(`home_team_id.eq.${game.home_team_id},away_team_id.eq.${game.home_team_id}`),
-  ]);
+  const { data: teams } = await db
+    .from("teams")
+    .select("id, school, conference")
+    .in("id", [game.home_team_id, game.away_team_id]);
 
   const teamById = new Map(
     ((teams ?? []) as Array<{ id: number; school: string; conference: string | null }>).map((t) => [
@@ -112,16 +182,26 @@ export async function answerFor(
   const away = teamById.get(game.away_team_id);
   if (!home || !away) return null;
 
+  /* The record clue and the region the REGION chip compares against. Both are
+     the home team's, both are needed on every payload, and neither depends on
+     the other — so they go together rather than one after the next. */
+  const [homeRecord, homeRegion] = await Promise.all([
+    recordFor(db, game.home_team_id, game.season_id, game.start_ts),
+    teamRegion(db, game.home_team_id),
+  ]);
+
   return {
     homeTeamId: game.home_team_id,
     homeConference: home.conference,
+    homeRegion,
     homeSchool: home.school,
     awaySchool: away.school,
     homePoints: game.home_points,
     awayPoints: game.away_points,
     season: game.season_id,
     week: game.week,
-    homeRecord: recordEntering((priorRows ?? []) as RecordGameLike[], game.home_team_id),
+    homeRecord,
+    startTs: game.start_ts,
   };
 }
 
