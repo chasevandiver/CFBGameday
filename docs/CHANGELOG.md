@@ -222,6 +222,33 @@ goes dynamic for one indexed read — `required()`, because a dropped error ther
 would render a page with no note, which is exactly what a healthy build looks
 like.
 
+**CFBD-3 — Q1 answered yes, same day, and dated into the job.** Owner call. The
+override stops being a thing somebody has to remember: from **Aug 22**
+`preseason-refresh` carries `--force` itself and loads the best build available.
+`preseason-force` stays for doing it sooner by hand.
+
+The ladder was notice (quiet green through Aug 19) → alarm (red from Aug 20) →
+nothing. The missing rung was a human seeing a red run on the right morning,
+which is the failure this checkpoint's own instruction warns about: *do not let
+this get decided by silence*. A date is that decision recorded once instead of
+re-made every morning, and it is safe for the same reason `--force` was cheap to
+build: it changes no number. On a day CFBD has published, the flag is inert and
+this is an ordinary refresh. On any other day the build carries last season's
+talent, says so on `/model`, and a later refresh overwrites it in place —
+`ratings` and `preseason_components` are both keyed on `(season, team)`, so the
+good build lands on top and rewrites `talent_stale` to false with no cleanup.
+
+`preseason-bootstrap` is excluded by name, because it writes the append-only
+tables and a season's first load is not something a date should decide. The test
+reads the condition rather than the flag, so hoisting `--force` onto the shared
+invocation fails it.
+
+One consequence worth stating plainly, because it bounds everything above: the
+window closes at the first final. `load-preseason` refuses a season with
+completed games, `ratings-update` owns the numbers from then on, and the last
+automatic chance to pick up real talent is the **Aug 27 11:00 UTC** refresh.
+Talent published in September does not get loaded at all.
+
 **No model change.** No parameter moved, and `--force` changes no number — the
 build already falls back. What changed is whether the gate stops the load, and
 whether the fallback is visible afterwards.
@@ -5851,8 +5878,10 @@ and signed-error reporting; nine backtest tuners.
   build today would carry **no incoming recruiting class**. `--check` catches
   this and refuses; the daily `preseason-refresh` job retries until CFBD
   publishes. **No manual step is required** — but if it is still red by ~Aug 26,
-  that is worth looking at, because the openers are Aug 29, and the answer to
-  "still red, now what" is one dispatch: `preseason-force` (Aug 18, above).
+  that is worth looking at — except it no longer waits for anyone: **Q1 was
+  answered yes on Aug 18 and dated into the job**, so from Aug 22 the daily
+  refresh loads the best build available instead of declining. `preseason-force`
+  does it sooner by hand.
   Since Aug 18 `cfbd-probe` also prints a row count per preseason input, so
   which feed is late is a number on the run rather than an inference from a
   fallback message.
