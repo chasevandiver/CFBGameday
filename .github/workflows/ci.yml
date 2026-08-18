@@ -7,6 +7,12 @@ on:
   push:
     branches: ["main"]
   pull_request:
+  # Runnable by hand. A PR reopened from a branch whose previous PR has already
+  # merged does not always get a fresh `pull_request` run — GitHub keeps the
+  # branch's existing check suite — which leaves the new PR showing a green tick
+  # earned by a commit it no longer contains. That is worse than no tick, so
+  # there has to be a way to run the real one without inventing a commit.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
