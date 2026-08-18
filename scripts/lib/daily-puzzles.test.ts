@@ -263,6 +263,7 @@ describe("buildChains", () => {
 
 import { DC_MAX_PER_FAMILY, buildDepthChart, dcFamily, fillDisjoint } from "./daily-puzzles";
 import { validateGrid, type DcCategory } from "../../src/lib/depth-chart";
+import { isSpottable } from "./dc-facts";
 
 /**
  * A synthetic fact index shaped like the real one: many overlapping categories
@@ -278,23 +279,71 @@ function syntheticFacts(count: number): { facts: DcCategory[]; kinds: Map<string
     const kind = kindNames[i % kindNames.length]!;
     const id = `${kind}:${i}`;
     const members = new Set<number>();
-    // Teams 1..120, drawn with an offset and stride so categories overlap the
-    // way real ones do rather than being disjoint by construction.
     const size = 5 + (i % 8);
     for (let j = 0; j < size; j++) members.add((((i * 7 + j * 13) % 120) + 1));
-    facts.push({ id, label: `Fact ${i}`, members });
+    facts.push({ id, label: `Fact ${i}`, members, spottable: isSpottable(kind) });
     kinds.set(id, kind);
   }
+  return { facts, kinds };
+}
+
+/**
+ * The index as PRODUCTION actually has it — and the reason this fixture was
+ * rewritten.
+ *
+ * The first version reproduced the 95% head-to-head *skew* but not the
+ * *density*: 1,268 facts over 120 teams, with members laid out by an arithmetic
+ * stride so every set overlapped every other set evenly. It passed at 100% and
+ * then met the real index and generated one day out of fourteen, because real
+ * facts CLUSTER — the teams that lost to Georgia in 2022 are largely the teams
+ * in the SEC that year — and clustered sets collide far more often than
+ * evenly-spread ones of the same size.
+ *
+ * So this one matches the live counts (2,306 head-to-head, 86 conference, 19
+ * state, 12 AP, 1 dome, over 266 teams) and draws members from overlapping
+ * CLUSTERS rather than a stride. A fixture that is easier than production is
+ * worse than no fixture: it reports a number nobody should act on.
+ */
+function productionShapedFacts(): { facts: DcCategory[]; kinds: Map<string, string> } {
+  const TEAMS = 266;
+  const CLUSTERS = 18; // conference-sized pools that facts draw from
+  const facts: DcCategory[] = [];
+  const kinds = new Map<string, string>();
+  let n = 0;
+
+  const push = (kind: string, size: number, cluster: number, spread: number) => {
+    const id = `${kind}:${n++}`;
+    const members = new Set<number>();
+    /* Mostly from one cluster, a little leakage — the shape a real
+       "lost to X in Y" set has against a conference. */
+    for (let j = 0; j < size; j++) {
+      const fromCluster = j < size - spread;
+      const base = fromCluster
+        ? (cluster * (TEAMS / CLUSTERS) + ((j * 5 + n) % (TEAMS / CLUSTERS))) % TEAMS
+        : (n * 13 + j * 29) % TEAMS;
+      members.add(Math.floor(base) + 1);
+    }
+    facts.push({ id, label: `${kind} ${n}`, members, spottable: isSpottable(kind) });
+    kinds.set(id, kind);
+  };
+
+  for (let i = 0; i < 1153; i++) push("lost_to", 4 + (i % 12), i % CLUSTERS, 1);
+  for (let i = 0; i < 1153; i++) push("beat", 4 + (i % 9), (i * 7) % CLUSTERS, 1);
+  for (let i = 0; i < 86; i++) push("conference_in", 4 + (i % 12), i % CLUSTERS, 0);
+  for (let i = 0; i < 19; i++) push("state", 4 + (i % 9), (i * 3) % CLUSTERS, 0);
+  for (let i = 0; i < 12; i++) push("ap_top10", 10, (i * 5) % CLUSTERS, 6);
+  push("dome", 14, 4, 8);
+
   return { facts, kinds };
 }
 
 describe("fillDisjoint", () => {
   it("gives every category four members, none shared", () => {
     const chosen: DcCategory[] = [
-      { id: "a", label: "a", members: new Set([1, 2, 3, 4, 5, 6]) },
-      { id: "b", label: "b", members: new Set([5, 6, 7, 8, 9]) },
-      { id: "c", label: "c", members: new Set([9, 10, 11, 12]) },
-      { id: "d", label: "d", members: new Set([13, 14, 15, 16]) },
+      { id: "a", label: "a", members: new Set([1, 2, 3, 4, 5, 6]), spottable: true },
+      { id: "b", label: "b", members: new Set([5, 6, 7, 8, 9]), spottable: true },
+      { id: "c", label: "c", members: new Set([9, 10, 11, 12]), spottable: true },
+      { id: "d", label: "d", members: new Set([13, 14, 15, 16]), spottable: true },
     ];
     const picks = fillDisjoint(chosen, "seed")!;
     expect(picks).not.toBeNull();
@@ -310,10 +359,10 @@ describe("fillDisjoint", () => {
    */
   it("lets a category with exactly four members take them", () => {
     const chosen: DcCategory[] = [
-      { id: "a", label: "a", members: new Set([1, 2, 3, 4, 5, 6, 7, 8]) },
-      { id: "b", label: "b", members: new Set([5, 6, 7, 8, 9, 10, 11, 12]) },
-      { id: "c", label: "c", members: new Set([1, 2, 3, 4]) },
-      { id: "d", label: "d", members: new Set([13, 14, 15, 16]) },
+      { id: "a", label: "a", members: new Set([1, 2, 3, 4, 5, 6, 7, 8]), spottable: true },
+      { id: "b", label: "b", members: new Set([5, 6, 7, 8, 9, 10, 11, 12]), spottable: true },
+      { id: "c", label: "c", members: new Set([1, 2, 3, 4]), spottable: true },
+      { id: "d", label: "d", members: new Set([13, 14, 15, 16]), spottable: true },
     ];
     const picks = fillDisjoint(chosen, "seed")!;
     expect(picks).not.toBeNull();
@@ -322,10 +371,10 @@ describe("fillDisjoint", () => {
 
   it("returns null rather than a short group when it cannot be done", () => {
     const chosen: DcCategory[] = [
-      { id: "a", label: "a", members: new Set([1, 2, 3, 4]) },
-      { id: "b", label: "b", members: new Set([1, 2, 3, 4]) },
-      { id: "c", label: "c", members: new Set([1, 2, 3, 4]) },
-      { id: "d", label: "d", members: new Set([1, 2, 3, 4]) },
+      { id: "a", label: "a", members: new Set([1, 2, 3, 4]), spottable: true },
+      { id: "b", label: "b", members: new Set([1, 2, 3, 4]), spottable: true },
+      { id: "c", label: "c", members: new Set([1, 2, 3, 4]), spottable: true },
+      { id: "d", label: "d", members: new Set([1, 2, 3, 4]), spottable: true },
     ];
     expect(fillDisjoint(chosen, "seed")).toBeNull();
   });
@@ -414,24 +463,7 @@ describe("buildDepthChart", () => {
  * These fixtures reproduce the ratio rather than an even spread, because an
  * even spread is the case that already worked.
  */
-function skewedFacts(): { facts: DcCategory[]; kinds: Map<string, string> } {
-  const facts: DcCategory[] = [];
-  const kinds = new Map<string, string>();
-  const push = (kind: string, i: number, size: number) => {
-    const id = `${kind}:${i}`;
-    const members = new Set<number>();
-    for (let j = 0; j < size; j++) members.add((((i * 7 + j * 13) % 120) + 1));
-    facts.push({ id, label: `${kind} ${i}`, members });
-    kinds.set(id, kind);
-  };
-  // 95% head-to-head, matching the live ratio.
-  for (let i = 0; i < 1150; i++) push(i % 2 ? "lost_to" : "beat", i, 5 + (i % 8));
-  for (let i = 0; i < 86; i++) push("conference_in", 2000 + i, 6 + (i % 6));
-  for (let i = 0; i < 19; i++) push("state", 3000 + i, 5 + (i % 5));
-  for (let i = 0; i < 12; i++) push("ap_top10", 4000 + i, 10);
-  push("dome", 5000, 14);
-  return { facts, kinds };
-}
+const skewedFacts = productionShapedFacts;
 
 describe("dcFamily", () => {
   /** lost_to and beat are the same claim pointed in opposite directions. */
@@ -500,5 +532,34 @@ describe("buildDepthChart — against the real 95%-skewed index", () => {
       if (buildDepthChart(day, facts, kinds).grid) ok += 1;
     }
     expect(ok / days).toBeGreaterThanOrEqual(0.98);
+  }, 30_000);
+
+  /**
+   * The shape-of-failure test, and the one that would have caught the
+   * production outage a day earlier than the queue floor did.
+   *
+   * A success rate alone hides *why* attempts fail. When Pass B checked every
+   * stored fact, `rival_category` was **9,555 of ~11,200 rejections (85%)** and
+   * the queue generated one day out of fourteen. One rejector swamping the
+   * others means the generator is fighting the index rather than filtering it,
+   * and it is a warning long before the success rate moves.
+   *
+   * `ambiguous` and `too_easy` are the rejectors that SHOULD dominate: they are
+   * the fairness and quality checks doing their job.
+   */
+  it("does not let one rejector swamp the others", () => {
+    const agg: Record<string, number> = {};
+    for (let d = 0; d < 20; d++) {
+      const day = new Date(Date.UTC(2027, 2, 1) + d * 86_400_000).toISOString().slice(0, 10);
+      for (const [k, v] of Object.entries(buildDepthChart(day, facts, kinds).rejects)) {
+        agg[k] = (agg[k] ?? 0) + v;
+      }
+    }
+    const total = Object.values(agg).reduce((a, b) => a + b, 0);
+    expect(total).toBeGreaterThan(0);
+    expect(
+      (agg.rival_category ?? 0) / total,
+      `rival_category is swamping the histogram: ${JSON.stringify(agg)}`,
+    ).toBeLessThan(0.5);
   }, 30_000);
 });

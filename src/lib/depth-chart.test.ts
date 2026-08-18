@@ -80,10 +80,15 @@ describe("countPartitions", () => {
 
 /* ---- the validator over real-shaped categories -------------------------- */
 
-const cat = (id: string, members: number[]): DcCategory => ({
+/**
+ * Spottable by default: that is the STRICT case for Pass B, so a test that
+ * forgets to think about it gets the check switched on rather than off.
+ */
+const cat = (id: string, members: number[], spottable = true): DcCategory => ({
   id,
   label: id,
   members: new Set(members),
+  spottable,
 });
 
 const gridOf = (groups: DcCategory[], picks: number[][]): DcGrid => ({
@@ -148,6 +153,29 @@ describe("validateGrid", () => {
   it("tolerates a rival fact that covers exactly one intended group", () => {
     const corroborating = cat("corroborating", [1, 2, 3, 4, 99]);
     expect(validateGrid(gridOf(chosen, picks), chosen, [...chosen, corroborating]).ok).toBe(true);
+  });
+
+  /**
+   * The production fix. Checked against every stored fact, this rejected 85% of
+   * grids on the real index and left the queue at one day — because with 2,306
+   * head-to-head facts over 266 teams, some fact covers some four tiles by
+   * coincidence on essentially every grid.
+   *
+   * "These four all lost to Vanderbilt in 2019" is not a red herring: nobody
+   * scanning sixteen school names spots it, so it cannot be submitted by
+   * mistake. Only a visible grouping can.
+   */
+  it("ignores a rival nobody could spot", () => {
+    const unspottable = cat("result", [1, 6, 11, 16], false);
+    expect(validateGrid(gridOf(chosen, picks), chosen, [...chosen, unspottable]).ok).toBe(true);
+  });
+
+  it("still rejects the same rival when it IS spottable", () => {
+    const spottable = cat("state", [1, 6, 11, 16], true);
+    expect(validateGrid(gridOf(chosen, picks), chosen, [...chosen, spottable])).toEqual({
+      ok: false,
+      reject: "rival_category",
+    });
   });
 
   /**

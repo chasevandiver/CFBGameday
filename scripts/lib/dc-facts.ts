@@ -36,6 +36,23 @@ export interface RawFact {
   members: Set<number>;
 }
 
+/**
+ * Which kinds a player could SPOT by looking at sixteen school names.
+ *
+ * Geography, conference, a poll finish and a dome are properties of the schools
+ * themselves — a fan reads the names and sees them. A result ("lost to Georgia
+ * in 2022") is a lookup: perfectly good as an INTENDED category, where the
+ * label tells you what to look for, and invisible as a rival, where nothing
+ * does.
+ *
+ * That asymmetry is the whole of `validateGrid`'s Pass B, and getting it wrong
+ * cost a production run: checking rivals against all 2,489 facts rejected 85%
+ * of grids over coincidences no player could see.
+ */
+export const SPOTTABLE_KINDS = new Set(["conference_in", "state", "dome", "ap_top10"]);
+
+export const isSpottable = (kind: string): boolean => SPOTTABLE_KINDS.has(kind);
+
 const add = (m: Map<string, RawFact>, kind: string, subject: string, label: string, team: number) => {
   const key = `${kind}:${subject}`;
   const hit = m.get(key);
@@ -117,7 +134,7 @@ export function buildFacts(
 
 /** A raw fact, as the validator wants it. */
 export function toCategory(f: RawFact, id: string): DcCategory {
-  return { id, label: f.label, members: f.members };
+  return { id, label: f.label, members: f.members, spottable: isSpottable(f.kind) };
 }
 
 /** Venue state and dome, for the geography facts. */

@@ -38,6 +38,16 @@ export interface DcCategory {
   label: string;
   /** Every CFB team the fact is true of — the whole membership, not the four drawn. */
   members: Set<number>;
+  /**
+   * Whether a player could plausibly SPOT this grouping by looking at sixteen
+   * school names — geography, conference, a poll finish, a dome.
+   *
+   * Only spottable facts can act as red herrings, and that distinction is what
+   * `validateGrid`'s Pass B turns on. See the note there: it is the difference
+   * between a check that protects the player and one that rejects 85% of fair
+   * grids over coincidences nobody could see.
+   */
+  spottable: boolean;
 }
 
 export interface DcGrid {
@@ -160,27 +170,45 @@ export function validateGrid(
   // one; no separate check is needed and there is a test asserting that.
   if (countPartitions(matrix) !== 1) return { ok: false, reject: "ambiguous" };
 
-  /* Pass B — no rival category.
+  /* Pass B — no rival category the player could actually SEE.
    *
    * A stored fact covering exactly four of the sixteen tiles is a grouping the
-   * player could submit and the game would mark wrong, so the grid goes back.
+   * player might submit and the game would mark wrong. Two carve-outs, and the
+   * second was learned the hard way.
    *
-   * **Unless those four ARE one of the intended groups.** That case is not
-   * ambiguity, it is corroboration — a second true label for the same four
-   * teams ("Play in a dome" and "Play their home games in Louisiana" over the
-   * same four) leads to the same submission and the same verdict. The first
-   * version of this check rejected on the count alone and threw away 75% of
-   * otherwise-fair grids, because a dense fact index almost always has some
-   * fact lying exactly over one of the chosen groups.
+   * **Not if those four ARE an intended group.** That is corroboration, not
+   * ambiguity — a second true label over the same four teams ("Play in a dome"
+   * and "Play their home games in Louisiana") leads to the same submission and
+   * the same verdict. Rejecting on the count alone threw away three quarters of
+   * otherwise-fair grids.
    *
-   * NOT rejected on five or more either: a fact covering six tiles cannot be a
-   * clean group of four, and rejecting on it would starve the generator, since
-   * every grid has some "these are all SEC schools" fact over it.
+   * **And only for SPOTTABLE facts**, which is the fix for the failure this
+   * check caused in production. Checked against every stored fact, it rejected
+   * **9,555 of ~11,200 attempts (85%)** on the real index and left the queue at
+   * one day. With 2,306 head-to-head facts over 266 teams, some fact covers
+   * some four tiles by pure coincidence on essentially every grid.
+   *
+   * The mistake was conceptual rather than a bad threshold. "These four all
+   * lost to Vanderbilt in 2019" is not a red herring: nobody scanning sixteen
+   * school names spots it, so it can never be submitted by mistake. A red
+   * herring has to be VISIBLE — geography, conference, a poll finish, a dome —
+   * and there are 118 such facts against 2,306 result facts. Checking the other
+   * 2,306 protected the player from nothing and cost the game its queue.
+   *
+   * What this gives up, stated plainly: a player who goes and looks up results
+   * could construct a grouping the game rejects. That is outside the promise in
+   * 0070's header either way, which was only ever about STORED facts — this
+   * narrows it to stored facts a player could see unaided.
+   *
+   * NOT rejected on five or more: a fact covering six tiles cannot be a clean
+   * group of four, and rejecting on it would starve the generator, since every
+   * grid has some "these are all SEC schools" fact over it.
    */
   const chosenIds = new Set(chosen.map((c) => c.id));
   const intended = grid.groups.map((g) => [...g.teamIds].sort((a, b) => a - b).join(","));
   const tileSet = new Set(grid.tiles);
   for (const fact of allFacts) {
+    if (!fact.spottable) continue;
     if (chosenIds.has(fact.id)) continue;
     const hits: number[] = [];
     for (const t of tileSet) if (fact.members.has(t)) hits.push(t);

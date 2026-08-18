@@ -3510,6 +3510,43 @@ under it is being replaced by **three** games, tried side by side —
       copies, because the practice routes return the identical payload shape —
       a near-copy of a board is how practice ends up practising a slightly
       different game.
+- [x] **DC-4 — Pass B rejected 85% of grids over rivals nobody could see**,
+      2026-08-18, found by the first real `daily-puzzles` run going red.
+      **The queue floor worked**: Tape and Chains filled 14 days and 30 practice
+      rounds each, Depth Chart managed **one** board (Aug 23 — not even today's)
+      and the job failed on `daysQueued < 4`, five days before anyone would have
+      hit a gap. That is the lane GTG-1 could never have.
+      The histogram named the cause: **`rival_category` 9,555 of ~11,200
+      rejections (85%)**, against `ambiguous` 941 and `too_easy` 92. Pass B
+      rejected any grid where *any* of the 2,489 stored facts covered exactly
+      four tiles — and with 2,306 head-to-head facts over 266 teams, some fact
+      does on essentially every grid.
+      **The mistake was conceptual, not a bad threshold.** "These four all lost
+      to Vanderbilt in 2019" is not a red herring: nobody scanning sixteen
+      school names spots it, so it can never be submitted by mistake. Only a
+      *visible* grouping can — geography, conference, a poll finish, a dome —
+      and there are 118 of those. Checking the other 2,306 protected the player
+      from nothing and cost the game its queue. `DcCategory` now carries
+      `spottable` and Pass B checks only those. Measured after: **100% success
+      at every attempt budget**, `rival_category` down to ~5% of rejections,
+      15ms/day at 200 attempts (`DC_ATTEMPTS` stays 800 — the headroom is nearly
+      free and this is exactly the surprise it insures against).
+      **The fixture was the real failure, and it is rebuilt.** It reproduced the
+      95% head-to-head skew but not the density: 1,268 facts over 120 teams with
+      members on an arithmetic stride, so every set overlapped every other
+      evenly. Real facts CLUSTER — the teams that lost to Georgia in 2022 are
+      largely the SEC that year — and clustered sets collide far more often. It
+      now matches the live counts (2,306/86/19/12/1 over 266 teams) and draws
+      from overlapping clusters. **A fixture easier than production is worse
+      than no fixture: it reports a number nobody should act on.**
+      New regression: a test asserting no single rejector exceeds half the
+      histogram. One rejector swamping the others means the generator is
+      fighting the index rather than filtering it, and it moves long before the
+      success rate does — it would have caught this before the queue floor did.
+      **What this gives up, recorded rather than glossed**: a player who looks
+      up results could construct a grouping the game rejects. 0070's promise was
+      only ever about stored facts; it is now stored facts a player could see
+      unaided.
 - [ ] **TRIAL-1 — the arcade fold, once.** The three trial games deliberately
       do **not** feed `arcade.ts` while the trial runs, and Guess the Game is
       left running untouched as the control. `weeklyCeiling()` equalises each
