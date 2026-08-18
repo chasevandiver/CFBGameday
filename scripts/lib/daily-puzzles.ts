@@ -42,6 +42,13 @@ import {
   type ChainsCard,
   type ChainsKind,
 } from "../../src/lib/chains";
+import {
+  validateGrid,
+  type DcCategory,
+  type DcGrid,
+  type DcReject,
+} from "../../src/lib/depth-chart";
+import { buildFacts, fetchFinalTop10, fetchVenues, toCategory } from "./dc-facts";
 import { fnv1a, pickDailyGame } from "../../src/lib/guess-game";
 import { productDate, productDateOffset } from "../../src/lib/streak";
 
@@ -247,6 +254,7 @@ export async function dailyPuzzlesJob(db: SupabaseClient): Promise<Json> {
   const generators: Array<[string, (db: SupabaseClient, now: Date) => Promise<GenerateResult>]> = [
     ["tape", generateTape],
     ["chains", generateChains],
+    ["dc", generateDepthChart],
   ];
 
   for (const [name, run] of generators) {
@@ -435,6 +443,231 @@ export async function generateChains(
   }
 
   return { generated, daysQueued: await countQueued(db, "chains_puzzles", days[0]!) };
+}
+
+/* ---- Depth Chart --------------------------------------------------------- */
+
+/** How many category draws a day gets before it is given up as ungeneratable. */
+export const DC_ATTEMPTS = 200;
+/** At most this many of one kind, so a grid is not one puzzle wearing four hats. */
+export const DC_MAX_PER_KIND = 2;
+
+export interface DcAttemptResult {
+  grid: DcGrid | null;
+  /** How many tiles could plausibly sit in two groups — the designed feel. */
+  traps: number;
+  attempts: number;
+  /** Why the failures failed, so a starving generator says which knob to turn. */
+  rejects: Record<DcReject, number>;
+}
+
+/** Deterministic pick of `k` distinct indices below `n`, from a seed. */
+function seededPick(n: number, k: number, seed: string): number[] {
+  return seededOrder(n, seed).slice(0, k);
+}
+
+/**
+ * Try to build a fair grid for a day.
+ *
+ * Deterministic and seeded: a repair run reproduces the same board rather than
+ * a different one, using the same FNV-1a idiom the rendezvous hash uses.
+ * `Math.random()` here would mean a regenerated day is a puzzle nobody else is
+ * playing.
+ *
+ * The loop is draw → fill → validate, and it reports WHICH check rejected each
+ * attempt. That matters operationally: `ambiguous` means the fact index has too
+ * much overlap and `too_easy` means too little, and the fix for one is the
+ * opposite of the fix for the other. A generator that only said "failed" would
+ * leave that undiagnosable.
+ */
+export function buildDepthChart(
+  day: string,
+  facts: DcCategory[],
+  kinds: Map<string, string>,
+  attempts = DC_ATTEMPTS,
+): DcAttemptResult {
+  const rejects: Record<DcReject, number> = {
+    ambiguous: 0,
+    rival_category: 0,
+    too_easy: 0,
+    short: 0,
+  };
+  let best: { grid: DcGrid; traps: number } | null = null;
+
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const seed = `${day}:${attempt}`;
+    const picked = seededPick(facts.length, 12, seed)
+      .map((i) => facts[i]!)
+      .filter(Boolean);
+
+    /* Four categories, at most two of any kind. Four "lost to X in Y"
+       categories is one puzzle wearing four hats, and it is the shape
+       auto-generation drifts toward because that kind is the most numerous. */
+    const chosen: DcCategory[] = [];
+    const perKind = new Map<string, number>();
+    for (const f of picked) {
+      if (chosen.length === 4) break;
+      const kind = kinds.get(f.id) ?? "?";
+      if ((perKind.get(kind) ?? 0) >= DC_MAX_PER_KIND) continue;
+      // A category contained in another gives a group with no independent
+      // identity, and guarantees ambiguity besides.
+      if (chosen.some((c) => isSubset(c.members, f.members) || isSubset(f.members, c.members)))
+        continue;
+      chosen.push(f);
+      perKind.set(kind, (perKind.get(kind) ?? 0) + 1);
+    }
+    if (chosen.length < 4) {
+      rejects.short += 1;
+      continue;
+    }
+
+    const picks = fillDisjoint(chosen, seed);
+    if (picks === null) {
+      rejects.short += 1;
+      continue;
+    }
+
+    const tiles = seededOrder(16, `${seed}:tiles`).map((i) => picks.flat()[i]!);
+    const grid: DcGrid = {
+      groups: chosen.map((c, i) => ({ id: c.id, label: c.label, teamIds: picks[i]! })),
+      tiles,
+    };
+
+    const verdict = validateGrid(grid, chosen, facts);
+    if (!verdict.ok) {
+      rejects[verdict.reject] += 1;
+      continue;
+    }
+    /* Among fair grids, prefer the one with the most traps — that is what makes
+       a puzzle feel designed rather than sampled. Keep looking a little longer
+       rather than taking the first pass. */
+    if (best === null || verdict.traps > best.traps) best = { grid, traps: verdict.traps };
+    if (best.traps >= 6) break;
+  }
+
+  return { grid: best?.grid ?? null, traps: best?.traps ?? 0, attempts, rejects };
+}
+
+function isSubset(a: Set<number>, b: Set<number>): boolean {
+  if (a.size > b.size) return false;
+  for (const x of a) if (!b.has(x)) return false;
+  return true;
+}
+
+/**
+ * Four members each, none shared.
+ *
+ * Most-constrained category first with backtracking: if the smallest category
+ * has exactly four members it must take them, and the others work around it.
+ * A greedy fill in draw order would fail constantly on exactly the grids worth
+ * keeping.
+ */
+export function fillDisjoint(chosen: DcCategory[], seed: string): number[][] | null {
+  const order = chosen
+    .map((c, i) => ({ i, size: c.members.size }))
+    .sort((a, b) => a.size - b.size || a.i - b.i);
+
+  const used = new Set<number>();
+  const picks: number[][] = Array.from({ length: chosen.length }, () => []);
+
+  const place = (k: number): boolean => {
+    if (k === order.length) return true;
+    const { i } = order[k]!;
+    const pool = [...chosen[i]!.members].sort((a, b) => a - b).filter((t) => !used.has(t));
+    if (pool.length < 4) return false;
+
+    const shuffled = seededOrder(pool.length, `${seed}:${i}`).map((j) => pool[j]!);
+    /* One deterministic draw per category, then backtrack across CATEGORIES
+       rather than across every 4-subset — the full search is combinatorial and
+       a failed draw is cheap to retry from the outer loop with a new seed. */
+    const take = shuffled.slice(0, 4);
+    take.forEach((t) => used.add(t));
+    picks[i] = take;
+    if (place(k + 1)) return true;
+    take.forEach((t) => used.delete(t));
+    picks[i] = [];
+    return false;
+  };
+
+  return place(0) ? picks : null;
+}
+
+/**
+ * Materialise the fact index, then fill the queue.
+ *
+ * The index is rebuilt on every run rather than incrementally: a finished
+ * season does not change, so the only thing that moves it is a backfill, and
+ * rebuilding is both simpler and self-healing.
+ */
+export async function generateDepthChart(
+  db: SupabaseClient,
+  now: Date,
+  target = QUEUE_TARGET,
+): Promise<GenerateResult> {
+  const days = queueDays(now, target);
+
+  const { data: existingRows } = await db
+    .from("dc_puzzles")
+    .select("day")
+    .gte("day", days[0]!)
+    .lte("day", days[days.length - 1]!);
+  const existing = new Set(((existingRows ?? []) as Array<{ day: string }>).map((r) => r.day));
+  const missing = days.filter((d) => !existing.has(d));
+  if (missing.length === 0) {
+    return { generated: 0, daysQueued: await countQueued(db, "dc_puzzles", days[0]!) };
+  }
+
+  const deck = await fetchSalienceDeck(db);
+  if (deck.length === 0) throw new Error("depth-chart: no games — has backfill-games run?");
+  const schools = await schoolNames(db, deck);
+  const [venues, top10] = await Promise.all([fetchVenues(db), fetchFinalTop10(db)]);
+
+  const raw = buildFacts(deck, schools, venues, top10);
+  if (raw.length < 8) {
+    throw new Error(`depth-chart: only ${raw.length} usable facts — the index is too thin`);
+  }
+  const kinds = new Map(raw.map((f) => [`${f.kind}:${f.subject}`, f.kind]));
+  const facts = raw.map((f) => toCategory(f, `${f.kind}:${f.subject}`));
+
+  let generated = 0;
+  const rejects: Record<string, number> = {};
+  for (const day of missing) {
+    const { grid, traps, rejects: r } = buildDepthChart(day, facts, kinds);
+    for (const [k, v] of Object.entries(r)) rejects[k] = (rejects[k] ?? 0) + v;
+    /* No grid is a MISSING DAY, not a bad one. An unfair board is worse than
+       none, and the queue floor is what turns a run of these into a red job
+       days before anybody sees the gap. */
+    if (!grid) continue;
+
+    const { error: pErr } = await db.from("dc_puzzles").insert({ day, traps });
+    if (pErr) throw new Error(`depth-chart: ${day} puzzle insert failed: ${pErr.message}`);
+
+    const { error: gErr } = await db.from("dc_puzzle_groups").insert(
+      grid.groups.map((g, gidx) => ({
+        day,
+        gidx,
+        group_id: g.id,
+        label: g.label,
+        team_ids: g.teamIds,
+      })),
+    );
+    if (gErr) throw new Error(`depth-chart: ${day} groups insert failed: ${gErr.message}`);
+
+    const { error: tErr } = await db.from("dc_puzzle_tiles").insert(
+      grid.tiles.map((team_id, tidx) => ({ day, tidx, team_id })),
+    );
+    if (tErr) throw new Error(`depth-chart: ${day} tiles insert failed: ${tErr.message}`);
+    generated += 1;
+  }
+
+  return {
+    generated,
+    daysQueued: await countQueued(db, "dc_puzzles", days[0]!),
+    facts: facts.length,
+    /* Logged, never silent: a generator that quietly produced fewer days than
+       it was asked for would read as healthy right up until the queue ran out. */
+    ...(generated < missing.length ? { failed: missing.length - generated, rejects } : {}),
+  };
 }
 
 /** Re-exported so a caller does not have to reach into guess-game for it. */

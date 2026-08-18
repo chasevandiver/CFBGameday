@@ -299,6 +299,73 @@ select public.expect_denied('anon cannot execute the chains board', null,
   'permission denied');
 
 -- ---------------------------------------------------------------------------
+-- DC-2 (0070): Depth Chart. The one game of the three with a REAL hidden
+-- answer — the grouping is not derivable from public data — so the groups must
+-- be unreadable while the tiles stay readable.
+-- ---------------------------------------------------------------------------
+
+\echo '# depth chart: the grouping is hidden, the tiles are not'
+\o /dev/null
+insert into dc_puzzles (day, traps) values (current_date, 3);
+insert into dc_puzzle_groups (day, gidx, group_id, label, team_ids) values
+  (current_date, 0, 'a', 'Lost to Georgia in 2022', array[1,2,3,4]),
+  (current_date, 1, 'b', 'Play their home games indoors', array[1,2,3,4]);
+insert into dc_puzzle_tiles (day, tidx, team_id) values
+  (current_date, 0, 1), (current_date, 1, 2), (current_date, 2, 3), (current_date, 3, 4);
+\o
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.chk('a member cannot read the grouping',
+    not exists (select 1 from dc_puzzle_groups where day = current_date));
+  select pg_temp.chk('but the tiles render — sixteen names narrow nothing',
+    exists (select 1 from dc_puzzle_tiles where day = current_date));
+  select pg_temp.chk('and the fact index is internal',
+    not exists (select 1 from dc_facts));
+rollback;
+
+\echo '# depth chart: the queue does not leak tomorrow'
+\o /dev/null
+insert into dc_puzzles (day, traps) values (current_date + 30, 3);
+insert into dc_puzzle_tiles (day, tidx, team_id) values (current_date + 30, 0, 1);
+\o
+begin;
+  select test_as(:ann::uuid);
+  set local timezone to 'UTC';
+  select pg_temp.chk('a future board is invisible from a UTC session',
+    not exists (select 1 from dc_puzzles where day = current_date + 30));
+  -- The tiles policy reaches through to the puzzle's own date gate, so a
+  -- future board's tiles must be hidden too. Writing that policy against the
+  -- tiles table alone would have let tomorrow's sixteen leak while its day row
+  -- stayed hidden — which is worse than leaking both, because it looks safe.
+  select pg_temp.chk('and so are its tiles',
+    not exists (select 1 from dc_puzzle_tiles where day = current_date + 30));
+rollback;
+
+\echo '# depth chart: own-row containment'
+\o /dev/null
+insert into dc_entries (user_id, day, solved, mistakes, completed_at)
+values (:ann::uuid, current_date, '["a","b","c","d"]', 1, now());
+\o
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.chk('bob cannot read ann''s board',
+    not exists (select 1 from dc_entries where user_id = :ann::uuid));
+  select pg_temp.chk('the board answers without exposing the grouping',
+    exists (select 1 from dc_leaderboard() where played > 0));
+rollback;
+select public.expect_denied('direct dc entry insert -> denied', :bob::uuid,
+  $q$insert into dc_entries (user_id, day)
+     values ('22222222-2222-2222-2222-222222222222', current_date)$q$,
+  'permission denied');
+select public.expect_denied('a member cannot write the grouping', :bob::uuid,
+  $q$insert into dc_puzzle_groups (day, gidx, group_id, label, team_ids)
+     values (current_date, 3, 'x', 'x', array[1,2,3,4])$q$,
+  'permission denied');
+select public.expect_denied('anon cannot execute the dc board', null,
+  $q$select * from dc_leaderboard()$q$,
+  'permission denied');
+
+-- ---------------------------------------------------------------------------
 -- R2-D4 (0061): reactions — visibility rides the subject's own RLS.
 -- ---------------------------------------------------------------------------
 -- The hidden-pick case is the one that matters: reacting to a pick the blind

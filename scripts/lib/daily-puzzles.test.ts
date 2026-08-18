@@ -258,3 +258,145 @@ describe("buildChains", () => {
     }
   });
 });
+
+/* ---- Depth Chart's generator --------------------------------------------- */
+
+import { buildDepthChart, fillDisjoint } from "./daily-puzzles";
+import { validateGrid, type DcCategory } from "../../src/lib/depth-chart";
+
+/**
+ * A synthetic fact index shaped like the real one: many overlapping categories
+ * of a few kinds. The point of these tests is not that a particular grid comes
+ * out, it is that the generator RELIABLY produces fair ones — an unfair board
+ * is worse than no board, so the success rate is the number that matters.
+ */
+function syntheticFacts(count: number): { facts: DcCategory[]; kinds: Map<string, string> } {
+  const kindNames = ["lost_to", "beat", "conference_in", "state", "ap_top10"];
+  const facts: DcCategory[] = [];
+  const kinds = new Map<string, string>();
+  for (let i = 0; i < count; i++) {
+    const kind = kindNames[i % kindNames.length]!;
+    const id = `${kind}:${i}`;
+    const members = new Set<number>();
+    // Teams 1..120, drawn with an offset and stride so categories overlap the
+    // way real ones do rather than being disjoint by construction.
+    const size = 5 + (i % 8);
+    for (let j = 0; j < size; j++) members.add((((i * 7 + j * 13) % 120) + 1));
+    facts.push({ id, label: `Fact ${i}`, members });
+    kinds.set(id, kind);
+  }
+  return { facts, kinds };
+}
+
+describe("fillDisjoint", () => {
+  it("gives every category four members, none shared", () => {
+    const chosen: DcCategory[] = [
+      { id: "a", label: "a", members: new Set([1, 2, 3, 4, 5, 6]) },
+      { id: "b", label: "b", members: new Set([5, 6, 7, 8, 9]) },
+      { id: "c", label: "c", members: new Set([9, 10, 11, 12]) },
+      { id: "d", label: "d", members: new Set([13, 14, 15, 16]) },
+    ];
+    const picks = fillDisjoint(chosen, "seed")!;
+    expect(picks).not.toBeNull();
+    expect(picks.flat()).toHaveLength(16);
+    expect(new Set(picks.flat()).size).toBe(16);
+    picks.forEach((p, i) => p.forEach((t) => expect(chosen[i]!.members.has(t)).toBe(true)));
+  });
+
+  /**
+   * Most-constrained-first is what makes this work: category `c` has exactly
+   * four members and must take them, and a greedy fill in draw order would let
+   * `a` steal one and then fail.
+   */
+  it("lets a category with exactly four members take them", () => {
+    const chosen: DcCategory[] = [
+      { id: "a", label: "a", members: new Set([1, 2, 3, 4, 5, 6, 7, 8]) },
+      { id: "b", label: "b", members: new Set([5, 6, 7, 8, 9, 10, 11, 12]) },
+      { id: "c", label: "c", members: new Set([1, 2, 3, 4]) },
+      { id: "d", label: "d", members: new Set([13, 14, 15, 16]) },
+    ];
+    const picks = fillDisjoint(chosen, "seed")!;
+    expect(picks).not.toBeNull();
+    expect([...picks[2]!].sort((a, b) => a - b)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("returns null rather than a short group when it cannot be done", () => {
+    const chosen: DcCategory[] = [
+      { id: "a", label: "a", members: new Set([1, 2, 3, 4]) },
+      { id: "b", label: "b", members: new Set([1, 2, 3, 4]) },
+      { id: "c", label: "c", members: new Set([1, 2, 3, 4]) },
+      { id: "d", label: "d", members: new Set([1, 2, 3, 4]) },
+    ];
+    expect(fillDisjoint(chosen, "seed")).toBeNull();
+  });
+});
+
+describe("buildDepthChart", () => {
+  const { facts, kinds } = syntheticFacts(220);
+
+  it("produces a grid that passes its own validator", () => {
+    const { grid } = buildDepthChart("2026-08-18", facts, kinds);
+    expect(grid).not.toBeNull();
+    const chosen = grid!.groups.map((g) => facts.find((f) => f.id === g.id)!);
+    expect(validateGrid(grid!, chosen, facts).ok).toBe(true);
+  });
+
+  it("lays out sixteen distinct tiles", () => {
+    const { grid } = buildDepthChart("2026-08-18", facts, kinds);
+    expect(grid!.tiles).toHaveLength(16);
+    expect(new Set(grid!.tiles).size).toBe(16);
+    expect([...grid!.tiles].sort()).toEqual([...grid!.groups.flatMap((g) => g.teamIds)].sort());
+  });
+
+  it("is deterministic, so a repair run rebuilds the same board", () => {
+    const a = buildDepthChart("2026-08-18", facts, kinds);
+    const b = buildDepthChart("2026-08-18", facts, kinds);
+    expect(a.grid!.tiles).toEqual(b.grid!.tiles);
+    expect(a.grid!.groups.map((g) => g.id)).toEqual(b.grid!.groups.map((g) => g.id));
+  });
+
+  it("gives a different board on a different day", () => {
+    const a = buildDepthChart("2026-08-18", facts, kinds);
+    const b = buildDepthChart("2026-08-19", facts, kinds);
+    expect(a.grid!.groups.map((g) => g.id)).not.toEqual(b.grid!.groups.map((g) => g.id));
+  });
+
+  /** Four "lost to X in Y" groups is one puzzle wearing four hats. */
+  it("does not build a board out of one kind", () => {
+    for (let d = 1; d <= 20; d++) {
+      const { grid } = buildDepthChart(`2026-09-${String(d).padStart(2, "0")}`, facts, kinds);
+      if (!grid) continue;
+      const seen = new Map<string, number>();
+      for (const g of grid.groups) {
+        const k = kinds.get(g.id)!;
+        seen.set(k, (seen.get(k) ?? 0) + 1);
+      }
+      for (const n of seen.values()) expect(n).toBeLessThanOrEqual(2);
+    }
+  });
+
+  /**
+   * THE measurement. A generator that works most days and silently skips the
+   * rest drains the queue, and the queue floor only buys warning if the rate is
+   * high enough to keep it full. Measured over sixty days rather than asserted
+   * from one.
+   */
+  it("succeeds on the overwhelming majority of days", () => {
+    let ok = 0;
+    const days = 60;
+    for (let d = 0; d < days; d++) {
+      const day = new Date(Date.UTC(2026, 8, 1) + d * 86_400_000).toISOString().slice(0, 10);
+      if (buildDepthChart(day, facts, kinds).grid) ok += 1;
+    }
+    expect(ok / days).toBeGreaterThan(0.9);
+  });
+
+  it("reports why it failed, so a starving index says which knob to turn", () => {
+    // Three categories only: every attempt is short, and the reject histogram
+    // has to say so rather than reporting a bare failure.
+    const thin = facts.slice(0, 3);
+    const res = buildDepthChart("2026-08-18", thin, kinds, 5);
+    expect(res.grid).toBeNull();
+    expect(res.rejects.short).toBeGreaterThan(0);
+  });
+});

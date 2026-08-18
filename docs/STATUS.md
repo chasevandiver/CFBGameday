@@ -3378,10 +3378,46 @@ under it is being replaced by **three** games, tried side by side —
       red one, days before any player sees an empty screen. Rendezvous
       selection did not go away — it moved inside the generator, so the same
       day still yields the same puzzle for everyone.
-- [ ] **DC-1/2 — Depth Chart** (`/depth-chart`). Sixteen tiles, four hidden
-      groups of four, four mistakes. The build is the uniqueness validator: a
-      grid is only fair if exactly one partition satisfies it, and generating
-      categories from a fact index produces overlapping tiles constantly.
+- [x] **DC-1/2 — Depth Chart** (`/depth-chart`), 2026-08-18. Sixteen teams,
+      four hidden groups of four, four mistakes. Migration **0070**,
+      `src/lib/depth-chart.ts` (pure) + `depth-chart-data.ts`,
+      `scripts/lib/dc-facts.ts`, `/api/depth-chart`, `/depth-chart`,
+      `DepthChartPlay`.
+      **The only one of the three with a real hidden answer.** The Tape and
+      Chains both name what they are about, so neither can promise secrecy —
+      every fact in them is public. Here the hidden thing is not a fact but a
+      GROUPING, and no amount of looking up tells you which four categories
+      today's sixteen tiles were drawn from.
+      **The validator is the whole build.** A grid is fair only if exactly one
+      partition satisfies it. `countPartitions` decides that exactly, as a DFS
+      over (tile, remaining capacity per group) — 16 x 5⁴ states, sub-
+      millisecond, and it runs at generation. It early-exits at two; caching a
+      truncated count is safe because a truncated value is always ≥ the limit,
+      so the answer is exact below it and "at least two" above, which is the
+      question being asked. Tested against the case a naive "any tile in two
+      categories is ambiguous" heuristic gets wrong: an overlap the capacities
+      still resolve.
+      **The external-ambiguity promise is bounded and written into 0070's
+      header**: no fact stored in `dc_facts` covers exactly four of the sixteen
+      tiles beyond the intended four. A player may always notice that four of
+      them are in Ohio; NYT's Connections has the same hole. If that proves too
+      weak, the fix is to widen the index, not to weaken the validator.
+      **One refinement was needed to make it usable at all** — see the
+      changelog. Rejecting on the count alone threw away about three quarters of
+      otherwise-fair grids, because a dense index almost always has some fact
+      lying exactly over one of the chosen groups. A rival whose four tiles ARE
+      an intended group is corroboration, not ambiguity.
+      Facts are materialised rather than evaluated, so the owner can read
+      `dc_facts` and see exactly what the game believes. `conference_in` reads
+      `games.home_conference` (BF-2, alignment at kickoff) and never
+      `teams.conference` — "were in the Big 12 in 2016" from today's alignment
+      would list Texas and omit Missouri, which is the most obviously wrong
+      thing this game could say.
+      A day the generator cannot solve is a MISSING day, not an unfair one: an
+      unfair board marks a correct player wrong, which is worse than the problem
+      being fixed. The queue floor turns a run of those into a red job days
+      before anyone sees a gap. Generator success rate is pinned by a test over
+      sixty days.
 - [x] **CHAIN-1/2 — Chains** (`/chains`), 2026-08-18. A fixed daily run of
       higher-or-lower over the archive: two games side by side, which had more
       points / was won by more / had the bigger favourite. Keep calling until

@@ -31,6 +31,7 @@ describe("gamesHubRows — ordering", () => {
     expect(gamesHubRows(s).map((r) => r.id)).toEqual([
       "streak",
       "tape",
+      "depth-chart",
       "chains",
       "guess-game",
       "guess-lines",
@@ -48,7 +49,7 @@ describe("gamesHubRows — ordering", () => {
   });
 
   it("always returns every game, in every state", () => {
-    expect(gamesHubRows(EMPTY_HUB_STATE)).toHaveLength(6);
+    expect(gamesHubRows(EMPTY_HUB_STATE)).toHaveLength(7);
   });
 });
 
@@ -193,5 +194,41 @@ describe("gamesHubRows — Chains", () => {
 
   it("is never outstanding for a signed-out viewer", () => {
     expect(chainsRow({ length: 0 }, false).outstanding).toBe(false);
+  });
+});
+
+describe("gamesHubRows — Depth Chart", () => {
+  const dcRow = (over: Partial<GamesHubState["depthChart"]>, signedIn = true) =>
+    gamesHubRows({
+      ...EMPTY_HUB_STATE,
+      signedIn,
+      depthChart: { hasToday: true, solved: 0, mistakes: 0, done: false, ...over },
+    }).find((r) => r.id === "depth-chart")!;
+
+  it("a day with no board reads 'no board', not 'not played'", () => {
+    const row = gamesHubRows({ ...EMPTY_HUB_STATE, signedIn: true }).find(
+      (r) => r.id === "depth-chart",
+    )!;
+    expect(row.state).toBe("No board today");
+    expect(row.outstanding).toBe(false);
+  });
+
+  it("shows progress mid-board", () => {
+    expect(dcRow({ solved: 2, mistakes: 1 }).state).toBe("2 of 4 found");
+  });
+
+  /** A cleared board and a lost one must not read the same. */
+  it("distinguishes clearing it from running out", () => {
+    expect(dcRow({ solved: 4, mistakes: 1, done: true }).state).toBe("Cleared it, 1 off");
+    expect(dcRow({ solved: 2, mistakes: 4, done: true }).state).toBe("2 of 4");
+  });
+
+  it("stays outstanding until the board is finished", () => {
+    expect(dcRow({ solved: 3 }).outstanding).toBe(true);
+    expect(dcRow({ solved: 4, done: true }).outstanding).toBe(false);
+  });
+
+  it("is never outstanding for a signed-out viewer", () => {
+    expect(dcRow({}, false).outstanding).toBe(false);
   });
 });
