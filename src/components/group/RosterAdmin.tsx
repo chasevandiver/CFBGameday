@@ -11,7 +11,7 @@ import {
   setGroupRole,
   type GroupCandidate,
 } from "../../app/actions/groups";
-import type { GroupMemberView } from "../../lib/groups";
+import { joinedLabel, type GroupMemberView } from "../../lib/groups";
 
 /**
  * Roster management. The last-admin rule is enforced in the database (a
@@ -56,6 +56,10 @@ export function RosterAdmin({
               <span className="ml-1.5 text-[10px] uppercase tracking-wider text-chalk/40">
                 {m.role}
               </span>
+              {/* Said here as well as on the group page: this is the screen the
+                  admin is standing on when they add somebody, so it is where
+                  "it worked" has to be legible. */}
+              <span className="stat ml-1.5 text-[11px] text-chalk/45">{joinedLabel(m.joinedAt)}</span>
             </span>
             {viewerIsAdmin && (
               <span className="flex shrink-0 gap-1.5">

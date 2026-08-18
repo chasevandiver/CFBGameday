@@ -6,6 +6,7 @@ import { BettingHome } from "./BettingHome";
 import { SurvivorHome } from "./SurvivorHome";
 import { GroupArcade } from "../../../components/games/GroupArcade";
 import { GroupSwitcher, JoinCode } from "../../../components/group/GroupForms";
+import { GroupRoster } from "../../../components/group/GroupRoster";
 import { MemberCard, WeekHero } from "../../../components/group/GroupHub";
 import type { PickRow } from "../../../lib/db-types";
 import { buildGroupShareContext, type MyWeekPick } from "../../../lib/group-share";
@@ -256,7 +257,10 @@ export default async function GroupHomePage({
           <h1 className="text-2xl">{active.name}</h1>
           <p className="stat flex items-center gap-1.5 text-xs text-chalk/50">
             <Users size={12} aria-hidden />
-            {members.length} {members.length === 1 ? "member" : "members"}
+            {/* The count was a dead end — it said how many and never who. */}
+            <a href="#members" className="hover:text-chalk hover:underline">
+              {members.length} {members.length === 1 ? "member" : "members"}
+            </a>
             {active.visibility === "public" ? " · public" : " · members only"}
           </p>
         </div>
@@ -329,6 +333,13 @@ export default async function GroupHomePage({
             ))}
           </ul>
         </section>
+
+        <GroupRoster
+          members={members}
+          viewerId={user?.id ?? null}
+          slug={slug}
+          isAdmin={active.role === "admin"}
+        />
 
         {/* ---- the arcade ---- */}
         <GroupArcade
