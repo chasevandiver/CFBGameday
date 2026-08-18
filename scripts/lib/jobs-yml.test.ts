@@ -203,4 +203,24 @@ describe("jobs.yml scheduler wiring", () => {
     expect(resolve("0 17 * * 2")).toBe("six-pack");
     expect(resolve("30 14 * * 0,1")).toBe("six-pack");
   });
+
+  /**
+   * Q1's escape hatch. Two properties, and the second is the one worth a test:
+   * a readiness gate that can override itself on a schedule is not a gate, so
+   * `preseason-force` must stay reachable by hand and unreachable by cron —
+   * exactly the shape asserted for backfill-games above.
+   */
+  it("keeps preseason-force dispatchable, unscheduled, and the only task that overrides the gate", () => {
+    expect(dispatchOptions()).toContain("preseason-force");
+    expect(resolveBranches().some((b) => b.task === "preseason-force")).toBe(false);
+
+    const run = YML.split('case "${{ steps.task.outputs.task }}" in')[1].split("\n            *)")[0];
+    // The daily job and the season's first load must not carry --force. The
+    // branch is shared, so the flag is set from the task name inside it;
+    // pinning both halves is what stops a future edit from hoisting it.
+    expect(run).toContain('if [ "${{ steps.task.outputs.task }}" = "preseason-force" ]; then');
+    expect(run).toContain('FORCE="--force"');
+    expect(run).toContain("build-preseason.ts --check $FORCE");
+    expect(run).not.toContain("build-preseason.ts --check --force");
+  });
 });

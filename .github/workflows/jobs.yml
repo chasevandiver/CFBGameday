@@ -104,6 +104,14 @@ on:
           # append-only tables (line_snapshots, predictions) too. Running this
           # twice duplicates them, so it is dispatch-only and never scheduled.
           - preseason-bootstrap
+          # The Q1 escape hatch (docs/STATUS.md §3): preseason-refresh with the
+          # readiness gate overridden, for the deliberate decision to ship a
+          # build on last season's talent rather than open the season on a
+          # rating four versions behind. Never scheduled — a gate that can
+          # override itself on a cron is not a gate. It ships a degraded
+          # rating on purpose and says so on /model, which is the whole reason
+          # it is a separate task name rather than a flag on the daily job.
+          - preseason-force
           # Push: one nudge before the week's first kickoff, to members with
           # picks still open. Lead time lives in notification_settings and is
           # edited from /admin, not here.
@@ -520,11 +528,22 @@ jobs:
             # build with nobody told. Red here means a human decision is due:
             # build on last year's talent deliberately, or launch on the
             # current ratings with a visible note.
-            preseason-refresh|preseason-bootstrap)
+            #
+            # preseason-force is the same sequence with the gate overridden
+            # (Q1). --force makes --check print every problem and still exit 0,
+            # so the decline branch below is skipped by construction rather
+            # than by a second copy of this block. Unquoted on purpose: empty
+            # must expand to no argument at all.
+            preseason-refresh|preseason-bootstrap|preseason-force)
               DIR="$RUNNER_TEMP/preseason"
-              if ! npx tsx scripts/build-preseason.ts --check --out "$DIR-check"; then
+              FORCE=""
+              if [ "${{ steps.task.outputs.task }}" = "preseason-force" ]; then
+                FORCE="--force"
+                echo "::warning::preseason-force — building on whatever CFBD has published, gate overridden. The rating ships with a stale-talent note on /model."
+              fi
+              if ! npx tsx scripts/build-preseason.ts --check $FORCE --out "$DIR-check"; then
                 if [ "$(date -u +%m)" = "08" ] && [ "$(date -u +%d)" -ge 20 ]; then
-                  echo "::error::preseason inputs STILL not ready with openers on Aug 29 — a decision is due: deliberate stale-talent build, or launch on current ratings"
+                  echo "::error::preseason inputs STILL not ready with openers on Aug 29 — a decision is due: dispatch preseason-force for a deliberate stale-talent build, or launch on the current ratings"
                   exit 1
                 fi
                 echo "::notice::preseason inputs not ready — nothing loaded"

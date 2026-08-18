@@ -1,5 +1,15 @@
 import { AppNav } from "../../components/AppNav";
-import { MODEL_VERSION } from "../../model/ratings";
+import { DEFAULT_PARAMS, MODEL_VERSION } from "../../model/ratings";
+import { required } from "../../lib/db-result";
+import { fetchCurrentSeasonWeek } from "../../lib/queries";
+import { createClient } from "../../lib/supabase/server";
+import { talentProvenance } from "../../lib/talent-provenance";
+
+// One read, and it is the reason this page stopped being fully static: a
+// preseason build that fell back to last season's talent file has to say so
+// here, on the page that claims to explain what the number is made of. See
+// src/lib/talent-provenance.ts and docs/STATUS.md Q1.
+export const dynamic = "force-dynamic";
 
 export const metadata = { title: "The Model" };
 
@@ -31,7 +41,18 @@ const DECISIONS: Array<{ idea: string; verdict: "shipped" | "rejected"; number: 
   { idea: "Treat flagged edges as bets", verdict: "rejected", number: "b₁ = 0.035 (t=0.84); 49.2% ATS vs close" },
 ];
 
-export default function ModelPage() {
+export default async function ModelPage() {
+  const supabase = await createClient();
+  const { seasonId } = await fetchCurrentSeasonWeek(supabase);
+  // `required`, not a dropped error: a failed read here would render the page
+  // with no note, which is indistinguishable from a rating built on the real
+  // file. That is the exact shape db-result.ts exists to stop.
+  const components = required(
+    await supabase.from("preseason_components").select("detail").eq("season_id", seasonId),
+    "preseason components",
+  );
+  const talent = talentProvenance(components);
+
   return (
     <>
       <AppNav />
@@ -45,6 +66,24 @@ export default function ModelPage() {
           Every prediction is stamped with the model version that made it, so a season record
           attributes to a specific model — not a moving target.
         </p>
+
+        {talent.stale && (
+          <section className="card mb-6 p-4">
+            <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-sm text-accent">
+                Built on the {talent.source ?? "previous"} talent file
+              </h2>
+              <span className="chip bg-chalk/10 text-chalk/60">{talent.teams} teams</span>
+            </div>
+            <p className="text-sm text-dim">
+              CFBD had not published the {seasonId} team-talent composite when these ratings were
+              built, so no incoming recruiting class is in the number. Talent is{" "}
+              {DEFAULT_PARAMS.talentWeight.toFixed(2)} of a preseason rating — roughly a point or
+              two per team, and shrinking every week as results replace the prior. The note clears
+              itself the next time the ratings rebuild on the real file.
+            </p>
+          </section>
+        )}
 
         <section className="card mb-6 p-4">
           <h2 className="mb-3 text-sm text-accent">Current parameters</h2>

@@ -5,6 +5,7 @@ import {
   formatProbe,
   probeEmpties,
   probeFailures,
+  talentReadiness,
   type ProbeResult,
 } from "./probe";
 
@@ -120,5 +121,50 @@ describe("formatProbe", () => {
 
   it("renders a note on its own line when there is one", () => {
     expect(formatProbe([result({ note: "Tier 1+." })])).toContain("↳ Tier 1+.");
+  });
+});
+
+// The question the daily job could not answer in words: is the 2026 talent
+// file late, or is our read of it broken? Both produce an empty array at the
+// call site, and the two have nothing in common as problems.
+describe("talentReadiness", () => {
+  const ok = (rows: number) => ({ status: "OK" as const, rows });
+  const empty = { status: "EMPTY" as const, rows: 0 };
+  const seasons = { current: 2026, past: 2025 };
+
+  it("says published, and that no decision is due, once the file lands", () => {
+    const v = talentReadiness(ok(138), ok(136), ok(133), seasons);
+    expect(v.level).toBe("published");
+    expect(v.message).toContain("138");
+  });
+
+  it("says unpublished when the current year is empty and a completed one is not", () => {
+    const v = talentReadiness(empty, ok(136), ok(133), seasons);
+    expect(v.level).toBe("unpublished");
+    // The control is what licenses the claim, so it has to be in the sentence.
+    expect(v.message).toContain("2025 returns 136 rows");
+    expect(v.message).toContain("recruiting classes ARE published");
+  });
+
+  it("still says unpublished when the recruiting classes are missing too", () => {
+    const v = talentReadiness(empty, ok(136), empty, seasons);
+    expect(v.level).toBe("unpublished");
+    expect(v.message).toContain("raw material is not in either");
+  });
+
+  it("calls a route that is empty for a COMPLETED season broken, not late", () => {
+    // The case the whole product had assumed away: every fallback downstream
+    // would read this as "CFBD has not published 2026" forever.
+    const v = talentReadiness(empty, empty, ok(133), seasons);
+    expect(v.level).toBe("broken");
+    expect(v.message).toContain("wrong diagnosis");
+  });
+
+  it("never calls a denial or an outage a publication delay", () => {
+    for (const status of ["DENIED", "ERROR"] as const) {
+      const v = talentReadiness({ status, rows: null }, ok(136), ok(133), seasons);
+      expect(v.level).toBe("broken");
+      expect(v.message).toContain("NOT a publication delay");
+    }
   });
 });
