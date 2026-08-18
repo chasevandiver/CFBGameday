@@ -11,6 +11,8 @@ import type { MarkTeam } from "./slate/TeamMark";
 
 interface TapeState {
   day: string;
+  /** Practice only: which stored round this is. */
+  practiceId?: number;
   fixture: {
     season: number;
     week: number;
@@ -44,11 +46,24 @@ interface TapeState {
  * a client derives is state a client can be talked out of.
  */
 export function TapePlay({
-  crests,
+  crests: initialCrests,
+  practice = false,
 }: {
   /** Crest art by team id, so the fixture reads the way the rest of the app draws one. */
   crests: Record<number, { school: string; abbr: string; color: string | null; logo: string | null }>;
+  /**
+   * Unscored mode (PRAC-1). The only differences are the endpoint and who holds
+   * progress — the practice route returns the SAME payload shape, which is why
+   * this is a flag rather than a second component. A near-copy of a board is how
+   * practice ends up practising a slightly different game.
+   */
+  practice?: boolean;
 }) {
+  const endpoint = practice ? "/api/tape/practice" : "/api/tape";
+  /* Practice is stateless on the server, so the choices live here and are
+     re-graded server-side on every submit. Safe because nothing is scored. */
+  const [choices, setChoices] = useState<string[]>([]);
+  const [crests, setCrests] = useState(initialCrests);
   const [state, setState] = useState<TapeState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -60,35 +75,64 @@ export function TapePlay({
 
   useEffect(() => {
     let live = true;
-    fetch("/api/tape")
+    fetch(endpoint)
       .then(async (r) => ({ ok: r.ok, body: await r.json() }))
       .then(({ ok, body }) => {
         if (!live) return;
-        if (ok) setState(body as TapeState);
-        else setError((body as { error?: string }).error ?? "Could not load today's round");
+        if (ok) {
+          setState(body as TapeState);
+          if ((body as { crests?: typeof initialCrests }).crests) {
+            setCrests((body as { crests: typeof initialCrests }).crests);
+          }
+        } else {
+          setError((body as { error?: string }).error ?? "Could not load the round");
+        }
       })
-      .catch(() => live && setError("Could not load today's round"));
+      .catch(() => live && setError("Could not load the round"));
     return () => {
       live = false;
     };
-  }, []);
+  }, [endpoint]);
 
   const answer = (choice: string) => {
     if (!state?.current || pending) return;
     const idx = state.current.idx;
+    const next = [...choices, choice];
     setError(null);
     startTransition(async () => {
-      const res = await fetch("/api/tape", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ idx, choice }),
+        body: JSON.stringify(
+          practice
+            ? { id: state.practiceId, choices: next }
+            : { idx, choice },
+        ),
       });
       const body = await res.json();
       if (res.ok) {
         setJustAnswered(idx);
+        if (practice) setChoices(next);
         setState(body as TapeState);
       } else {
         setError((body as { error?: string }).error ?? "That did not go through");
+      }
+    });
+  };
+
+  /** A fresh unscored round. Practice only. */
+  const nextRound = () => {
+    setChoices([]);
+    setJustAnswered(null);
+    setError(null);
+    startTransition(async () => {
+      const res = await fetch(endpoint);
+      const body = await res.json();
+      if (res.ok) {
+        setState(body as TapeState);
+        if ((body as { crests?: typeof initialCrests }).crests) {
+          setCrests((body as { crests: typeof initialCrests }).crests);
+        }
       }
     });
   };
@@ -184,7 +228,26 @@ export function TapePlay({
         </p>
       )}
 
-      {state.done && (
+      {state.done && practice && (
+        <section className="card gtg-slide-up px-4 py-5 text-center">
+          <p className="display text-lg text-chalk">
+            {state.correct === TAPE_QUESTIONS
+              ? "Clean sheet"
+              : `${state.correct} of ${TAPE_QUESTIONS}`}
+          </p>
+          <p className="mt-1 text-xs text-dim">Practice — nothing recorded.</p>
+          <button
+            type="button"
+            onClick={nextRound}
+            disabled={pending}
+            className="mt-4 min-h-11 rounded-lg bg-accent px-5 text-sm font-semibold text-accent-ink transition-opacity focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:opacity-40"
+          >
+            Another round
+          </button>
+        </section>
+      )}
+
+      {state.done && !practice && (
         <section className="card gtg-slide-up px-4 py-5 text-center">
           <p className="display text-lg text-chalk">
             {state.correct === TAPE_QUESTIONS

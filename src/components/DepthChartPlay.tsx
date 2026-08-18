@@ -15,6 +15,8 @@ interface SolvedGroup {
 
 interface DcState {
   day: string;
+  /** Practice only: which stored board this is. */
+  practiceId?: number;
   tiles: number[];
   solved: SolvedGroup[];
   mistakes: number;
@@ -39,10 +41,22 @@ interface DcState {
  * to leak — the same structural guarantee the other two games rely on.
  */
 export function DepthChartPlay({
-  crests,
+  crests: initialCrests,
+  practice = false,
 }: {
   crests: Record<number, { school: string; abbr: string; color: string | null; logo: string | null }>;
+  /**
+   * Unscored mode (PRAC-1). These boards come out of the same generator and the
+   * same validator as the dailies, so a practice board is exactly as fair — the
+   * only differences are the endpoint and that nothing is recorded.
+   */
+  practice?: boolean;
 }) {
+  const endpoint = practice ? "/api/depth-chart/practice" : "/api/depth-chart";
+  /* Every four submitted so far. Practice replays them server-side, so which
+     groups are solved is the server's conclusion rather than a client claim. */
+  const [submitted, setSubmitted] = useState<number[][]>([]);
+  const [crests, setCrests] = useState(initialCrests);
   const [state, setState] = useState<DcState | null>(null);
   const [picked, setPicked] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -52,18 +66,24 @@ export function DepthChartPlay({
 
   useEffect(() => {
     let live = true;
-    fetch("/api/depth-chart")
+    fetch(endpoint)
       .then(async (r) => ({ ok: r.ok, body: await r.json() }))
       .then(({ ok, body }) => {
         if (!live) return;
-        if (ok) setState(body as DcState);
-        else setError((body as { error?: string }).error ?? "Could not load today's board");
+        if (ok) {
+          setState(body as DcState);
+          if ((body as { crests?: typeof initialCrests }).crests) {
+            setCrests((body as { crests: typeof initialCrests }).crests);
+          }
+        } else {
+          setError((body as { error?: string }).error ?? "Could not load the board");
+        }
       })
-      .catch(() => live && setError("Could not load today's board"));
+      .catch(() => live && setError("Could not load the board"));
     return () => {
       live = false;
     };
-  }, []);
+  }, [endpoint]);
 
   const toggle = (id: number) => {
     if (pending || state?.done) return;
@@ -73,17 +93,24 @@ export function DepthChartPlay({
   };
 
   const submit = () => {
-    if (picked.length !== 4 || pending) return;
+    if (picked.length !== 4 || pending || !state) return;
+    const practiceId = state.practiceId;
     setError(null);
     startTransition(async () => {
-      const res = await fetch("/api/depth-chart", {
+      const nextGuesses = [...submitted, picked];
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ teamIds: picked }),
+        body: JSON.stringify(
+          practice
+            ? { id: practiceId, guesses: nextGuesses }
+            : { teamIds: picked },
+        ),
       });
       const body = await res.json();
       if (res.ok) {
         const next = body as DcState;
+        if (practice) setSubmitted(nextGuesses);
         setState(next);
         setPicked([]);
         if (next.lastVerdict && next.lastVerdict !== "correct") {
@@ -210,7 +237,34 @@ export function DepthChartPlay({
                 : `Cleared it, ${state.mistakes} off`
               : "Out of mistakes"}
           </p>
-          <div className="mt-3 flex items-center justify-center gap-4 text-xs text-dim">
+          {practice && (
+            <>
+              <p className="mt-1 text-xs text-dim">Practice — nothing recorded.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSubmitted([]);
+                  setPicked([]);
+                  setError(null);
+                  startTransition(async () => {
+                    const res = await fetch(endpoint);
+                    const body = await res.json();
+                    if (res.ok) {
+                      setState(body as DcState);
+                      if ((body as { crests?: typeof initialCrests }).crests) {
+                        setCrests((body as { crests: typeof initialCrests }).crests);
+                      }
+                    }
+                  });
+                }}
+                disabled={pending}
+                className="mt-4 min-h-11 rounded-lg bg-accent px-5 text-sm font-semibold text-accent-ink transition-opacity focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:opacity-40"
+              >
+                Another board
+              </button>
+            </>
+          )}
+          <div className={`mt-3 flex items-center justify-center gap-4 text-xs text-dim${practice ? " hidden" : ""}`}>
             <span className="stat">Streak {state.stats.streak}</span>
             <span className="stat">Best {state.stats.bestStreak}</span>
             <span className="stat">

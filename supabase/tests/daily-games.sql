@@ -380,6 +380,62 @@ select public.expect_denied('anon cannot execute the dc board', null,
   'permission denied');
 
 -- ---------------------------------------------------------------------------
+-- PRAC-1 (0071): practice pools. Each payload is an answer key, so none of the
+-- three is readable by a member — the practice routes are the only readers.
+-- ---------------------------------------------------------------------------
+
+\echo '# practice pools: the payloads are answer keys'
+\o /dev/null
+insert into tape_practice (game_id, payload)
+values (404, '{"questions":[{"kind":"winner","prompt":"Who won?","choices":["Alabama","Michigan"],"answer":"Alabama"}]}');
+insert into chains_practice (seed, payload)
+values ('practice:0', '{"deck":[{"kind":"margin","answer":"left","leftValue":28,"rightValue":3}]}');
+insert into dc_practice (seed, payload)
+values ('practice:0', '{"groups":[{"id":"a","label":"Lost to Georgia in 2022","teamIds":[1,2,3,4]}],"tiles":[1,2,3,4]}');
+\o
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.chk('a member cannot read the tape practice pool',
+    not exists (select 1 from tape_practice));
+  select pg_temp.chk('nor the chains practice pool',
+    not exists (select 1 from chains_practice));
+  select pg_temp.chk('nor the depth chart practice pool',
+    not exists (select 1 from dc_practice));
+rollback;
+begin;
+  select test_as_anon();
+  select pg_temp.chk('and anon cannot either',
+    not exists (select 1 from tape_practice)
+    and not exists (select 1 from chains_practice)
+    and not exists (select 1 from dc_practice));
+rollback;
+
+\echo '# practice pools: members cannot write them'
+select public.expect_denied('member cannot mint a tape practice round', :bob::uuid,
+  $q$insert into tape_practice (game_id, payload) values (403, '{}')$q$,
+  'permission denied');
+select public.expect_denied('member cannot mint a chains practice round', :bob::uuid,
+  $q$insert into chains_practice (seed, payload) values ('x', '{}')$q$,
+  'permission denied');
+select public.expect_denied('member cannot mint a dc practice board', :bob::uuid,
+  $q$insert into dc_practice (seed, payload) values ('x', '{}')$q$,
+  'permission denied');
+
+\echo '# practice pools: a top-up cannot duplicate a round'
+begin;
+  do $$
+  begin
+    insert into chains_practice (seed, payload) values ('practice:0', '{}');
+    raise notice 'FAIL  a repeated seed is refused (no error raised)';
+  exception
+    when unique_violation then
+      raise notice 'PASS  a repeated seed is refused -> %', sqlerrm;
+    when others then
+      raise notice 'FAIL  a repeated seed is refused (wrong error: %)', sqlerrm;
+  end $$;
+rollback;
+
+-- ---------------------------------------------------------------------------
 -- R2-D4 (0061): reactions — visibility rides the subject's own RLS.
 -- ---------------------------------------------------------------------------
 -- The hidden-pick case is the one that matters: reacting to a pick the blind
