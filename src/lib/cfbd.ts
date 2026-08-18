@@ -183,6 +183,24 @@ export interface CfbdTalent {
   talent: number;
 }
 
+/**
+ * Recruiting class points per team-season (`/recruiting/teams`).
+ *
+ * Not an input to any rating today. It exists because `/talent` — which IS an
+ * input, at weight 0.30 — is a *derived* file: CFBD computes the roster talent
+ * composite from recruiting ratings and publishes it on its own schedule, with
+ * no commitment about when. This endpoint is the raw material that composite is
+ * built from, so probing it answers the question a `/talent` outage cannot:
+ * "is the underlying data there and only the composite missing, or is neither
+ * published?" Read by `probe-cfbd.ts`; see docs/STATUS.md Q1.
+ */
+export interface CfbdRecruitingTeam {
+  year: number;
+  rank: number | null;
+  team: string;
+  points: number | null;
+}
+
 export interface CfbdSpRating {
   year: number;
   team: string;
@@ -369,6 +387,10 @@ export const cfbd = {
     get<CfbdReturningProduction[]>("/player/returning", { year, team }),
 
   talent: (year: number) => get<CfbdTalent[]>("/talent", { year }),
+
+  /** The composite's raw material — see CfbdRecruitingTeam. Probe-only. */
+  recruitingTeams: (year: number) =>
+    get<CfbdRecruitingTeam[]>("/recruiting/teams", { year }),
 
   spRatings: (year: number) => get<CfbdSpRating[]>("/ratings/sp", { year }),
   eloRatings: (year: number, week?: number) => get<CfbdEloRating[]>("/ratings/elo", { year, week }),

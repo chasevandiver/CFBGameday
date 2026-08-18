@@ -169,6 +169,90 @@ shipping it.
 
 ## Log
 
+### Aug 18 — the talent gate: an instrument, and an override
+
+**The question was "which CFBD feed are we waiting on?" and the product could
+not answer it.** It could answer the consequence — `build-preseason --check`
+prints one line per failing gate, and the Aug 17 11:15 UTC `preseason-refresh`
+printed exactly one, `talent: 2026 not published, using 2025` — but nothing
+anywhere printed a row count for `/talent`, and the difference matters. Five of
+the six gates were green (returning production, portal, coaches, week-1 lines,
+the ≥10 cross-tier games the tier recentre needs) and the build reached a full
+138-team board on the 2025 file before refusing to load it. So the wait is one
+file wide, and that was reconstructed from a workflow log rather than read off
+an instrument.
+
+**CFBD-1 — the access probe never looked at the inputs.** `probe-cfbd.ts`
+covered 11 endpoints and none of them was `/talent`, `/player/returning`,
+`/player/portal` or `/coaches`. Not an oversight so much as a category error:
+the probe answers *tier* questions, and those four need no paid tier, so they
+were never in scope. The cost is that "CFBD has not published it" was an
+inference. A sound one — `cfbd.ts:69` throws on any non-2xx, so a renamed route
+or a revoked key turns the job red rather than printing "not published" — but
+it is reasoning nobody re-derives on a Tuesday morning, and it has one hole:
+`/talent` empty for a *completed* season would print the same sentence forever.
+
+Now a second table, six calls, probed at SEASON where the access table is
+probed at SEASON−1 — because in the readiness table EMPTY is the answer, not a
+fault. Two of the six are controls rather than inputs: `/talent` at SEASON−1
+proves the route works, and `/recruiting/teams` at SEASON says whether the
+composite's raw material is in while the composite is not. `talentReadiness`
+(pure, 6 tests) turns the three into one of three verdicts, and the gating is
+the point: **broken is red, unpublished is green.** Waiting out a bug and
+waiting out CFBD must not produce the same coloured run — the same rule that
+killed `emptyIsHealthy` and the 20-byte backup artifact. Probe cost 11 → 17
+calls, against a 30,000/month budget running near 10,000.
+
+**CFBD-2 — Q1's override, wired before it is needed.** `--check --force` prints
+every problem and exits 0 anyway; the new `preseason-force` task runs the whole
+sequence (gate, build, load). Dispatch-only and pinned by a test: a readiness
+gate that can override itself on a cron is not a gate. The daily job and
+`preseason-bootstrap` share the branch and must not carry the flag, so the test
+asserts both halves.
+
+A forced build ships a knowingly degraded rating, which is only defensible if
+it says so where people read it. Every `preseason_components.detail` now
+carries `talent_source` and `talent_stale`; `/model` renders a note off them
+and a rebuild on the real file clears it. `talentProvenance` only ever renders
+the affirmative — rows written before the stamp exists (production's 2026.2.0
+build, every backfill) carry neither field, and absence has to read as unknown.
+Inferring "fresh" from silence is the defect this repo keeps finding; it is not
+being introduced on the page whose job is provenance. 7 tests, and `/model`
+goes dynamic for one indexed read — `required()`, because a dropped error there
+would render a page with no note, which is exactly what a healthy build looks
+like.
+
+**CFBD-3 — Q1 answered yes, same day, and dated into the job.** Owner call. The
+override stops being a thing somebody has to remember: from **Aug 22**
+`preseason-refresh` carries `--force` itself and loads the best build available.
+`preseason-force` stays for doing it sooner by hand.
+
+The ladder was notice (quiet green through Aug 19) → alarm (red from Aug 20) →
+nothing. The missing rung was a human seeing a red run on the right morning,
+which is the failure this checkpoint's own instruction warns about: *do not let
+this get decided by silence*. A date is that decision recorded once instead of
+re-made every morning, and it is safe for the same reason `--force` was cheap to
+build: it changes no number. On a day CFBD has published, the flag is inert and
+this is an ordinary refresh. On any other day the build carries last season's
+talent, says so on `/model`, and a later refresh overwrites it in place —
+`ratings` and `preseason_components` are both keyed on `(season, team)`, so the
+good build lands on top and rewrites `talent_stale` to false with no cleanup.
+
+`preseason-bootstrap` is excluded by name, because it writes the append-only
+tables and a season's first load is not something a date should decide. The test
+reads the condition rather than the flag, so hoisting `--force` onto the shared
+invocation fails it.
+
+One consequence worth stating plainly, because it bounds everything above: the
+window closes at the first final. `load-preseason` refuses a season with
+completed games, `ratings-update` owns the numbers from then on, and the last
+automatic chance to pick up real talent is the **Aug 27 11:00 UTC** refresh.
+Talent published in September does not get loaded at all.
+
+**No model change.** No parameter moved, and `--force` changes no number — the
+build already falls back. What changed is whether the gate stops the load, and
+whether the fallback is visible afterwards.
+
 ### Aug 18 — GTG-9 + GTG-10: the two chips and the streak get real data
 
 The redesign below shipped with two holes it was honest about: two of the
@@ -5785,12 +5869,22 @@ and signed-error reporting; nine backtest tuners.
   team-HFA blend, the tier recentre — is dark until a rebuild lands. Until it
   does, production is pricing every cross-classification opener ~10 points
   toward the G5.
-- **2026 talent is unpublished**, which is what the rebuild is waiting on.
-  `build-preseason` silently falls back to 2025, so a build today would carry
-  **no incoming recruiting class**. `--check` catches this and refuses; the
-  daily `preseason-refresh` job retries until CFBD publishes. **No manual step
-  is required** — but if it is still red by ~Aug 26, that is worth looking at,
-  because the openers are Aug 29.
+- **2026 talent is unpublished**, which is what the rebuild is waiting on —
+  **and it is the only thing.** Confirmed against the Aug 17 11:15 UTC run:
+  `--check` prints one line per failing gate and printed one. Returning
+  production, portal, coaches, week-1 lines and the tier recentre are all live,
+  and the build reaches a full 138-team board on the 2025 talent file before
+  refusing to load it. `build-preseason` silently falls back to 2025, so a
+  build today would carry **no incoming recruiting class**. `--check` catches
+  this and refuses; the daily `preseason-refresh` job retries until CFBD
+  publishes. **No manual step is required** — but if it is still red by ~Aug 26,
+  that is worth looking at — except it no longer waits for anyone: **Q1 was
+  answered yes on Aug 18 and dated into the job**, so from Aug 22 the daily
+  refresh loads the best build available instead of declining. `preseason-force`
+  does it sooner by hand.
+  Since Aug 18 `cfbd-probe` also prints a row count per preseason input, so
+  which feed is late is a number on the run rather than an inference from a
+  fallback message.
 - ~~**`supabase/functions/jobs/index.ts` is dead and drifted**~~ — **deleted
   2026-08-13** (Q7). This entry said it was "left untouched deliberately" and
   went stale the day the file went: it had inverted CLV in all four branches

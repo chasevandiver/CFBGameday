@@ -27,6 +27,21 @@
  *
  * Usage: npx tsx scripts/build-preseason.ts [--out DIR] [--top N]
  *        npx tsx scripts/build-preseason.ts --check    # readiness only, no files
+ *        npx tsx scripts/build-preseason.ts --check --force   # accept the fallbacks
+ *
+ * `--force` is the Q1 escape hatch (docs/STATUS.md §3): it makes `--check`
+ * report every problem and still exit 0, so a deliberate build on last year's
+ * talent can ship rather than the season opening on a rating four versions
+ * behind. It changes nothing about the numbers — the build already falls back
+ * — it changes only whether the gate stops the load. What ships is recorded:
+ * every `preseason_components.detail` carries `talent_source` and
+ * `talent_stale`, and `/model` reads them, so a forced build announces itself
+ * in the product instead of living in a workflow log.
+ *
+ * **Not the same flag as `load-preseason.ts --force`**, which overrides a
+ * different guard (loading over a season that has already played games). One
+ * means "the inputs are incomplete and I know", the other means "the season
+ * has started and I know".
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -97,6 +112,7 @@ type Row = Record<string, string | number | boolean | null | object>;
 async function main() {
   const outArg = process.argv.indexOf("--out");
   const outDir = outArg > -1 ? process.argv[outArg + 1] : ".preseason-json";
+  const force = process.argv.includes("--force");
   await mkdir(outDir, { recursive: true });
   let fileNo = 0;
 
@@ -540,9 +556,28 @@ async function main() {
     console.log(`\n=== preseason readiness for ${SEASON} ===`);
     if (problems.length === 0) {
       console.log("READY — every input is live. Safe to run the real build and load.");
+      // --force with nothing to force is not an error, but saying so out loud
+      // beats leaving somebody to wonder whether the flag did anything.
+      if (force) console.log("  (--force passed and not needed — every input is live.)");
       return;
     }
     for (const p of problems) console.log(`  NOT READY — ${p}`);
+    if (force) {
+      // The gate still reports everything it found: a forced build is a
+      // decision to ship a known-degraded rating, and the decision is only
+      // informed if the list survives the override. Exit 0 so the caller
+      // proceeds — see jobs.yml's preseason-force task.
+      console.log(
+        `\nFORCED — ${problems.length} problem(s) above, proceeding anyway (--force).\n` +
+          `  This ships a rating built on the fallbacks listed above. At talentWeight ` +
+          `${DEFAULT_PARAMS.talentWeight} a missing incoming class is a ±1–2 pt error per team; ` +
+          `the version it replaces is wrong about home field on every game.\n` +
+          `  What ships is recorded: preseason_components.detail carries talent_source and ` +
+          `talent_stale, and /model renders the note. Re-run without --force once CFBD ` +
+          `publishes and the note clears itself.`,
+      );
+      return;
+    }
     console.log(
       "\nRe-run once CFBD publishes. Loading now ships a rating built on a fallback.",
     );
@@ -760,6 +795,14 @@ async function main() {
       returning_prod_usage: p.retUsage !== null ? r2(p.retUsage) : null,
       detail: {
         proxies: ["ol_share=0.5", "turnover_margin=0"],
+        // Which season's talent file this rating was actually built on, and
+        // whether that is the one it should have been. Stamped on every row
+        // (not just the forced ones) so absence means "built before this
+        // existed" rather than "fresh" — /model only ever renders the
+        // affirmative, and a rebuild on real data clears the note by writing
+        // talent_stale: false over it.
+        talent_source: talentIsStale ? SEASON - 1 : SEASON,
+        talent_stale: talentIsStale,
         // Auditability: what the coaching number was derived from, even when
         // the fitted params make it 0.
         new_hc: p.coach !== null,

@@ -105,6 +105,91 @@ export function probeEmpties(results: ProbeResult[]): ProbeResult[] {
   return results.filter((r) => r.required && r.status === "EMPTY");
 }
 
+/**
+ * Is CFBD's team talent composite published for the season being built?
+ *
+ * Until 2026-08-18 this question had no direct answer anywhere. `/talent` is
+ * not in the access probe (it needs no paid tier, so it was never a tier
+ * question), and `build-preseason --check` reports only the *consequence* —
+ * "2026 not published, using 2025" — which it infers from an empty array. An
+ * empty array is also what a renamed route, a revoked key or a CFBD outage
+ * would produce downstream, and the three have very different fixes.
+ *
+ * Three probes settle it, and the middle one is the load-bearing control:
+ *
+ *   - `/talent?year=SEASON`  — the thing we are waiting on.
+ *   - `/talent?year=SEASON−1` — a completed season. If THIS is empty, the
+ *     endpoint is broken and "not published yet" was never the right story.
+ *   - `/recruiting/teams?year=SEASON` — the composite's raw material. Present
+ *     while `/talent` is empty means CFBD has the inputs and has not run the
+ *     derived file; empty means the class data itself is not in yet.
+ *
+ * Pure, so the reasoning is tested without a key — the same split as
+ * `classifyProbe` and `watchdogVerdict`.
+ */
+export type TalentLevel = "published" | "unpublished" | "broken";
+
+export interface TalentReadiness {
+  level: TalentLevel;
+  message: string;
+}
+
+type Answer = Pick<ProbeResult, "status" | "rows">;
+
+export function talentReadiness(
+  current: Answer,
+  past: Answer,
+  substitute: Answer,
+  seasons: { current: number; past: number },
+): TalentReadiness {
+  if (current.status === "OK") {
+    return {
+      level: "published",
+      message:
+        `/talent ${seasons.current} is PUBLISHED — ${current.rows} rows. ` +
+        `The next preseason-refresh builds on it and loads itself; no decision is due.`,
+    };
+  }
+
+  // A denial or a transport error is never "CFBD has not published it". Say so
+  // in the words that name the fix, because the whole cost of getting this
+  // wrong is waiting weeks for data that was never coming.
+  if (current.status !== "EMPTY") {
+    return {
+      level: "broken",
+      message:
+        `/talent ${seasons.current} returned ${current.status}, not an empty list. ` +
+        `That is an access or transport failure, NOT a publication delay — ` +
+        `check the key and the route before waiting on CFBD.`,
+    };
+  }
+
+  if (past.status !== "OK") {
+    return {
+      level: "broken",
+      message:
+        `/talent is empty for ${seasons.current} AND for ${seasons.past}, a completed season ` +
+        `(${past.status}). The endpoint itself is not answering with data, so "2026 is not ` +
+        `published yet" is the wrong diagnosis — every downstream fallback has been reading ` +
+        `a broken route, not a late one.`,
+    };
+  }
+
+  const raw =
+    substitute.status === "OK"
+      ? `${seasons.current} recruiting classes ARE published (${substitute.rows} teams), so the ` +
+        `composite's raw material is in and only the derived file is missing`
+      : `${seasons.current} recruiting classes are ${substitute.status.toLowerCase()} too, so the ` +
+        `raw material is not in either`;
+
+  return {
+    level: "unpublished",
+    message:
+      `/talent ${seasons.current} is EMPTY while ${seasons.past} returns ${past.rows} rows — ` +
+      `the route works and CFBD has not published the ${seasons.current} composite. ${raw}.`,
+  };
+}
+
 /** Fixed-width table, so a run log diffs cleanly against the last one. */
 export function formatProbe(results: ProbeResult[]): string {
   const mark = (s: ProbeStatus) =>

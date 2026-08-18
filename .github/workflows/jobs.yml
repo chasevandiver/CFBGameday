@@ -104,6 +104,14 @@ on:
           # append-only tables (line_snapshots, predictions) too. Running this
           # twice duplicates them, so it is dispatch-only and never scheduled.
           - preseason-bootstrap
+          # The Q1 escape hatch (docs/STATUS.md §3): preseason-refresh with the
+          # readiness gate overridden, for the deliberate decision to ship a
+          # build on last season's talent rather than open the season on a
+          # rating four versions behind. Never scheduled — a gate that can
+          # override itself on a cron is not a gate. It ships a degraded
+          # rating on purpose and says so on /model, which is the whole reason
+          # it is a separate task name rather than a flag on the daily job.
+          - preseason-force
           # Push: one nudge before the week's first kickoff, to members with
           # picks still open. Lead time lives in notification_settings and is
           # edited from /admin, not here.
@@ -517,14 +525,48 @@ jobs:
             # goes RED: openers are Aug 29 and the Thursday freeze stamps
             # Week 0's receipts from whatever ratings are live on the 28th, so
             # a quiet green through the 27th would strand launch on the stale
-            # build with nobody told. Red here means a human decision is due:
-            # build on last year's talent deliberately, or launch on the
-            # current ratings with a visible note.
-            preseason-refresh|preseason-bootstrap)
+            # build with nobody told.
+            #
+            # From Aug 22 it stops asking and loads — the Q1 escalation,
+            # answered YES by the owner on 2026-08-18. The ladder is notice →
+            # alarm → act, and the last rung is dated because the rung above it
+            # is not enough on its own: STATUS.md's instruction about this
+            # checkpoint is "do not let this get decided by silence", and a red
+            # run every morning from Aug 20 IS decided by silence if nobody is
+            # at a keyboard on the right morning.
+            #
+            # What it costs is bounded and self-correcting. --force changes no
+            # number — it only stops the gate refusing the load — so on a day
+            # CFBD HAS published this is a plain refresh and the flag is inert.
+            # On a day it has not, the build carries last season's talent, a
+            # ±1-2 pt error per team against a live version that is wrong about
+            # home field on every game, and it says so on /model until a later
+            # refresh overwrites it. Both tables are keyed on (season, team),
+            # so the good build lands on top and rewrites talent_stale to false
+            # with no cleanup.
+            #
+            # preseason-bootstrap is deliberately NOT in the escalation: it
+            # writes the append-only tables, and a season's first load is not
+            # something a date should decide.
+            #
+            # preseason-force is the same sequence overridden on demand, for
+            # doing this before the 22nd. Either way --force makes --check
+            # print every problem and still exit 0, so the decline branch below
+            # is skipped by construction rather than by a second copy of it.
+            # $FORCE is unquoted on purpose: empty must expand to no argument.
+            preseason-refresh|preseason-bootstrap|preseason-force)
               DIR="$RUNNER_TEMP/preseason"
-              if ! npx tsx scripts/build-preseason.ts --check --out "$DIR-check"; then
+              FORCE=""
+              if [ "${{ steps.task.outputs.task }}" = "preseason-force" ]; then
+                FORCE="--force"
+                echo "::warning::preseason-force — building on whatever CFBD has published, gate overridden. The rating ships with a stale-talent note on /model."
+              elif [ "${{ steps.task.outputs.task }}" = "preseason-refresh" ] && [ "$(date -u +%m)" = "08" ] && [ "$(date -u +%d)" -ge 22 ]; then
+                FORCE="--force"
+                echo "::warning::Q1 escalation (owner call, 2026-08-18) — from Aug 22 the daily refresh loads the best build available instead of declining. Inert on any day CFBD has published; on any other day the rating carries last season's talent and says so on /model."
+              fi
+              if ! npx tsx scripts/build-preseason.ts --check $FORCE --out "$DIR-check"; then
                 if [ "$(date -u +%m)" = "08" ] && [ "$(date -u +%d)" -ge 20 ]; then
-                  echo "::error::preseason inputs STILL not ready with openers on Aug 29 — a decision is due: deliberate stale-talent build, or launch on current ratings"
+                  echo "::error::preseason inputs STILL not ready with openers on Aug 29. Q1 is answered, so this is notice rather than a question: from Aug 22 this job stops declining and loads the best build available. Dispatch preseason-force to do it sooner, or move the date in this file to hold it off"
                   exit 1
                 fi
                 echo "::notice::preseason inputs not ready — nothing loaded"

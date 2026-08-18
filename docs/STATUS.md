@@ -67,7 +67,7 @@ rows were decided by reading code, not by reading commit messages.
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
 | **Model in code** | `2026.5.0` — tilt carry, `baseHfa` 3.0, centered team-HFA, portal fix, market-anchored tier recentre |
 | **Database** | **52 migration files, 52 recorded rows, in sync** — verified live 2026-08-15 after `0053_survivor_pools` was applied as `20260815044806`. Its ordering did not matter, unlike 0047's and 0052's: no old code reads `survivor_pools`/`survivor_picks` and no new code path runs before it, so it went in ahead of the deploy. Verified after applying: `groups_kind_check` accepts `'survivor'`, **0** TRUNCATE grants to `anon`/`authenticated` on either new table, `survivor_picks` grants only `SELECT`, 5 policies and 4 functions present, `create_survivor_group` executable by `authenticated` and not by `anon`, and **0** survivor groups created — the probe stopped on the sign-in guard rather than writing a row. Previously **51 migration files, 51 recorded rows, in sync** — verified live 2026-08-15 after PR #76 merged. 0049/0050/0051 were applied **before** the merge and 0052 **after the deploy was confirmed live**, which is the whole reason 0050 was split: 0050 only adds `is_current_user_admin()` and is inert against the old code, while 0052's revoke would have denied the running code's `select("is_admin")` and broken every admin gate. Deploy confirmed by `/ledger/stats` answering 200 in production — a route that exists only in the new build — not by a status badge. Verified after applying: **0 public tables grant TRUNCATE** to `anon` or `authenticated` (was 32), `is_current_user_admin` executable by `authenticated` and not by `anon`, `group_game_pick_counts` executable, `profiles.is_admin` no longer readable by `authenticated` while `display_name` and `timezone` still are, and twelve production routes serving 200 with `/admin` still returning its 404 body to an anonymous caller. Previously: **47 migration files, 47 recorded rows, in sync** — verified live 2026-08-14 after 0046/0047/0048 were applied to `mjijyutmbtnwcjspozsx` in that order, which was load-bearing: **0047 had to land before the code that stops sending `reason_tag` deployed**, or every bet insert would have failed the NOT NULL. Verified after applying: `deleted_wagers` and `scoring_plays` exist, `admin_remove_pick` is present, `bets.reason_tag` is nullable, `deleted_wagers` has no grant to either API role, and `scoring_plays` grants SELECT only. *(File count is 47 against numbers running to 0048 because **0004 does not exist** — a pre-existing gap, confirmed by counting the directory rather than trusting a number in this file.)* One thing that verification turned up and did not fix: **TRUNCATE is granted to `anon` and `authenticated` on every public table**, project-wide and pre-existing — see §6. Previously: **40 migration files, 40 recorded rows, in sync** — verified live 2026-08-13 after PR #58 merged and deployed. 0038–0041 were applied in order once the production build carried the code they depend on, which was the whole reason they waited: 0039 makes `join_group` return null on a bad code (the old action read that as success), 0040 revokes `is_admin` from anon while the old `fetchProfiles` still did `select("*")`, and 0041 renames a column the old `build-preseason` still wrote — which would have failed `preseason-refresh`, the job the Aug 26 checkpoint waits on. Verified after applying: join codes mint at 10 Crockford characters, `normalize_join_code('il o-1')` → `1101`, `group_join_attempts` exists deny-all, and anon can read neither `groups.join_code` nor `profiles.is_admin`. Before this pass it was 36/36, and 0034–0037 **are applied** — an earlier version of this row said 0034 and 0035 were "not yet applied to the live project" and gave the count as 32/32, and both were stale by the time they were written. It matters because two ticked rows depend on them: P1-1's re-pick fix *is* 0034 (`make_pick` confirmed carrying it live), and OPS-2's watchdog push needs 0036's enum value and 0037's `notification_settings` row — `notifyWatchdog` returns `{notified: 0, errors: 0}` when that row is missing (`notify-jobs.ts:375`), so it would have been a silent no-op. Both confirmed live, along with 2 admin push subscriptions for it to reach. The `0017` ledger gap (DB-3) was repaired 08-12. 0031–0033 add the push tables. `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
-| **Model in production** | ⚠️ `2026.2.0`. **Four versions behind**, pricing every cross-classification opener ~10 points toward the G5. Waiting on CFBD to publish 2026 talent; `preseason-refresh` retries daily and loads itself the first morning `--check` is green. |
+| **Model in production** | ⚠️ `2026.2.0`. **Four versions behind**, pricing every cross-classification opener ~10 points toward the G5. Waiting on CFBD to publish 2026 talent; `preseason-refresh` retries daily and loads itself the first morning `--check` is green. **Talent is the only red gate** — confirmed against the Aug 17 11:15 UTC run, which prints one line per failing input and printed exactly one; returning production, portal, coaches, week-1 lines and the tier recentre all passed, and the build reached a full 138-team board on the 2025 file before refusing to load it. Since 2026-08-18 `cfbd-probe` prints the row count per input, so this row's claim stops being an inference. **Ends Aug 22 either way** — Q1 was answered yes that day and the escalation is in `jobs.yml`: from the 22nd the daily refresh loads the best build available rather than declining, so production stops being four versions behind whether or not CFBD has published. |
 | **The edge verdict** | b₁ = 0.035 (t = 0.84) for the model vs 0.987 (t = 22.81) for the market, n = 2611; flagged edges 49.2% ATS vs the close. Edges are **information, not bets** — and no model-accuracy work belongs in the next 17 days. |
 
 **What's built:** slate, game page (live), pick'em with O/U + weekly grid +
@@ -950,6 +950,78 @@ One sitting, ~2 h. Each is a doc edit, not a code change.
       depends on the answer and it is model work, which §1 says does not belong
       in the next 16 days. · 1 h, after launch
 
+### 2.6 The talent gate, instrumented (Aug 18)
+
+**Both landed 2026-08-18, from one question: which CFBD feed are we actually
+waiting on?** The answer had to be reconstructed from a workflow log — the
+`preseason-refresh` run of Aug 17 11:15 UTC prints one line per failing gate
+and printed exactly one, `talent: 2026 not published, using 2025`. Every other
+input the build reads (returning production, portal, coaches, week-1 lines, and
+the ≥10 cross-tier games the tier recentre needs) was green, and the build ran
+to a full 138-team board on the 2025 talent file before refusing to load it.
+
+- [x] **CFBD-1 — the access probe never looked at the four inputs the season is
+      waiting on.** `probe-cfbd.ts` covered 11 endpoints and not one of them was
+      `/talent`, `/player/returning`, `/player/portal` or `/coaches`: they need
+      no paid tier, so they were never a *tier* question, and the probe was
+      built to answer tier questions. The consequence is that "CFBD has not
+      published 2026 talent" was an **inference from a fallback message**, never
+      a row count. That inference is sound — `cfbd.ts:69` throws on any non-2xx,
+      so a renamed route or a revoked key would turn the job red rather than
+      print "not published" — but it is reasoning nobody re-derives at 7am, and
+      an empty `/talent` for a *completed* season would have produced the same
+      sentence forever.
+      Fixed by a second table in the probe: the four inputs at SEASON, plus two
+      controls — `/talent` at SEASON−1 (proves the route works) and
+      `/recruiting/teams` at SEASON (the composite's raw material, and the
+      substitute if the composite never lands). `talentReadiness` turns the
+      three into one sentence with three possible verdicts, and **broken is red
+      while unpublished is green**, because waiting out a bug and waiting out
+      CFBD must not look the same. 6 tests. Cost: 11 → 17 calls per probe.
+- [x] **CFBD-2 — Q1's `--force` path and the `/model` note are wired, ahead of
+      the Aug 26 checkpoint.** `build-preseason.ts --check --force` prints every
+      problem it found and exits 0 anyway, so a deliberate stale-talent build
+      can ship; the new dispatch-only `preseason-force` task is the whole
+      sequence (gate, build, load). **Never scheduled** — a readiness gate that
+      can override itself on a cron is not a gate — and pinned by a test, the
+      same shape as `backfill-games`.
+      What ships is recorded rather than announced in a log nobody opens: every
+      `preseason_components.detail` now carries `talent_source` and
+      `talent_stale`, `/model` reads them and renders the note, and a rebuild on
+      the real file clears it by writing `false` over it. The note only ever
+      renders the *affirmative* — rows written before the stamp existed
+      (production's 2026.2.0 build) say nothing, and absence must not read as
+      "fresh". That is the `emptyIsHealthy` defect, and it is the third time
+      this repo has had to write that sentence down.
+      **The decision itself is still owed** — this is the machinery, not the
+      answer. Q1 in §3. *(Answered the same day; see below.)*
+- [x] **CFBD-3 — Q1 answered yes, and dated into the job.** Owner call,
+      2026-08-18, hours after CFBD-2 landed. From **Aug 22** `preseason-refresh`
+      itself carries `--force`: it stops declining and loads the best build
+      available, forced or fresh. `preseason-force` remains for doing it sooner
+      by hand.
+      **Why a date and not a tap.** The escalation ladder was notice (quiet
+      green through Aug 19) → alarm (red from Aug 20) → *and then nothing*. The
+      last rung was a human noticing a red run on the right morning, which is
+      the failure mode §2.5's own checkpoint warns about in the words "do not
+      let this get decided by silence". A dated rung is a decision recorded once
+      rather than re-made every morning.
+      **Why it is safe.** `--force` changes no number — it only stops the gate
+      refusing the load — so on any day CFBD has published, the flag is inert
+      and this is an ordinary refresh. On any other day the build carries last
+      season's talent and says so on `/model`, and because `ratings` and
+      `preseason_components` are both keyed on `(season, team)`, a later
+      successful refresh lands on top and rewrites `talent_stale` to false with
+      no cleanup and no second decision.
+      **What it does not cover.** `preseason-bootstrap` is excluded by name: it
+      writes the append-only tables, and a season's first load is not something
+      a date should decide. Pinned by a test that reads the condition itself,
+      not just the flag.
+      **The window closes at the first final.** `load-preseason` refuses a
+      season with completed games and `ratings-update` owns the numbers from
+      then on, so talent arriving after Aug 29 does not get loaded at all — the
+      last automatic chance is the Aug 27 11:00 UTC refresh.
+
 ### 2.5 The hard dates
 
 **The NFL preseason is a live rehearsal for Week 0, and it is free.** Noted
@@ -970,20 +1042,35 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       a bet grade inside a tick of the final, and whether the 23:00 kicks get a
       snapshot (they will not — that is NFL-23, and this is the confirmation).
 - [ ] **Aug 20** — `preseason-refresh` starts going **red** on decline
-      (`jobs.yml:221`). Watch it. Also: `refresh-lines` leaves its idle guard
-      ~Aug 22 (`LINES_IDLE_DAYS` 7) — first snapshots since spring.
+      (`jobs.yml:221`). Watch it, but it is now notice rather than a question —
+      Q1 is answered and the same job self-executes on the 22nd. Also:
+      `refresh-lines` leaves its idle guard ~Aug 22 (`LINES_IDLE_DAYS` 7) —
+      first snapshots since spring.
 - [ ] **Aug 21** — Quality floor: real-device pass at 375 px, light-mode phone
       pass over the slate (contrast changes are computed, never eyeballed),
       reduced-motion + focus-ring check, `UX-06` residue.
+- [ ] **Aug 22** — 🔴 **The Q1 escalation fires**, 11:00 UTC, unattended:
+      `preseason-refresh` stops declining and loads the best build available.
+      **Verify the same day** — `ratings` at 2026.5.0 for 138 teams, `/ratings`
+      rendering Off/Def, and the `/model` note either present (talent still
+      stale) or absent (CFBD published and the flag was inert). This is the
+      first time the build → load path has ever completed for 2026, which is
+      the other reason the date is here rather than on the 26th: a first run
+      wants slack, not a deadline.
 - [ ] **Aug 22–23** — **Full dress rehearsal.** Dispatch `refresh-lines`,
       `sync-games`, `scoreboard-loop`, `freeze --force` against a scratch week.
       Watch `job_runs` and `api_call_log` fill. This is the only end-to-end test
       there is. Sunday: fix what it surfaced, re-run.
 - [ ] **Aug 24** — Run the 7 preseason smell tests (`04:§5`) on the first real
       `--top 40` table. **UX-32:** eyeball the matchup cards with real names.
-- [ ] **Aug 26** — 🔴 **HARD CHECKPOINT (`04:DQ-1` / P0-3).** Is
-      `preseason-refresh` green? Green → 2026.5.0 loads itself. Red → execute
-      the Q1 decision below. **Do not let this get decided by silence.**
+- [ ] **Aug 26** — 🔴 **HARD CHECKPOINT (`04:DQ-1` / P0-3), and since
+      2026-08-18 it is a verification rather than a decision.** The question was
+      "is `preseason-refresh` green, and if not, what ships?"; Q1 answered the
+      second half and dated it to the 22nd, so what is left is: **did the load
+      actually happen?** `ratings` at 2026.5.0, 138 rows, `predictions` still
+      freezable. If nothing loaded, the escalation itself failed — four days
+      before the freeze — and that is the emergency this checkpoint now exists
+      to catch. **Do not let this get decided by silence.**
 - [ ] **Aug 27** — Last refresh cron day. Verify `ratings` shows 2026.5.0 and
       `/ratings` renders the Off/Def columns (the `splitInformative` tell).
       Create Week 0 group weeks, invite the crew, confirm each person signs in.
@@ -1005,7 +1092,7 @@ These block nothing today but change what gets built. Recommendations are from
 
 | # | Question | Recommendation |
 |---|---|---|
-| **Q1** | If `preseason-check` is still red Aug 26, what ships? | **Stale-talent build on 2025 recruiting, loaded as 2026.5.0.** Wrong about incoming freshmen is a ±1–2 pt error at `talentWeight` 0.30; 2026.2.0 is wrong about home field by +0.74 on *every* game, renders no totals, and carries the ~10-pt tier mis-level. Say yes and the `--force` path plus a `/model` note get wired. |
+| ~~**Q1**~~ | ~~If `preseason-check` is still red Aug 26, what ships?~~ | **Answered 2026-08-18: yes, ship the stale-talent build — owner call, and it no longer waits for the 26th.** From **Aug 22** `preseason-refresh` stops declining and loads the best build available; `preseason-force` does it sooner on demand. The date is in the escalation because the alternative was a decision by silence: a red run every morning from Aug 20 only works if somebody is at a keyboard on the right morning, and this file's own instruction for that checkpoint says not to let it be decided that way. The cost is bounded and self-correcting — `--force` changes no number, only whether the gate refuses the load, so it is inert on any day CFBD *has* published, and a later refresh overwrites a forced build in place (both tables are keyed on `(season, team)`) and rewrites `talent_stale` to false. Original recommendation, unchanged: **stale-talent build on 2025 recruiting, loaded as 2026.5.0.** Wrong about incoming freshmen is a ±1–2 pt error at `talentWeight` 0.30; 2026.2.0 is wrong about home field by +0.74 on *every* game, renders no totals, and carries the ~10-pt tier mis-level. |
 | ~~**Q4**~~ | ~~FCS: build the two buckets, or amend the spec to one?~~ | **Answered 2026-08-13: build them** — owner call, against the recommendation below, and delivered in a form that removes the objection: both buckets ship at −30, so the machinery exists and the output is unobservable until `--tune-fcs` earns a value. Original note: **Amend to one bucket at −30, delete the dead constants.** Changing the input distribution 17 days out with no tuner behind it is the bad trade. |
 | ~~**Q7**~~ | ~~Delete the dead edge function?~~ | **Answered and done 2026-08-13: deleted.** `supabase/functions/jobs/` had inverted CLV in all four branches and was 4+ versions behind `jobs-core.ts`. `05:C5` called it a deliberate tombstone; a tombstone with a live landmine in it is worse than none, and git preserves it. The only two live references were comments (`jobs.yml:3`, `jobs-core.ts:4`), both rewritten to say what happened and why. Closes P2-3 / 05:C5 / 07:OPS-11 / SEC-12. It also removed the fourth copy of the hardcoded `FCS_RATING = -30`. |
 | **Q6 / SEC-13** | TBD kickoffs (`start_ts` null) — policy before Aug 29 | **Keep as-is.** Un-pickable, un-removable, stays blind, no close and therefore no CLV, but still frozen. Every branch fails closed, which is right for a security boundary and a receipt. Cost: a TBD game is un-pickable until CFBD firms the time, which `sync-games` does daily. |

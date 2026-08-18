@@ -203,4 +203,40 @@ describe("jobs.yml scheduler wiring", () => {
     expect(resolve("0 17 * * 2")).toBe("six-pack");
     expect(resolve("30 14 * * 0,1")).toBe("six-pack");
   });
+
+  /**
+   * Q1's escape hatch, and after 2026-08-18 its dated self-execution.
+   *
+   * `preseason-force` stays reachable by hand and unreachable by cron — the
+   * shape asserted for backfill-games above. The daily refresh escalates to
+   * the same flag from Aug 22 by owner decision, and that is the assertion
+   * worth having: it must be reached through a DATE and a task-name test, not
+   * by hoisting --force onto the shared branch, and `preseason-bootstrap`
+   * (which writes the append-only tables) must never pick it up.
+   */
+  it("keeps preseason-force dispatchable and unscheduled", () => {
+    expect(dispatchOptions()).toContain("preseason-force");
+    expect(resolveBranches().some((b) => b.task === "preseason-force")).toBe(false);
+  });
+
+  it("reaches --force only through the task name or the dated escalation", () => {
+    const run = YML.split('case "${{ steps.task.outputs.task }}" in')[1].split("\n            *)")[0];
+    const block = run.split("preseason-refresh|preseason-bootstrap|preseason-force)")[1];
+
+    // Never hoisted onto the shared invocation: the flag is a variable, set by
+    // the two branches below and empty for everyone else.
+    expect(run).toContain("build-preseason.ts --check $FORCE");
+    expect(run).not.toContain("build-preseason.ts --check --force");
+
+    // On demand…
+    expect(block).toContain('if [ "${{ steps.task.outputs.task }}" = "preseason-force" ]; then');
+    // …and on the date, for preseason-refresh ONLY. Both halves of that
+    // condition matter: without the task-name test the escalation would also
+    // fire on a preseason-bootstrap dispatched in late August, which is the
+    // one run that writes line_snapshots and predictions.
+    expect(block).toContain(
+      'elif [ "${{ steps.task.outputs.task }}" = "preseason-refresh" ] && [ "$(date -u +%m)" = "08" ] && [ "$(date -u +%d)" -ge 22 ]',
+    );
+    expect(block).not.toMatch(/preseason-bootstrap"\s*\]\s*&&\s*\[\s*"\$\(date/);
+  });
 });
