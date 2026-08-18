@@ -3262,6 +3262,45 @@ was site-wide, so there was no way to compete inside a pool. Built on
       badge that quietly fails to appear is worse than no shelf. Re-check the
       weights against real numbers after Week 6 — **UX-41** below.
 
+**Two doors into a group** — owner request 2026-08-18: "I want to be able to
+add people to groups by name along with join code." The code was the only way
+in, and it is three steps of ceremony (send it, read it, type it) between an
+admin and somebody who already has an account on an invite-only site. The code
+stays — it is the only path for a person the admin cannot see yet.
+
+- [x] **GRP-1** An admin adds a member by name. Migration **0064**:
+      `search_group_candidates` (admin-gated, membership state carried rather
+      than filtered, `%`/`_` in the query escaped, two-character floor so a
+      keystroke is not a directory dump), `add_group_member` and
+      `add_group_member_by_name`. The insert is `join_group`'s minus the code
+      and the throttle, and it keeps `join_group`'s role rule from SEC-02
+      (0038): an admin removed you, so the role does not come back with you —
+      one rule, two doors. **`display_name` is not unique** (0001:181) and never
+      has been, so the typed-name path refuses a shared name instead of picking
+      a person; the search resolves to an id, which is what the UI's Add button
+      sends. No throttle and no new boundary: unlike `join_group`, the caller is
+      exercising a privilege they demonstrably hold, and the worst case is a
+      wrong name added to a group they already run. 23 DB assertions
+      (327 → 350), 6 component tests (1292 → 1298).
+      ⚠️ **0064 applies to production BEFORE the deploy** — it only adds
+      functions, so it is inert against the running code, but the new roster
+      calls all three.
+- [x] **GRP-1b** `/groups/[slug]/settings` stopped redirecting the other two
+      kinds. It rendered pick'em's board and so refused betting and survivor
+      groups outright, which meant *their* admins had no page for the roster,
+      the name, the visibility, the join code or archiving — every RPC existed
+      and nothing called them. The board load is now a `loadBoard` split that
+      runs for a pick'em admin only (it was fetching the slate for plain
+      members too), and `GroupAdmin` hides the two pick'em-only controls: a
+      betting group has no picks to hide and `set_group_leagues` refuses it a
+      league scope. Both homes gained the Members link they never had.
+- [ ] **GRP-2** Tell someone they were added. Being added is not consented to —
+      a member can leave, removal is soft, and nothing is written to their
+      account beyond a roster row — but they currently find out by noticing a
+      new group. The push pipeline exists (0031–0033); a new kind needs a
+      `notification_settings` row and a preference, and inventing one inside a
+      membership migration is how a notification nobody chose ships. · **S**
+
 ## 5. Not built, by choice
 
 Additive features, no defect behind any of them. Verified still open 2026-08-12.

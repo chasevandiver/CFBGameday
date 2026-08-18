@@ -169,6 +169,63 @@ shipping it.
 
 ## Log
 
+### Aug 18 — a second door into a group: by name
+
+**Owner request:** "I want to be able to add people to groups by name along
+with join code." Along with, not instead of — the code is still the only path
+for a person the admin cannot see yet, and it is untouched.
+
+**What the code costs when everyone already has an account.** Signing up here is
+invite-only, so by the time an admin wants somebody in a pool that person is
+already a row in `profiles`. The code then buys nothing and costs three steps
+that each fail silently: it has to be sent, read off a screen, and typed into a
+box the recipient has to find. `join_group` is a boundary and earns its entropy
+and its throttle (0039) because the caller is asserting a claim about
+themselves. An admin naming an existing account is asserting a privilege they
+demonstrably hold, so `add_group_member` gates on `is_group_admin` and throttles
+nothing — the worst case is a wrong person added to a group the admin already
+runs, and they can remove them again.
+
+**Migration 0064.** Three functions: `search_group_candidates` (admin-gated,
+returns membership state rather than filtering members out, escapes `%` and `_`
+so a name is a name, and answers nothing under two characters), plus
+`add_group_member(uuid)` and `add_group_member_by_name(text)`. The insert is
+`join_group`'s minus the code and the throttle, and deliberately keeps its role
+rule from SEC-02 (0038): rejoining restores the row and restores the *role* only
+if you left on your own. Removed by an admin, re-added by an admin, you come
+back a member — one rule, two doors, rather than a second door that quietly
+undoes the first one's fix.
+
+**`display_name` has no unique constraint** (0001:181) and never has. The typed
+name is therefore ambiguous by construction, and the function refuses a shared
+name instead of resolving it — `min(uuid)` does not exist before Postgres 18,
+which is how the first version of this failed the DB suite, and it should not
+have been reaching for one anyway. The search returns ids, so the UI's Add
+button never goes through the name at all; the typed path exists for the admin
+who knows exactly who they mean, and it says so when it cannot be sure.
+
+**Not notified.** Being added is not consented to. The push pipeline exists,
+but a new kind needs a `notification_settings` row and a preference, and
+inventing one inside a membership migration is how a notification nobody chose
+ships. Queued as GRP-2 in `docs/STATUS.md`, with the reasoning for why the
+exposure is small: a member can leave, removal is soft, and nothing lands on
+their account beyond a roster row.
+
+**A thing found while wiring it up.** `/groups/[slug]/settings` redirected every
+group that was not pick'em, because the page is built around the board. So a
+betting or survivor admin had no page for the roster, the name, the visibility,
+the join code or archiving — five RPCs with nothing calling them, the same shape
+as the finding that produced `GroupAdmin` in the first place. The board load is
+now a `loadBoard` split that runs for a pick'em admin only (it had been fetching
+the whole slate for plain members as well), `GroupAdmin` hides the two controls
+that are pick'em's alone, and both other homes gained the Members link they
+never had.
+
+23 DB assertions (327 → 350) and 6 component tests (1292 → 1298), including the
+one that matters most: two accounts sharing a name, the second row clicked, and
+the add going by **id**. ⚠️ 0064 applies to production before the deploy — it
+only adds functions, so it is inert against the running code.
+
 ### Aug 18 — the talent gate: an instrument, and an override
 
 **The question was "which CFBD feed are we waiting on?" and the product could

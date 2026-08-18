@@ -105,6 +105,69 @@ export async function joinGroup(formData: FormData): Promise<ActionResult> {
   return { ok: true, slug };
 }
 
+/**
+ * Someone an admin could add: an account, and where it already stands with
+ * this group.
+ *
+ * `membership` is carried rather than filtered on, because an admin typing a
+ * name they are sure about wants to be told "already in" instead of watching
+ * the name return nothing.
+ */
+export interface GroupCandidate {
+  id: string;
+  name: string;
+  membership: "member" | "removed" | "none";
+}
+
+/**
+ * Names an admin could add, for the search box on the roster. Admin-gated in
+ * the database (0064) — the action passes the refusal through rather than
+ * predicting it.
+ */
+export async function searchGroupCandidates(
+  groupId: string,
+  query: string,
+): Promise<ActionResult & { people: GroupCandidate[] }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Sign in first", people: [] };
+
+  const { data, error } = await supabase.rpc("search_group_candidates", {
+    p_group: groupId,
+    p_q: query,
+  });
+  if (error) return { ok: false, message: error.message, people: [] };
+
+  type Row = { id: string; display_name: string; membership: GroupCandidate["membership"] };
+  return {
+    ok: true,
+    people: ((data ?? []) as Row[]).map((r) => ({
+      id: r.id,
+      name: r.display_name,
+      membership: r.membership,
+    })),
+  };
+}
+
+/**
+ * Add an account to the group without the join code — the admin's half of
+ * getting people in (0064). The code still exists for everyone the admin
+ * cannot see yet; this covers the person who already has an account.
+ */
+export async function addGroupMember(groupId: string, userId: string): Promise<ActionResult> {
+  return rpc("add_group_member", { p_group: groupId, p_user: userId });
+}
+
+/**
+ * The same thing from a typed name rather than a picked row. The database
+ * refuses a name two people share, so nobody is added by a coin flip.
+ */
+export async function addGroupMemberByName(groupId: string, name: string): Promise<ActionResult> {
+  return rpc("add_group_member_by_name", { p_group: groupId, p_name: name });
+}
+
 // Each of these has to be a declared async function, not an arrow const: in a
 // "use server" module the compiler only recognises function declarations as
 // actions, and an arrow export fails at build time with "export was not found"

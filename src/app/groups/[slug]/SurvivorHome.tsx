@@ -107,6 +107,15 @@ export async function SurvivorHome({
           current={weekRef}
           sport={sport}
         />
+        {group.role === "admin" && (
+          <Link
+            href={`/groups/${group.slug}/settings`}
+            className="stat inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-chalk/20 px-3.5 text-sm text-chalk hover:border-chalk/50"
+          >
+            <Users size={14} aria-hidden />
+            Members
+          </Link>
+        )}
         {joinCode && <JoinCode code={joinCode} />}
       </div>
 

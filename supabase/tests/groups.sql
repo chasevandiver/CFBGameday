@@ -544,3 +544,145 @@ begin;
   select pg_temp.raises('a betting group refuses a league scope',
     format($$select set_group_leagues(%L, array['nfl'])$$, :'bgrp'));
 rollback;
+
+\echo '# an admin adds someone by name (0064)'
+-- Standing state: grp is private, bob is its admin, ann is a member, cal is in
+-- neither. The join code still works and is tested above; this is the second
+-- door, not a replacement for it.
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.raises('a plain member searching for people to add',
+    format($$select * from search_group_candidates(%L, 'ca')$$, :'grp'));
+  select pg_temp.raises('a plain member adding by name',
+    format($$select add_group_member_by_name(%L, 'cal')$$, :'grp'));
+  select pg_temp.raises('a plain member adding by id',
+    format($$select add_group_member(%L, %L)$$, :'grp', :cal));
+rollback;
+begin;
+  select test_as(:cal::uuid);
+  select pg_temp.raises('a stranger to the group cannot search it',
+    format($$select * from search_group_candidates(%L, 'ann')$$, :'grp'));
+rollback;
+
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.chk('the admin''s search finds a non-member',
+                     (select membership from search_group_candidates(:'grp'::uuid, 'ca')
+                      where display_name = 'cal') = 'none');
+  select pg_temp.chk('and says who is already in',
+                     (select membership from search_group_candidates(:'grp'::uuid, 'ann')
+                      where display_name = 'ann') = 'member');
+  select pg_temp.chk('a one-character query is not a directory dump',
+                     (select count(*) from search_group_candidates(:'grp'::uuid, 'a')) = 0);
+  select pg_temp.chk('a wildcard is a character, not a pattern',
+                     (select count(*) from search_group_candidates(:'grp'::uuid, '%a')) = 0);
+rollback;
+
+\o /dev/null
+begin;
+  select test_as(:bob::uuid);
+  -- Typed, not picked from the list, and in the wrong case on purpose.
+  select add_group_member_by_name(:'grp'::uuid, '  CAL  ');
+commit;
+\o
+select pg_temp.chk('the named account is now a member',
+                   (select role from group_members
+                    where group_id = :'grp'::uuid and user_id = :cal::uuid
+                      and removed_at is null) = 'member');
+begin;
+  select test_as(:cal::uuid);
+  select pg_temp.chk('and can see the private group they were added to',
+                     (select count(*) from groups where id = :'grp'::uuid) = 1);
+rollback;
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.raises('adding the same person twice',
+    format($$select add_group_member_by_name(%L, 'cal')$$, :'grp'));
+  select pg_temp.raises('a name nobody has',
+    format($$select add_group_member_by_name(%L, 'Nigel')$$, :'grp'));
+  select pg_temp.raises('an empty name',
+    format($$select add_group_member_by_name(%L, '   ')$$, :'grp'));
+  select pg_temp.raises('an account that does not exist',
+    format($$select add_group_member(%L, '99999999-9999-9999-9999-999999999999')$$, :'grp'));
+rollback;
+
+-- Re-adding follows join_group's rule (SEC-02): an admin removed you, so the
+-- role does not come back with you.
+\o /dev/null
+begin;
+  select test_as(:bob::uuid);
+  select set_group_role(:'grp'::uuid, :cal::uuid, 'admin');
+commit;
+begin;
+  select test_as(:bob::uuid);
+  select remove_group_member(:'grp'::uuid, :cal::uuid);
+commit;
+\o
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.chk('a removed member is offered again, marked as removed',
+                     (select membership from search_group_candidates(:'grp'::uuid, 'cal')
+                      where display_name = 'cal') = 'removed');
+rollback;
+\o /dev/null
+begin;
+  select test_as(:bob::uuid);
+  select add_group_member(:'grp'::uuid, :cal::uuid);
+commit;
+\o
+select pg_temp.chk('re-adding a removed admin brings them back a member',
+                   (select role = 'member' and removed_at is null and removed_by is null
+                    from group_members
+                    where group_id = :'grp'::uuid and user_id = :cal::uuid));
+
+\echo '# two people with the same name'
+-- display_name has no unique constraint and never has, so the typed-name path
+-- has to refuse rather than pick one.
+\o /dev/null
+insert into invite_allowlist (email, make_admin) values ('dana@example.com', false);
+insert into auth.users (id, email) values
+  ('44444444-4444-4444-4444-444444444444', 'dana@example.com');
+update profiles set display_name = 'Cal'
+  where id = '44444444-4444-4444-4444-444444444444';
+\o
+\set dana '''44444444-4444-4444-4444-444444444444'''
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.raises('a name two people share',
+    format($$select add_group_member_by_name(%L, 'cal')$$, :'grp'));
+  select pg_temp.chk('but the search offers both, so the admin can pick',
+                     (select count(*) from search_group_candidates(:'grp'::uuid, 'cal')) = 2);
+rollback;
+\o /dev/null
+begin;
+  select test_as(:bob::uuid);
+  select add_group_member(:'grp'::uuid, :dana::uuid);
+commit;
+\o
+select pg_temp.chk('picking one of them by id works',
+                   (select count(*) from group_members
+                    where group_id = :'grp'::uuid and removed_at is null) = 4);
+
+\echo '# an archived group takes no one'
+\o /dev/null
+begin;
+  select test_as(:bob::uuid);
+  select archive_group(:'bgrp'::uuid);
+commit;
+\o
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.raises('adding to an archived group',
+    format($$select add_group_member(%L, %L)$$, :'bgrp', :cal));
+rollback;
+
+select pg_temp.chk('anon cannot add anyone to anything',
+                   not has_function_privilege('anon',
+                     'public.add_group_member_by_name(uuid,text)', 'execute')
+                   and not has_function_privilege('anon',
+                     'public.add_group_member(uuid,uuid)', 'execute')
+                   and not has_function_privilege('anon',
+                     'public.search_group_candidates(uuid,text)', 'execute'));
+select pg_temp.chk('a signed-in admin can',
+                   has_function_privilege('authenticated',
+                     'public.add_group_member_by_name(uuid,text)', 'execute'));
