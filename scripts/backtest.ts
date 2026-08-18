@@ -1194,20 +1194,43 @@ function tuneTeamHfa(seasons: SeasonData[], teamIdsByName: Map<string, number>) 
   }
 
   // Gate 0, before any accuracy number exists.
-  const firstScored = SCORED[0];
-  const split = hfaSplitHalf(seasons, fbsIds, firstScored);
+  //
+  // Evaluated at the LAST scored season, not the first. The gate asks whether a
+  // team's home edge reproduces across disjoint prior samples, so it wants the
+  // most prior data the window can give it. Run at the FIRST scored season it
+  // saw a single prior year, split that into odd and even, got one half and
+  // nothing, and printed "r = n/a over n = 0 teams" under the heading GATE 0
+  // FAILS — an absent measurement reported as evidence of absence, which is the
+  // one thing a gate must never do. Found 2026-08-18 by reading the output
+  // rather than the verdict.
+  const gateSeason = SCORED[SCORED.length - 1];
+  const split = hfaSplitHalf(seasons, fbsIds, gateSeason);
   console.log(
-    `Gate 0 — split-half correlation of raw team HFA (seasons < ${firstScored}, 2020 excluded): ` +
+    `Gate 0 — split-half correlation of raw team HFA (seasons < ${gateSeason}, 2020 excluded): ` +
       `r = ${Number.isNaN(split.r) ? "n/a" : split.r.toFixed(3)} over n = ${split.n} teams.`,
   );
-  if (!(split.r >= 0.3) || split.n < 100) {
+
+  const gateUnmeasurable = Number.isNaN(split.r) || split.n < 100;
+  if (gateUnmeasurable) {
+    // "Cannot be measured" and "measured and failed" are different findings with
+    // different fixes, and collapsing them is how a window problem gets recorded
+    // as a model result.
+    console.log(
+      "\nGATE 0 CANNOT BE EVALUATED on this window — that is NOT a failure and must not be\n" +
+        "recorded as one. Too few teams carry a raw HFA in both disjoint halves of the prior\n" +
+        "seasons. Widen the window (--seasons=2015-2025) or score a later season; if it still\n" +
+        "cannot be evaluated at full width, the honest row says the question is unanswerable\n" +
+        "with this corpus, not that the answer is no.",
+    );
+  } else if (split.r < 0.3) {
     console.log(
       "\nGATE 0 FAILS. A team's home edge does not reproduce against itself on disjoint\n" +
         "samples, so there is no per-team signal to blend and no MAE number below could mean\n" +
         "anything. Pre-registered outcome: set teamHfaBlend = 0 and record it. That is 02:M-05\n" +
         "answered on evidence — the same shape as Q4 being answered by --tune-fcs's Gate 0.",
     );
-    if (split.n > 0) console.log("(Grid still printed below, for the record only.)\n");
+  } else {
+    console.log(`\nGate 0 clears (r = ${split.r.toFixed(3)} >= 0.30). Grid:\n`);
   }
 
   const replayAll = (blend: number) => {
@@ -1284,7 +1307,7 @@ function tuneTeamHfa(seasons: SeasonData[], teamIdsByName: Map<string, number>) 
         `${interior ? "INTERIOR" : "AT A GRID EDGE — unconverged, ships nothing"}.`,
     );
     console.log(
-      gain >= 0.05 && interior && Math.abs(best.bias / best.se) < 2 && split.r >= 0.3
+      gain >= 0.05 && interior && Math.abs(best.bias / best.se) < 2 && !gateUnmeasurable && split.r >= 0.3
         ? `→ every pre-registered criterion clears. Record ${best.blend} with the window label.`
         : "→ at least one criterion fails: teamHfaBlend stays where it is, or goes to 0 per Gate 0.\n" +
             "   Record the numbers either way — a rejection with a number in it is the point.",

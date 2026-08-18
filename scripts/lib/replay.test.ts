@@ -8,6 +8,7 @@ import {
   MAX_TILT,
   cached,
   chainTilts,
+  hfaSplitHalf,
   replaySeason,
   scaleTilts,
   type SeasonData,
@@ -422,5 +423,59 @@ describe("a PPA blend without a PPA feed is refused, not degraded", () => {
 
   it("is silent at epaWeight 0, which is what ships", () => {
     expect(() => replaySeason(season, priors, DEFAULT_PARAMS)).not.toThrow();
+  });
+});
+
+describe("hfaSplitHalf distinguishes no-signal from no-data", () => {
+  const g = (id: number, season: number, homeId: number, awayId: number, hp: number, ap: number) =>
+    ({
+      id,
+      season,
+      week: 1,
+      seasonType: "regular",
+      startDate: `${season}-09-01T16:00:00.000Z`,
+      startTimeTBD: false,
+      neutralSite: false,
+      conferenceGame: true,
+      venueId: null,
+      homeId,
+      homeTeam: `T${homeId}`,
+      homePoints: hp,
+      homePostgameWinProbability: null,
+      awayId,
+      awayTeam: `T${awayId}`,
+      awayPoints: ap,
+      completed: true,
+      notes: null,
+    }) as CfbdGame;
+
+  const seasonWith = (year: number): SeasonData => ({
+    season: year,
+    games: [g(year * 10 + 1, year, 10, 20, 30, 20), g(year * 10 + 2, year, 20, 10, 24, 21)],
+    lines: [],
+    prevSp: [],
+  });
+
+  it("returns n = 0 when only one prior season exists, rather than a correlation", () => {
+    // One prior year splits into odd-and-nothing, so there is no second half to
+    // correlate against. The caller must read this as "cannot be evaluated",
+    // never as "the correlation is zero" — an absent measurement reported as
+    // evidence of absence is how a window problem becomes a model result.
+    const out = hfaSplitHalf([seasonWith(2015)], new Set([10, 20]), 2016);
+    expect(out.n).toBe(0);
+    expect(Number.isNaN(out.r)).toBe(true);
+  });
+
+  it("excludes 2020 from both halves", () => {
+    const seasons = [2015, 2016, 2020].map(seasonWith);
+    const withCovid = hfaSplitHalf(seasons, new Set([10, 20]), 2021);
+    const withoutCovid = hfaSplitHalf(
+      seasons.filter((s) => s.season !== 2020),
+      new Set([10, 20]),
+      2021,
+    );
+    // An empty-stadium season measures a different quantity, so including it
+    // must change nothing.
+    expect(withCovid.n).toBe(withoutCovid.n);
   });
 });
