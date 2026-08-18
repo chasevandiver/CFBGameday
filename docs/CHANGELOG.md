@@ -239,8 +239,10 @@ never had.
 
 27 DB assertions (327 → 354) and 9 tests (1292 → 1301), including the one that
 matters most: two accounts sharing a name, the second row clicked, and the add
-going by **id**. ⚠️ 0064–0066 apply to production before the deploy — functions,
-an enum value and a settings row, all inert against the running code.
+going by **id**. ✅ 0064–0066 applied to production 2026-08-18, in
+order and before the deploy — functions, an enum value and a settings row, all
+inert against the running code, and verified afterwards against the live
+database (see `docs/STATUS.md` §1).
 
 ### Aug 18 — the talent gate: an instrument, and an override
 
