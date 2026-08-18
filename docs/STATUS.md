@@ -731,7 +731,7 @@ deliberate deferrals, each recorded below with what it would take.
       wrong in a way nobody would notice, and CLV is graded against it. Normalise
       on write in the ESPN parser, and backfill. · **S**
 
-### 2.1g Owner report, 2026-08-18 — a survivor pick had no receipt
+### 2.1g Owner report, 2026-08-18 — a survivor pick had no receipt (PR #88)
 
 - [x] **SURV-1 — the survivor board never said a pick landed.** Owner report:
       *"The Survivor Pool Group doesn't do anything when you click a team for

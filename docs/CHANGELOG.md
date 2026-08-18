@@ -169,7 +169,7 @@ shipping it.
 
 ## Log
 
-### Aug 18 — the survivor board reads as a ledger
+### Aug 18 — the survivor board reads as a ledger (PR #88)
 
 Follow-up to the receipt work below, same report: *"Will it show who I've picked
 this season and can we add a strike through on teams that a user has picked since
@@ -196,7 +196,7 @@ opacity alone — `line-through` survives a dim room and does not depend on the
 new tests, since the rule being rendered (`blockReason` → `used`) is already
 pinned by three.
 
-### Aug 18 — the survivor pick that never said it landed
+### Aug 18 — the survivor pick that never said it landed (PR #88)
 
 **Owner report:** *"The Survivor Pool Group doesn't do anything when you click a
 team for that week. I just selected one and there isn't a review picks or any
