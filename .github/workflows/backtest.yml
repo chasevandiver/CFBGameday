@@ -142,6 +142,29 @@ jobs:
             echo '```'; cat frozen.log; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # BT-5, ONE TIME ONLY. These two experiments are pre-registered and were
+      # blocked on a fit window this repo did not have until the widening; the
+      # dispatch path that normally runs them is not reachable from this
+      # session, so they ride the PR once to produce their numbers. Both are
+      # informational — neither can move a parameter, since --tune-fcs ships
+      # both anchors at −30 and --tune-team-hfa only reports.
+      #
+      # DELETE THIS STEP once the two decisions-table rows are written. It is
+      # not a per-PR check and must never become one: a tuner on every model PR
+      # is eight minutes of runway spent re-answering a settled question.
+      - name: BT-5 experiments (one-time, delete after recording)
+        run: |
+          {
+            echo '### --tune-team-hfa (02:M-05 / 03:M-1v)'
+            echo '```'
+            npx tsx scripts/backtest.ts --tune-team-hfa 2>&1 | tail -60
+            echo '```'
+            echo '### --tune-fcs (Q4)'
+            echo '```'
+            npx tsx scripts/backtest.ts --tune-fcs 2>&1 | tail -60
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # The edge gate runs on every model PR: if a change ever makes the model
       # carry information the closing line lacks, this is where it shows up.
       # Informational — it must not fail the build.
