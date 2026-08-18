@@ -30,6 +30,7 @@ describe("gamesHubRows — ordering", () => {
     });
     expect(gamesHubRows(s).map((r) => r.id)).toEqual([
       "streak",
+      "tape",
       "guess-game",
       "guess-lines",
       "six-pack",
@@ -46,7 +47,7 @@ describe("gamesHubRows — ordering", () => {
   });
 
   it("always returns every game, in every state", () => {
-    expect(gamesHubRows(EMPTY_HUB_STATE)).toHaveLength(4);
+    expect(gamesHubRows(EMPTY_HUB_STATE)).toHaveLength(5);
   });
 });
 
@@ -122,5 +123,43 @@ describe("gamesHubRows — the copy", () => {
         expect(r.blurb.length).toBeGreaterThan(0);
       }
     }
+  });
+});
+
+describe("gamesHubRows — The Tape", () => {
+  const tapeRow = (over: Partial<GamesHubState["tape"]>, signedIn = true) =>
+    gamesHubRows({
+      ...EMPTY_HUB_STATE,
+      signedIn,
+      tape: { hasToday: true, answered: 0, done: false, correct: null, ...over },
+    }).find((r) => r.id === "tape")!;
+
+  /**
+   * The same distinction the streak row makes, and it matters for the same
+   * reason: a day with no round is a state of the WORLD, not of the player, and
+   * calling it "not played" blames them for it.
+   */
+  it("a day with no round reads 'no round', not 'not played'", () => {
+    const row = gamesHubRows({ ...EMPTY_HUB_STATE, signedIn: true }).find((r) => r.id === "tape")!;
+    expect(row.state).toBe("No round today");
+    expect(row.outstanding).toBe(false);
+  });
+
+  it("shows progress mid-round", () => {
+    expect(tapeRow({ answered: 2 }).state).toBe("2 of 5 answered");
+  });
+
+  it("shows the result once the round is done", () => {
+    expect(tapeRow({ answered: 5, done: true, correct: 4 }).state).toBe("4 of 5");
+  });
+
+  it("is outstanding until the round is finished, not until it is started", () => {
+    expect(tapeRow({ answered: 0 }).outstanding).toBe(true);
+    expect(tapeRow({ answered: 3 }).outstanding).toBe(true);
+    expect(tapeRow({ answered: 5, done: true, correct: 5 }).outstanding).toBe(false);
+  });
+
+  it("is never outstanding for a signed-out viewer", () => {
+    expect(tapeRow({ answered: 0 }, false).outstanding).toBe(false);
   });
 });

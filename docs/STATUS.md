@@ -3347,10 +3347,37 @@ under it is being replaced by **three** games, tried side by side —
       hand different players different puzzles. Postseason is included, unlike
       Guess the Game's deck, where its absence was a side effect of a
       `season_type = 'regular'` filter rather than a decision.
-- [ ] **TAPE-1/2 — The Tape** (`/tape`). One historical game a day, named up
-      front, then five questions about it one at a time. Answers frozen at
-      generation, so there is no grading lane and a corrected poll row cannot
-      restate an answer someone was already scored against.
+- [x] **TAPE-1/2 — The Tape** (`/tape`), 2026-08-18. One game from the archive
+      a day, named up front with crests, then five questions one at a time: who
+      won · who was favoured · by how much · over or under the real closing
+      total · was the home team ranked that week. The scoreboard starts blank
+      and fills in as facts settle. Migration **0068**, `src/lib/tape.ts` (pure)
+      + `tape-data.ts`, `/api/tape`, `/tape`, `TapePlay`.
+      **Answers are frozen at generation**, which is `six-pack.ts`'s closure
+      rule applied a step earlier and coming out stronger: a question is minted
+      only if its answer is already computable, so there is no pending state, no
+      settler returning null, and no re-grade. A corrected poll row landing next
+      season cannot restate an answer somebody was already scored against.
+      **"No going back" is server-enforced** — a POST whose `idx` is not the
+      next unanswered one is a 409 — because later questions become answerable
+      once earlier ones settle, and the chain between them is most of what makes
+      the round interesting.
+      **What it deliberately does not claim**: an anti-spoiler property. The
+      fixture is named, so every fact about it is public — `games`,
+      `line_snapshots` and `poll_rankings` are all anon-readable (0011) and the
+      answers are on the open internet besides. Withholding the score until the
+      round is over is worth doing; calling it a guarantee would be a lie. Guess
+      the Game's contract worked because the game's IDENTITY was hidden.
+- [x] **PUZZ-1 — the generator has a watchdog lane**, 2026-08-18.
+      `daily-puzzles` banks `QUEUE_TARGET` days ahead and the run FAILS below
+      `QUEUE_FLOOR`, so queue depth is the health metric. This is GTG-1's
+      lesson made structural: Guess the Game computed its puzzle on read, so
+      there was no cadence, nothing could be late, and an empty deck went
+      unnoticed for weeks. A transient error with a fortnight banked is now a
+      green run carrying an error string; a generator broken for ten days is a
+      red one, days before any player sees an empty screen. Rendezvous
+      selection did not go away — it moved inside the generator, so the same
+      day still yields the same puzzle for everyone.
 - [ ] **DC-1/2 — Depth Chart** (`/depth-chart`). Sixteen tiles, four hidden
       groups of four, four mistakes. The build is the uniqueness validator: a
       grid is only fair if exactly one partition satisfies it, and generating

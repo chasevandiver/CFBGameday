@@ -161,6 +161,76 @@ select public.expect_denied('anon cannot execute the leaderboard', null,
   'permission denied');
 
 -- ---------------------------------------------------------------------------
+-- TAPE-2 (0068): The Tape. The answer key must be unreadable by anybody but
+-- the route, and the queue of future days must not leak tomorrow's fixture.
+-- ---------------------------------------------------------------------------
+
+\echo '# the tape: the answer key is not readable'
+\o /dev/null
+insert into tape_puzzles (day, game_id) values (current_date, 404);
+insert into tape_questions (day, idx, kind, prompt, choices, answer) values
+  (current_date, 0, 'winner', 'Who won?', array['Alabama','Michigan'], 'Alabama'),
+  (current_date, 1, 'total',  'Over or under 51.5?', array['Over','Under'], 'Under');
+\o
+begin;
+  select test_as(:ann::uuid);
+  -- RLS is on with NO select policy, so every row is denied rather than the
+  -- answer column being blanked. That is the whole reason a column grant was
+  -- rejected: PostgREST's `select *` ERRORS on a revoked column instead of
+  -- omitting it, and a row also has to hide questions you have not reached,
+  -- which no column grant can express.
+  select pg_temp.chk('a member cannot read the answer key at all',
+    not exists (select 1 from tape_questions where day = current_date));
+  select pg_temp.chk('but the fixture itself is readable — it is the hook',
+    exists (select 1 from tape_puzzles where day = current_date));
+rollback;
+
+\echo '# the tape: the queue does not leak tomorrow'
+\o /dev/null
+insert into tape_puzzles (day, game_id) values (current_date + 30, 403);
+\o
+begin;
+  select test_as(:ann::uuid);
+  -- The generator banks a fortnight, so this table always holds future rows.
+  -- A day well past any timezone's "today" must be invisible from every
+  -- session timezone — which is what catches a policy written against
+  -- `current_date` (UTC on Supabase) rather than America/Chicago. Between
+  -- 00:00 and 06:00 UTC those two disagree, so the naive version serves
+  -- tomorrow's fixture for six hours every night.
+  set local timezone to 'UTC';
+  select pg_temp.chk('a future fixture is invisible from a UTC session',
+    not exists (select 1 from tape_puzzles where day = current_date + 30));
+  set local timezone to 'Asia/Tokyo';
+  select pg_temp.chk('and from a session already on tomorrow',
+    not exists (select 1 from tape_puzzles where day = current_date + 30));
+rollback;
+
+\echo '# the tape: own-row containment'
+\o /dev/null
+insert into tape_entries (user_id, day, answers, correct, completed_at)
+values (:ann::uuid, current_date,
+        '[{"idx":0,"choice":"Alabama","correct":true}]', 1, now());
+\o
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.chk('bob cannot read ann''s tape answers',
+    not exists (select 1 from tape_entries where user_id = :ann::uuid));
+  select pg_temp.chk('the board answers without exposing the round',
+    exists (select 1 from tape_leaderboard() where played > 0));
+rollback;
+select public.expect_denied('direct tape entry insert -> denied', :bob::uuid,
+  $q$insert into tape_entries (user_id, day)
+     values ('22222222-2222-2222-2222-222222222222', current_date)$q$,
+  'permission denied');
+select public.expect_denied('a member cannot write the answer key', :bob::uuid,
+  $q$insert into tape_questions (day, idx, kind, prompt, choices, answer)
+     values (current_date, 4, 'winner', 'x', array['a','b'], 'a')$q$,
+  'permission denied');
+select public.expect_denied('anon cannot execute the tape board', null,
+  $q$select * from tape_leaderboard()$q$,
+  'permission denied');
+
+-- ---------------------------------------------------------------------------
 -- R2-D4 (0061): reactions — visibility rides the subject's own RLS.
 -- ---------------------------------------------------------------------------
 -- The hidden-pick case is the one that matters: reacting to a pick the blind

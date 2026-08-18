@@ -218,6 +218,8 @@ export function watchdogVerdict(
     streak?: number;
     /** R3-E2. Weekly AND seasonal, so it takes the notify-jobs horizon. */
     sixPack?: number;
+    /** TAPE-2 et al. Daily and unconditional, like the streak. */
+    dailyPuzzles?: number;
   },
   gameLive: boolean,
   /** Any scheduled game inside the next week. Gates the weekly notify jobs. */
@@ -238,6 +240,18 @@ export function watchdogVerdict(
   // 30h is a real absence and trips normally.
   if (agesH.streak !== undefined && Number.isFinite(agesH.streak) && agesH.streak > 30)
     problems.push(`streak: no successful run in ${Math.round(agesH.streak)}h`);
+  /* The lane Guess the Game could never have. Its puzzle was computed on read,
+     so there was no job to be late and its empty deck went unnoticed for weeks
+     (GTG-1). `daily-puzzles` banks a fortnight and fails below four days, so
+     this horizon is the second line rather than the first — but a generator
+     that stops running stops refilling, and the queue drains silently.
+     Same Number.isFinite guard and same reasoning as the streak above. */
+  if (
+    agesH.dailyPuzzles !== undefined &&
+    Number.isFinite(agesH.dailyPuzzles) &&
+    agesH.dailyPuzzles > 30
+  )
+    problems.push(`daily-puzzles: no successful run in ${Math.round(agesH.dailyPuzzles)}h`);
   // Scoreboard only owes freshness while something is actually on.
   if (gameLive && agesH.scoreboard > 1.5)
     problems.push(
@@ -343,6 +357,7 @@ export async function watchdogJob(db: SupabaseClient): Promise<Json> {
       nflGrade: await lastOkAgeH("nfl-grade"),
       streak: await lastOkAgeH("streak"),
       sixPack: await lastOkAgeH("six-pack"),
+      dailyPuzzles: await lastOkAgeH("daily-puzzles"),
     },
     (live ?? []).length > 0,
     (upcoming ?? []).length > 0,
