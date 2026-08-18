@@ -3282,9 +3282,9 @@ stays — it is the only path for a person the admin cannot see yet.
       exercising a privilege they demonstrably hold, and the worst case is a
       wrong name added to a group they already run. 23 DB assertions
       (327 → 350), 6 component tests (1292 → 1298).
-      ⚠️ **0064 applies to production BEFORE the deploy** — it only adds
-      functions, so it is inert against the running code, but the new roster
-      calls all three.
+      ⚠️ **0064–0066 apply to production BEFORE the deploy** — they only add
+      functions, an enum value and a settings row, so all three are inert
+      against the running code, and the new roster calls what they add.
 - [x] **GRP-1b** `/groups/[slug]/settings` stopped redirecting the other two
       kinds. It rendered pick'em's board and so refused betting and survivor
       groups outright, which meant *their* admins had no page for the roster,
@@ -3294,12 +3294,24 @@ stays — it is the only path for a person the admin cannot see yet.
       members too), and `GroupAdmin` hides the two pick'em-only controls: a
       betting group has no picks to hide and `set_group_leagues` refuses it a
       league scope. Both homes gained the Members link they never had.
-- [ ] **GRP-2** Tell someone they were added. Being added is not consented to —
-      a member can leave, removal is soft, and nothing is written to their
-      account beyond a roster row — but they currently find out by noticing a
-      new group. The push pipeline exists (0031–0033); a new kind needs a
-      `notification_settings` row and a preference, and inventing one inside a
-      membership migration is how a notification nobody chose ships. · **S**
+- [x] **GRP-2** Being added tells you so. Migrations **0065/0066** — the
+      `added_to_group` kind and its seeded row, split for the reason 0032/0033
+      and 0036/0037 were: Postgres refuses to use a new enum value in the
+      transaction that adds it. **`default_enabled` true**, unlike bad beats:
+      the firehose argument is about volume, and this fires a handful of times
+      ever and is always about you — shipping it silent would miss exactly the
+      people who never open the notification settings. The copy names the admin
+      (`{{admin}} added you`), because "you were added to Saturday Boys" reads
+      like something the site did, and a person is who you ask about it. Sent
+      from the server action inside `after()` so a push does not sit in front of
+      a roster that has already changed, and it throws nothing back — a
+      notification that failed to send is not a membership that failed to
+      happen. Subject is the group, so it fires once per person per group, ever;
+      a re-add a season later is silent, which is the trade the receipt table
+      makes everywhere else. Also fixed in passing: `updateNotificationSetting`'s
+      allowlist never carried `watchdog`, so 0037's "editable from /admin like
+      every other kind" had been false since it was written. 4 DB assertions
+      (350 → 354), 3 unit tests (1298 → 1301).
 
 ## 5. Not built, by choice
 

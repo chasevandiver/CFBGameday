@@ -15,7 +15,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * matter how many times the scoreboard loop re-observes the same cover flip.
  */
 
-export type NotificationKind = "picks_due" | "bad_beat" | "log_bets" | "admin" | "watchdog";
+export type NotificationKind =
+  | "picks_due"
+  | "bad_beat"
+  | "log_bets"
+  | "admin"
+  | "watchdog"
+  | "added_to_group";
 
 export interface PushPayload {
   title: string;
@@ -100,6 +106,27 @@ export async function kindDefaults(db: SupabaseClient): Promise<Record<string, b
     out[row.kind] = row.default_enabled;
   }
   return out;
+}
+
+/**
+ * What an "you were added to a group" notification says (GRP-2).
+ *
+ * Pure, and separate from the send, because the interesting part is the copy:
+ * the templates are admin-editable (0066) and the tap target has to be the
+ * group itself — a notification about a group that lands on the home screen
+ * makes the reader go looking for the thing it just told them about.
+ */
+export function addedToGroupPayload(
+  settings: { title: string; body: string },
+  group: { name: string; slug: string },
+  addedBy: string,
+): PushPayload {
+  const values = { group: group.name, admin: addedBy };
+  return {
+    title: fill(settings.title, values),
+    body: fill(settings.body, values),
+    url: `/groups/${group.slug}`,
+  };
 }
 
 export interface SendResult {

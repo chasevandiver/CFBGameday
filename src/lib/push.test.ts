@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fill, sendToUser } from "./push";
+import { addedToGroupPayload, fill, sendToUser } from "./push";
 
 /**
  * The dedupe is the whole safety property of this feature: the scoreboard job
@@ -71,6 +71,35 @@ describe("fill", () => {
     // A body reading "{{kickoff}}" is a bug someone fixes. An empty gap in a
     // sentence looks like it was written that way and ships forever.
     expect(fill("first kick {{kickoff}}", {})).toBe("first kick {{kickoff}}");
+  });
+});
+
+describe("addedToGroupPayload", () => {
+  const settings = { title: "You’re in {{group}}", body: "{{admin}} added you. Tap to open it." };
+
+  it("names the group and the person who did it", () => {
+    // "You were added to Saturday Boys" reads like something the site did.
+    // A person is who you ask about it, so the admin is in the copy.
+    const p = addedToGroupPayload(settings, { name: "Saturday Boys", slug: "saturday-boys" }, "Chase");
+    expect(p.title).toBe("You’re in Saturday Boys");
+    expect(p.body).toBe("Chase added you. Tap to open it.");
+  });
+
+  it("lands the tap on the group, not the home screen", () => {
+    const p = addedToGroupPayload(settings, { name: "Degens", slug: "degens" }, "Chase");
+    expect(p.url).toBe("/groups/degens");
+  });
+
+  it("carries whatever copy the admin console has stored", () => {
+    // The templates are editable from /admin (0066), so the builder must not
+    // hardcode the sentence it happens to ship with.
+    const p = addedToGroupPayload(
+      { title: "{{admin}} put you in a pool", body: "{{group}}" },
+      { name: "The Crew", slug: "the-crew" },
+      "Ann",
+    );
+    expect(p.title).toBe("Ann put you in a pool");
+    expect(p.body).toBe("The Crew");
   });
 });
 

@@ -2,10 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
+import { after } from "next/server";
 import type { PickMarket, SelectionMode } from "../../lib/db-types";
 import { ACTIVE_GROUP_COOKIE } from "../../lib/groups";
 import type { SeasonType } from "../../lib/season";
+import { activeSettings, addedToGroupPayload, pushConfigured, sendToUser } from "../../lib/push";
 import { createClient } from "../../lib/supabase/server";
+import { createServiceClient } from "../../lib/supabase/service";
 
 export interface ActionResult {
   ok: boolean;
@@ -152,20 +155,105 @@ export async function searchGroupCandidates(
 }
 
 /**
+ * Tell someone they were added (GRP-2).
+ *
+ * Being added is not consented to — you can leave, and nothing lands on your
+ * account beyond a roster row — but the join code never had this problem,
+ * because nobody types a code by accident. So the add announces itself.
+ *
+ * Runs in `after()`: a push is two round-trips to a push service and the admin
+ * is waiting on a roster that has already changed. It throws nothing back
+ * either — a notification that fails to send is not a membership that failed to
+ * happen, and reporting it as one would be a lie about what the button did.
+ *
+ * The service client is required, not a convenience: `notification_sends` and
+ * `push_subscriptions` belong to the person being added, and RLS is what stops
+ * one member reading another's device keys.
+ *
+ * Subject is the group, so this fires once per person per group, ever. Somebody
+ * removed and added back a season later is told nothing, which is the trade the
+ * receipt table makes everywhere else: the dedupe key is what stops a detector
+ * that fires twice from buzzing a phone twice.
+ */
+function notifyAdded(groupId: string, userId: string, addedBy: string): void {
+  if (!pushConfigured()) return;
+  after(async () => {
+    try {
+      const service = createServiceClient();
+      const settings = await activeSettings(service, "added_to_group");
+      if (!settings) return;
+
+      const [{ data: group }, { data: admin }] = await Promise.all([
+        service.from("groups").select("name, slug").eq("id", groupId).maybeSingle(),
+        service.from("profiles").select("display_name").eq("id", addedBy).maybeSingle(),
+      ]);
+      if (!group) return;
+
+      await sendToUser(
+        service,
+        userId,
+        "added_to_group",
+        `group:${groupId}`,
+        addedToGroupPayload(
+          settings,
+          group as { name: string; slug: string },
+          (admin as { display_name: string } | null)?.display_name ?? "An admin",
+        ),
+      );
+    } catch {
+      // Deliberately swallowed. The membership is already written and the
+      // roster already says so; the notification is the only thing lost.
+    }
+  });
+}
+
+/**
  * Add an account to the group without the join code — the admin's half of
  * getting people in (0064). The code still exists for everyone the admin
  * cannot see yet; this covers the person who already has an account.
  */
 export async function addGroupMember(groupId: string, userId: string): Promise<ActionResult> {
-  return rpc("add_group_member", { p_group: groupId, p_user: userId });
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Sign in first" };
+
+  const { error } = await supabase.rpc("add_group_member", {
+    p_group: groupId,
+    p_user: userId,
+  });
+  if (error) return { ok: false, message: error.message };
+
+  notifyAdded(groupId, userId, user.id);
+  revalidatePath("/groups", "layout");
+  return { ok: true };
 }
 
 /**
  * The same thing from a typed name rather than a picked row. The database
  * refuses a name two people share, so nobody is added by a coin flip.
+ *
+ * The RPC returns the account it resolved to, which is what makes the
+ * notification possible from this path at all — resolving the name a second
+ * time here could pick a different person than the one who was just added.
  */
 export async function addGroupMemberByName(groupId: string, name: string): Promise<ActionResult> {
-  return rpc("add_group_member_by_name", { p_group: groupId, p_name: name });
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Sign in first" };
+
+  const { data, error } = await supabase.rpc("add_group_member_by_name", {
+    p_group: groupId,
+    p_name: name,
+  });
+  if (error) return { ok: false, message: error.message };
+
+  if (data) notifyAdded(groupId, data as string, user.id);
+  revalidatePath("/groups", "layout");
+  return { ok: true };
 }
 
 // Each of these has to be a declared async function, not an arrow const: in a

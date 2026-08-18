@@ -686,3 +686,25 @@ select pg_temp.chk('anon cannot add anyone to anything',
 select pg_temp.chk('a signed-in admin can',
                    has_function_privilege('authenticated',
                      'public.add_group_member_by_name(uuid,text)', 'execute'));
+
+\echo '# being added tells you so (0065/0066, GRP-2)'
+-- The kind and its copy live in the database so /admin can retune them without
+-- a deploy; what has to be true is that the row exists, is on, and is on by
+-- default — a notification about being added that ships silent would reach
+-- exactly the people who never open the notification settings.
+select pg_temp.chk('the kind exists on the enum',
+                   'added_to_group' = any (enum_range(null::notification_kind)::text[]));
+select pg_temp.chk('its settings row is seeded, on, and on by default',
+                   (select enabled and default_enabled and lead_minutes = 0
+                    from notification_settings where kind = 'added_to_group'));
+select pg_temp.chk('the copy names the group and the admin',
+                   (select title like '%{{group}}%' and body like '%{{admin}}%'
+                    from notification_settings where kind = 'added_to_group'));
+-- The receipt table is the dedupe key and the audit trail; a member writing to
+-- it directly could both silence a notification and forge one.
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.raises('a member writing a notification receipt',
+    format($$insert into notification_sends (user_id, kind, subject, title, body, status)
+             values (%L, 'added_to_group', 'group:x', 't', 'b', 'sent')$$, :bob));
+rollback;

@@ -204,12 +204,28 @@ have been reaching for one anyway. The search returns ids, so the UI's Add
 button never goes through the name at all; the typed path exists for the admin
 who knows exactly who they mean, and it says so when it cannot be sure.
 
-**Not notified.** Being added is not consented to. The push pipeline exists,
-but a new kind needs a `notification_settings` row and a preference, and
-inventing one inside a membership migration is how a notification nobody chose
-ships. Queued as GRP-2 in `docs/STATUS.md`, with the reasoning for why the
-exposure is small: a member can leave, removal is soft, and nothing lands on
-their account beyond a roster row.
+**And then notified — GRP-2, migrations 0065/0066.** Being added is not
+consented to, and unlike the code there is no moment where the person does
+something: nobody types a join code by accident. So the add announces itself.
+The kind ships `default_enabled` **true**, which is the opposite of bad beats
+and for the opposite reason — that one is a firehose, this one fires a handful
+of times ever and is always about you, so silent-by-default would miss exactly
+the people who have never opened the notification settings. The copy names the
+admin: "you were added to Saturday Boys" reads like something the site did,
+where "Chase added you" is a person, and a person is who you ask about it.
+
+The send runs inside `next/server`'s `after()` — a push is two round-trips to a
+push service and the admin is waiting on a roster that has already changed — and
+it swallows its own failures on purpose. A notification that failed to send is
+not a membership that failed to happen, and reporting it as one would be a lie
+about what the button did. The subject is the group, so it fires once per person
+per group, ever; somebody removed and re-added a season later is told nothing,
+which is the same trade the receipt table makes everywhere else.
+
+**Found in passing:** `updateNotificationSetting`'s allowlist never carried
+`watchdog`. 0037 says "the copy is editable from /admin like every other kind"
+and it has been false since the day it was written — the allowlist predates the
+kind. One word, fixed alongside.
 
 **A thing found while wiring it up.** `/groups/[slug]/settings` redirected every
 group that was not pick'em, because the page is built around the board. So a
@@ -221,10 +237,10 @@ the whole slate for plain members as well), `GroupAdmin` hides the two controls
 that are pick'em's alone, and both other homes gained the Members link they
 never had.
 
-23 DB assertions (327 → 350) and 6 component tests (1292 → 1298), including the
-one that matters most: two accounts sharing a name, the second row clicked, and
-the add going by **id**. ⚠️ 0064 applies to production before the deploy — it
-only adds functions, so it is inert against the running code.
+27 DB assertions (327 → 354) and 9 tests (1292 → 1301), including the one that
+matters most: two accounts sharing a name, the second row clicked, and the add
+going by **id**. ⚠️ 0064–0066 apply to production before the deploy — functions,
+an enum value and a settings row, all inert against the running code.
 
 ### Aug 18 — the talent gate: an instrument, and an override
 

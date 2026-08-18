@@ -31,6 +31,11 @@ import type { NotificationKind } from "../lib/push";
 const KINDS: { kind: NotificationKind; label: string; hint: string }[] = [
   { kind: "picks_due", label: "Picks closing", hint: "Once, before the week's first kickoff" },
   { kind: "log_bets", label: "Log your bets", hint: "Betting groups, before each Saturday wave" },
+  {
+    kind: "added_to_group",
+    label: "Added to a group",
+    hint: "When an admin puts you in one. Rare, and always about you.",
+  },
   // Off unless asked for: one per late swing across a twelve-game Saturday is a
   // firehose, and muting is per-app — it would take the others down with it.
   { kind: "bad_beat", label: "Bad beats", hint: "Every late flip on a side you hold. Off by default." },
