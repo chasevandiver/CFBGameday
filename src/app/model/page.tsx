@@ -73,14 +73,14 @@ export default async function ModelPage() {
               <h2 className="text-sm text-accent">
                 Built on the {talent.source ?? "previous"} talent file
               </h2>
-              <span className="chip bg-chalk/10 text-chalk/60">{talent.teams} teams</span>
+              <span className="chip stat bg-chalk/10 text-chalk/60">{talent.teams} teams</span>
             </div>
             <p className="text-sm text-dim">
               CFBD had not published the {seasonId} team-talent composite when these ratings were
               built, so no incoming recruiting class is in the number. Talent is{" "}
-              {DEFAULT_PARAMS.talentWeight.toFixed(2)} of a preseason rating — roughly a point or
-              two per team, and shrinking every week as results replace the prior. The note clears
-              itself the next time the ratings rebuild on the real file.
+              {DEFAULT_PARAMS.talentWeight.toFixed(2)} of a preseason rating, so the error is
+              roughly 1&ndash;2 points a team, and it shrinks every week as results replace the
+              prior. The note clears itself the next time the ratings rebuild on the real file.
             </p>
           </section>
         )}
