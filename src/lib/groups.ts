@@ -15,6 +15,7 @@ import type {
   GroupWeekConfigRow,
   PickMarket,
 } from "./db-types";
+import { DEFAULT_TZ, dayKey } from "./kick";
 import type { SeasonType } from "./season";
 
 /**
@@ -176,6 +177,31 @@ export interface GroupMemberView {
   userId: string;
   name: string;
   role: "admin" | "member";
+  /** When this membership began. Restored memberships keep their first date. */
+  joinedAt: string;
+}
+
+/**
+ * "joined today" / "joined yesterday" / "joined Aug 12".
+ *
+ * The roster exists to answer "is that person actually in?", and the answer is
+ * most in doubt in the minute after somebody was added — so the recent days get
+ * words rather than a date, which is what makes a just-added member visibly
+ * just-added instead of one more name in a list.
+ *
+ * Compared by calendar day in the group's timezone rather than by elapsed
+ * hours: someone added at 11pm was added *today*, not twenty-three hours ago.
+ */
+export function joinedLabel(iso: string, tz: string = DEFAULT_TZ, now: Date = new Date()): string {
+  const day = dayKey(iso, tz);
+  if (day === dayKey(now.toISOString(), tz)) return "joined today";
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  if (day === dayKey(yesterday.toISOString(), tz)) return "joined yesterday";
+  return `joined ${new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    month: "short",
+    day: "numeric",
+  }).format(new Date(iso))}`;
 }
 
 /** Active roster, admins first then alphabetical. Removed members are excluded. */
@@ -185,13 +211,20 @@ export async function fetchGroupMembers(
 ): Promise<GroupMemberView[]> {
   const { data } = await supabase
     .from("group_members")
-    .select("user_id, role, profiles!inner(id, display_name)")
+    .select("user_id, role, joined_at, profiles!inner(id, display_name)")
     .eq("group_id", groupId)
     .is("removed_at", null);
 
-  type Row = Pick<GroupMemberRow, "user_id" | "role"> & { profiles: { display_name: string } };
+  type Row = Pick<GroupMemberRow, "user_id" | "role" | "joined_at"> & {
+    profiles: { display_name: string };
+  };
   return ((data ?? []) as unknown as Row[])
-    .map((r) => ({ userId: r.user_id, name: r.profiles.display_name, role: r.role }))
+    .map((r) => ({
+      userId: r.user_id,
+      name: r.profiles.display_name,
+      role: r.role,
+      joinedAt: r.joined_at,
+    }))
     .sort((a, b) => (a.role === b.role ? a.name.localeCompare(b.name) : a.role === "admin" ? -1 : 1));
 }
 

@@ -3314,6 +3314,32 @@ stays — it is the only path for a person the admin cannot see yet.
       every other kind" had been false since it was written. 4 DB assertions
       (350 → 354), 3 unit tests (1298 → 1301).
 
+**Owner report 2026-08-18, minutes after GRP-1 shipped** — "I had added hayden,
+i assume successfully, but it didn't pop anywhere that he was in the group. I
+want a member roster." The add had worked: the membership row was written at
+03:18:49 and the GRP-2 notification fired and recorded `skipped — no devices`,
+which is correct for someone who has never installed the app. What was missing
+was any screen that says so.
+
+- [x] **GRP-3** A plain member roster on every group home. Every kind already
+      listed its members and every one of them did it *through* something —
+      pick'em ranks by record, betting by units, survivor by who is still alive
+      — so a person with no picks, no bets and no entry sat at the bottom of a
+      leaderboard reading like a rounding error rather than like a member. The
+      new `GroupRoster` section is names, who runs the place, and when each
+      person came in, and it is last on the page because it is a reference, not
+      something anyone glances at during a game. `joinedLabel` says "joined
+      today" / "joined yesterday" for the recent days and a date after that,
+      compared **by calendar day in the group's timezone** rather than by
+      elapsed hours — someone added at 11pm was added today, not twenty-three
+      hours ago, and the one person who can check that is the person it is
+      about. The same label now rides each row of the settings roster too,
+      because that is the screen the admin is standing on when they add
+      somebody. The member count in each header stopped being a dead end and
+      links to it. `fetchGroupMembers` carries `joined_at`; **no migration** —
+      the column has been on `group_members` since 0020. 9 tests
+      (1301 → 1310).
+
 ## 5. Not built, by choice
 
 Additive features, no defect behind any of them. Verified still open 2026-08-12.

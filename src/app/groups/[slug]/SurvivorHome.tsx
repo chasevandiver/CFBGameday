@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { GroupArcade } from "../../../components/games/GroupArcade";
 import { GroupSwitcher, JoinCode } from "../../../components/group/GroupForms";
+import { GroupRoster } from "../../../components/group/GroupRoster";
 import { SurvivorPicker, type PickableGame } from "../../../components/group/SurvivorPicker";
 import { WeekJump } from "../../../components/group/WeekJump";
 import { TeamMark } from "../../../components/slate/TeamMark";
@@ -91,7 +92,9 @@ export async function SurvivorHome({
         <h1 className="text-2xl">{group.name}</h1>
         <p className="stat flex items-center gap-1.5 text-xs text-chalk/50">
           <Users size={12} aria-hidden />
-          {alive.length} of {standings.length} alive
+          <a href="#members" className="hover:text-chalk hover:underline">
+            {alive.length} of {standings.length} alive
+          </a>
           {group.visibility === "public" ? " · public" : " · members only"}
         </p>
       </div>
@@ -255,6 +258,13 @@ export async function SurvivorHome({
           </>
         )}
       </section>
+
+      <GroupRoster
+        members={members}
+        viewerId={userId}
+        slug={group.slug}
+        isAdmin={group.role === "admin"}
+      />
 
       {/* The daily games, scored for this roster — a survivor pool has no
           board, but it has people, and that is all the arcade needs. */}

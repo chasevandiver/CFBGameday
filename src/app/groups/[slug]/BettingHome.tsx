@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { GroupArcade } from "../../../components/games/GroupArcade";
 import { GroupSwitcher, JoinCode } from "../../../components/group/GroupForms";
+import { GroupRoster } from "../../../components/group/GroupRoster";
 import {
   PairPanel,
   SheetGameRow,
@@ -132,7 +133,9 @@ export async function BettingHome({
         <h1 className="text-2xl">{group.name}</h1>
         <p className="stat flex items-center gap-1.5 text-xs text-chalk/50">
           <Users size={12} aria-hidden />
-          {sheet.members.length} {sheet.members.length === 1 ? "bettor" : "bettors"}
+          <a href="#members" className="hover:text-chalk hover:underline">
+            {sheet.members.length} {sheet.members.length === 1 ? "bettor" : "bettors"}
+          </a>
           {group.visibility === "public" ? " · public" : " · members only"}
         </p>
       </div>
@@ -233,6 +236,13 @@ export async function BettingHome({
           </p>
         </section>
       )}
+
+      <GroupRoster
+        members={sheet.members}
+        viewerId={userId}
+        slug={group.slug}
+        isAdmin={group.role === "admin"}
+      />
 
       {/* Same roster, different game. A betting group's members play the
           daily four too, and this is where they find out who's winning. */}

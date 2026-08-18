@@ -169,6 +169,43 @@ shipping it.
 
 ## Log
 
+### Aug 18 — a group with no roster
+
+**Owner report, minutes after the add-by-name feature shipped:** *"I had added
+hayden, i assume successfully, but it didn't pop anywhere that he was in the
+group. I want a member roster."*
+
+The add had worked. The membership row was written at 03:18:49, and the GRP-2
+notification fired and recorded `skipped — no devices` — correct, for somebody
+who has never installed the app to a Home Screen. Everything downstream of the
+button was right and there was still nothing on any screen that said "he's in",
+which is the only part the person pressing it can see.
+
+**Every group home already listed its members. None of them listed membership.**
+Pick'em ranks people by record, a betting group by units, survivor by who is
+still alive. All three build that list from the roster, so hayden *was* on the
+Degens page — as the second row of a units leaderboard, with an em dash for a
+record and "nothing graded yet" under his name. That reads as a rounding error,
+not as a member, and it is not what somebody checks when the question is "did it
+work". A leaderboard answers *how is everyone doing*; nothing answered *who is
+in here*.
+
+So: `GroupRoster`, on all three homes, last on the page because it is a
+reference rather than something anyone glances at during a game. Names, who runs
+the place, and when each person came in. `joinedLabel` gives the recent days
+words instead of a date — "joined today" is the sentence the report was asking
+for — and compares **calendar days in the group's timezone**, not elapsed hours,
+because somebody added at 11pm was added today and the one person able to check
+that is the person it is about. The header counts ("2 bettors", "5 members")
+were dead ends that said how many and never who; they are now links to it.
+
+The same label rides each row of the settings roster too. That is the screen the
+admin is standing on when they press Add, so it is where "it worked" has to be
+legible.
+
+No migration — `group_members.joined_at` has been there since 0020, and
+`fetchGroupMembers` simply never selected it. 9 tests (1301 → 1310).
+
 ### Aug 18 — a second door into a group: by name
 
 **Owner request:** "I want to be able to add people to groups by name along
