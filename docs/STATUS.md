@@ -777,6 +777,18 @@ deliberate deferrals, each recorded below with what it would take.
       could only produce an error. The card now reads "locked in" and the button
       is disabled, which is what the RPC has always meant.
 
+- [x] **SURV-4 — a spent team is struck through, and says which week spent it.**
+      Follow-up from the same report: *"can we add a strike through on teams that
+      a user has picked since they are unable to pick them again"*. A used team
+      now carries `line-through` on the board, and the caption reads **"used Week
+      3"** rather than "already used" — which is what `SurvivorPicker`'s own doc
+      comment had claimed it said since 0053 ("*Used in week 3* and *kicked off*
+      are different problems"). The rule is the one refusal that is permanent —
+      "kicked off" comes back next week, a spent team does not — so it gets the
+      one treatment that reads without the caption being read first. Struck only
+      where the DB would actually refuse: a `reuse_teams` pool produces no `used`
+      block, so nothing is struck there.
+
 ### 2.2 This week (Aug 14–18)
 
 - [x] **P1-1** Shipped 2026-08-13. A **Game status** section on `/admin`

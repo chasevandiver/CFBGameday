@@ -11,6 +11,12 @@ export interface PickableTeam {
   team: TeamView;
   /** Null when it can be taken; otherwise why not. */
   block: PickBlock;
+  /**
+   * The week this team was spent in, when `block` is `used`. The ledger is the
+   * whole game — "used Week 3" is an answer, "already used" only tells you to
+   * go and look it up.
+   */
+  spentIn: string | null;
 }
 
 export interface PickableGame {
@@ -270,10 +276,17 @@ function TeamButton({
     ? locked
       ? "locked in"
       : null
-    : option.block !== null
-      ? BLOCK_WORD[option.block]
-      : null;
+    : option.block === "used" && option.spentIn !== null
+      ? `used ${option.spentIn}`
+      : option.block !== null
+        ? BLOCK_WORD[option.block]
+        : null;
   const disabled = chosen ? locked : option.block !== null;
+  // A team you have spent is gone for the season, which is a different kind of
+  // refusal from "this one kicked off" — that one comes back next week. The
+  // rule strikes it out so the board reads as the ledger it is at a glance,
+  // without the caption having to be read first.
+  const spent = option.block === "used";
   return (
     <button
       onClick={onChoose}
@@ -292,11 +305,15 @@ function TeamButton({
     >
       <TeamMark team={option.team} size={22} />
       <span className="min-w-0 flex-1">
-        <span className={`block truncate text-sm ${chosen ? "text-accent" : "text-chalk"}`}>
+        <span
+          className={`block truncate text-sm ${chosen ? "text-accent" : "text-chalk"} ${
+            spent ? "line-through decoration-chalk/50" : ""
+          }`}
+        >
           {option.team.school}
         </span>
         {caption && (
-          <span className="stat block text-[10px] uppercase tracking-wider text-chalk/45">
+          <span className="stat block truncate text-[10px] uppercase tracking-wider text-chalk/45">
             {caption}
           </span>
         )}

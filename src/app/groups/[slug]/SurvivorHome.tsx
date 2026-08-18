@@ -77,6 +77,17 @@ export async function SurvivorHome({
   // written).
   const spentElsewhere = me ? teamsSpentElsewhere(me, weekRef) : [];
 
+  // ...and which week each of them went in, so a struck-out team on the board
+  // names the week that spent it rather than making you count crests.
+  const spentIn = new Map<number, string>();
+  if (me) {
+    for (const w of me.weeks) {
+      if (w.teamId === null) continue;
+      if (w.week === weekRef.week && w.seasonType === weekRef.seasonType) continue;
+      spentIn.set(w.teamId, weekLabel(w, sport));
+    }
+  }
+
   const board: PickableGame[] = weekGames.map((g) => {
     const kick = g.startTs ? kickParts(g.startTs, DEFAULT_TZ) : null;
     const side = (teamId: number) => {
@@ -84,6 +95,7 @@ export async function SurvivorHome({
       return {
         team,
         block: blockReason(teamId, team.conference, g, spentElsewhere, pool),
+        spentIn: spentIn.get(teamId) ?? null,
       };
     };
     return {

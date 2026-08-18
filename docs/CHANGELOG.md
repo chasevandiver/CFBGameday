@@ -169,6 +169,33 @@ shipping it.
 
 ## Log
 
+### Aug 18 — the survivor board reads as a ledger
+
+Follow-up to the receipt work below, same report: *"Will it show who I've picked
+this season and can we add a strike through on teams that a user has picked since
+they are unable to pick them again."*
+
+The first half already shipped — the **Your picks** log is the season, week by
+week. The second half is the board, and it was under-saying what it knew. A
+spent team was drawn like any other refusal: dimmed, an `X`, and the caption
+"already used". But the three refusals are not the same size. "Kicked off" comes
+back next week and "out of pool" was never yours; **a spent team is gone for the
+season**, and that is the one piece of bookkeeping the whole format runs on.
+
+So a used team is now **struck through**, and the caption names the week that
+spent it — **"used Week 3"**, not "already used". The second half of that is
+a promise `SurvivorPicker`'s own doc comment had been making since 0053 (*"Used
+in week 3" and "kicked off" are different problems with different answers*)
+while `BLOCK_WORD` said neither. `SurvivorHome` already holds `me.weeks`, so it
+is a map, not a query.
+
+Struck only where the database would actually refuse: a `reuse_teams` pool
+produces no `used` block at all, so nothing is struck in one. Not colour and not
+opacity alone — `line-through` survives a dim room and does not depend on the
+10px caption being read first. `tsc`, lint, `next build` and 1316 tests clean; no
+new tests, since the rule being rendered (`blockReason` → `used`) is already
+pinned by three.
+
 ### Aug 18 — the survivor pick that never said it landed
 
 **Owner report:** *"The Survivor Pool Group doesn't do anything when you click a
