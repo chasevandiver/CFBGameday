@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_WINDOW,
@@ -151,5 +153,20 @@ describe("perSeasonTable", () => {
     expect(m?.bias).toBe(3);
     expect(m?.mae).toBe(3);
     expect(m?.n).toBe(2);
+  });
+});
+
+describe("--no-admit is measurement scaffolding, not an option anyone should ship", () => {
+  it("is absent from the workflow's headline report", () => {
+    // The default must always admit: a frozen FBS pool is simply wrong on any
+    // window wider than the one it was frozen at. The flag exists so the fix
+    // can be measured against its own absence, and the headline report is not
+    // where that belongs.
+    const yml = readFileSync(join(__dirname, "../../.github/workflows/backtest.yml"), "utf8");
+    const from = yml.indexOf("- name: Run backtest");
+    const headline = yml.slice(from, yml.indexOf("- name:", from + 10));
+    expect(headline).not.toContain("--no-admit");
+    // It appears exactly once, in its own labelled isolation step.
+    expect([...yml.matchAll(/--no-admit/g)]).toHaveLength(1);
   });
 });

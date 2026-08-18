@@ -126,6 +126,22 @@ jobs:
             echo '```'; cat legacy.log; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # BT-3's gate. The FBS-membership fix moves production numbers, so under
+      # AGENTS.md it needs a measurement — and it cannot be measured against a
+      # report from before the widening, because that report also scored a
+      # different set of seasons. Same code, same window, same scored set, the
+      # only difference being the fix: that is the comparison its gate needs.
+      #
+      # Paired with the step above and deleted with it once BT-3 and BT-4 are
+      # both settled.
+      - name: Same window with the FBS fix disabled (BT-3 isolation)
+        run: |
+          npx tsx scripts/backtest.ts --seasons=2023-2025 --no-admit | tee frozen.log
+          {
+            echo '### Reference window 2023-2025, FBS pool FROZEN — the fix'"'"'s own control'
+            echo '```'; cat frozen.log; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # The edge gate runs on every model PR: if a change ever makes the model
       # carry information the closing line lacks, this is where it shows up.
       # Informational — it must not fail the build.

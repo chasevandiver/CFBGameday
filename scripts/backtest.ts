@@ -2409,6 +2409,14 @@ async function main() {
   const tuneHfaFlag = process.argv.includes("--tune-hfa");
   const tuneFcsFlag = process.argv.includes("--tune-fcs");
   const tuneTeamHfaFlag = process.argv.includes("--tune-team-hfa");
+  // Isolation switch for the FBS-membership fix (BT-3). Admission is ON by
+  // default and always should be — a frozen pool is simply wrong on any window
+  // wider than the one it was frozen at. This exists so the fix can be MEASURED
+  // against its own absence on an identical sample, which is what its gate
+  // needs: comparing today's report to a report from before the widening also
+  // changes which seasons are scored, and a confounded comparison is not
+  // evidence.
+  const noAdmit = process.argv.includes("--no-admit");
 
   // The window comes first: it decides what is loaded, what is scored, and how
   // every number below is labelled.
@@ -2484,6 +2492,13 @@ async function main() {
     );
   }
 
+  if (noAdmit) {
+    console.log(
+      "!! --no-admit: FBS membership is FROZEN at the first season's SP+ list, reproducing the\n" +
+        "   pre-2026-08-18 defect on purpose. Every team promoted to FBS inside the window is\n" +
+        "   priced at the flat FCS anchor for the whole window. For measurement only.",
+    );
+  }
   console.log(`Loading ${useCache ? "(cache preferred)" : "(fetching)"}…`);
   const seasons: SeasonData[] = [];
   for (const s of SEASONS) {
@@ -2492,7 +2507,7 @@ async function main() {
         // Only --tune-epa reads PPA; at epaWeight 0 nothing else does.
         withAdvanced: tuneEpaFlag,
         // SP+ for the season itself drives FBS membership (admitNewFbs).
-        withSp: true,
+        withSp: !noAdmit,
       }),
     );
   }
