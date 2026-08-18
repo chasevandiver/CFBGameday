@@ -104,6 +104,28 @@ jobs:
           fi
           { echo '```'; cat backtest.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
+      # The same report at the PRE-2026-08-18 reference window, beside the one
+      # above. Every figure recorded in docs/ before that date was computed on
+      # 2023-2025, and widening the default made all of them incomparable to
+      # anything printed today — the exact objection docs/STATUS.md raises about
+      # not silently lifting the replay's preseason tilt to 0.4.
+      #
+      # Printing both is how that debt gets paid continuously rather than once:
+      # the reader can see what moved because the WINDOW changed and what moved
+      # because the MODEL changed, on every run, without trusting a changelog
+      # entry to have been kept up to date. ~9 CFBD calls and ~20 seconds.
+      #
+      # Remove this step once BT-4 is settled and the docs are reconciled —
+      # it is transition scaffolding, and it should be deleted on purpose
+      # rather than left to rot.
+      - name: Reference window (2023-2025) for comparison
+        run: |
+          npx tsx scripts/backtest.ts --seasons=2023-2025 | tee legacy.log
+          {
+            echo '### Reference window 2023-2025 — what the docs recorded'
+            echo '```'; cat legacy.log; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # The edge gate runs on every model PR: if a change ever makes the model
       # carry information the closing line lacks, this is where it shows up.
       # Informational — it must not fail the build.

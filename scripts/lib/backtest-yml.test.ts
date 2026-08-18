@@ -24,14 +24,33 @@ describe("backtest.yml window wiring", () => {
     expect(dispatch).toContain("covid:");
   });
 
-  it("never passes a window on the pull_request path", () => {
-    // `inputs` is empty on a pull_request run, so the only way a window could
-    // reach a PR report is a hardcoded flag in the run step.
-    const runStep = YML.slice(YML.indexOf("- name: Run backtest"));
+  it("never hardcodes a window into the HEADLINE report", () => {
+    // The headline report is what makes the calibration output an honesty gate,
+    // so it must run at whatever the default window is and never at a pinned
+    // one. Scoped to the "Run backtest" step alone: this assertion used to
+    // cover the whole rest of the file, which conflated "the main report is
+    // pinned" with "the word --seasons appears somewhere below", and the
+    // reference-window step below is a deliberate, separate report.
+    const from = YML.indexOf("- name: Run backtest");
+    const runStep = YML.slice(from, YML.indexOf("- name:", from + 10));
     expect(runStep).not.toMatch(/--seasons=\d/);
     expect(runStep).not.toMatch(/--covid=(chain|score|drop)\b(?!.*inputs)/);
     // The flags reach the command only through the inputs.
     expect(runStep).toContain("${{ inputs.seasons }}");
+  });
+
+  it("prints the reference window beside it while BT-4 is unpaid", () => {
+    // Widening the default made every figure recorded before 2026-08-18
+    // incomparable to anything printed today. Running both windows on every PR
+    // is how that debt gets paid continuously instead of once, by a changelog
+    // entry someone has to remember to keep true.
+    const from = YML.indexOf("- name: Reference window");
+    expect(from).toBeGreaterThan(-1);
+    const step = YML.slice(from, YML.indexOf("- name:", from + 10));
+    expect(step).toContain("--seasons=2023-2025");
+    // It is scaffolding and says so, so it gets deleted on purpose rather than
+    // outliving the reconciliation it exists for.
+    expect(YML).toMatch(/transition scaffolding/i);
   });
 
   it("lists every tuner the script accepts, so none is reachable only by editing the workflow", () => {
