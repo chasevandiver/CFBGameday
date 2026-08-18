@@ -237,3 +237,32 @@ export function poolRulesLine(pool: SurvivorPool, sport: "cfb" | "nfl"): string 
   const reuse = pool.reuseTeams ? "teams may repeat" : "each team once";
   return `${scope} · ${strikes} · ${reuse}`;
 }
+
+/**
+ * The teams an entrant has spent in every week *except* the one being viewed.
+ *
+ * `usedTeamIds` is the whole season including this week, and handing that to
+ * `blockReason` labels your own current pick "already used" — a refusal the
+ * database does not make. `make_survivor_pick` deliberately excludes the week
+ * being written (0053), so re-picking the same team for the same week is the
+ * no-op it looks like; the board has to agree with that or it tells you a rule
+ * that isn't there.
+ */
+export function teamsSpentElsewhere(
+  entry: Pick<SurvivorEntry, "weeks">,
+  viewing: { week: number; seasonType: SeasonType },
+): number[] {
+  return entry.weeks
+    .filter((w) => !(w.week === viewing.week && w.seasonType === viewing.seasonType))
+    .map((w) => w.teamId)
+    .filter((t): t is number => t !== null);
+}
+
+/** The word a finished week gets on the season log. */
+export const OUTCOME_WORD: Record<SurvivorOutcome, string> = {
+  won: "survived",
+  lost: "lost",
+  tied: "tied",
+  missed: "no pick",
+  pending: "pending",
+};

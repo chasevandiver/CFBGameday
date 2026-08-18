@@ -169,6 +169,88 @@ shipping it.
 
 ## Log
 
+### Aug 18 — the survivor board reads as a ledger (PR #88)
+
+Follow-up to the receipt work below, same report: *"Will it show who I've picked
+this season and can we add a strike through on teams that a user has picked since
+they are unable to pick them again."*
+
+The first half already shipped — the **Your picks** log is the season, week by
+week. The second half is the board, and it was under-saying what it knew. A
+spent team was drawn like any other refusal: dimmed, an `X`, and the caption
+"already used". But the three refusals are not the same size. "Kicked off" comes
+back next week and "out of pool" was never yours; **a spent team is gone for the
+season**, and that is the one piece of bookkeeping the whole format runs on.
+
+So a used team is now **struck through**, and the caption names the week that
+spent it — **"used Week 3"**, not "already used". The second half of that is
+a promise `SurvivorPicker`'s own doc comment had been making since 0053 (*"Used
+in week 3" and "kicked off" are different problems with different answers*)
+while `BLOCK_WORD` said neither. `SurvivorHome` already holds `me.weeks`, so it
+is a map, not a query.
+
+Struck only where the database would actually refuse: a `reuse_teams` pool
+produces no `used` block at all, so nothing is struck in one. Not colour and not
+opacity alone — `line-through` survives a dim room and does not depend on the
+10px caption being read first. `tsc`, lint, `next build` and 1316 tests clean; no
+new tests, since the rule being rendered (`blockReason` → `used`) is already
+pinned by three.
+
+### Aug 18 — the survivor pick that never said it landed (PR #88)
+
+**Owner report:** *"The Survivor Pool Group doesn't do anything when you click a
+team for that week. I just selected one and there isn't a review picks or any
+action item to see if the bet was confirmed. There's no action items or
+anything."*
+
+**The pick was going in.** `make_survivor_pick` had every rule it needs and the
+row was being written; what was missing was every part of the app that says so.
+Three of them, and the first is a regression of a lesson this repo had already
+paid for:
+
+1. **The board disabled itself on every write.** `disabled={blocked || pending}`
+   greyed all ~30 buttons for the length of the round-trip and brought them back
+   looking the same. That is audit **08/UX-10** exactly — the treatment
+   `PickButtons` abandoned in August because it "reads as *my tap did nothing*
+   for the whole round-trip". Survivor was written after that fix and did not
+   inherit it.
+2. **The confirmation was a border colour.** One button of thirty picked up
+   `border-accent`, and the only sentence about it was an 11px caption above the
+   list — off-screen by the time you have scrolled to the game you want.
+3. **There was no bottom bar and no review destination.** Pick'em has had one
+   since `PickBoard`: what you hold, that it saved, and *Review picks*.
+   Survivor — the format where you make exactly **one** pick a week, so the
+   stakes per tap are highest — had neither, and
+   `/groups/[slug]/week/[week]` redirects a survivor pool back home, so there was
+   nowhere to go and check.
+
+**Fixed by giving survivor what pick'em already had**, rather than inventing a
+treatment for it: per-button in-flight state with nothing disabled by a write
+that is out; a receipt on the card you tapped ("Georgia is your pick · saved",
+"tap again to clear"); and the same fixed thumb-zone bar, same offsets and same
+glass tokens as `PickBoard`, carrying the held crest, the save state, and a link
+to a new **Your picks** section — the pool's season as a week-by-week log
+(week, crest, survived/lost/tied/no pick) instead of the undifferentiated row of
+crests that was the only history on the page.
+
+**Two bugs fell out of reading it.** The board was drawing your own current pick
+with the caption **"already used"**, because `usedTeamIds` includes the week
+being viewed and that is what `blockReason` was given — a refusal
+`make_survivor_pick` deliberately does *not* make (0053 excludes the week being
+written, so re-picking the same team is the no-op it looks like).
+`teamsSpentElsewhere` is the fix. And a **held pick stayed tappable after its
+own kickoff**, because `blocked` was suppressed whenever `chosen`, while
+`remove_survivor_pick` refuses with "Kickoff — that pick is locked." — so the
+one control that looked live on a locked card could only produce an error. It
+now reads "locked in" and is disabled.
+
+No migration and no RPC change: every rule was already enforced in 0053, and
+none of this touches what is allowed — only what the screen admits to. 3 tests
+(1313 → 1316), `tsc`, lint and `next build` clean. **Not seen rendered** — no
+survivor pool exists in the live database to open (`groups where kind =
+'survivor'` was 0 rows at the last check), so the layout claims here are read
+off the shared `PickBoard` bar rather than off a screenshot.
+
 ### Aug 18 — the roster was never there: PGRST201, five days silent
 
 A screenshot settled it. The Degens page said **"0 bettors"** and, under the

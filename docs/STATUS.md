@@ -61,7 +61,7 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **975 tests across 71 files**, all green in-session 2026-08-15 along with `tsc`, lint and `next build`, after the owner-report batch in §2.1e and the AUTH-2 proxy change. **257 DB assertions** against a real Postgres 16 cluster, 0 failed — 27 of them new in `supabase/tests/survivor.sql`, and three of those were rewritten after they passed for the wrong reason (the `raises` helper accepts any error, and the seed was refusing the pick on start-week rather than on the rule under test). Previously: **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
+| **Build** | **1,316 tests across 98 files**, all green in-session 2026-08-18 along with `tsc` and lint, and `next build` compiles clean — run after the SURV-1…SURV-4 batch in §2.1g. The DB suite was **not** re-run for that batch and did not need to be: it changes no migration, no RPC and no policy, and `supabase/tests/survivor.sql`'s 27 assertions cover rules the UI now merely reports. *(The one `tsc` complaint, `LayoutProps` in `src/app/layout.tsx`, is Next's generated route types being absent until a build has run — it is not a source error and `next build` passes.)* Previously: **975 tests across 71 files**, all green in-session 2026-08-15 along with `tsc`, lint and `next build`, after the owner-report batch in §2.1e and the AUTH-2 proxy change. **257 DB assertions** against a real Postgres 16 cluster, 0 failed — 27 of them new in `supabase/tests/survivor.sql`, and three of those were rewritten after they passed for the wrong reason (the `raises` helper accepts any error, and the seed was refusing the pick on start-week rather than on the rule under test). Previously: **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
 | **Scheduler** | 111 completed runs. Reds to date: one watchdog firing correctly on a cold `job_runs` table, and runs #107–109 — the backup verification sequence, each a real defect, all closed. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
@@ -730,6 +730,64 @@ deliberate deferrals, each recorded below with what it would take.
       would have been anyway), but a consensus that double-counts a book is
       wrong in a way nobody would notice, and CLV is graded against it. Normalise
       on write in the ESPN parser, and backfill. · **S**
+
+### 2.1g Owner report, 2026-08-18 — a survivor pick had no receipt (PR #88)
+
+- [x] **SURV-1 — the survivor board never said a pick landed.** Owner report:
+      *"The Survivor Pool Group doesn't do anything when you click a team for
+      that week. I just selected one and there isn't a review picks or any
+      action item to see if the bet was confirmed."*
+      The write itself was fine — `make_survivor_pick` was inserting the row —
+      so this is the acknowledgement, not the pick. Three things made a landed
+      pick invisible, and the first is a regression of something the pick'em
+      board had already fixed:
+      **`SurvivorPicker` disabled every button on the board while any write was
+      in flight** (`disabled={blocked || pending}`), which is audit 08/UX-10
+      verbatim — the treatment `PickButtons` abandoned because a whole board
+      greying out and coming back reads as "my tap did nothing". **The only
+      confirmation was a border colour** on one of ~30 buttons plus a 11px
+      caption above the list, off-screen by the time you have scrolled to the
+      game you wanted. And **there was no bottom bar**: pick'em has had one
+      since PickBoard — what you hold, that it saved, and a *Review picks* way
+      out — and survivor, the format where you make exactly one pick a week, had
+      no equivalent and no review destination at all (`/groups/[slug]/week/[week]`
+      redirects a survivor pool straight back home).
+      Fixed by giving survivor the same three things pick'em already has: only
+      the tapped button carries the in-flight cue and nothing is disabled by a
+      write that is out; the card you picked says so in words, under your thumb;
+      and a fixed bar in the thumb zone carries the held team, `saved`, and a
+      link to a new **Your picks** season log — week, crest, and what that week
+      did to you, which is also the first place the pool's history is readable
+      as anything but a row of crests.
+
+- [x] **SURV-2 — the board refused a rule the database does not have.** Your own
+      current pick was drawn with the caption "already used", because
+      `SurvivorHome` passed `usedTeamIds` — which includes the week being
+      viewed — to `blockReason`. `make_survivor_pick` deliberately excludes that
+      week (0053) so re-picking the same team is the no-op it looks like, so the
+      board was stating a refusal that would never have fired.
+      `teamsSpentElsewhere` in `src/lib/survivor.ts` is the fix, with three unit
+      assertions, one of which pins the `blockReason` composition rather than the
+      helper alone.
+
+- [x] **SURV-3 — a held pick could be tapped after its kickoff.** The board let a
+      chosen team stay live once its game had started (`blocked` was suppressed
+      whenever `chosen`), but `remove_survivor_pick` refuses with "Kickoff — that
+      pick is locked." So the one tap that looked available on a locked card
+      could only produce an error. The card now reads "locked in" and the button
+      is disabled, which is what the RPC has always meant.
+
+- [x] **SURV-4 — a spent team is struck through, and says which week spent it.**
+      Follow-up from the same report: *"can we add a strike through on teams that
+      a user has picked since they are unable to pick them again"*. A used team
+      now carries `line-through` on the board, and the caption reads **"used Week
+      3"** rather than "already used" — which is what `SurvivorPicker`'s own doc
+      comment had claimed it said since 0053 ("*Used in week 3* and *kicked off*
+      are different problems"). The rule is the one refusal that is permanent —
+      "kicked off" comes back next week, a spent team does not — so it gets the
+      one treatment that reads without the caption being read first. Struck only
+      where the DB would actually refuse: a `reuse_teams` pool produces no `used`
+      block, so nothing is struck there.
 
 ### 2.2 This week (Aug 14–18)
 
