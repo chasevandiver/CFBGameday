@@ -204,16 +204,40 @@ export function joinedLabel(iso: string, tz: string = DEFAULT_TZ, now: Date = ne
   }).format(new Date(iso))}`;
 }
 
-/** Active roster, admins first then alphabetical. Removed members are excluded. */
+/**
+ * Active roster, admins first then alphabetical. Removed members are excluded.
+ *
+ * ## The embed names its foreign key, and has to
+ *
+ * `group_members` has TWO foreign keys to `profiles`: `user_id` from 0020 and
+ * `removed_by` from 0038. From the moment the second one landed, PostgREST
+ * could no longer tell which relationship `profiles!inner(…)` meant, and
+ * answered every call with PGRST201 — "Could not embed because more than one
+ * relationship was found" — instead of rows.
+ *
+ * This function swallowed the error and returned an empty array, so for five
+ * days every roster in the product was empty and said so confidently: "0
+ * bettors" on a group with two, empty standings, an empty week grid, and an
+ * admin who added somebody by name with nowhere that showed it. Naming the
+ * constraint is the whole fix; the `throw` below is what stops the next one
+ * lasting five days.
+ */
 export async function fetchGroupMembers(
   supabase: SupabaseClient,
   groupId: string,
 ): Promise<GroupMemberView[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("group_members")
-    .select("user_id, role, joined_at, profiles!inner(id, display_name)")
+    .select("user_id, role, joined_at, profiles!group_members_user_id_fkey(id, display_name)")
     .eq("group_id", groupId)
     .is("removed_at", null);
+
+  // Loud on purpose. A group always has at least one member — the deferred
+  // keep-admin trigger (0020) guarantees it — so "no rows" is never a truthful
+  // answer here, and a page that renders a roster it could not read is telling
+  // the reader something false about who is in their group. An error page is
+  // worse to look at and better to have: somebody reports it the same day.
+  if (error) throw new Error(`group roster: ${error.message}`);
 
   type Row = Pick<GroupMemberRow, "user_id" | "role" | "joined_at"> & {
     profiles: { display_name: string };

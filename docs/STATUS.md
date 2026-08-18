@@ -3340,6 +3340,37 @@ was any screen that says so.
       the column has been on `group_members` since 0020. 9 tests
       (1301 → 1310).
 
+**Owner report 2026-08-18, with a screenshot** — the Degens page reading "0
+bettors" and "MEMBERS · 0 people" while the add box refused hayden as *already
+in this group*. Both were right: the membership existed and the roster query
+could not read it.
+
+- [x] **GRP-4** The roster query has returned nothing since **2026-08-13**.
+      `group_members` has two foreign keys to `profiles` — `user_id` (0020) and
+      `removed_by`, added by **0038** — so PostgREST could no longer tell which
+      relationship `profiles!inner(…)` meant and answered **PGRST201** instead
+      of rows. Reproduced against the live API before touching anything, and
+      fixed by naming the constraint:
+      `profiles!group_members_user_id_fkey(id, display_name)`.
+      **Five days, and the whole product's idea of who is in a group.**
+      `fetchGroupMembers` feeds pick'em standings, the betting sheet and its
+      header count, survivor standings, the week grid, the picks page, the
+      arcade and the settings roster — every one of them has been rendering an
+      empty list confidently. It is also why GRP-3's brand-new roster shipped
+      empty, and why GRP-1 looked like it had not worked.
+      **The reason it lasted five days is the second fix.** The function did
+      `const { data } = await …` and returned `[]` on error, so a broken query
+      and an empty group were the same answer. It now throws: a group always has
+      at least one member (the keep-admin trigger, 0020), so no rows is never
+      truthful here, and a page that renders a roster it could not read is
+      telling the reader something false. An error page is worse to look at and
+      better to have — somebody reports it the same day.
+      Guarded by two tests that read the request string, because nothing
+      mockable can see PostgREST's parser; both were checked failing against the
+      pre-fix source. `group_members → profiles` is the **only** pair in the
+      schema with two FKs to the same table that anything embeds — audited, not
+      assumed. **No migration.** 3 tests (1310 → 1313).
+
 ## 5. Not built, by choice
 
 Additive features, no defect behind any of them. Verified still open 2026-08-12.
