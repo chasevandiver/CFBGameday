@@ -1,4 +1,4 @@
-import { gtgChips, type GtgChipState, type GtgVerdict } from "../../lib/guess-game";
+import { gtgChips, type GtgChipState, type GtgStoredGuess } from "../../lib/guess-game";
 import { TeamMark, type MarkTeam } from "../slate/TeamMark";
 
 /**
@@ -10,23 +10,23 @@ import { TeamMark, type MarkTeam } from "../slate/TeamMark";
  * "right conference", which said the same thing in prose and only for one of
  * the three verdicts.
  *
- * REGION and RECORD render in their third, indeterminate state on most rows.
- * The reason is in `gtgChips` and it is a data limit, not a style: the
- * payload carries no region or record for the team you named, and a dark chip
- * would be a claim we cannot make.
+ * All three chips are real comparisons (GTG-9). A chip still renders its
+ * third, indeterminate state where the server could not decide one — a team
+ * with no home venue on file has no region — and that is deliberate: a dark
+ * chip means "not this", which is a claim, and `gtgChips` will not make one
+ * it cannot support.
  */
 export function GuessRow({
-  name,
-  verdict,
+  guess,
   mark,
   index,
 }: {
-  name: string;
-  verdict: GtgVerdict;
+  guess: GtgStoredGuess;
   mark: (school: string | undefined) => MarkTeam | null;
   /** Position in the list, for the stagger on the way in. */
   index: number;
 }) {
+  const name = guess.name;
   const team = mark(name);
   return (
     <li
@@ -36,7 +36,7 @@ export function GuessRow({
       {team ? <TeamMark team={team} size={24} /> : <span className="w-6 shrink-0" aria-hidden />}
       <span className="min-w-0 flex-1 truncate font-sans text-sm text-chalk">{name}</span>
       <span className="flex shrink-0 gap-1">
-        {gtgChips(verdict).map((c) => (
+        {gtgChips(guess).map((c) => (
           <Chip key={c.key} label={c.label} state={c.state} team={name} />
         ))}
       </span>

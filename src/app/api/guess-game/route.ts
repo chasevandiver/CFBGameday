@@ -1,12 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
   GTG_MAX_ATTEMPTS,
+  gtgMarks,
   gtgPayload,
-  gtgVerdict,
   pickDailyGame,
+  type GtgAnswerCtx,
   type GtgRowState,
 } from "../../../lib/guess-game";
-import { answerFor, cfbDeck, resolveTeam } from "../../../lib/guess-game-data";
+import { gtgStanding, type GtgDayResult, type GtgStats } from "../../../lib/gtg-stats";
+import { answerFor, cfbDeck, recordFor, resolveTeam, teamRegion } from "../../../lib/guess-game-data";
 import { productDate } from "../../../lib/streak";
 import { createClient } from "../../../lib/supabase/server";
 import { createServiceClient } from "../../../lib/supabase/service";
@@ -37,6 +39,38 @@ async function dayAnswer(db: ReturnType<typeof createServiceClient>, day: string
   return gameId === null ? null : answerFor(db, gameId);
 }
 
+/**
+ * The caller's own history, folded into a standing (GTG-10).
+ *
+ * Every row belongs to the session's user — the same scoping the day's row
+ * already uses — so this needs no migration and no definer function: it is
+ * one more read on a query path that was always the caller's own data. A year
+ * of play is 365 rows of three columns.
+ *
+ * The fold itself is `gtgStanding`, pure and tested, so the streak rule lives
+ * in one place rather than in SQL where it cannot be exercised.
+ */
+async function standingFor(
+  service: ReturnType<typeof createServiceClient>,
+  userId: string,
+): Promise<GtgStats> {
+  const { data } = await service
+    .from("gtg_guesses")
+    .select("day, attempts, solved_at")
+    .eq("user_id", userId);
+  const rows = ((data ?? []) as Array<{ day: string; attempts: number; solved_at: string | null }>)
+    /* An unfinished day is not a result yet: counting today's two wrong
+       guesses as a bust would zero the streak of anyone who opened the puzzle
+       and walked away. */
+    .filter((r) => r.solved_at !== null || r.attempts >= GTG_MAX_ATTEMPTS)
+    .map<GtgDayResult>((r) => ({
+      day: r.day,
+      attempts: r.attempts,
+      solved: r.solved_at !== null,
+    }));
+  return gtgStanding(rows);
+}
+
 async function userAndRow(day: string) {
   const supabase = await createClient();
   const {
@@ -54,15 +88,35 @@ async function userAndRow(day: string) {
   return { user, row };
 }
 
+/**
+ * A guess, scored on all three axes (GTG-9).
+ *
+ * The two extra reads happen only on POST and only for a guess that already
+ * resolved to a team, so the cost is bounded by six guesses a day. Region is
+ * cached per instance; the record query is the same bounded one the clue
+ * itself uses.
+ */
+async function marksFor(
+  service: ReturnType<typeof createServiceClient>,
+  team: { id: number; conference: string | null },
+  answer: GtgAnswerCtx,
+) {
+  const [region, record] = await Promise.all([
+    teamRegion(service, team.id),
+    recordFor(service, team.id, answer.season, answer.startTs),
+  ]);
+  return gtgMarks({ id: team.id, conference: team.conference, region, record }, answer);
+}
+
 export async function GET() {
   const day = productDate(new Date());
   const { user, row } = await userAndRow(day);
   if (!user || !row) return NextResponse.json({ error: "Sign in to play" }, { status: 401 });
 
   const service = createServiceClient();
-  const answer = await dayAnswer(service, day);
+  const [answer, stats] = await Promise.all([dayAnswer(service, day), standingFor(service, user.id)]);
   if (!answer) return NextResponse.json({ error: "No puzzle today" }, { status: 404 });
-  return NextResponse.json(gtgPayload(day, row, answer));
+  return NextResponse.json(gtgPayload(day, row, answer, stats));
 }
 
 export async function POST(req: NextRequest) {
@@ -96,11 +150,19 @@ export async function POST(req: NextRequest) {
   }
   const team = resolved.team;
 
-  const verdict = gtgVerdict({ id: team.id, conference: team.conference }, answer);
+  const marks = await marksFor(service, team, answer);
   const next: GtgRow = {
-    guesses: [...row.guesses, { name: team.school, verdict }],
+    /* The chip marks are STORED, not recomputed on read. Two reasons: a reload
+       must show the same row you saw when you guessed, and recomputing would
+       put two region lookups per historical guess on every GET. Stored in the
+       existing jsonb, so there is no migration and a row written before this
+       simply has no marks — which reads as "not compared", the truth. */
+    guesses: [
+      ...row.guesses,
+      { name: team.school, verdict: marks.verdict, region: marks.region, record: marks.record },
+    ],
     attempts: row.attempts + 1,
-    solved_at: verdict === "correct" ? new Date().toISOString() : null,
+    solved_at: marks.verdict === "correct" ? new Date().toISOString() : null,
   };
   const { error } = await service.from("gtg_guesses").upsert(
     {
@@ -115,5 +177,5 @@ export async function POST(req: NextRequest) {
   );
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json(gtgPayload(day, next, answer));
+  return NextResponse.json(gtgPayload(day, next, answer, await standingFor(service, user.id)));
 }

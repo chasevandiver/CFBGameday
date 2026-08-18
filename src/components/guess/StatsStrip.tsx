@@ -3,10 +3,10 @@ import type { GtgStats } from "../../lib/gtg-stats";
 /**
  * The after-the-buzzer numbers: streak, best solve, and where your solves land.
  *
- * Read from this device, not from the board — see `gtg-stats.ts` for why, and
- * for what that costs. The line saying so is not a disclaimer to be trimmed:
- * a streak that quietly disagrees with the leaderboard is worse than no
- * streak, and one line of type is the whole fix.
+ * Folded server-side from the caller's own `gtg_guesses` rows (GTG-10), so
+ * it follows the account rather than the browser. It was device-local for
+ * exactly one release and the caveat line that admitted so is gone with it —
+ * a disclaimer that is no longer true is worse than no disclaimer.
  */
 export function StatsStrip({ stats, solvedIn }: { stats: GtgStats; solvedIn: number | null }) {
   const peak = Math.max(1, ...stats.dist);
@@ -50,9 +50,6 @@ export function StatsStrip({ stats, solvedIn }: { stats: GtgStats; solvedIn: num
           );
         })}
       </ul>
-      <p className="mt-3 text-[11px] text-dim">
-        Kept on this device. Points and the board come from your account.
-      </p>
     </section>
   );
 }

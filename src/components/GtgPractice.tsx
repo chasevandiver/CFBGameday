@@ -2,7 +2,13 @@
 
 import { RotateCcw } from "lucide-react";
 import { useCallback, useState, useTransition } from "react";
-import { type GtgHint, type GtgVerdict, type SchoolOption } from "../lib/guess-game";
+import {
+  type GtgChipState,
+  type GtgHint,
+  type GtgStoredGuess,
+  type GtgVerdict,
+  type SchoolOption,
+} from "../lib/guess-game";
 import { ClueSlots } from "./guess/ClueSlots";
 import { GuessInput } from "./guess/GuessInput";
 import { GuessPips } from "./guess/GuessPips";
@@ -32,10 +38,7 @@ import { TeamMark, type MarkTeam } from "./slate/TeamMark";
 const newSeed = () =>
   `p-${Math.random().toString(36).slice(2, 10)}${Math.random().toString(36).slice(2, 6)}`;
 
-interface Played {
-  name: string;
-  verdict: GtgVerdict;
-}
+type Played = GtgStoredGuess;
 
 export function GtgPractice({ schools }: { schools: SchoolOption[] }) {
   const [open, setOpen] = useState(false);
@@ -101,6 +104,8 @@ export function GtgPractice({ schools }: { schools: SchoolOption[] }) {
         | {
             name?: string;
             verdict?: GtgVerdict;
+            region?: GtgChipState;
+            record?: GtgChipState;
             hints?: GtgHint[];
             done?: boolean;
             solved?: boolean;
@@ -112,7 +117,15 @@ export function GtgPractice({ schools }: { schools: SchoolOption[] }) {
         setError(body?.error ?? "Something went wrong");
         return;
       }
-      setPlayed((p) => [...p, { name: body.name ?? g, verdict: body.verdict ?? "miss" }]);
+      setPlayed((p) => [
+        ...p,
+        {
+          name: body.name ?? g,
+          verdict: body.verdict ?? "miss",
+          region: body.region,
+          record: body.record,
+        },
+      ]);
       setHints(body.hints ?? []);
       setDone(Boolean(body.done));
       setSolved(Boolean(body.solved));
@@ -178,7 +191,7 @@ export function GtgPractice({ schools }: { schools: SchoolOption[] }) {
       {played.length > 0 && (
         <ul className="mb-4 flex flex-col gap-1.5">
           {played.map((p, i) => (
-            <GuessRow key={i} index={i} name={p.name} verdict={p.verdict} mark={mark} />
+            <GuessRow key={i} index={i} guess={p} mark={mark} />
           ))}
         </ul>
       )}
