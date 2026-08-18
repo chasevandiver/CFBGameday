@@ -87,6 +87,7 @@ and must say so. See "The window changed" below.
 
 | Experiment | Result | Verdict |
 |---|---|---|
+| **BT-3 FBS membership** `2023-2025/warmup1/covid-chain` | Same code, same window, same scored set, the only difference being the fix (`--no-admit` is its control). Scored **MAE 13.22 → 12.93**, **NLL 0.5051 → 0.4861**, bias +0.54 ± 0.40 → +0.60 ± 0.39 (unmoved). Every season improves by the same ~0.29: 2024 13.59 → 13.30, 2025 12.87 → 12.57, 2023 (unscored) 13.30 → 13.01. Cross-tier vs actual −7.20 → −7.85 on n 194 → 204 — **0.57 SE, not significant**, and the sample legitimately changes because an admitted team's games move from the FBS-vs-FCS slice into cross-tier. | **Shipped as a bug fix**, and the justification is correctness rather than the number: a pool frozen at one season's membership is simply wrong. But the number is not small — for scale, `--tune-hfa` shipped on MAE −0.005 / NLL −0.0011 and the tier recentre on MAE −0.08 / NLL −0.0038. This is **5× the tier recentre's NLL gain**. Now also live in `build-preseason.ts`, so it reaches the ratings production serves. |
 | `--tune-team-hfa` | **Registered 2026-08-18, not yet run.** `teamHfaBlend` has shipped at 0.5 since SPEC §2.3 and has never been validated by any replay — production prices with a per-team table and the replay priced with a flat scalar, which is exactly why audit 03:M-1's ~+1.9 inflation could not appear in a calibration report. STATUS recorded it as blocked on "CFBD publishes 2026 data"; that was the wrong blocker, since the point-in-time question (build HFA from seasons < S, score S) needs prior seasons, not 2026. | Pending, rules fixed first. **Gate 0 is identification, not accuracy**: split-half correlation of raw team HFA across disjoint prior seasons (odd vs even, 2020 excluded from both) must be ≥ 0.30 over ≥ 100 teams. Failing it sets `teamHfaBlend` **0** and closes 02:M-05 on evidence. Passing it still requires: pooled MAE better by ≥ 0.05, home-bias \|t\| < 2 and no worse than at blend 0, every win-prob bucket within 3 points, and an **interior** winner. |
 | `--tune-preseason-tilts` | λ=0.4: wks 1–2 totals MAE **13.34 vs 13.72**; wks 1–4 12.93 vs 13.16. Every SP+-shape variant lost badly (to 16.87). | **Shipped.** Week 0/1 totals became real numbers instead of nulls. |
 | `--tune-hfa` | Bias **+0.74 ±0.33 → +0.03** at HFA 3.0; NLL 0.5005 → 0.4994; MAE flat (13.254 → 13.249). | **Shipped.** Model was systematically under-predicting home teams. |
@@ -283,6 +284,50 @@ Landed with it:
 correctness fix, reporting, and one new registered experiment. `DEFAULT_PARAMS`
 is untouched.
 
+#### The numbers, from runs 32186646908 and 32187035313 (BT-4 paid)
+
+Three readings, so the code change and the window change are separated rather
+than confused with each other. The reference-window run is reproducible at any
+time with `--seasons=2023-2025`; the third column is what the docs had recorded.
+
+| | 2015–2025 (new default) | 2023–2025 (reference) | 2023–2025 as recorded (Aug 15) |
+|---|---|---|---|
+| scored seasons | 9 | 2 | 3 |
+| margin MAE | 13.37 | **12.93** | 13.25 |
+| σ | 16.89 | 16.28 | 16.67 |
+| bias (actual − model) | −0.09 ± 0.19 | +0.60 ± 0.39 | +0.03 ± 0.33 |
+| totals MAE (model/market) | 13.40 / 12.72 | 13.02 / 12.44 | 13.09 / 12.51 |
+| edge flags ≥2 | 48.3% (n=5130) | 50.2% (n=1173) | 49.6% (n=1825) |
+| `--diagnose-edges` b₁ | **−0.043 (t=−1.46)** | — | +0.035 (t=0.83) |
+| b₂ (market) | 1.035 (t=37.61) | — | 0.985 (t=22.87) |
+| n | 7639 | — | 2611 |
+| market MAE | **12.24** | — | 11.98 |
+
+Read the second and third columns together carefully: they are not the same
+sample. The recorded run scored three seasons including the SP+-seeded
+bootstrap; every tuner now excludes it. On an identical 2,629-game basis the
+code change is **13.25 → 12.96**, and BT-3's own control says the whole of that
+is the FBS fix.
+
+Four things worth pulling out:
+
+- **The edge gate fails harder, and the sign flipped.** b₁ = −0.043 (t = −1.46)
+  against +0.035 (t = 0.83). Not significant either way, but at n = 7,639
+  "the model adds nothing beyond the close" is a much tighter statement than it
+  was at n = 2,611. Every one of the five tier tests is also negative now.
+- **The market's own MAE is window-dependent** — 11.98 on 2023–25, **12.24** on
+  2015–2025 — which is why `warnIfTooGood`'s bar had to stop being a constant.
+  A 2023–25 number policing an eleven-season run would have been wrong in both
+  directions.
+- **2020's chain-only row behaved exactly as pre-registered.** The prediction
+  was a strongly negative home-signed bias — empty stadiums, so we over-predict
+  the home side. It came in at **−1.98 ± 0.73**, the most negative of all eleven
+  seasons. That is a free integrity check on the whole exclusion mechanism, and
+  it passed.
+- **The model is better on recent football**: E1 13.90 → E2 13.34 → E3 13.28 →
+  E4 13.05. Unsurprising, since every parameter was fitted on 2023–25 — but it
+  is now visible rather than assumed, which is what the era tables are for.
+
 #### The window changed, and that restates things
 
 Every figure in this file and in STATUS predating today was computed on
@@ -293,11 +338,10 @@ than absorbed:
 
 - The reference window is reachable exactly — `--seasons=2023-2025` reproduces
   the old split (`SCORED` = 2024, 2025) and is pinned by a test.
-- **The side-by-side restatement is owed and is not yet paid.** It needs a CFBD
-  key, so it lands in the next commit after a real run: pooled MAE, σ, signed
-  bias ± SE, NLL, the win-prob buckets, totals MAE, and `--diagnose-edges`
-  b₁/b₂ with n, at both windows, plus the four tuners whose scored set changed.
-  Until then, no wide-window number should be compared to a recorded one.
+- **The side-by-side restatement is paid** — see the table above, and note that
+  it is now paid *continuously*: `backtest.yml` runs the reference window beside
+  the default on every model PR, so the comparison cannot go stale the way a
+  changelog entry written once does.
 - Every decisions-table row from here carries its window label. The runner
   prints it and says so.
 

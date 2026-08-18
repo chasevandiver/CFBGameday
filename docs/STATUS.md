@@ -1555,6 +1555,22 @@ rather than absorbed silently.*
       `fcsMarginsVsFbs` now accepts a per-season membership lookup.
       Generalised into the changelog's methodology findings, which is where the
       transferable part lives.
+      **Measured, and it is not a small number.** `--no-admit` reproduces the
+      frozen pool as its own control, so the fix is compared against its own
+      absence on an identical sample rather than against a report from before
+      the widening (which also scored a different set of seasons — that
+      comparison suggested a cross-tier regression and was an artefact of the
+      sample change, which is exactly why it was isolated instead of acted on).
+      Same window, same scored set: **MAE 13.22 → 12.93, NLL 0.5051 → 0.4861**,
+      bias unmoved, every season improving ~0.29, cross-tier unchanged at 0.57
+      SE. The tier recentre shipped on MAE −0.08 / NLL −0.0038; this is five
+      times that NLL gain.
+      **Now live in production's path too**: `build-preseason.ts` and
+      `diagnose-tiers-2026.ts` pass `withSp`, so the pool the 2026 ratings are
+      built from admits Jacksonville State, Sam Houston, Kennesaw State,
+      Missouri State and Delaware instead of pricing them at −30. Landed
+      2026-08-18, before the Aug 22 `--force` switch, so `preseason-refresh`
+      picks it up on its own well inside the Aug 27 window.
 - [ ] **BT-1 — dispatch the CFBD history probe.** `npm run probe:history`
       (`scripts/probe-cfbd-history.ts`), 78 calls one time, 0.26% of the monthly
       budget. Per-season row counts for SP+, talent, returning production, PPA,
@@ -1568,15 +1584,29 @@ rather than absorbed silently.*
       Supabase for nothing. **Schedule 08-19–21 or 09-01+, never 08-22/26/27/28**
       — those are the `preseason-refresh` escalation, checkpoint and freeze
       days, and nothing here may compete with getting production off 2026.2.0. · dispatch
-- [ ] **BT-4 — pay the restatement.** Making 2015–2025 the default means every
-      figure in CHANGELOG and STATUS predating 2026-08-18 was computed on a
-      different corpus — the same objection this file raises for not silently
-      lifting the replay's preseason tilt to 0.4. Owed: one run at each window,
-      side by side, in its own commit — pooled MAE, σ, signed bias ± SE, NLL,
-      the win-prob buckets, totals MAE, `--diagnose-edges` b₁/b₂ with n, plus
-      the four tuners whose scored set changed. Needs a CFBD key, so it cannot
-      be done from a sandbox. **Until it lands, no wide-window number should be
-      compared to a recorded one.** · dispatch
+- [x] **BT-4 — the restatement is paid, and paid continuously**, 2026-08-18.
+      Runs `32186646908` and `32187035313`. The table is in
+      `docs/CHANGELOG.md`; the headline is that on an identical 2,629-game
+      basis the code change is MAE 13.25 → 12.96, and at the wide window the
+      edge gate returns **b₁ = −0.043 (t = −1.46)** against +0.035 (t = 0.83)
+      at n = 7,639. Rather than a one-off table, `backtest.yml` now runs the
+      reference window beside the default on **every model PR**, so the
+      comparison cannot go stale — a changelog entry is true the day it is
+      written and drifts after. Marked as transition scaffolding and pinned by
+      a test, so it is deleted on purpose once the docs are reconciled.
+      **Two findings fell out of it.** The market's own MAE is
+      window-dependent (11.98 vs 12.24), which is why the leak detector's bar
+      had to stop being a constant. And 2020's chain-only row came in at bias
+      **−1.98 ± 0.73**, the most negative of eleven seasons — the pre-registered
+      prediction for an empty-stadium season, so the exclusion machinery has a
+      free integrity check and it passed.
+      *(As written this morning: "Making 2015–2025 the default means every figure
+      in CHANGELOG and STATUS predating 2026-08-18 was computed on a different
+      corpus… Owed: one run at each window, side by side, in its own commit…
+      Until it lands, no wide-window number should be compared to a recorded
+      one." That was right about the debt and wrong about the instrument — it
+      assumed a one-off table, and a table someone has to keep true is the same
+      shape of defect as a comment that describes code it has drifted from.)*
 - [ ] **BT-5 — the wide-window runs, in this order.** Each carries its window
       label and gets a decisions-table row either way: `--tune-team-hfa` (the
       headline unlock — see 02:M-05 below), `--tune-fcs` (its own residual now

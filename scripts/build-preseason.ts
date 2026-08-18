@@ -131,7 +131,26 @@ async function main() {
   // ---- 1. Replay 2023–2025 with tuned params → final 2025 ratings ----------
   console.log("Replaying 2023–2025 for final ratings…");
   const seasons = [];
-  for (const s of REPLAY_SEASONS) seasons.push(await loadSeason(s, true));
+  // `withSp` is what lets `admitNewFbs` see a team that joined FBS partway
+  // through the replay window. Without it the pool is whatever SP+ listed in
+  // 2022, frozen — so Jacksonville State and Sam Houston (2023), Kennesaw State
+  // (2024) and Missouri State and Delaware (2025) are priced at the flat FCS
+  // anchor in every game they played.
+  //
+  // Their OWN preseason rating was never the problem: `preseasonRating` has a
+  // documented rule for a null prior ("new FBS entrants: talent only"). The
+  // damage was to everyone else — each of their ~11 FBS opponents a season had
+  // its rating updated against an opponent ~25 points weaker than the real one.
+  //
+  // MEASURED (BT-3, 2026-08-18), same window and same scored set, the only
+  // difference being this flag: MAE 13.22 → 12.93, NLL 0.5051 → 0.4861, bias
+  // unmoved, every season improving by ~0.29. For scale, the tier recentre
+  // shipped on MAE −0.08 / NLL −0.0038.
+  //
+  // It also removes an inconsistency inside this file: step 5's FCS-bucket
+  // computation classifies by CURRENT (2026) membership, so those teams already
+  // counted as FBS there while the replay above treated them as FCS.
+  for (const s of REPLAY_SEASONS) seasons.push(await loadSeason(s, true, { withSp: true }));
   const idsByName = teamIdsByNameFrom(seasons);
 
   let priors = priorsFromSp(seasons[0].prevSp, idsByName);
