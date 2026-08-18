@@ -2,13 +2,12 @@
 
 import { RotateCcw } from "lucide-react";
 import { useCallback, useState, useTransition } from "react";
-import {
-  GTG_MAX_ATTEMPTS,
-  matchSchools,
-  type GtgHint,
-  type GtgVerdict,
-  type SchoolOption,
-} from "../lib/guess-game";
+import { type GtgHint, type GtgVerdict, type SchoolOption } from "../lib/guess-game";
+import { ClueSlots } from "./guess/ClueSlots";
+import { GuessInput } from "./guess/GuessInput";
+import { GuessPips } from "./guess/GuessPips";
+import { GuessRow } from "./guess/GuessRow";
+import { GtgScoreboard } from "./guess/Scoreboard";
 import { TeamMark, type MarkTeam } from "./slate/TeamMark";
 
 /**
@@ -23,6 +22,11 @@ import { TeamMark, type MarkTeam } from "./slate/TeamMark";
  *
  * The round is held here and the seed goes to the server on every guess, which
  * is what keeps the answer off the client until it is over.
+ *
+ * It shares the daily puzzle's presentational parts (`./guess/`) and nothing
+ * else. Practice sits directly under the real game on the same screen, so a
+ * practice round that still looked like the old clue table would read as a
+ * different product two thumb-scrolls down.
  */
 
 const newSeed = () =>
@@ -118,11 +122,7 @@ export function GtgPractice({ schools }: { schools: SchoolOption[] }) {
     });
   };
 
-  const cell = (v: GtgVerdict) => (v === "correct" ? "🟩" : v === "conference" ? "🟨" : "⬛");
   const spentNames = new Set(played.map((p) => p.name));
-  const suggestions = picking
-    ? matchSchools(guess, schools).filter((s) => !spentNames.has(s.school))
-    : [];
 
   if (!open) {
     return (
@@ -159,113 +159,74 @@ export function GtgPractice({ schools }: { schools: SchoolOption[] }) {
       </p>
 
       {hints.length > 0 && (
-        <ul className="mb-3 flex flex-col gap-1.5">
-          {hints.map((h) => (
-            <li key={h.label} className="flex items-center gap-2 text-sm">
-              <span className="stat w-[104px] shrink-0 text-[10px] font-semibold uppercase tracking-wider text-chalk/55">
-                {h.label}
-              </span>
-              {mark(h.team) && <TeamMark team={mark(h.team)!} size={20} />}
-              <span className="text-chalk">{h.value}</span>
-            </li>
-          ))}
-        </ul>
+        <>
+          <GtgScoreboard hints={hints} />
+          <div className="my-4 flex justify-center">
+            <GuessPips used={played.length} />
+          </div>
+          <div className="mb-4">
+            <ClueSlots
+              hints={hints}
+              attempts={played.length}
+              justUnlocked={played.length > 0 ? played.length - 1 : null}
+              mark={mark}
+            />
+          </div>
+        </>
       )}
 
       {played.length > 0 && (
-        <ul className="mb-3 flex flex-col gap-1">
+        <ul className="mb-4 flex flex-col gap-1.5">
           {played.map((p, i) => (
-            <li key={i} className="flex min-h-8 items-center gap-2 text-sm">
-              <span aria-hidden>{cell(p.verdict)}</span>
-              {mark(p.name) && <TeamMark team={mark(p.name)!} size={22} />}
-              <span className="font-sans text-chalk/80">{p.name}</span>
-              {p.verdict === "conference" && (
-                <span className="text-xs text-chalk/50">right conference</span>
-              )}
-            </li>
+            <GuessRow key={i} index={i} name={p.name} verdict={p.verdict} mark={mark} />
           ))}
         </ul>
       )}
 
       {done ? (
-        <div>
-          <p className="text-sm text-chalk">{solved ? "Got it." : "Out of guesses."}</p>
+        <div className="gtg-slide-up">
+          <h3 className="display text-center text-xl text-chalk">
+            {solved ? `Solved in ${played.length}` : "Out of guesses"}
+          </h3>
           {answerTeams && (
-            <p className="mt-2 flex flex-wrap items-center gap-2">
-              {mark(answerTeams.away) && <TeamMark team={mark(answerTeams.away)!} size={30} />}
-              <span className="font-sans text-sm text-chalk/80">{answerTeams.away}</span>
-              <span className="stat text-xs text-dim">at</span>
+            <p className="mt-3 flex flex-wrap items-center justify-center gap-2">
+              {mark(answerTeams.away) && <TeamMark team={mark(answerTeams.away)!} size={26} />}
+              <span className="font-sans text-sm text-chalk/75">{answerTeams.away}</span>
+              <span className="stat text-[11px] uppercase tracking-widest text-dim">at</span>
               {mark(answerTeams.home) && (
-                <TeamMark team={mark(answerTeams.home)!} size={34} glow />
+                <TeamMark team={mark(answerTeams.home)!} size={30} glow />
               )}
               <span className="font-sans text-sm font-semibold text-chalk">{answerTeams.home}</span>
             </p>
           )}
           <button
             onClick={start}
-            className="mt-3 flex min-h-11 items-center gap-1.5 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink"
+            className="stat mx-auto mt-5 flex min-h-11 items-center gap-2 rounded-lg bg-accent px-5 text-sm font-semibold uppercase tracking-wider text-accent-ink"
           >
-            <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+            <RotateCcw className="h-4 w-4" aria-hidden />
             Another one
           </button>
         </div>
       ) : (
-        <>
-          <div className="relative flex gap-2">
-            <input
-              value={guess}
-              onChange={(e) => {
-                setGuess(e.target.value);
-                setPicking(true);
-              }}
-              onKeyDown={(e) => e.key === "Enter" && submit()}
-              placeholder="Guess the home team"
-              aria-label="Guess the home team (practice)"
-              autoComplete="off"
-              role="combobox"
-              aria-expanded={suggestions.length > 0}
-              aria-controls="gtg-practice-suggestions"
-              className="min-w-0 flex-1 rounded-lg border border-chalk/12 bg-elev px-3 py-2 text-sm text-chalk placeholder:text-chalk/35 focus:border-accent focus-visible:outline-2 focus-visible:outline-accent"
-            />
-            <button
-              onClick={submit}
-              disabled={pending || guess.trim().length < 2}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink disabled:opacity-60"
-            >
-              Guess
-            </button>
-
-            {suggestions.length > 0 && (
-              <ul
-                id="gtg-practice-suggestions"
-                role="listbox"
-                className="absolute top-full right-0 left-0 z-20 mt-1 overflow-hidden rounded-lg border border-chalk/15 bg-elev shadow-lg"
-              >
-                {suggestions.map((s) => (
-                  <li key={s.school} role="option" aria-selected={false}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setGuess(s.school);
-                        setPicking(false);
-                      }}
-                      className="flex min-h-11 w-full items-center gap-2.5 px-3 text-left text-sm text-chalk hover:bg-chalk/10"
-                    >
-                      {mark(s.school) && <TeamMark team={mark(s.school)!} size={20} />}
-                      <span className="flex-1 truncate">{s.school}</span>
-                      {s.abbreviation && (
-                        <span className="stat shrink-0 text-[11px] text-dim">{s.abbreviation}</span>
-                      )}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <p className="mt-2 text-xs text-dim">
-            {GTG_MAX_ATTEMPTS - played.length} left — each miss buys a clue.
-          </p>
-        </>
+        <GuessInput
+          id="gtg-practice-suggestions"
+          value={guess}
+          onChange={(v) => {
+            setGuess(v);
+            setPicking(true);
+          }}
+          onSubmit={submit}
+          picking={picking}
+          onPick={(school) => {
+            setGuess(school);
+            setPicking(false);
+          }}
+          schools={schools}
+          spent={spentNames}
+          disabled={pending}
+          label="Guess the home team (practice)"
+          placeholder="Who was home?"
+        />
       )}
       {error && <p className="mt-2 text-xs text-loss">{error}</p>}
     </section>

@@ -4,7 +4,9 @@ import {
   GTG_MAX_ATTEMPTS,
   gtgHints,
   gtgPayload,
-  gtgShareString,
+  gtgChips,
+  gtgShareBlock,
+  parseFinalScore,
   gtgVerdict,
   pickDailyGame,
   matchSchools,
@@ -249,13 +251,44 @@ describe("gtgPayload — the anti-spoiler contract", () => {
   });
 });
 
-describe("gtgShareString", () => {
-  it("is spoiler-free: emoji and the score, no names", () => {
-    const s = gtgShareString("2026-09-01", ["miss", "conference", "correct"], true);
-    expect(s).toBe("Guess the Game 2026-09-01 3/6\n⬛🟨🟩");
+describe("parseFinalScore", () => {
+  it("pulls two numbers out of the score clue", () => {
+    expect(parseFinalScore(gtgHints(ANSWER, 0))).toEqual({
+      home: ANSWER.homePoints,
+      away: ANSWER.awayPoints,
+    });
   });
-  it("a bust shares as X", () => {
-    const s = gtgShareString("2026-09-01", ["miss", "miss"], false);
+  it("returns null rather than guessing when the rung is absent", () => {
+    expect(parseFinalScore([{ label: "When", value: "2024, week 3" }])).toBeNull();
+  });
+});
+
+describe("gtgChips", () => {
+  it("a correct guess lights all three: the team IS the answer", () => {
+    expect(gtgChips("correct").map((c) => c.state)).toEqual(["hit", "hit", "hit"]);
+  });
+  it("only CONF is ever decided on a wrong guess — the payload carries no more", () => {
+    expect(gtgChips("conference").map((c) => c.state)).toEqual(["hit", "unknown", "unknown"]);
+    expect(gtgChips("miss").map((c) => c.state)).toEqual(["miss", "unknown", "unknown"]);
+  });
+});
+
+describe("gtgShareBlock", () => {
+  it("is spoiler-free: a chip grid and the score, no names", () => {
+    const s = gtgShareBlock("2026-09-01", ["miss", "conference", "correct"], true, 4);
+    expect(s).toBe(
+      "Guess the Game · 2026-09-01 · 3/6\n⬛⬜⬜\n🟨⬜⬜\n🟨🟨🟨\nStreak 4",
+    );
+    expect(s).not.toContain("Georgia");
+    expect(s).not.toContain("Auburn");
+  });
+  it("a bust shares as X, and no streak line when there is no streak", () => {
+    const s = gtgShareBlock("2026-09-01", ["miss", "miss"], false);
     expect(s).toContain("X/6");
+    expect(s).not.toContain("Streak");
+  });
+  it("only the rows actually played — Wordle's shape, not six every time", () => {
+    const s = gtgShareBlock("2026-09-01", ["correct"], true, 1);
+    expect(s.split("\n")).toHaveLength(3);
   });
 });

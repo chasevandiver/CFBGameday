@@ -1,15 +1,26 @@
 "use client";
 
 import { Check, Copy } from "lucide-react";
-import { TeamMark, type MarkTeam } from "./slate/TeamMark";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState, useSyncExternalStore, useTransition } from "react";
 import {
   GTG_MAX_ATTEMPTS,
-  gtgShareString,
-  matchSchools,
+  gtgShareBlock,
   type GtgVerdict,
   type SchoolOption,
 } from "../lib/guess-game";
+import {
+  commitDay,
+  getServerStatsSnapshot,
+  getStatsSnapshot,
+  subscribeStats,
+} from "../lib/gtg-stats";
+import { ClueSlots } from "./guess/ClueSlots";
+import { EndState } from "./guess/EndState";
+import { GuessInput } from "./guess/GuessInput";
+import { GuessPips } from "./guess/GuessPips";
+import { GuessRow } from "./guess/GuessRow";
+import { GtgScoreboard } from "./guess/Scoreboard";
+import type { MarkTeam } from "./slate/TeamMark";
 
 interface GtgState {
   day: string;
@@ -27,6 +38,13 @@ interface GtgState {
  * The daily puzzle player (R2-C3). All state comes from /api/guess-game —
  * this component never sees the answer until the server says the game is
  * over, which is the whole anti-spoiler design.
+ *
+ * Redesigned as a game rather than a form: the score is the hero, the clue
+ * slots are visible before you have bought them, and a guess reads as three
+ * fixed chips instead of a coloured square and a sentence. Every piece below
+ * is presentational and lives in `./guess/`; the fetch, the transition and
+ * the payload shape are untouched, and the answer still arrives exactly when
+ * it always did.
  */
 export function GuessGamePlay({ schools }: { schools: SchoolOption[] }) {
   const [state, setState] = useState<GtgState | null>(null);
@@ -37,6 +55,14 @@ export function GuessGamePlay({ schools }: { schools: SchoolOption[] }) {
   // Closed after a pick or a submit, so the list does not hang around over the
   // guess history once you have chosen.
   const [picking, setPicking] = useState(false);
+  /* The device-local record (`gtg-stats.ts`), read as the external store it
+     actually is rather than copied into state by an effect. */
+  const stats = useSyncExternalStore(subscribeStats, getStatsSnapshot, getServerStatsSnapshot);
+  /* Which clue slot the last submit revealed. Set in the submit handler, not
+     derived from `attempts`, because the flip must play on the guess that
+     bought the clue and not on a reload three slots later — the attempt count
+     alone cannot tell those two apart. */
+  const [justUnlocked, setJustUnlocked] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,9 +86,18 @@ export function GuessGamePlay({ schools }: { schools: SchoolOption[] }) {
     };
   }, []);
 
+  /* The only place a day reaches the record. Idempotent by day (`recordDay`),
+     so a refetch, a re-render or a second tab cannot count today twice — which
+     is what makes it safe to run on every payload rather than on a
+     transition. */
+  useEffect(() => {
+    if (state?.done) commitDay(state.day, state.solved, state.attempts);
+  }, [state]);
+
   const submit = () => {
     const g = guess.trim();
     if (!g || pending || !state || state.done) return;
+    const before = state.attempts;
     startTransition(async () => {
       setError(null);
       const res = await fetch("/api/guess-game", {
@@ -77,6 +112,12 @@ export function GuessGamePlay({ schools }: { schools: SchoolOption[] }) {
         setError(body?.error ?? "Something went wrong");
         return;
       }
+      /* The clue this guess just bought, flipped open once. Read off the
+         payload rather than an effect watching `attempts`, so a reload never
+         replays a reveal that already happened. */
+      if (body.attempts > before && body.attempts <= GTG_MAX_ATTEMPTS) {
+        setJustUnlocked(body.attempts - 1);
+      }
       setState(body);
       setGuess("");
       setPicking(false);
@@ -85,10 +126,11 @@ export function GuessGamePlay({ schools }: { schools: SchoolOption[] }) {
 
   const share = async () => {
     if (!state) return;
-    const text = gtgShareString(
+    const text = gtgShareBlock(
       state.day,
       state.guesses.map((g) => g.verdict),
       state.solved,
+      stats.streak,
     );
     try {
       await navigator.clipboard.writeText(text);
@@ -101,8 +143,6 @@ export function GuessGamePlay({ schools }: { schools: SchoolOption[] }) {
 
   if (error && !state) return <p className="text-sm text-loss">{error}</p>;
   if (!state) return <p className="text-sm text-dim">Loading today’s puzzle…</p>;
-
-  const cell = (v: GtgVerdict) => (v === "correct" ? "🟩" : v === "conference" ? "🟨" : "⬛");
 
   /* Crests come from the same school list the type-ahead uses, joined on the
      name the SERVER returned — `teams.school` on both sides, so it is an exact
@@ -122,134 +162,79 @@ export function GuessGamePlay({ schools }: { schools: SchoolOption[] }) {
   // Already-guessed schools drop out: re-guessing one is a wasted attempt, and
   // the server would accept it.
   const spent = new Set(state.guesses.map((g) => g.name));
-  const suggestions = picking
-    ? matchSchools(guess, schools).filter((s) => !spent.has(s.school))
-    : [];
 
   return (
     <div className="flex flex-col gap-4">
+      <GtgScoreboard hints={state.hints} />
+
+      <div className="flex justify-center">
+        <GuessPips used={state.attempts} />
+      </div>
+
       <section className="card p-4">
-        <h2 className="mb-2 text-sm text-accent">The clues</h2>
-        <ul className="flex flex-col gap-1.5">
-          {state.hints.map((h) => (
-            <li key={h.label} className="flex items-center gap-2 text-sm">
-              <span className="stat w-[104px] shrink-0 text-[10px] font-semibold uppercase tracking-wider text-chalk/55">
-                {h.label}
-              </span>
-              {mark(h.team) && <TeamMark team={mark(h.team)!} size={20} />}
-              <span className="text-chalk">{h.value}</span>
-            </li>
-          ))}
-        </ul>
-        {!state.done && (
-          <p className="mt-2 text-xs text-dim">
-            Each miss buys the next clue. {GTG_MAX_ATTEMPTS - state.attempts} left — who was the
-            home team?
-          </p>
-        )}
+        <ClueSlots
+          hints={state.hints}
+          attempts={state.attempts}
+          justUnlocked={justUnlocked}
+          mark={mark}
+        />
       </section>
 
       <section className="card p-4">
         {state.guesses.length > 0 && (
-          <ul className="mb-3 flex flex-col gap-1">
+          <ul className="mb-4 flex flex-col gap-1.5">
             {state.guesses.map((g, i) => (
-              <li key={i} className="flex min-h-8 items-center gap-2 text-sm">
-                <span aria-hidden>{cell(g.verdict)}</span>
-                {mark(g.name) && <TeamMark team={mark(g.name)!} size={22} />}
-                <span className="font-sans text-chalk/80">{g.name}</span>
-                {g.verdict === "conference" && (
-                  <span className="text-xs text-chalk/50">right conference</span>
-                )}
-              </li>
+              <GuessRow key={i} index={i} name={g.name} verdict={g.verdict} mark={mark} />
             ))}
           </ul>
         )}
 
         {state.done ? (
-          <div>
-            <p className="text-sm text-chalk">{state.solved ? "Got it." : "Out of guesses."}</p>
-            {state.answerTeams ? (
-              <p className="mt-2 flex flex-wrap items-center gap-2">
-                {mark(state.answerTeams.away) && (
-                  <TeamMark team={mark(state.answerTeams.away)!} size={30} />
-                )}
-                <span className="font-sans text-sm text-chalk/80">{state.answerTeams.away}</span>
-                <span className="stat text-xs text-dim">at</span>
-                {mark(state.answerTeams.home) && (
-                  <TeamMark team={mark(state.answerTeams.home)!} size={34} glow />
-                )}
-                <span className="font-sans text-sm font-semibold text-chalk">
-                  {state.answerTeams.home}
-                </span>
-              </p>
-            ) : (
-              <p className="mt-1 text-sm font-semibold text-chalk">{state.answer}</p>
-            )}
+          <EndState
+            solved={state.solved}
+            attempts={state.attempts}
+            teams={state.answerTeams}
+            fallbackAnswer={state.answer}
+            stats={stats}
+            mark={mark}
+          >
             <button
               onClick={share}
-              className="mt-3 flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-ink"
+              className="stat flex min-h-11 items-center gap-2 rounded-lg bg-accent px-5 text-sm font-semibold uppercase tracking-wider text-accent-ink"
             >
-              {copied ? <Check className="h-3.5 w-3.5" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
+              {copied ? (
+                <Check className="h-4 w-4" aria-hidden />
+              ) : (
+                <Copy className="h-4 w-4" aria-hidden />
+              )}
               {copied ? "Copied" : "Copy result"}
             </button>
-          </div>
+          </EndState>
         ) : (
-          <div className="relative flex gap-2">
-            <input
+          <>
+            <GuessInput
+              id="gtg-suggestions"
               value={guess}
-              onChange={(e) => {
-                setGuess(e.target.value);
+              onChange={(v) => {
+                setGuess(v);
                 setPicking(true);
               }}
-              onKeyDown={(e) => e.key === "Enter" && submit()}
-              placeholder="Guess the home team — e.g. Auburn or AUB"
-              aria-label="Guess the home team"
-              autoComplete="off"
-              role="combobox"
-              aria-expanded={suggestions.length > 0}
-              aria-controls="gtg-suggestions"
-              className="min-w-0 flex-1 rounded-lg border border-chalk/12 bg-elev px-3 py-2 text-sm text-chalk placeholder:text-chalk/35 focus:border-accent focus-visible:outline-2 focus-visible:outline-accent"
+              onSubmit={submit}
+              picking={picking}
+              onPick={(school) => {
+                setGuess(school);
+                setPicking(false);
+              }}
+              schools={schools}
+              spent={spent}
+              disabled={pending}
+              label="Guess the home team"
+              placeholder="Who was home?"
             />
-            <button
-              onClick={submit}
-              disabled={pending || guess.trim().length < 2}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink disabled:opacity-60"
-            >
-              Guess
-            </button>
-
-            {/* Absolutely positioned on purpose: a list that pushes the guess
-                history down every keystroke is the layout shift DESIGN.md
-                rules out. Tapping fills the box and stops there rather than
-                submitting — six guesses is not enough to spend one on a
-                fat-finger. */}
-            {suggestions.length > 0 && (
-              <ul
-                id="gtg-suggestions"
-                role="listbox"
-                className="absolute top-full left-0 right-0 z-20 mt-1 overflow-hidden rounded-lg border border-chalk/15 bg-elev shadow-lg"
-              >
-                {suggestions.map((s) => (
-                  <li key={s.school} role="option" aria-selected={false}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setGuess(s.school);
-                        setPicking(false);
-                      }}
-                      className="flex min-h-11 w-full items-center gap-2.5 px-3 text-left text-sm text-chalk hover:bg-chalk/10"
-                    >
-                      {mark(s.school) && <TeamMark team={mark(s.school)!} size={20} />}
-                      <span className="flex-1 truncate">{s.school}</span>
-                      {s.abbreviation && (
-                        <span className="stat shrink-0 text-[11px] text-dim">{s.abbreviation}</span>
-                      )}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+            <p className="mt-2.5 text-center text-xs text-dim">
+              School or abbreviation. Every miss unlocks the next clue.
+            </p>
+          </>
         )}
         {error && <p className="mt-2 text-xs text-loss">{error}</p>}
       </section>
