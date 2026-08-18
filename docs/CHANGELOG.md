@@ -169,6 +169,45 @@ shipping it.
 
 ## Log
 
+### Aug 18 — the roster was never there: PGRST201, five days silent
+
+A screenshot settled it. The Degens page said **"0 bettors"** and, under the
+roster shipped an hour earlier, **"MEMBERS · 0 people"** — while the add box
+refused hayden as *already in this group*. Both statements were true. The
+membership row existed; the query that reads rosters could not read it.
+
+**`group_members` has two foreign keys to `profiles`.** `user_id` since 0020,
+and `removed_by` since **0038** — the SEC-02 fix on Aug 13. From that moment
+PostgREST could not tell which relationship `profiles!inner(…)` meant, and
+answered every roster read with `PGRST201`, "Could not embed because more than
+one relationship was found". Reproduced against the live REST API before
+changing a line, and fixed by naming the constraint:
+`profiles!group_members_user_id_fkey(id, display_name)`.
+
+**What that cost.** `fetchGroupMembers` is the roster: pick'em standings, the
+betting sheet and its header count, survivor standings, the week grid, the picks
+page, the arcade, the settings roster. All of them have rendered an empty list —
+confidently, with a count of zero — for five days. It is also the real reason
+the add-by-name feature "didn't pop anywhere": GRP-3 built a roster section on
+top of a query that returns nothing, and shipped an empty box.
+
+**The five days are the actual defect.** The function read
+`const { data } = await …` and returned `[]` when the query failed, so a broken
+request and an empty group produced the same answer. That is the shape this repo
+keeps finding — audit bug #9, P2-5, the watchdog's `{notified: 0}` — a path
+reporting success without having verified the thing its caller believes it
+verified. It now throws. A group always has at least one member, because the
+deferred keep-admin trigger (0020) will not permit otherwise, so "no rows" is
+never a truthful answer here; an error page is worse to look at and better to
+have, because somebody reports it the same day.
+
+**Guarded by tests that read the request string**, since no mock of a Supabase
+client can see PostgREST's parser and the DB suite never speaks HTTP. Blunt, and
+the only kind that could have caught this — both checked failing against the
+pre-fix source. The schema was audited rather than assumed:
+`group_members → profiles` is the only multi-FK pair anything in the codebase
+embeds. No migration. 3 tests (1310 → 1313).
+
 ### Aug 18 — a group with no roster
 
 **Owner report, minutes after the add-by-name feature shipped:** *"I had added
