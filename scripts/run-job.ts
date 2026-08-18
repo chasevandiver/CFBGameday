@@ -22,7 +22,7 @@ import {
   watchdogJob,
   weatherJob,
 } from "./lib/jobs-core";
-import { backfillGamesJob } from "./lib/backfill";
+import { backfillGamesJob, backfillLinesJob, backfillRankingsJob } from "./lib/backfill";
 import { guessLinesJob, streakJob } from "./lib/daily-games";
 import { sixPackJob } from "./lib/six-pack";
 import { NFL_SEASON } from "./lib/nfl";
@@ -65,6 +65,10 @@ async function main() {
     // Dispatch-only (no cron): finished seasons do not change, so this is
     // run by hand when the puzzle deck needs widening. See scripts/lib/backfill.ts.
     "backfill-games": backfillGamesJob,
+    // The other two halves of the archive (BF-3), same dispatch-only rule:
+    // the market and the polls for seasons that are already over.
+    "backfill-lines": backfillLinesJob,
+    "backfill-rankings": backfillRankingsJob,
   } as const;
   const job = jobs[task as keyof typeof jobs];
   if (!job) throw new Error(`unknown task "${task}" (${Object.keys(jobs).join("|")})`);

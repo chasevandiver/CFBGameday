@@ -743,9 +743,16 @@ export async function applyScoreboard(
  * never fed to the model). CFBD returns school names, so rows that don't
  * match teams.school or teams.alt_names are reported for repair via alt_names.
  */
-export async function syncRankingsJob(db: SupabaseClient): Promise<Json> {
+/**
+ * One season's poll rows. Parameterised out of `syncRankingsJob` when the
+ * archive backfill needed the same work for 2015–22 (BF-3): the alternative
+ * was a second copy of the name-index build and the KEEP set in
+ * `scripts/lib/backfill.ts`, and a second copy of a name-matching loop is
+ * exactly the drift this file's neighbours keep warning about.
+ */
+export async function syncRankingsFor(db: SupabaseClient, seasonId: number): Promise<Json> {
   const KEEP = new Set(["AP Top 25", "Coaches Poll", "Playoff Committee Rankings"]);
-  const weeks = await cfbd.rankings(SEASON);
+  const weeks = await cfbd.rankings(seasonId);
   const { data: teamRows } = await db.from("teams").select("id, school, alt_names");
   const nameIndex = buildTeamNameIndex(
     (teamRows ?? []) as Array<{ id: number; school: string; alt_names: string[] | null }>,
@@ -784,6 +791,9 @@ export async function syncRankingsJob(db: SupabaseClient): Promise<Json> {
   }
   return { rows: rows.length, unmatched: [...unmatched] };
 }
+
+export const syncRankingsJob = (db: SupabaseClient): Promise<Json> =>
+  syncRankingsFor(db, SEASON);
 
 /**
  * Weekly SP+ / FPI / Elo snapshot → system_ratings (spec §2.4). Persisted so

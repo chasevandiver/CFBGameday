@@ -3268,6 +3268,90 @@ verified, merged, and live behind its own route".
       of anyone who opened the puzzle and walked away. The "Kept on this
       device" line is gone with the storage it described.
 
+**Replacing Guess the Game** — owner request 2026-08-18: *"I like the concept,
+but it's way too random. There's hardly any trivia around it and just trying to
+randomly guess a team."* Two causes, both confirmed in the code. The deck
+(`cfbDeck`) is every CFB regular-season final we hold, uniformly weighted, so
+most days the answer is a game nobody watched. And the ladder (`gtgHints`)
+carries almost nothing until the last rung: a final score narrows 266 teams to
+266, and the visitors narrow it to one. GTG-8's presentation stays; the mechanic
+under it is being replaced by **three** games, tried side by side —
+**The Tape** (`/tape`), **Depth Chart** (`/depth-chart`) and **Chains**
+(`/chains`). Owner also ruled: widen the archive to ~2015, implementation mode.
+
+- [x] **BF-1 — the archive reaches 2015**, 2026-08-18. Migration **0067** seeds
+      seasons 2015–22 (`is_current` false — a ninth `true` row makes
+      `fetchCurrentSeasonWeek`'s `maybeSingle()` ambiguous and takes the slate
+      down, which is 0063's point repeated because eight rows is eight chances).
+      Week 0 dates are the real last-Saturday-of-August openers, checked against
+      a calendar rather than derived. `backfillTargets` already discovers every
+      non-current CFB season, so no job code changed to pick them up.
+- [x] **BF-2 — conference is stored at kickoff, not as of today**, 2026-08-18.
+      `teams.conference` is the CURRENT conference, so reading it for a 2016
+      game files Texas under the SEC and Maryland under the ACC — a clue a fan
+      spots instantly, and the same failure GTG-9 dodged by deriving region
+      from venues. CFBD was already sending the right value
+      (`CfbdGame.homeConference`, alignment at kickoff) and `backfillRows`
+      dropped it. Migration 0067 adds `games.home_conference` /
+      `away_conference`; the backfill and `sync-games` both carry them.
+      **Deliberately not backfilled from `teams.conference`** — copying today's
+      alignment into the column that exists to not be today's alignment would
+      be unrecoverable, so NULL means "unknown at kickoff" and readers fall
+      back explicitly.
+- [x] **BF-3 — the archive has a market and polls**, 2026-08-18. `backfill-lines`
+      and `backfill-rankings`, both dispatch-only for the same reason as
+      `backfill-games` (a finished season does not change, so there is no
+      cadence to be late for). Season-scoped endpoints — one CFBD call each per
+      season, ~16 for the widening. This is what GTG-5 needed and did not have:
+      the "closing spread" clue was a shrug on every puzzle because
+      `line_snapshots` held nothing before 2026, and the rung was deleted
+      rather than the data fixed. Rankings reuse `syncRankingsFor`, factored
+      out of `syncRankingsJob` rather than copied.
+      **The load-bearing detail is `captured_at`.** The closing line is "the
+      last snapshot before kickoff", and the column default is `now()` — years
+      after a 2016 kickoff, which would make every reconstruction invisible to
+      every reader and present as a CFBD coverage problem. Reconstructions are
+      stamped one hour before kickoff, carry `source = 'cfbd-backfill'` so a
+      re-run deletes only its own rows and a real observation is never
+      mistaken for one, and an hour's lead means a real `--burst` snapshot
+      still wins the closing slot. Pinned by a test that runs the output
+      through `consensusFromSnapshots` rather than by asserting the string.
+- [ ] **BF-4 — run the widened backfill and record what landed.** Three
+      dispatches (`backfill-games --force`, `backfill-lines`,
+      `backfill-rankings`), then read `job_runs.detail` per season: games,
+      `dropped_unknown_team` (2015 has schools that have since left FBS, so
+      expect more than the 5 GTG-2 measured across 2023–25), snapshots, poll
+      rows, and the CFBD spend. **The number that gates The Tape** is how many
+      finals carry both a pre-kickoff spread and a total AND a poll published
+      that week — if that comes back small, TAPE-2's five-question shape needs
+      the decision recorded rather than worked around.
+- [ ] **SAL-1 — a salience score, so the deck stops being uniform.** One pure
+      tested function ranking how much a game was *an event*: both teams
+      ranked, a ranked team losing, an upset scaled by the closing spread, a
+      double-digit dog winning outright, rivalry and trophy, postseason and
+      bowl name, a one-score finish, a shootout. This is the half of the
+      owner's complaint that no mechanic change fixes on its own — all three
+      new games consume it.
+- [ ] **TAPE-1/2 — The Tape** (`/tape`). One historical game a day, named up
+      front, then five questions about it one at a time. Answers frozen at
+      generation, so there is no grading lane and a corrected poll row cannot
+      restate an answer someone was already scored against.
+- [ ] **DC-1/2 — Depth Chart** (`/depth-chart`). Sixteen tiles, four hidden
+      groups of four, four mistakes. The build is the uniqueness validator: a
+      grid is only fair if exactly one partition satisfies it, and generating
+      categories from a fact index produces overlapping tiles constantly.
+- [ ] **CHAIN-1/2 — Chains** (`/chains`). A fixed daily higher-or-lower run,
+      ordered by decreasing gap so it is a skill ladder rather than a
+      geometric random variable.
+- [ ] **TRIAL-1 — the arcade fold, once.** The three trial games deliberately
+      do **not** feed `arcade.ts` while the trial runs, and Guess the Game is
+      left running untouched as the control. `weeklyCeiling()` equalises each
+      game's weekly ceiling into [60,70]; adding three and later removing two
+      would re-score a live cumulative board twice, and `arcade.ts`'s own
+      header says a total that decreases is one nobody trusts. One commit at
+      the end picks the winner, retires the rest and moves the ceiling once,
+      with the measured distributions recorded.
+
 **Arcade calibration**
 - [ ] **UX-41 — re-check the arcade weights after Week 6.** The four weights
       in `ARCADE` equalise each game's *theoretical* weekly ceiling into

@@ -486,6 +486,94 @@ Talent published in September does not get loaded at all.
 build already falls back. What changed is whether the gate stops the load, and
 whether the fallback is visible afterwards.
 
+### Aug 18 — BF-1/2/3: the archive gets eight seasons, a market and polls
+
+Owner on Guess the Game: *"I like the concept, but it's way too random. There's
+hardly any trivia around it and just trying to randomly guess a team."* The
+diagnosis has two halves and only one of them is a mechanic problem.
+
+`cfbDeck` takes every CFB regular-season final we hold a score for, uniformly
+weighted, so most days the puzzle is a Tuesday MACtion game nobody watched —
+knowing football cannot help, because there is nothing to know. And `gtgHints`
+carries almost no information until the last rung: a final score narrows 266
+teams to 266, a record to ~130, a conference to ~16, and the visitors to one.
+Burning guesses to reach rung four is the rational play, which is exactly what
+"randomly guessing a team" feels like.
+
+Three replacement games are coming (The Tape, Depth Chart, Chains — STATUS).
+This entry is the data underneath all three, which is worth landing on its own
+because it changes no screen.
+
+**Eight more seasons (BF-1).** Migration 0067 seeds 2015–22. `backfillTargets`
+already discovered every non-current CFB season, so the job needed no change —
+0063 did the same work for three seasons and the mechanism held.
+
+**Conference at kickoff, not as of today (BF-2), which is a correctness bug and
+not a feature.** `teams.conference` is the CURRENT conference. Read it for a
+2016 game and Texas is in the SEC and Maryland is in the ACC. Widening to 2015
+turns that from a latent wrongness into eight seasons of it, in the one field
+every puzzle idea wanted to use.
+
+The fix cost nothing to fetch: `CfbdGame.homeConference` is already the
+alignment at kickoff — the field's own comment in `src/lib/cfbd.ts` says so —
+and `backfillRows` was dropping it on the floor. 0067 adds two nullable columns
+and both the backfill and `sync-games` carry them.
+
+**They are deliberately NOT backfilled from `teams.conference`**, and that is
+the decision worth recording. It would have filled the column instantly and
+destroyed the only thing it exists for, unrecoverably: nothing downstream could
+then tell a real 2016 value from a fabricated one. NULL means "unknown at
+kickoff" and readers fall back to `teams` explicitly. The existing GTG
+conference verdict is left alone — it compares both sides through the same
+current column, so it is self-consistent and lights no chip wrongly; it is
+answering a different question than its clue implies, which is recorded rather
+than fixed in a feature being replaced.
+
+**A market and polls (BF-3).** `backfill-lines` and `backfill-rankings`, both
+dispatch-only on `backfill-games`'s rule: a finished season does not change, so
+a cadence would spend CFBD calls to learn nothing and would need a watchdog
+horizon invented for it. Both endpoints are season-scoped — one call each per
+season, about sixteen for the widening, against a 30,000/mo budget running at
+~10,000.
+
+This is the gap GTG-5 hit and routed around. The "closing spread" clue was a
+shrug on every puzzle because `line_snapshots` held nothing before 2026, and
+the rung was deleted rather than the data fixed. Every interesting question a
+room of bettors would ask about a historical game — who was favoured, did it
+cover, were they ranked — needed this.
+
+Rankings are `syncRankingsFor`, factored out of `syncRankingsJob` with the
+season as a parameter. Copied, it would have been a second KEEP set, a second
+team name-index build and a second matching loop — three things that drift.
+
+**The one number that decides whether any of this works is `captured_at`.** The
+closing line is defined as the last snapshot with `captured_at < start_ts`, and
+CFBD's historical feed carries no capture time. The obvious choice is the
+column default, `now()` — which for a 2016 game is *years after kickoff*, so
+every reconstruction would be invisible to every closing-line reader. The
+archive would look like it had no market data at all, and it would present as a
+CFBD coverage problem rather than as a bug here.
+
+Reconstructions are stamped **one hour before kickoff**. An hour rather than a
+second because `refresh-lines --burst` captures inside ninety minutes, so on any
+game carrying both, the real observation is later and takes the closing slot —
+which is the right precedence. They carry **`source = 'cfbd-backfill'`**, which
+does two jobs: a re-run deletes only its own rows (so re-running cannot double
+a provider and skew the consensus mean), and no reader can mistake a
+reconstruction for an observation.
+
+The test does not assert the timestamp string. It runs the output through
+`consensusFromSnapshots` and asserts the closing read comes back — the failure
+being guarded against is invisibility, so the test has to look through the same
+function the bug would hide behind. A second one puts a real snapshot ten
+minutes before kickoff beside a reconstruction and asserts the real one wins.
+
+Signs pass through untouched: CFBD's spread is already home-perspective with
+negative meaning home is favoured, so the correct amount of arithmetic is none,
+and there is a test in both directions rather than a comment saying so.
+
+**No model change.** No parameter moved and no screen changed.
+
 ### Aug 18 — GTG-9 + GTG-10: the two chips and the streak get real data
 
 The redesign below shipped with two holes it was honest about: two of the
