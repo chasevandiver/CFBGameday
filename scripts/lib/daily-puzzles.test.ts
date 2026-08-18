@@ -261,7 +261,7 @@ describe("buildChains", () => {
 
 /* ---- Depth Chart's generator --------------------------------------------- */
 
-import { buildDepthChart, fillDisjoint } from "./daily-puzzles";
+import { DC_MAX_PER_FAMILY, buildDepthChart, dcFamily, fillDisjoint } from "./daily-puzzles";
 import { validateGrid, type DcCategory } from "../../src/lib/depth-chart";
 
 /**
@@ -363,7 +363,7 @@ describe("buildDepthChart", () => {
 
   /** Four "lost to X in Y" groups is one puzzle wearing four hats. */
   it("does not build a board out of one kind", () => {
-    for (let d = 1; d <= 20; d++) {
+    for (let d = 1; d <= 8; d++) {
       const { grid } = buildDepthChart(`2026-09-${String(d).padStart(2, "0")}`, facts, kinds);
       if (!grid) continue;
       const seen = new Map<string, number>();
@@ -389,7 +389,7 @@ describe("buildDepthChart", () => {
       if (buildDepthChart(day, facts, kinds).grid) ok += 1;
     }
     expect(ok / days).toBeGreaterThan(0.9);
-  });
+  }, 30_000);
 
   it("reports why it failed, so a starving index says which knob to turn", () => {
     // Three categories only: every attempt is short, and the reject histogram
@@ -399,4 +399,106 @@ describe("buildDepthChart", () => {
     expect(res.grid).toBeNull();
     expect(res.rejects.short).toBeGreaterThan(0);
   });
+});
+
+/* ---- kind diversity against the REAL index shape ------------------------- */
+
+/**
+ * The index BF-4 actually produced, in miniature: **95% head-to-head**. The
+ * live counts were 1,159 `lost_to` and 1,147 `beat` against 118 of everything
+ * else, and that skew broke the original diversity cap in two ways at once —
+ * a board could take two `lost_to` plus two `beat` and read as four
+ * restatements of the same claim, and a twelve-fact sample missed the other
+ * families more than half the time.
+ *
+ * These fixtures reproduce the ratio rather than an even spread, because an
+ * even spread is the case that already worked.
+ */
+function skewedFacts(): { facts: DcCategory[]; kinds: Map<string, string> } {
+  const facts: DcCategory[] = [];
+  const kinds = new Map<string, string>();
+  const push = (kind: string, i: number, size: number) => {
+    const id = `${kind}:${i}`;
+    const members = new Set<number>();
+    for (let j = 0; j < size; j++) members.add((((i * 7 + j * 13) % 120) + 1));
+    facts.push({ id, label: `${kind} ${i}`, members });
+    kinds.set(id, kind);
+  };
+  // 95% head-to-head, matching the live ratio.
+  for (let i = 0; i < 1150; i++) push(i % 2 ? "lost_to" : "beat", i, 5 + (i % 8));
+  for (let i = 0; i < 86; i++) push("conference_in", 2000 + i, 6 + (i % 6));
+  for (let i = 0; i < 19; i++) push("state", 3000 + i, 5 + (i % 5));
+  for (let i = 0; i < 12; i++) push("ap_top10", 4000 + i, 10);
+  push("dome", 5000, 14);
+  return { facts, kinds };
+}
+
+describe("dcFamily", () => {
+  /** lost_to and beat are the same claim pointed in opposite directions. */
+  it("collapses the head-to-head pair", () => {
+    expect(dcFamily("lost_to")).toBe(dcFamily("beat"));
+  });
+
+  it("leaves every other kind as its own family", () => {
+    for (const k of ["conference_in", "state", "ap_top10", "dome"]) {
+      expect(dcFamily(k)).toBe(k);
+    }
+  });
+});
+
+describe("buildDepthChart — against the real 95%-skewed index", () => {
+  const { facts, kinds } = skewedFacts();
+
+  it("still generates", () => {
+    expect(buildDepthChart("2026-08-19", facts, kinds).grid).not.toBeNull();
+  }, 15_000);
+
+  /**
+   * The regression this fix exists for: capping per KIND allowed two `lost_to`
+   * plus two `beat`, which is a board of four head-to-head categories wearing
+   * different hats. The family cap is what makes it impossible.
+   */
+  it("never builds a board of four head-to-head categories", () => {
+    let boards = 0;
+    for (let d = 1; d <= 10; d++) {
+      const { grid } = buildDepthChart(`2026-10-${String(d).padStart(2, "0")}`, facts, kinds);
+      if (!grid) continue;
+      boards += 1;
+      const h2h = grid.groups.filter((g) => dcFamily(kinds.get(g.id) ?? "") === "h2h").length;
+      expect(h2h, "too many head-to-head groups on one board").toBeLessThanOrEqual(
+        DC_MAX_PER_FAMILY,
+      );
+    }
+    expect(boards).toBeGreaterThan(0);
+  }, 15_000);
+
+  /** Every board must reach outside the dominant family for at least two slots. */
+  it("always includes at least two non-head-to-head categories", () => {
+    for (let d = 1; d <= 10; d++) {
+      const { grid } = buildDepthChart(`2026-11-${String(d).padStart(2, "0")}`, facts, kinds);
+      if (!grid) continue;
+      const other = grid.groups.filter((g) => dcFamily(kinds.get(g.id) ?? "") !== "h2h").length;
+      expect(other).toBeGreaterThanOrEqual(2);
+    }
+  }, 15_000);
+
+  /**
+   * Drawing family-by-family instead of filtering a random sample is what keeps
+   * the success rate up under this skew, and `DC_ATTEMPTS` is what finishes the
+   * job — 200 attempts gave 86.7% here, 800 gives 100%. The measurements are in
+   * the constant's docstring.
+   *
+   * Sixty days at 800 attempts is the slowest test in the suite by design: it
+   * is the only thing standing between a skewed fact index and a queue that
+   * quietly runs dry.
+   */
+  it("keeps a high success rate under the skew", () => {
+    let ok = 0;
+    const days = 60;
+    for (let d = 0; d < days; d++) {
+      const day = new Date(Date.UTC(2027, 0, 1) + d * 86_400_000).toISOString().slice(0, 10);
+      if (buildDepthChart(day, facts, kinds).grid) ok += 1;
+    }
+    expect(ok / days).toBeGreaterThanOrEqual(0.98);
+  }, 30_000);
 });

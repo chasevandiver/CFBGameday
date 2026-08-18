@@ -447,10 +447,52 @@ export async function generateChains(
 
 /* ---- Depth Chart --------------------------------------------------------- */
 
-/** How many category draws a day gets before it is given up as ungeneratable. */
-export const DC_ATTEMPTS = 200;
-/** At most this many of one kind, so a grid is not one puzzle wearing four hats. */
-export const DC_MAX_PER_KIND = 2;
+/**
+ * How many category draws a day gets before it is given up as ungeneratable.
+ *
+ * **Measured, not guessed.** Against a fixture reproducing the live index's
+ * 95% head-to-head skew, over sixty days:
+ *
+ *   attempts   success   cost
+ *        200     86.7%    44ms/day
+ *        400     98.3%    88ms/day
+ *        800    100.0%   163ms/day
+ *       1500    100.0%   289ms/day
+ *
+ * 800 is where it saturates. A fortnight's queue is then ~2.3s, which is
+ * nothing for a job that runs once a day — and the alternative to one more
+ * attempt is a MISSING DAY, since an unfair board is never shipped. The
+ * fixture is harsher than reality on purpose (120 teams against the real 266,
+ * so overlap is denser and grids are rejected more often), which makes this a
+ * floor rather than an estimate.
+ */
+export const DC_ATTEMPTS = 800;
+/**
+ * At most this many categories from one FAMILY, so a grid is not one puzzle
+ * wearing four hats.
+ *
+ * Family rather than kind, and the reason is measured rather than assumed. The
+ * real index BF-4 produced is **95% head-to-head**: 1,159 `lost_to` and 1,147
+ * `beat` against 118 of everything else. Capping per *kind* let a board take
+ * two `lost_to` and two `beat` — four categories that all read "played team X
+ * in year Y", which is exactly the failure the cap exists to stop, since
+ * `lost_to` and `beat` are the same claim pointed in opposite directions.
+ */
+export const DC_MAX_PER_FAMILY = 2;
+
+/**
+ * Which categories compete for the same slot.
+ *
+ * Only the head-to-head pair needs collapsing today; everything else is its own
+ * family. Kept as a map rather than a special case so a future kind that
+ * restates an existing one has somewhere obvious to go.
+ */
+export const DC_FAMILY: Record<string, string> = {
+  lost_to: "h2h",
+  beat: "h2h",
+};
+
+export const dcFamily = (kind: string): string => DC_FAMILY[kind] ?? kind;
 
 export interface DcAttemptResult {
   grid: DcGrid | null;
@@ -459,11 +501,6 @@ export interface DcAttemptResult {
   attempts: number;
   /** Why the failures failed, so a starving generator says which knob to turn. */
   rejects: Record<DcReject, number>;
-}
-
-/** Deterministic pick of `k` distinct indices below `n`, from a seed. */
-function seededPick(n: number, k: number, seed: string): number[] {
-  return seededOrder(n, seed).slice(0, k);
 }
 
 /**
@@ -494,27 +531,62 @@ export function buildDepthChart(
   };
   let best: { grid: DcGrid; traps: number } | null = null;
 
+  /* Grouped ONCE, outside the attempt loop. Two reasons, and the second is the
+     one that matters:
+
+     Cost — the first version shuffled the whole index on every attempt, which
+     against a real 2,400-fact index at 200 attempts a day is millions of hash
+     calls for a fortnight's queue.
+
+     Diversity — sampling the index at random and then filtering by family
+     cannot do better than the index's own skew. Drawing family-by-family makes
+     the spread structural: the round-robin below takes one category from each
+     family before it takes a second from any, so a board reaches four DIFFERENT
+     families whenever four exist, rather than settling for two. */
+  const byFamily = new Map<string, DcCategory[]>();
+  for (const f of facts) {
+    const family = dcFamily(kinds.get(f.id) ?? "?");
+    const arr = byFamily.get(family);
+    if (arr) arr.push(f);
+    else byFamily.set(family, [f]);
+  }
+  const families = [...byFamily.keys()].sort();
+
   for (let attempt = 0; attempt < attempts; attempt++) {
     const seed = `${day}:${attempt}`;
-    const picked = seededPick(facts.length, 12, seed)
-      .map((i) => facts[i]!)
-      .filter(Boolean);
 
-    /* Four categories, at most two of any kind. Four "lost to X in Y"
-       categories is one puzzle wearing four hats, and it is the shape
-       auto-generation drifts toward because that kind is the most numerous. */
+    /* Families in a seeded order, so the same family does not lead every
+       board — with a 95%-head-to-head index, a fixed order would put a
+       head-to-head category first every single day. */
+    const famOrder = seededOrder(families.length, `${seed}:fam`).map((i) => families[i]!);
+
     const chosen: DcCategory[] = [];
-    const perKind = new Map<string, number>();
-    for (const f of picked) {
-      if (chosen.length === 4) break;
-      const kind = kinds.get(f.id) ?? "?";
-      if ((perKind.get(kind) ?? 0) >= DC_MAX_PER_KIND) continue;
+    const perFamily = new Map<string, number>();
+    const take = (f: DcCategory, family: string): boolean => {
+      if (chosen.some((c) => c.id === f.id)) return false;
       // A category contained in another gives a group with no independent
       // identity, and guarantees ambiguity besides.
       if (chosen.some((c) => isSubset(c.members, f.members) || isSubset(f.members, c.members)))
-        continue;
+        return false;
       chosen.push(f);
-      perKind.set(kind, (perKind.get(kind) ?? 0) + 1);
+      perFamily.set(family, (perFamily.get(family) ?? 0) + 1);
+      return true;
+    };
+
+    // Round-robin: one per family first, then a second, up to the cap.
+    for (let round = 0; round < DC_MAX_PER_FAMILY && chosen.length < 4; round++) {
+      for (const family of famOrder) {
+        if (chosen.length === 4) break;
+        if ((perFamily.get(family) ?? 0) > round) continue;
+        const pool = byFamily.get(family)!;
+        /* A few seeded probes into the family rather than a shuffle of it: the
+           head-to-head pool is two thousand rows and only one member of it is
+           wanted. Probes can collide or be rejected, hence more than one. */
+        for (let probe = 0; probe < 8; probe++) {
+          const f = pool[fnv1a(`${seed}:${family}:${round}:${probe}`) % pool.length]!;
+          if (take(f, family)) break;
+        }
+      }
     }
     if (chosen.length < 4) {
       rejects.short += 1;
