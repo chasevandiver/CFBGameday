@@ -3325,13 +3325,28 @@ under it is being replaced by **three** games, tried side by side —
       finals carry both a pre-kickoff spread and a total AND a poll published
       that week — if that comes back small, TAPE-2's five-question shape needs
       the decision recorded rather than worked around.
-- [ ] **SAL-1 — a salience score, so the deck stops being uniform.** One pure
-      tested function ranking how much a game was *an event*: both teams
-      ranked, a ranked team losing, an upset scaled by the closing spread, a
-      double-digit dog winning outright, rivalry and trophy, postseason and
-      bowl name, a one-score finish, a shootout. This is the half of the
-      owner's complaint that no mechanic change fixes on its own — all three
-      new games consume it.
+- [x] **SAL-1 — a salience score, so the deck stops being uniform**,
+      2026-08-18. `src/lib/salience.ts` (pure) + `salience-data.ts` (reads).
+      Terms: both teams ranked, a ranked team losing, an upset priced by the
+      closing spread with a premium past double digits, rivalry and trophy,
+      postseason and bowl name, a one-score finish ramped rather than a cliff,
+      a capped shootout, neutral site. This is the half of the owner's
+      complaint that no mechanic change fixes on its own — a better question
+      about a forgettable game is still a question about a forgettable game.
+      The weights are a judgement and are labelled as one; what the tests pin
+      is the properties. **Total-nullability is the load-bearing one**: the
+      archive is full of games with no line and no poll, and a NaN would make
+      `Array.sort` order-dependent garbage and corrupt the deck silently. Then
+      monotonicity per term, and a **golden ordering** over four real games —
+      the only test that catches weights which are individually sensible and
+      collectively wrong, which is what the complaint is actually about.
+      Ranking is kept separate from eligibility so a game with no line does not
+      both score zero and vanish with no way to tell which happened. Ties break
+      on game id because all three new games pick content by rendezvous hash
+      over this deck, and an order depending on the query's row order would
+      hand different players different puzzles. Postseason is included, unlike
+      Guess the Game's deck, where its absence was a side effect of a
+      `season_type = 'regular'` filter rather than a decision.
 - [ ] **TAPE-1/2 — The Tape** (`/tape`). One historical game a day, named up
       front, then five questions about it one at a time. Answers frozen at
       generation, so there is no grading lane and a corrected poll row cannot

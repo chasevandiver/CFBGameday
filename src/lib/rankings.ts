@@ -42,6 +42,54 @@ export function pickPollRanks(rows: PollRankInput[]): {
   return { poll, byTeam };
 }
 
+/**
+ * Ranks as they stood in EACH week, keyed `season:week:teamId`.
+ *
+ * `pickPollRanks` answers "who is ranked now", which is the display question.
+ * A historical puzzle asks a different one — was this team ranked *that week*,
+ * when the game was played — and answering it with the latest poll would call
+ * a team ranked because of how its season finished. Same `POLL_PRIORITY`, one
+ * list, so the two readers cannot disagree about which poll wins a week.
+ *
+ * A week with several polls resolves to one, per week, rather than globally:
+ * the committee starts publishing in late October, so a season fixed to a
+ * single poll would either ignore the committee or claim it existed in
+ * September.
+ */
+export function pollRanksByWeek(
+  rows: Array<PollRankInput & { season_id: number }>,
+): Map<string, number> {
+  const byWeek = new Map<string, Array<PollRankInput & { season_id: number }>>();
+  for (const r of rows) {
+    const key = `${r.season_id}:${r.week}`;
+    const arr = byWeek.get(key);
+    if (arr) arr.push(r);
+    else byWeek.set(key, [r]);
+  }
+
+  const out = new Map<string, number>();
+  for (const [key, week] of byWeek) {
+    const poll = POLL_PRIORITY.find((p) => week.some((r) => r.poll === p)) ?? week[0]!.poll;
+    for (const r of week) if (r.poll === poll) out.set(`${key}:${r.team_id}`, r.rank);
+  }
+  return out;
+}
+
+/**
+ * Whether a poll was PUBLISHED for a season-week at all.
+ *
+ * The distinction matters and is easy to lose: "this team has no rank" and
+ * "nobody was ranked this week" look identical in a lookup that returns
+ * undefined, and only the first one means unranked. Week 0 and any season we
+ * never backfilled have no poll, and answering "was this team ranked?" with
+ * "no" there would be a lie rather than a clue.
+ */
+export function pollWeeks(
+  rows: Array<{ season_id: number; week: number }>,
+): Set<string> {
+  return new Set(rows.map((r) => `${r.season_id}:${r.week}`));
+}
+
 /** "AP" / "CFP" / "Coaches" for compact pips. */
 export function pollShortName(poll: string | null): string | null {
   if (poll === null) return null;
