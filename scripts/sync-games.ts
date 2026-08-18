@@ -133,6 +133,10 @@ async function run(
     venue_id: g.venueId,
     home_team_id: g.homeId,
     away_team_id: g.awayId,
+    // Conference AT KICKOFF (migration 0067). Carried here as well as in the
+    // backfill so the live season is not the one gap in the column.
+    home_conference: g.homeConference ?? null,
+    away_conference: g.awayConference ?? null,
     home_points: g.homePoints,
     away_points: g.awayPoints,
     // Only assert "final"; otherwise leave status alone (new rows take the

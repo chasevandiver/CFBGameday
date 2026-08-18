@@ -66,7 +66,7 @@ rows were decided by reading code, not by reading commit messages.
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
 | **Model in code** | `2026.5.0` — tilt carry, `baseHfa` 3.0, centered team-HFA, portal fix, market-anchored tier recentre |
-| **Database** | **64 migration files, 64 recorded rows, in sync** — verified live 2026-08-18 after 0064, 0065 and 0066 were applied to `mjijyutmbtnwcjspozsx` in that order, ahead of the deploy carrying GRP-1/GRP-2. The order was load-bearing between 0065 and 0066 only (Postgres refuses to use a new enum value in the transaction that adds it); all three are inert against the running code, which is why they went first rather than after. Verified after applying: all 3 new functions present, `add_group_member_by_name` executable by `authenticated` and **not** by `anon`, `search_group_candidates` likewise, `added_to_group` on the `notification_kind` enum, and its `notification_settings` row seeded enabled + default_enabled with `lead_minutes` 0 and the copy carrying `{{group}}` and `{{admin}}`. Security advisors show 3 new rows and they are all the pre-existing definer-RPC pattern (37 of them now); nothing anon-executable was added. Previously: **52 migration files, 52 recorded rows, in sync** — verified live 2026-08-15 after `0053_survivor_pools` was applied as `20260815044806`. Its ordering did not matter, unlike 0047's and 0052's: no old code reads `survivor_pools`/`survivor_picks` and no new code path runs before it, so it went in ahead of the deploy. Verified after applying: `groups_kind_check` accepts `'survivor'`, **0** TRUNCATE grants to `anon`/`authenticated` on either new table, `survivor_picks` grants only `SELECT`, 5 policies and 4 functions present, `create_survivor_group` executable by `authenticated` and not by `anon`, and **0** survivor groups created — the probe stopped on the sign-in guard rather than writing a row. Previously **51 migration files, 51 recorded rows, in sync** — verified live 2026-08-15 after PR #76 merged. 0049/0050/0051 were applied **before** the merge and 0052 **after the deploy was confirmed live**, which is the whole reason 0050 was split: 0050 only adds `is_current_user_admin()` and is inert against the old code, while 0052's revoke would have denied the running code's `select("is_admin")` and broken every admin gate. Deploy confirmed by `/ledger/stats` answering 200 in production — a route that exists only in the new build — not by a status badge. Verified after applying: **0 public tables grant TRUNCATE** to `anon` or `authenticated` (was 32), `is_current_user_admin` executable by `authenticated` and not by `anon`, `group_game_pick_counts` executable, `profiles.is_admin` no longer readable by `authenticated` while `display_name` and `timezone` still are, and twelve production routes serving 200 with `/admin` still returning its 404 body to an anonymous caller. Previously: **47 migration files, 47 recorded rows, in sync** — verified live 2026-08-14 after 0046/0047/0048 were applied to `mjijyutmbtnwcjspozsx` in that order, which was load-bearing: **0047 had to land before the code that stops sending `reason_tag` deployed**, or every bet insert would have failed the NOT NULL. Verified after applying: `deleted_wagers` and `scoring_plays` exist, `admin_remove_pick` is present, `bets.reason_tag` is nullable, `deleted_wagers` has no grant to either API role, and `scoring_plays` grants SELECT only. *(File count is 47 against numbers running to 0048 because **0004 does not exist** — a pre-existing gap, confirmed by counting the directory rather than trusting a number in this file.)* One thing that verification turned up and did not fix: **TRUNCATE is granted to `anon` and `authenticated` on every public table**, project-wide and pre-existing — see §6. Previously: **40 migration files, 40 recorded rows, in sync** — verified live 2026-08-13 after PR #58 merged and deployed. 0038–0041 were applied in order once the production build carried the code they depend on, which was the whole reason they waited: 0039 makes `join_group` return null on a bad code (the old action read that as success), 0040 revokes `is_admin` from anon while the old `fetchProfiles` still did `select("*")`, and 0041 renames a column the old `build-preseason` still wrote — which would have failed `preseason-refresh`, the job the Aug 26 checkpoint waits on. Verified after applying: join codes mint at 10 Crockford characters, `normalize_join_code('il o-1')` → `1101`, `group_join_attempts` exists deny-all, and anon can read neither `groups.join_code` nor `profiles.is_admin`. Before this pass it was 36/36, and 0034–0037 **are applied** — an earlier version of this row said 0034 and 0035 were "not yet applied to the live project" and gave the count as 32/32, and both were stale by the time they were written. It matters because two ticked rows depend on them: P1-1's re-pick fix *is* 0034 (`make_pick` confirmed carrying it live), and OPS-2's watchdog push needs 0036's enum value and 0037's `notification_settings` row — `notifyWatchdog` returns `{notified: 0, errors: 0}` when that row is missing (`notify-jobs.ts:375`), so it would have been a silent no-op. Both confirmed live, along with 2 admin push subscriptions for it to reach. The `0017` ledger gap (DB-3) was repaired 08-12. 0031–0033 add the push tables. `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
+| **Database** | **68 migration files, 68 recorded rows, in sync** — verified live 2026-08-18 after **0067, 0068, 0069 and 0070** were applied to `mjijyutmbtnwcjspozsx` in that order, ahead of the deploy carrying the three replacement games. **The order was load-bearing this time**, unlike the last pass: 0067 adds `games.home_conference`, and `sync-games` in the new build writes it — its `sink.upsert` throws on a PostgREST error, so deploying first would have failed the daily games sync on every run with *column games.home_conference does not exist*. All four are inert against the code that was running (two nullable columns, eight season rows nothing reads at runtime, and ten tables no old path touches), which is what made applying them first safe. Verified after applying: **12 CFB seasons** (2015–2026) with **exactly one `is_current`** — the invariant a ninth `true` row would break, taking `fetchCurrentSeasonWeek` and the whole slate down; both new columns present and **0 rows backfilled** into them, which is deliberate (filling them from `teams.conference` would destroy the distinction they exist for, unrecoverably); all **12 new tables** present with RLS on; the four answer-key tables (`tape_questions`, `chains_cards`, `dc_puzzle_groups`, `dc_facts`/`dc_fact_teams`) carrying **0 policies** — RLS on with no policy denies every row, which is the design rather than an omission; **0 write grants** to `anon` or `authenticated` across all twelve; and `tape_leaderboard`, `chains_leaderboard`, `dc_leaderboard` all executable by `authenticated` and **not** by `anon`. Security advisors show **8 new rows and both patterns are pre-existing**: five `rls_enabled_no_policy` INFOs on the answer-key tables — which is the design, the same deny-all shape `api_call_log` and `deleted_wagers` already carry — and three `authenticated_security_definer_function_executable` WARNs on the new boards, the definer-RPC pattern there are now 40 of, `gtg_leaderboard` among them. **Nothing new is anon-executable**: the nine anon findings are all the pre-existing `*_revealed` gates and none of the three new boards is in that list. No new advisor CATEGORY appeared. Locally, all 68 apply to a throwaway cluster with **381 pgTAP assertions passing, 0 failed**. Still outstanding and tracked as BF-4: the three backfill jobs have **not** run, so pre-2026 the project holds **0 line snapshots and 0 poll rows** and The Tape's eligible deck is empty until they do. Previously: **64 migration files, 64 recorded rows, in sync** — verified live 2026-08-18 after 0064, 0065 and 0066 were applied to `mjijyutmbtnwcjspozsx` in that order, ahead of the deploy carrying GRP-1/GRP-2. The order was load-bearing between 0065 and 0066 only (Postgres refuses to use a new enum value in the transaction that adds it); all three are inert against the running code, which is why they went first rather than after. Verified after applying: all 3 new functions present, `add_group_member_by_name` executable by `authenticated` and **not** by `anon`, `search_group_candidates` likewise, `added_to_group` on the `notification_kind` enum, and its `notification_settings` row seeded enabled + default_enabled with `lead_minutes` 0 and the copy carrying `{{group}}` and `{{admin}}`. Security advisors show 3 new rows and they are all the pre-existing definer-RPC pattern (37 of them now); nothing anon-executable was added. Previously: **52 migration files, 52 recorded rows, in sync** — verified live 2026-08-15 after `0053_survivor_pools` was applied as `20260815044806`. Its ordering did not matter, unlike 0047's and 0052's: no old code reads `survivor_pools`/`survivor_picks` and no new code path runs before it, so it went in ahead of the deploy. Verified after applying: `groups_kind_check` accepts `'survivor'`, **0** TRUNCATE grants to `anon`/`authenticated` on either new table, `survivor_picks` grants only `SELECT`, 5 policies and 4 functions present, `create_survivor_group` executable by `authenticated` and not by `anon`, and **0** survivor groups created — the probe stopped on the sign-in guard rather than writing a row. Previously **51 migration files, 51 recorded rows, in sync** — verified live 2026-08-15 after PR #76 merged. 0049/0050/0051 were applied **before** the merge and 0052 **after the deploy was confirmed live**, which is the whole reason 0050 was split: 0050 only adds `is_current_user_admin()` and is inert against the old code, while 0052's revoke would have denied the running code's `select("is_admin")` and broken every admin gate. Deploy confirmed by `/ledger/stats` answering 200 in production — a route that exists only in the new build — not by a status badge. Verified after applying: **0 public tables grant TRUNCATE** to `anon` or `authenticated` (was 32), `is_current_user_admin` executable by `authenticated` and not by `anon`, `group_game_pick_counts` executable, `profiles.is_admin` no longer readable by `authenticated` while `display_name` and `timezone` still are, and twelve production routes serving 200 with `/admin` still returning its 404 body to an anonymous caller. Previously: **47 migration files, 47 recorded rows, in sync** — verified live 2026-08-14 after 0046/0047/0048 were applied to `mjijyutmbtnwcjspozsx` in that order, which was load-bearing: **0047 had to land before the code that stops sending `reason_tag` deployed**, or every bet insert would have failed the NOT NULL. Verified after applying: `deleted_wagers` and `scoring_plays` exist, `admin_remove_pick` is present, `bets.reason_tag` is nullable, `deleted_wagers` has no grant to either API role, and `scoring_plays` grants SELECT only. *(File count is 47 against numbers running to 0048 because **0004 does not exist** — a pre-existing gap, confirmed by counting the directory rather than trusting a number in this file.)* One thing that verification turned up and did not fix: **TRUNCATE is granted to `anon` and `authenticated` on every public table**, project-wide and pre-existing — see §6. Previously: **40 migration files, 40 recorded rows, in sync** — verified live 2026-08-13 after PR #58 merged and deployed. 0038–0041 were applied in order once the production build carried the code they depend on, which was the whole reason they waited: 0039 makes `join_group` return null on a bad code (the old action read that as success), 0040 revokes `is_admin` from anon while the old `fetchProfiles` still did `select("*")`, and 0041 renames a column the old `build-preseason` still wrote — which would have failed `preseason-refresh`, the job the Aug 26 checkpoint waits on. Verified after applying: join codes mint at 10 Crockford characters, `normalize_join_code('il o-1')` → `1101`, `group_join_attempts` exists deny-all, and anon can read neither `groups.join_code` nor `profiles.is_admin`. Before this pass it was 36/36, and 0034–0037 **are applied** — an earlier version of this row said 0034 and 0035 were "not yet applied to the live project" and gave the count as 32/32, and both were stale by the time they were written. It matters because two ticked rows depend on them: P1-1's re-pick fix *is* 0034 (`make_pick` confirmed carrying it live), and OPS-2's watchdog push needs 0036's enum value and 0037's `notification_settings` row — `notifyWatchdog` returns `{notified: 0, errors: 0}` when that row is missing (`notify-jobs.ts:375`), so it would have been a silent no-op. Both confirmed live, along with 2 admin push subscriptions for it to reach. The `0017` ledger gap (DB-3) was repaired 08-12. 0031–0033 add the push tables. `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
 | **Model in production** | ⚠️ `2026.2.0`. **Four versions behind**, pricing every cross-classification opener ~10 points toward the G5. Waiting on CFBD to publish 2026 talent; `preseason-refresh` retries daily and loads itself the first morning `--check` is green. **Talent is the only red gate** — confirmed against the Aug 17 11:15 UTC run, which prints one line per failing input and printed exactly one; returning production, portal, coaches, week-1 lines and the tier recentre all passed, and the build reached a full 138-team board on the 2025 file before refusing to load it. Since 2026-08-18 `cfbd-probe` prints the row count per input, so this row's claim stops being an inference. **Ends Aug 22 either way** — Q1 was answered yes that day and the escalation is in `jobs.yml`: from the 22nd the daily refresh loads the best build available rather than declining, so production stops being four versions behind whether or not CFBD has published. |
 | **The edge verdict** | b₁ = 0.035 (t = 0.84) for the model vs 0.987 (t = 22.81) for the market, n = 2611; flagged edges 49.2% ATS vs the close. Edges are **information, not bets** — and no model-accuracy work belongs in the next 17 days. |
 
@@ -3267,6 +3267,204 @@ verified, merged, and live behind its own route".
       fold: counting today's two wrong guesses as a bust would zero the streak
       of anyone who opened the puzzle and walked away. The "Kept on this
       device" line is gone with the storage it described.
+
+**Replacing Guess the Game** — owner request 2026-08-18: *"I like the concept,
+but it's way too random. There's hardly any trivia around it and just trying to
+randomly guess a team."* Two causes, both confirmed in the code. The deck
+(`cfbDeck`) is every CFB regular-season final we hold, uniformly weighted, so
+most days the answer is a game nobody watched. And the ladder (`gtgHints`)
+carries almost nothing until the last rung: a final score narrows 266 teams to
+266, and the visitors narrow it to one. GTG-8's presentation stays; the mechanic
+under it is being replaced by **three** games, tried side by side —
+**The Tape** (`/tape`), **Depth Chart** (`/depth-chart`) and **Chains**
+(`/chains`). Owner also ruled: widen the archive to ~2015, implementation mode.
+
+- [x] **BF-1 — the archive reaches 2015**, 2026-08-18. Migration **0067** seeds
+      seasons 2015–22 (`is_current` false — a ninth `true` row makes
+      `fetchCurrentSeasonWeek`'s `maybeSingle()` ambiguous and takes the slate
+      down, which is 0063's point repeated because eight rows is eight chances).
+      Week 0 dates are the real last-Saturday-of-August openers, checked against
+      a calendar rather than derived. `backfillTargets` already discovers every
+      non-current CFB season, so no job code changed to pick them up.
+- [x] **BF-2 — conference is stored at kickoff, not as of today**, 2026-08-18.
+      `teams.conference` is the CURRENT conference, so reading it for a 2016
+      game files Texas under the SEC and Maryland under the ACC — a clue a fan
+      spots instantly, and the same failure GTG-9 dodged by deriving region
+      from venues. CFBD was already sending the right value
+      (`CfbdGame.homeConference`, alignment at kickoff) and `backfillRows`
+      dropped it. Migration 0067 adds `games.home_conference` /
+      `away_conference`; the backfill and `sync-games` both carry them.
+      **Deliberately not backfilled from `teams.conference`** — copying today's
+      alignment into the column that exists to not be today's alignment would
+      be unrecoverable, so NULL means "unknown at kickoff" and readers fall
+      back explicitly.
+- [x] **BF-3 — the archive has a market and polls**, 2026-08-18. `backfill-lines`
+      and `backfill-rankings`, both dispatch-only for the same reason as
+      `backfill-games` (a finished season does not change, so there is no
+      cadence to be late for). Season-scoped endpoints — one CFBD call each per
+      season, ~16 for the widening. This is what GTG-5 needed and did not have:
+      the "closing spread" clue was a shrug on every puzzle because
+      `line_snapshots` held nothing before 2026, and the rung was deleted
+      rather than the data fixed. Rankings reuse `syncRankingsFor`, factored
+      out of `syncRankingsJob` rather than copied.
+      **The load-bearing detail is `captured_at`.** The closing line is "the
+      last snapshot before kickoff", and the column default is `now()` — years
+      after a 2016 kickoff, which would make every reconstruction invisible to
+      every reader and present as a CFBD coverage problem. Reconstructions are
+      stamped one hour before kickoff, carry `source = 'cfbd-backfill'` so a
+      re-run deletes only its own rows and a real observation is never
+      mistaken for one, and an hour's lead means a real `--burst` snapshot
+      still wins the closing slot. Pinned by a test that runs the output
+      through `consensusFromSnapshots` rather than by asserting the string.
+- [ ] **BF-4 — run the widened backfill and record what landed.** Three
+      dispatches (`backfill-games`, `backfill-lines`, `backfill-rankings`),
+      then read `job_runs.detail` per season:
+      **Blocked on a dispatch, 2026-08-18.** Migrations 0067–0070 are applied
+      and verified (§1), but the jobs need `CFBD_API_KEY` — a third-party
+      credential that lives in Actions secrets and Vercel, reachable from
+      neither a session nor the Supabase API. Run them from Actions →
+      `jobs` → *Run workflow*, in this order, waiting for each: `backfill-games`,
+      then `backfill-lines`, then `backfill-rankings`. Order matters — the lines
+      job derives `captured_at` from each game's `start_ts`, so it silently
+      lands nothing for a season whose games are not in yet.
+      **Note the one gap this leaves:** the workflow passes no `--force`, and
+      `backfillGamesJob` skips a season that already has games. So 2015–22 land
+      with their kickoff-time conferences and **2023–25 keep null ones** —
+      harmless for The Tape and Chains, which ask no conference question, but it
+      narrows Depth Chart's `conference_in` facts to 2015–22. Fix by running
+      `backfill-games --force` by hand, or by teaching the workflow an args
+      input; neither is urgent.
+      Original acceptance criteria: games,
+      `dropped_unknown_team` (2015 has schools that have since left FBS, so
+      expect more than the 5 GTG-2 measured across 2023–25), snapshots, poll
+      rows, and the CFBD spend. **The number that gates The Tape** is how many
+      finals carry both a pre-kickoff spread and a total AND a poll published
+      that week — if that comes back small, TAPE-2's five-question shape needs
+      the decision recorded rather than worked around.
+- [x] **SAL-1 — a salience score, so the deck stops being uniform**,
+      2026-08-18. `src/lib/salience.ts` (pure) + `salience-data.ts` (reads).
+      Terms: both teams ranked, a ranked team losing, an upset priced by the
+      closing spread with a premium past double digits, rivalry and trophy,
+      postseason and bowl name, a one-score finish ramped rather than a cliff,
+      a capped shootout, neutral site. This is the half of the owner's
+      complaint that no mechanic change fixes on its own — a better question
+      about a forgettable game is still a question about a forgettable game.
+      The weights are a judgement and are labelled as one; what the tests pin
+      is the properties. **Total-nullability is the load-bearing one**: the
+      archive is full of games with no line and no poll, and a NaN would make
+      `Array.sort` order-dependent garbage and corrupt the deck silently. Then
+      monotonicity per term, and a **golden ordering** over four real games —
+      the only test that catches weights which are individually sensible and
+      collectively wrong, which is what the complaint is actually about.
+      Ranking is kept separate from eligibility so a game with no line does not
+      both score zero and vanish with no way to tell which happened. Ties break
+      on game id because all three new games pick content by rendezvous hash
+      over this deck, and an order depending on the query's row order would
+      hand different players different puzzles. Postseason is included, unlike
+      Guess the Game's deck, where its absence was a side effect of a
+      `season_type = 'regular'` filter rather than a decision.
+- [x] **TAPE-1/2 — The Tape** (`/tape`), 2026-08-18. One game from the archive
+      a day, named up front with crests, then five questions one at a time: who
+      won · who was favoured · by how much · over or under the real closing
+      total · was the home team ranked that week. The scoreboard starts blank
+      and fills in as facts settle. Migration **0068**, `src/lib/tape.ts` (pure)
+      + `tape-data.ts`, `/api/tape`, `/tape`, `TapePlay`.
+      **Answers are frozen at generation**, which is `six-pack.ts`'s closure
+      rule applied a step earlier and coming out stronger: a question is minted
+      only if its answer is already computable, so there is no pending state, no
+      settler returning null, and no re-grade. A corrected poll row landing next
+      season cannot restate an answer somebody was already scored against.
+      **"No going back" is server-enforced** — a POST whose `idx` is not the
+      next unanswered one is a 409 — because later questions become answerable
+      once earlier ones settle, and the chain between them is most of what makes
+      the round interesting.
+      **What it deliberately does not claim**: an anti-spoiler property. The
+      fixture is named, so every fact about it is public — `games`,
+      `line_snapshots` and `poll_rankings` are all anon-readable (0011) and the
+      answers are on the open internet besides. Withholding the score until the
+      round is over is worth doing; calling it a guarantee would be a lie. Guess
+      the Game's contract worked because the game's IDENTITY was hidden.
+- [x] **PUZZ-1 — the generator has a watchdog lane**, 2026-08-18.
+      `daily-puzzles` banks `QUEUE_TARGET` days ahead and the run FAILS below
+      `QUEUE_FLOOR`, so queue depth is the health metric. This is GTG-1's
+      lesson made structural: Guess the Game computed its puzzle on read, so
+      there was no cadence, nothing could be late, and an empty deck went
+      unnoticed for weeks. A transient error with a fortnight banked is now a
+      green run carrying an error string; a generator broken for ten days is a
+      red one, days before any player sees an empty screen. Rendezvous
+      selection did not go away — it moved inside the generator, so the same
+      day still yields the same puzzle for everyone.
+- [x] **DC-1/2 — Depth Chart** (`/depth-chart`), 2026-08-18. Sixteen teams,
+      four hidden groups of four, four mistakes. Migration **0070**,
+      `src/lib/depth-chart.ts` (pure) + `depth-chart-data.ts`,
+      `scripts/lib/dc-facts.ts`, `/api/depth-chart`, `/depth-chart`,
+      `DepthChartPlay`.
+      **The only one of the three with a real hidden answer.** The Tape and
+      Chains both name what they are about, so neither can promise secrecy —
+      every fact in them is public. Here the hidden thing is not a fact but a
+      GROUPING, and no amount of looking up tells you which four categories
+      today's sixteen tiles were drawn from.
+      **The validator is the whole build.** A grid is fair only if exactly one
+      partition satisfies it. `countPartitions` decides that exactly, as a DFS
+      over (tile, remaining capacity per group) — 16 x 5⁴ states, sub-
+      millisecond, and it runs at generation. It early-exits at two; caching a
+      truncated count is safe because a truncated value is always ≥ the limit,
+      so the answer is exact below it and "at least two" above, which is the
+      question being asked. Tested against the case a naive "any tile in two
+      categories is ambiguous" heuristic gets wrong: an overlap the capacities
+      still resolve.
+      **The external-ambiguity promise is bounded and written into 0070's
+      header**: no fact stored in `dc_facts` covers exactly four of the sixteen
+      tiles beyond the intended four. A player may always notice that four of
+      them are in Ohio; NYT's Connections has the same hole. If that proves too
+      weak, the fix is to widen the index, not to weaken the validator.
+      **One refinement was needed to make it usable at all** — see the
+      changelog. Rejecting on the count alone threw away about three quarters of
+      otherwise-fair grids, because a dense index almost always has some fact
+      lying exactly over one of the chosen groups. A rival whose four tiles ARE
+      an intended group is corroboration, not ambiguity.
+      Facts are materialised rather than evaluated, so the owner can read
+      `dc_facts` and see exactly what the game believes. `conference_in` reads
+      `games.home_conference` (BF-2, alignment at kickoff) and never
+      `teams.conference` — "were in the Big 12 in 2016" from today's alignment
+      would list Texas and omit Missouri, which is the most obviously wrong
+      thing this game could say.
+      A day the generator cannot solve is a MISSING day, not an unfair one: an
+      unfair board marks a correct player wrong, which is worse than the problem
+      being fixed. The queue floor turns a run of those into a red job days
+      before anyone sees a gap. Generator success rate is pinned by a test over
+      sixty days.
+- [x] **CHAIN-1/2 — Chains** (`/chains`), 2026-08-18. A fixed daily run of
+      higher-or-lower over the archive: two games side by side, which had more
+      points / was won by more / had the bigger favourite. Keep calling until
+      you miss; run length is the score. Migration **0069**,
+      `src/lib/chains.ts` (pure) + `chains-data.ts`, `/api/chains`, `/chains`,
+      `ChainsPlay`.
+      A comparison cannot be the thing the owner complained about — there is no
+      space to guess into, it is one in two every time, and the only thing that
+      moves you off the coin flip is knowing something.
+      **The deck is ordered by decreasing gap**, normalised per kind, and that
+      is the load-bearing piece: a run of coin flips is a geometric random
+      variable and says nothing about the player, so easiest-first is what
+      turns run length into a ladder. Card one is a blowout comparison; card
+      fifteen is two numbers a point apart.
+      **Ties are refused at generation rather than voided at play** — six-pack
+      grades a push as `void`, and a run has nowhere to put one, since there is
+      no slot between "kept going" and "stopped". Refused by the generator and
+      again by a check constraint.
+      The deck is the answer key AND the future of the run, so `chains_cards`
+      carries no select policy and the route ships exactly one face-up card.
+      The rest arrives only once the run ends — which is the payoff, not a
+      leak: "you stopped on card nine, here is what ten through twenty were" is
+      the reason to come back.
+- [ ] **TRIAL-1 — the arcade fold, once.** The three trial games deliberately
+      do **not** feed `arcade.ts` while the trial runs, and Guess the Game is
+      left running untouched as the control. `weeklyCeiling()` equalises each
+      game's weekly ceiling into [60,70]; adding three and later removing two
+      would re-score a live cumulative board twice, and `arcade.ts`'s own
+      header says a total that decreases is one nobody trusts. One commit at
+      the end picks the winner, retires the rest and moves the ceiling once,
+      with the measured distributions recorded.
 
 **Arcade calibration**
 - [ ] **UX-41 — re-check the arcade weights after Week 6.** The four weights

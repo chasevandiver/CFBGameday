@@ -34,10 +34,10 @@
  *     silent FK failure mid-batch would leave a season half-loaded.
  */
 
-import { cfbd, cfbdCallCount, type CfbdGame } from "../../src/lib/cfbd";
+import { cfbd, cfbdCallCount, type CfbdGame, type CfbdLine } from "../../src/lib/cfbd";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { chunk } from "./ingest";
-import { logCfbdCalls } from "./jobs-core";
+import { logCfbdCalls, syncRankingsFor } from "./jobs-core";
 import { resolvedWeek, weekZeroIds } from "./weeks";
 
 export interface BackfillRow {
@@ -51,6 +51,11 @@ export interface BackfillRow {
   venue_id: number | null;
   home_team_id: number;
   away_team_id: number;
+  /* Conference AT KICKOFF (migration 0067). Always present, null when CFBD
+     omits it — `undefined` would mean "leave the column alone" to PostgREST,
+     which is a different statement from "we do not know". */
+  home_conference: string | null;
+  away_conference: string | null;
   home_points: number | null;
   away_points: number | null;
   status?: string;
@@ -97,6 +102,8 @@ export function backfillRows(
       venue_id: g.venueId,
       home_team_id: g.homeId,
       away_team_id: g.awayId,
+      home_conference: g.homeConference ?? null,
+      away_conference: g.awayConference ?? null,
       home_points: g.homePoints,
       away_points: g.awayPoints,
       ...(g.completed ? { status: "final" } : {}),
@@ -180,4 +187,222 @@ export async function backfillGamesJob(db: SupabaseClient): Promise<Record<strin
 
   await logCfbdCalls(db, "backfill-games", cfbdCallCount());
   return { total, seasons: perSeason };
+}
+
+/* ---- BF-3: the archive's lines and polls --------------------------------
+ *
+ * `backfill-games` lands games and nothing else, and that gap has already cost
+ * one feature: Guess the Game's "closing spread" clue was a shrug on every
+ * puzzle because `line_snapshots` held nothing before 2026, and GTG-5 deleted
+ * the rung rather than fix the data. The replacement games all want the market
+ * and the polls — "who was favoured", "did it cover", "were they ranked" are
+ * the questions that make a history puzzle a football question instead of a
+ * memory test — so the archive has to carry them.
+ *
+ * Both endpoints are SEASON-SCOPED (`cfbd.lines(year)`, `cfbd.rankings(year)`):
+ * one call each per season, so widening to 2015 costs about sixteen calls
+ * against a 30,000/mo budget. Like `backfill-games`, both are dispatch-only —
+ * a finished season does not change, so there is no cadence, no cron entry and
+ * no watchdog lane.
+ */
+
+/** Where a reconstructed line comes from. Never `'cfbd'` — see below. */
+export const BACKFILL_LINE_SOURCE = "cfbd-backfill";
+
+/**
+ * How long before kickoff a reconstructed snapshot claims to have been taken.
+ *
+ * **This constant is the whole job.** The closing line is defined as the last
+ * snapshot with `captured_at < games.start_ts` (`consensusFromSnapshots`'s
+ * `before` argument, `src/lib/consensus.ts`). CFBD's historical `/lines` feed
+ * carries no capture time, so one has to be chosen, and the obvious choice —
+ * the column default, `now()` — is YEARS AFTER kickoff for a 2015 game. Every
+ * backfilled line would then be invisible to every closing-line reader, the
+ * archive would look like it had no market data at all, and it would present
+ * as a CFBD coverage problem rather than as a bug here.
+ *
+ * An hour rather than a second so a REAL observation still wins. `refresh-lines
+ * --burst` captures inside 90 minutes of kickoff, so on any game where both a
+ * real snapshot and a reconstruction exist, the real one is later and takes
+ * the "last before kickoff" slot. That is the right precedence: an observation
+ * beats a reconstruction.
+ */
+export const BACKFILL_CAPTURE_LEAD_MS = 60 * 60 * 1000;
+
+export interface BackfillSnapshotRow {
+  game_id: number;
+  provider: string;
+  source: string;
+  spread: number | null;
+  spread_open: number | null;
+  total: number | null;
+  total_open: number | null;
+  ml_home: number | null;
+  ml_away: number | null;
+  captured_at: string;
+}
+
+/**
+ * Pure: CFBD lines → snapshot rows, plus what was dropped and why.
+ *
+ * Signs pass through untouched. CFBD's `/lines` spread is already
+ * home-perspective with negative meaning the home team is favoured, which is
+ * the convention every reader in this codebase assumes
+ * (`src/lib/bet-line-convention.test.ts`) — so the correct amount of
+ * arithmetic here is none, and the test asserts that rather than trusting it.
+ *
+ * A game with no kickoff produces NO snapshot. There is no defensible
+ * `captured_at` without a `start_ts` to subtract from, and a row whose capture
+ * time is a guess is worse than a missing row — the same discipline
+ * `backfillRows` applies to `droppedNoKickoff`.
+ *
+ * An entry with neither a spread nor a total is also dropped: it is a provider
+ * row with no market in it, and storing it would only dilute the consensus
+ * mean with nulls.
+ */
+export function backfillSnapshotRows(
+  lines: CfbdLine[],
+  startTsById: Map<number, string | null>,
+): { rows: BackfillSnapshotRow[]; droppedNoKickoff: number; droppedNoMarket: number } {
+  const rows: BackfillSnapshotRow[] = [];
+  let droppedNoKickoff = 0;
+  let droppedNoMarket = 0;
+
+  for (const game of lines) {
+    const startTs = startTsById.get(game.id);
+    if (startTs === undefined || startTs === null) {
+      droppedNoKickoff += game.lines.length;
+      continue;
+    }
+    const kickoff = Date.parse(startTs);
+    if (!Number.isFinite(kickoff)) {
+      droppedNoKickoff += game.lines.length;
+      continue;
+    }
+    const capturedAt = new Date(kickoff - BACKFILL_CAPTURE_LEAD_MS).toISOString();
+
+    for (const l of game.lines) {
+      if (l.spread === null && l.overUnder === null) {
+        droppedNoMarket += 1;
+        continue;
+      }
+      rows.push({
+        game_id: game.id,
+        provider: l.provider,
+        source: BACKFILL_LINE_SOURCE,
+        spread: l.spread,
+        spread_open: l.spreadOpen,
+        total: l.overUnder,
+        total_open: l.overUnderOpen,
+        ml_home: l.homeMoneyline,
+        ml_away: l.awayMoneyline,
+        captured_at: capturedAt,
+      });
+    }
+  }
+  return { rows, droppedNoKickoff, droppedNoMarket };
+}
+
+/**
+ * Seasons this job will consider, for lines and polls.
+ *
+ * Same rule as `backfillTargets` and same reason: CFB, never the season being
+ * played. The live season's lines belong to `refresh-lines`, which observes
+ * them as they move; reconstructing them from a season-wide pull would drop a
+ * synthetic row an hour before every kickoff and step on real observations.
+ */
+const pastCfbSeasons = backfillTargets;
+
+/**
+ * `backfill-lines` — the archive's market, one season-scoped call at a time.
+ *
+ * Idempotent by DELETE-then-INSERT, scoped to this job's own `source`.
+ * `line_snapshots` is append-only for members but the service role can still
+ * delete, and re-running must not double the rows: a second reconstruction of
+ * the same game would put two identical snapshots one hour before kickoff and
+ * make the provider consensus count that book twice. Only
+ * `source = 'cfbd-backfill'` rows are removed, so a real observation is never
+ * touched by a re-run — which is the other half of why the source string is
+ * its own value rather than `'cfbd'`.
+ */
+export async function backfillLinesJob(db: SupabaseClient): Promise<Record<string, unknown>> {
+  const targets = await pastCfbSeasons(db);
+  if (targets.length === 0) return { skipped: "no past cfb seasons — apply migration 0067" };
+
+  const perSeason: Record<string, unknown> = {};
+  let total = 0;
+
+  for (const seasonId of targets) {
+    /* The kickoff map is the reason this reads games first: `captured_at` is
+       derived from `start_ts`, so a line for a game we never landed (an FCS
+       opponent the backfill dropped) has nothing to anchor to and is skipped
+       by `backfillSnapshotRows` rather than inserted against a missing FK. */
+    const { data: gameRows, error: gameErr } = await db
+      .from("games")
+      .select("id, start_ts")
+      .eq("season_id", seasonId);
+    if (gameErr) throw new Error(`backfill-lines: ${seasonId} games read failed: ${gameErr.message}`);
+    const startTsById = new Map(
+      ((gameRows ?? []) as Array<{ id: number; start_ts: string | null }>).map((g) => [
+        g.id,
+        g.start_ts,
+      ]),
+    );
+    if (startTsById.size === 0) {
+      perSeason[seasonId] = { skipped: "no games — run backfill-games first" };
+      continue;
+    }
+
+    const [regular, postseason] = await Promise.all([
+      cfbd.lines(seasonId),
+      cfbd.lines(seasonId, { seasonType: "postseason" }),
+    ]);
+    const { rows, droppedNoKickoff, droppedNoMarket } = backfillSnapshotRows(
+      [...regular, ...postseason],
+      startTsById,
+    );
+
+    const { error: delErr } = await db
+      .from("line_snapshots")
+      .delete()
+      .eq("source", BACKFILL_LINE_SOURCE)
+      .in("game_id", [...startTsById.keys()]);
+    if (delErr) throw new Error(`backfill-lines: ${seasonId} cleanup failed: ${delErr.message}`);
+
+    for (const batch of chunk(rows, 500)) {
+      const { error } = await db.from("line_snapshots").insert(batch);
+      if (error) throw new Error(`backfill-lines: ${seasonId} insert failed: ${error.message}`);
+    }
+
+    total += rows.length;
+    perSeason[seasonId] = {
+      snapshots: rows.length,
+      games: new Set(rows.map((r) => r.game_id)).size,
+      ...(droppedNoKickoff > 0 ? { dropped_no_kickoff: droppedNoKickoff } : {}),
+      ...(droppedNoMarket > 0 ? { dropped_no_market: droppedNoMarket } : {}),
+    };
+  }
+
+  await logCfbdCalls(db, "backfill-lines", cfbdCallCount());
+  return { total, seasons: perSeason };
+}
+
+/**
+ * `backfill-rankings` — the archive's polls.
+ *
+ * Thin by design: `syncRankingsFor` already owns the KEEP set, the team
+ * name-index and the upsert conflict target, and it is idempotent because
+ * `poll_rankings` is keyed on `(season, season_type, week, poll, team)`. This
+ * only picks the seasons.
+ */
+export async function backfillRankingsJob(db: SupabaseClient): Promise<Record<string, unknown>> {
+  const targets = await pastCfbSeasons(db);
+  if (targets.length === 0) return { skipped: "no past cfb seasons — apply migration 0067" };
+
+  const perSeason: Record<string, unknown> = {};
+  for (const seasonId of targets) {
+    perSeason[seasonId] = await syncRankingsFor(db, seasonId);
+  }
+  await logCfbdCalls(db, "backfill-rankings", cfbdCallCount());
+  return { seasons: perSeason };
 }

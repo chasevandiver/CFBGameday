@@ -37,13 +37,13 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { label: "Home", href: "/", primary: true, mobileOnly: true, icon: Home },
   { label: "Slate", href: "/slate", also: ["/game"], primary: true, icon: BarChart3 },
-  // The game layer, one tab (R3-E1). `also` covers the four game routes so
+  // The game layer, one tab (R3-E1). `also` covers every game route so
   // playing one keeps the tab lit; `/games` cannot collide with Slate's
   // `/game` because isNavItemActive matches exact-or-slash, never bare prefix.
   {
     label: "Games",
     href: "/games",
-    also: ["/guess-lines", "/streak", "/guess-game", "/six-pack"],
+    also: ["/guess-lines", "/streak", "/guess-game", "/six-pack", "/tape", "/chains", "/depth-chart"],
     primary: true,
     icon: Gamepad2,
   },

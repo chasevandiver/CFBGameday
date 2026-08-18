@@ -144,6 +144,16 @@ describe("jobs.yml scheduler wiring", () => {
     expect(resolveBranches().some((b) => b.task === "backfill-games")).toBe(false);
   });
 
+  it("keeps the archive's lines and rankings dispatchable and unscheduled", () => {
+    // BF-3, and the same argument as backfill-games above: a finished season's
+    // market and polls do not move, so a cadence would spend CFBD calls to
+    // learn nothing and would need a watchdog horizon invented for it.
+    for (const task of ["backfill-lines", "backfill-rankings"]) {
+      expect(dispatchOptions()).toContain(task);
+      expect(resolveBranches().some((b) => b.task === task)).toBe(false);
+    }
+  });
+
   it("never lets two tasks claim the same cron", () => {
     // The P2-10 trap: `0 10 * * 6` is the weather cron, so adding it to the
     // refresh-lines pattern would not give Saturday two jobs — it would take

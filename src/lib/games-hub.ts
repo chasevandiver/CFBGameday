@@ -14,7 +14,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { productDate, streakFold, type StreakPickLike } from "./streak";
 
-export type GameId = "guess-lines" | "streak" | "guess-game" | "six-pack";
+export type GameId = "guess-lines" | "streak" | "guess-game" | "six-pack" | "tape" | "chains" | "depth-chart";
 
 export interface GamesHubState {
   /** Guess the Lines: this week's slate, and how much of it you've called. */
@@ -25,6 +25,12 @@ export interface GamesHubState {
   gtg: { attempts: number; solved: boolean; played: boolean };
   /** The Six-Pack: this week's entry (R3-E2 fills it; zeros until then). */
   sixPack: { open: boolean; entered: boolean; correct: number | null };
+  /** The Tape: whether there is a round today, and how far you got. */
+  tape: { hasToday: boolean; answered: number; done: boolean; correct: number | null };
+  /** Chains: whether there is a run today, and how long yours got. */
+  chains: { hasToday: boolean; length: number; done: boolean };
+  /** Depth Chart: whether there is a board today, and how it went. */
+  depthChart: { hasToday: boolean; solved: number; mistakes: number; done: boolean };
   signedIn: boolean;
 }
 
@@ -44,11 +50,22 @@ export const EMPTY_HUB_STATE: GamesHubState = {
   streak: { hasToday: false, pickedToday: false, current: 0, best: 0 },
   gtg: { attempts: 0, solved: false, played: false },
   sixPack: { open: false, entered: false, correct: null },
+  tape: { hasToday: false, answered: 0, done: false, correct: null },
+  chains: { hasToday: false, length: 0, done: false },
+  depthChart: { hasToday: false, solved: 0, mistakes: 0, done: false },
   signedIn: false,
 };
 
 /** Fixed order once outstanding-ness ties: daily games first, weekly last. */
-const ORDER: GameId[] = ["streak", "guess-game", "guess-lines", "six-pack"];
+const ORDER: GameId[] = [
+  "streak",
+  "tape",
+  "depth-chart",
+  "chains",
+  "guess-game",
+  "guess-lines",
+  "six-pack",
+];
 
 export function gamesHubRows(s: GamesHubState): GamesHubRow[] {
   const slateSize = s.lines.open + s.lines.mine;
@@ -76,6 +93,50 @@ export function gamesHubRows(s: GamesHubState): GamesHubRow[] {
           ? `${s.gtg.attempts} of 6 used`
           : "Not played",
       outstanding: s.signedIn && !s.gtg.solved && s.gtg.attempts < 6,
+    },
+    {
+      id: "tape",
+      href: "/tape",
+      name: "The Tape",
+      blurb: "One game from the archive. We name it; you say what happened.",
+      state: !s.tape.hasToday
+        ? "No round today"
+        : s.tape.done
+          ? `${s.tape.correct} of 5`
+          : s.tape.answered > 0
+            ? `${s.tape.answered} of 5 answered`
+            : "Not played",
+      outstanding: s.signedIn && s.tape.hasToday && !s.tape.done,
+    },
+    {
+      id: "chains",
+      href: "/chains",
+      name: "Chains",
+      blurb: "Two games, one question. Keep calling them until you miss.",
+      state: !s.chains.hasToday
+        ? "No run today"
+        : s.chains.done
+          ? `${s.chains.length} in a row`
+          : s.chains.length > 0
+            ? `${s.chains.length} and running`
+            : "Not played",
+      outstanding: s.signedIn && s.chains.hasToday && !s.chains.done,
+    },
+    {
+      id: "depth-chart",
+      href: "/depth-chart",
+      name: "Depth Chart",
+      blurb: "Sixteen teams, four things they have in common.",
+      state: !s.depthChart.hasToday
+        ? "No board today"
+        : s.depthChart.done
+          ? s.depthChart.solved >= 4
+            ? `Cleared it, ${s.depthChart.mistakes} off`
+            : `${s.depthChart.solved} of 4`
+          : s.depthChart.solved > 0 || s.depthChart.mistakes > 0
+            ? `${s.depthChart.solved} of 4 found`
+            : "Not played",
+      outstanding: s.signedIn && s.depthChart.hasToday && !s.depthChart.done,
     },
     {
       id: "guess-lines",
@@ -127,7 +188,20 @@ export async function fetchGamesHub(
 ): Promise<GamesHubState> {
   const today = productDate(new Date());
 
-  const [slateRes, myGuessRes, streakDayRes, myStreakRes, gtgRes, sixPackRes] = await Promise.all([
+  const [
+    slateRes,
+    myGuessRes,
+    streakDayRes,
+    myStreakRes,
+    gtgRes,
+    sixPackRes,
+    tapeDayRes,
+    tapeMineRes,
+    chainsDayRes,
+    chainsMineRes,
+    dcDayRes,
+    dcMineRes,
+  ] = await Promise.all([
     supabase.from("guess_line_slates").select("game_id"),
     userId
       ? supabase.from("line_guesses").select("game_id, abs_error").eq("user_id", userId)
@@ -154,6 +228,38 @@ export async function fetchGamesHub(
       .order("week", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    // TAPE-2. A missing table — a deploy ahead of migration 0068 — comes back
+    // as null and reads as "no round today", the same honest degradation the
+    // six-pack read above relies on.
+    supabase.from("tape_puzzles").select("day").eq("day", today).maybeSingle(),
+    userId
+      ? supabase
+          .from("tape_entries")
+          .select("answers, correct, completed_at")
+          .eq("user_id", userId)
+          .eq("day", today)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    // CHAIN-2, same honest degradation as the two reads above.
+    supabase.from("chains_puzzles").select("day").eq("day", today).maybeSingle(),
+    userId
+      ? supabase
+          .from("chains_runs")
+          .select("length, ended_at")
+          .eq("user_id", userId)
+          .eq("day", today)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    // DC-2, same honest degradation as the reads above.
+    supabase.from("dc_puzzles").select("day").eq("day", today).maybeSingle(),
+    userId
+      ? supabase
+          .from("dc_entries")
+          .select("solved, mistakes, completed_at")
+          .eq("user_id", userId)
+          .eq("day", today)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
   const sixPackSlate = (sixPackRes?.data ?? null) as { id: number; week: number } | null;
@@ -194,6 +300,20 @@ export async function fetchGamesHub(
   const myStreak = (myStreakRes.data ?? []) as StreakPickLike[];
   const fold = streakFold(myStreak);
   const gtg = (gtgRes.data ?? null) as { attempts: number; solved_at: string | null } | null;
+  const tape = (tapeMineRes?.data ?? null) as {
+    answers: unknown[];
+    correct: number;
+    completed_at: string | null;
+  } | null;
+  const chains = (chainsMineRes?.data ?? null) as {
+    length: number;
+    ended_at: string | null;
+  } | null;
+  const dc = (dcMineRes?.data ?? null) as {
+    solved: string[];
+    mistakes: number;
+    completed_at: string | null;
+  } | null;
 
   return {
     lines: {
@@ -211,6 +331,23 @@ export async function fetchGamesHub(
       attempts: gtg?.attempts ?? 0,
       solved: gtg?.solved_at != null,
       played: gtg != null,
+    },
+    tape: {
+      hasToday: tapeDayRes?.data != null,
+      answered: tape?.answers?.length ?? 0,
+      done: tape?.completed_at != null,
+      correct: tape?.completed_at != null ? tape.correct : null,
+    },
+    chains: {
+      hasToday: chainsDayRes?.data != null,
+      length: chains?.length ?? 0,
+      done: chains?.ended_at != null,
+    },
+    depthChart: {
+      hasToday: dcDayRes?.data != null,
+      solved: dc?.solved?.length ?? 0,
+      mistakes: dc?.mistakes ?? 0,
+      done: dc?.completed_at != null,
     },
     sixPack: {
       open: questionCount > 0,

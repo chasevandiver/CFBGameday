@@ -30,6 +30,9 @@ describe("gamesHubRows — ordering", () => {
     });
     expect(gamesHubRows(s).map((r) => r.id)).toEqual([
       "streak",
+      "tape",
+      "depth-chart",
+      "chains",
       "guess-game",
       "guess-lines",
       "six-pack",
@@ -46,7 +49,7 @@ describe("gamesHubRows — ordering", () => {
   });
 
   it("always returns every game, in every state", () => {
-    expect(gamesHubRows(EMPTY_HUB_STATE)).toHaveLength(4);
+    expect(gamesHubRows(EMPTY_HUB_STATE)).toHaveLength(7);
   });
 });
 
@@ -122,5 +125,110 @@ describe("gamesHubRows — the copy", () => {
         expect(r.blurb.length).toBeGreaterThan(0);
       }
     }
+  });
+});
+
+describe("gamesHubRows — The Tape", () => {
+  const tapeRow = (over: Partial<GamesHubState["tape"]>, signedIn = true) =>
+    gamesHubRows({
+      ...EMPTY_HUB_STATE,
+      signedIn,
+      tape: { hasToday: true, answered: 0, done: false, correct: null, ...over },
+    }).find((r) => r.id === "tape")!;
+
+  /**
+   * The same distinction the streak row makes, and it matters for the same
+   * reason: a day with no round is a state of the WORLD, not of the player, and
+   * calling it "not played" blames them for it.
+   */
+  it("a day with no round reads 'no round', not 'not played'", () => {
+    const row = gamesHubRows({ ...EMPTY_HUB_STATE, signedIn: true }).find((r) => r.id === "tape")!;
+    expect(row.state).toBe("No round today");
+    expect(row.outstanding).toBe(false);
+  });
+
+  it("shows progress mid-round", () => {
+    expect(tapeRow({ answered: 2 }).state).toBe("2 of 5 answered");
+  });
+
+  it("shows the result once the round is done", () => {
+    expect(tapeRow({ answered: 5, done: true, correct: 4 }).state).toBe("4 of 5");
+  });
+
+  it("is outstanding until the round is finished, not until it is started", () => {
+    expect(tapeRow({ answered: 0 }).outstanding).toBe(true);
+    expect(tapeRow({ answered: 3 }).outstanding).toBe(true);
+    expect(tapeRow({ answered: 5, done: true, correct: 5 }).outstanding).toBe(false);
+  });
+
+  it("is never outstanding for a signed-out viewer", () => {
+    expect(tapeRow({ answered: 0 }, false).outstanding).toBe(false);
+  });
+});
+
+describe("gamesHubRows — Chains", () => {
+  const chainsRow = (over: Partial<GamesHubState["chains"]>, signedIn = true) =>
+    gamesHubRows({
+      ...EMPTY_HUB_STATE,
+      signedIn,
+      chains: { hasToday: true, length: 0, done: false, ...over },
+    }).find((r) => r.id === "chains")!;
+
+  it("a day with no run reads 'no run', not 'not played'", () => {
+    const row = gamesHubRows({ ...EMPTY_HUB_STATE, signedIn: true }).find((r) => r.id === "chains")!;
+    expect(row.state).toBe("No run today");
+    expect(row.outstanding).toBe(false);
+  });
+
+  /** A live run reads differently from a finished one of the same length. */
+  it("distinguishes a run still going from one that ended", () => {
+    expect(chainsRow({ length: 4 }).state).toBe("4 and running");
+    expect(chainsRow({ length: 4, done: true }).state).toBe("4 in a row");
+  });
+
+  it("stays outstanding while the run is live", () => {
+    expect(chainsRow({ length: 0 }).outstanding).toBe(true);
+    expect(chainsRow({ length: 6 }).outstanding).toBe(true);
+    expect(chainsRow({ length: 6, done: true }).outstanding).toBe(false);
+  });
+
+  it("is never outstanding for a signed-out viewer", () => {
+    expect(chainsRow({ length: 0 }, false).outstanding).toBe(false);
+  });
+});
+
+describe("gamesHubRows — Depth Chart", () => {
+  const dcRow = (over: Partial<GamesHubState["depthChart"]>, signedIn = true) =>
+    gamesHubRows({
+      ...EMPTY_HUB_STATE,
+      signedIn,
+      depthChart: { hasToday: true, solved: 0, mistakes: 0, done: false, ...over },
+    }).find((r) => r.id === "depth-chart")!;
+
+  it("a day with no board reads 'no board', not 'not played'", () => {
+    const row = gamesHubRows({ ...EMPTY_HUB_STATE, signedIn: true }).find(
+      (r) => r.id === "depth-chart",
+    )!;
+    expect(row.state).toBe("No board today");
+    expect(row.outstanding).toBe(false);
+  });
+
+  it("shows progress mid-board", () => {
+    expect(dcRow({ solved: 2, mistakes: 1 }).state).toBe("2 of 4 found");
+  });
+
+  /** A cleared board and a lost one must not read the same. */
+  it("distinguishes clearing it from running out", () => {
+    expect(dcRow({ solved: 4, mistakes: 1, done: true }).state).toBe("Cleared it, 1 off");
+    expect(dcRow({ solved: 2, mistakes: 4, done: true }).state).toBe("2 of 4");
+  });
+
+  it("stays outstanding until the board is finished", () => {
+    expect(dcRow({ solved: 3 }).outstanding).toBe(true);
+    expect(dcRow({ solved: 4, done: true }).outstanding).toBe(false);
+  });
+
+  it("is never outstanding for a signed-out viewer", () => {
+    expect(dcRow({}, false).outstanding).toBe(false);
   });
 });

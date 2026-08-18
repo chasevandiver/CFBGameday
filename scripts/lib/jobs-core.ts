@@ -218,6 +218,8 @@ export function watchdogVerdict(
     streak?: number;
     /** R3-E2. Weekly AND seasonal, so it takes the notify-jobs horizon. */
     sixPack?: number;
+    /** TAPE-2 et al. Daily and unconditional, like the streak. */
+    dailyPuzzles?: number;
   },
   gameLive: boolean,
   /** Any scheduled game inside the next week. Gates the weekly notify jobs. */
@@ -238,6 +240,18 @@ export function watchdogVerdict(
   // 30h is a real absence and trips normally.
   if (agesH.streak !== undefined && Number.isFinite(agesH.streak) && agesH.streak > 30)
     problems.push(`streak: no successful run in ${Math.round(agesH.streak)}h`);
+  /* The lane Guess the Game could never have. Its puzzle was computed on read,
+     so there was no job to be late and its empty deck went unnoticed for weeks
+     (GTG-1). `daily-puzzles` banks a fortnight and fails below four days, so
+     this horizon is the second line rather than the first — but a generator
+     that stops running stops refilling, and the queue drains silently.
+     Same Number.isFinite guard and same reasoning as the streak above. */
+  if (
+    agesH.dailyPuzzles !== undefined &&
+    Number.isFinite(agesH.dailyPuzzles) &&
+    agesH.dailyPuzzles > 30
+  )
+    problems.push(`daily-puzzles: no successful run in ${Math.round(agesH.dailyPuzzles)}h`);
   // Scoreboard only owes freshness while something is actually on.
   if (gameLive && agesH.scoreboard > 1.5)
     problems.push(
@@ -343,6 +357,7 @@ export async function watchdogJob(db: SupabaseClient): Promise<Json> {
       nflGrade: await lastOkAgeH("nfl-grade"),
       streak: await lastOkAgeH("streak"),
       sixPack: await lastOkAgeH("six-pack"),
+      dailyPuzzles: await lastOkAgeH("daily-puzzles"),
     },
     (live ?? []).length > 0,
     (upcoming ?? []).length > 0,
@@ -743,9 +758,16 @@ export async function applyScoreboard(
  * never fed to the model). CFBD returns school names, so rows that don't
  * match teams.school or teams.alt_names are reported for repair via alt_names.
  */
-export async function syncRankingsJob(db: SupabaseClient): Promise<Json> {
+/**
+ * One season's poll rows. Parameterised out of `syncRankingsJob` when the
+ * archive backfill needed the same work for 2015–22 (BF-3): the alternative
+ * was a second copy of the name-index build and the KEEP set in
+ * `scripts/lib/backfill.ts`, and a second copy of a name-matching loop is
+ * exactly the drift this file's neighbours keep warning about.
+ */
+export async function syncRankingsFor(db: SupabaseClient, seasonId: number): Promise<Json> {
   const KEEP = new Set(["AP Top 25", "Coaches Poll", "Playoff Committee Rankings"]);
-  const weeks = await cfbd.rankings(SEASON);
+  const weeks = await cfbd.rankings(seasonId);
   const { data: teamRows } = await db.from("teams").select("id, school, alt_names");
   const nameIndex = buildTeamNameIndex(
     (teamRows ?? []) as Array<{ id: number; school: string; alt_names: string[] | null }>,
@@ -784,6 +806,9 @@ export async function syncRankingsJob(db: SupabaseClient): Promise<Json> {
   }
   return { rows: rows.length, unmatched: [...unmatched] };
 }
+
+export const syncRankingsJob = (db: SupabaseClient): Promise<Json> =>
+  syncRankingsFor(db, SEASON);
 
 /**
  * Weekly SP+ / FPI / Elo snapshot → system_ratings (spec §2.4). Persisted so
