@@ -35,8 +35,21 @@ on:
           - tune-ensemble
           - tune-hfa
           - tune-fcs
+          - tune-team-hfa
           - diagnose-tiers
           - tune-tier-recenter
+      seasons:
+        description: "Season window, e.g. 2015-2025 or 2023-2025 (blank = the default wide window)"
+        type: string
+        default: ""
+      covid:
+        description: "What happens to 2020 — chain (default), score, or drop"
+        type: choice
+        default: chain
+        options:
+          - chain
+          - score
+          - drop
   pull_request:
     paths:
       - "src/model/**"
@@ -48,7 +61,13 @@ on:
 jobs:
   backtest:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 20 was sized for a three-season window. The default is now eleven, and a
+    # grid tuner replays every season at every grid point — --tune-churn is 40
+    # points, so its compute goes from 120 season-replays to 440. Raised rather
+    # than trimming a grid: a narrowed grid is how five parameters in this
+    # model ended up pinned at a boundary, which the changelog calls the single
+    # most reliable diagnostic of the whole effort.
+    timeout-minutes: 60
     env:
       CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
     steps:
@@ -61,15 +80,27 @@ jobs:
       # The full report — including the 03:M-3 signed-error-by-slice tables —
       # lands in the job summary, so a directional lean is one click away on
       # every model PR instead of buried in a log nobody expands.
+      # The window flags are DISPATCH-ONLY and must stay that way. On a
+      # pull_request run `inputs` is empty, so WINDOW falls to the default and
+      # the report on every model PR stays comparable to every previous one —
+      # which is the only reason the calibration report works as an honesty
+      # gate. Pinned by a test in scripts/lib/backtest-yml.test.ts.
       - name: Run backtest
         run: |
           EXPERIMENT="${{ inputs.experiment || 'none' }}"
+          WINDOW=""
+          if [ -n "${{ inputs.seasons }}" ]; then
+            WINDOW="--seasons=${{ inputs.seasons }}"
+          fi
+          if [ -n "${{ inputs.covid }}" ]; then
+            WINDOW="$WINDOW --covid=${{ inputs.covid }}"
+          fi
           if [ "$EXPERIMENT" != "none" ] && [ -n "$EXPERIMENT" ]; then
-            npx tsx scripts/backtest.ts "--$EXPERIMENT" | tee backtest.log
+            npx tsx scripts/backtest.ts "--$EXPERIMENT" $WINDOW | tee backtest.log
           elif [ "${{ inputs.tune || 'false' }}" = "true" ]; then
-            npx tsx scripts/backtest.ts --tune | tee backtest.log
+            npx tsx scripts/backtest.ts --tune $WINDOW | tee backtest.log
           else
-            npx tsx scripts/backtest.ts | tee backtest.log
+            npx tsx scripts/backtest.ts $WINDOW | tee backtest.log
           fi
           { echo '```'; cat backtest.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 

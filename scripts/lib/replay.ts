@@ -13,6 +13,7 @@ import {
   type CfbdSpRating,
 } from "../../src/lib/cfbd";
 import { snapToHalf } from "../../src/lib/consensus";
+import { COVID_SEASON } from "./eras";
 import { fcsRatingOf } from "../../src/model/fcs";
 import {
   blendWithPrior,
@@ -31,6 +32,12 @@ export interface SeasonData {
   prevSp: CfbdSpRating[];
   /** Per-game PPA; absent for seasons loaded before this was added. */
   advanced?: CfbdAdvancedGameStat[];
+  /**
+   * SP+ for THIS season, used to admit teams promoted to FBS mid-window.
+   * Absent for seasons loaded before the wide window existed, in which case
+   * `admitNewFbs` is a no-op and the pool behaves as it always did.
+   */
+  sp?: CfbdSpRating[];
 }
 
 /**
@@ -122,17 +129,49 @@ export async function cached<T>(
   return data;
 }
 
-export async function loadSeason(season: number, useCache: boolean): Promise<SeasonData> {
-  const [games, lines, prevSp, advanced] = await Promise.all([
+/**
+ * @param withAdvanced fetch per-game PPA. Default false, because nothing reads
+ *   it at `epaWeight: 0` — which is what ships, `--tune-epa` having been tested
+ *   and rejected. It was fetched unconditionally until 2026-08-18: one wasted
+ *   CFBD call per season per run, plus an `efficiencyMargins` Map built over
+ *   ~10k rows on EVERY `replaySeason` call, i.e. once per season per grid
+ *   point. At 40 grid points x 11 seasons that is 440 Map builds feeding a
+ *   `weight` of 0. Only `--tune-epa` passes true.
+ */
+export async function loadSeason(
+  season: number,
+  useCache: boolean,
+  opts: { withAdvanced?: boolean; withSp?: boolean } = {},
+): Promise<SeasonData> {
+  const [games, lines, prevSp, advanced, sp] = await Promise.all([
     cached(`games-${season}`, () => cfbd.games(season), useCache),
     cached(`lines-${season}`, () => cfbd.lines(season), useCache),
     cached(`sp-${season - 1}`, () => cfbd.spRatings(season - 1), useCache),
     // One call covers the season. Tolerated as optional: a key without the
     // tier for this endpoint should degrade to the score-only model, not
-    // break the backtest.
-    cached(`advanced-${season}`, () => cfbd.advancedGameStats(season), useCache).catch(() => []),
+    // break the backtest. The failure is now LOGGED rather than swallowed —
+    // a tolerated error that prints nothing is `emptyIsHealthy` in another
+    // costume, and over eleven seasons "some of them silently had no PPA" is
+    // exactly the kind of thing that must not be inferred from a flat number.
+    opts.withAdvanced
+      ? cached(`advanced-${season}`, () => cfbd.advancedGameStats(season), useCache).catch(
+          (err: unknown) => {
+            console.log(
+              `!! advanced stats unavailable for ${season} (${
+                err instanceof Error ? err.message : String(err)
+              }) — this season contributes nothing to any PPA-based fit.`,
+            );
+            return [];
+          },
+        )
+      : Promise.resolve<CfbdAdvancedGameStat[]>([]),
+    // SP+ for the season itself, not the one before: `admitNewFbs` uses it to
+    // seed teams promoted to FBS partway through the window.
+    opts.withSp
+      ? cached(`sp-${season}`, () => cfbd.spRatings(season), useCache)
+      : Promise.resolve<CfbdSpRating[]>([]),
   ]);
-  return { season, games, lines, prevSp, advanced };
+  return { season, games, lines, prevSp, advanced, sp };
 }
 
 export interface ReplayPrediction {
@@ -253,20 +292,73 @@ export function replaySeason(
    *  Must be built from seasons strictly before the one being replayed; the
    *  lookahead guard above is not optional. */
   fcsTop?: ReadonlySet<number>,
+  /** Per-team home-field advantage, points, already blended and centred by
+   *  `centeredBlendedHfa`. Omit to price every home game at the flat
+   *  `params.baseHfa`, which is what every replay did before 2026-08-18 and is
+   *  therefore the identity behaviour.
+   *
+   *  This gap is why audit 03:M-1 was invisible to the backtest: production
+   *  prices with a per-team table (`build-preseason.ts`) and the replay priced
+   *  with a scalar, so a ~+1.9 inflation in that table could not show up in any
+   *  calibration report. Must be built from seasons strictly before the one
+   *  being replayed. */
+  hfaByTeam?: ReadonlyMap<number, number>,
 ): {
   predictions: ReplayPrediction[];
   finalRatings: Map<number, number>;
   finalTilts: Map<number, number>;
+  /** FBS membership changes applied to the pool this season (see admitNewFbs).
+   *  Empty unless the caller loaded `data.sp`. */
+  admitted: number[];
+  retired: number[];
 } {
   // Off/def carry the season (§2.2): overall ≡ off + def by construction, and
   // updateSubRatings preserves the overall margin update exactly (its off+def
   // deltas sum to the updateFromResult delta), so margins reproduce the tuned
   // behavior while totals gain real matchup signal.
   const tiltOf = (id: number) => tilts?.get(id) ?? 0;
-  const effMargin = efficiencyMargins(data.advanced);
+  // Only build the PPA index when something will read it. At `epaWeight: 0` —
+  // which is what ships, `--tune-epa` having been tested and rejected —
+  // `blendedPoints` returns the raw score before touching this, so building it
+  // is a Map over ~10k rows per season per grid point for nothing.
+  if (params.epaWeight && (data.advanced?.length ?? 0) === 0) {
+    // Loud, because the alternative is a silent fall back to the raw score:
+    // `blendedPoints` returns it whenever the efficiency margin is null, so a
+    // PPA-weighted run against an unloaded feed would produce a perfectly
+    // plausible score-only number labelled as an efficiency fit. Callers opt
+    // into the advanced fetch (`loadSeason(..., { withAdvanced: true })`), and
+    // opting out while asking for a PPA blend is a mistake, not a preference.
+    throw new Error(
+      `replaySeason(${data.season}) got epaWeight ${params.epaWeight} with no advanced stats ` +
+        `loaded. Pass { withAdvanced: true } to loadSeason, or leave epaWeight at 0 — silently ` +
+        `scoring the raw margin as though it were an efficiency blend is the one outcome that ` +
+        `must not happen.`,
+    );
+  }
+  const effMargin = params.epaWeight ? efficiencyMargins(data.advanced) : () => null;
+  const hfaOf = (teamId: number) => hfaByTeam?.get(teamId) ?? params.baseHfa;
+
+  // FBS membership for THIS season, before anything is priced. Doing it here
+  // rather than in each caller's chain loop is deliberate: there are a dozen
+  // such loops across backtest.ts, all of the same shape, and a membership fix
+  // applied in eleven of them is worse than none — the twelfth would produce a
+  // number that looks comparable and is not. `data.sp` is absent unless the
+  // caller asked for it, in which case this is a no-op and the pool behaves
+  // exactly as it did before (identity).
+  // SP+ rows carry team NAMES, and this season's games are a complete name->id
+  // map for every team that plays in it — which is exactly the set admission
+  // can act on.
+  const idsByName = new Map<string, number>();
+  for (const g of data.games) {
+    idsByName.set(g.homeTeam, g.homeId);
+    idsByName.set(g.awayTeam, g.awayId);
+  }
+  const admission = admitNewFbs(priors, priorsFromSp(data.sp ?? [], idsByName));
+  const pool = admission.priors;
+
   const offense = new Map<number, number>();
   const defense = new Map<number, number>();
-  for (const [id, prior] of priors) {
+  for (const [id, prior] of pool) {
     offense.set(id, prior / 2 + tiltOf(id));
     defense.set(id, prior / 2 - tiltOf(id));
   }
@@ -286,7 +378,7 @@ export function replaySeason(
     }> = [];
     for (const g of weekGames) {
       const blended = (teamId: number): TeamRating => {
-        const prior = priors.get(teamId);
+        const prior = pool.get(teamId);
         if (prior === undefined) {
           const r = fcsRatingOf(teamId, fcsTop, params);
           return { overall: r, offense: r / 2, defense: r / 2, tempo: 70 };
@@ -304,7 +396,7 @@ export function replaySeason(
         {
           home,
           away,
-          homeTeamHfa: params.baseHfa,
+          homeTeamHfa: hfaOf(g.homeId),
           neutralSite: g.neutralSite,
           situationalPoints: 0,
           vegasSpread: consensusLine(linesById.get(g.id)),
@@ -347,8 +439,8 @@ export function replaySeason(
         awayTeam: g.awayTeam,
         homeConference: g.homeConference ?? null,
         awayConference: g.awayConference ?? null,
-        homeFbs: priors.has(g.homeId),
-        awayFbs: priors.has(g.awayId),
+        homeFbs: pool.has(g.homeId),
+        awayFbs: pool.has(g.awayId),
       });
       weekPredictions.push({ game: g, home, away });
     }
@@ -369,16 +461,16 @@ export function replaySeason(
           awayDefense: away.defense,
           homePoints: points.home,
           awayPoints: points.away,
-          hfa: params.baseHfa,
+          hfa: hfaOf(g.homeId),
           neutralSite: g.neutralSite,
         },
         params,
       );
-      if (priors.has(g.homeId)) {
+      if (pool.has(g.homeId)) {
         offense.set(g.homeId, (offense.get(g.homeId) ?? 0) + upd.homeOffDelta);
         defense.set(g.homeId, (defense.get(g.homeId) ?? 0) + upd.homeDefDelta);
       }
-      if (priors.has(g.awayId)) {
+      if (pool.has(g.awayId)) {
         offense.set(g.awayId, (offense.get(g.awayId) ?? 0) + upd.awayOffDelta);
         defense.set(g.awayId, (defense.get(g.awayId) ?? 0) + upd.awayDefDelta);
       }
@@ -387,13 +479,19 @@ export function replaySeason(
 
   const finalRatings = new Map<number, number>();
   const finalTilts = new Map<number, number>();
-  for (const [id] of priors) {
+  for (const [id] of pool) {
     const off = offense.get(id) ?? 0;
     const def = defense.get(id) ?? 0;
     finalRatings.set(id, off + def);
     finalTilts.set(id, (off - def) / 2);
   }
-  return { predictions, finalRatings, finalTilts };
+  return {
+    predictions,
+    finalRatings,
+    finalTilts,
+    admitted: admission.admitted,
+    retired: admission.retired,
+  };
 }
 
 /**
@@ -442,6 +540,81 @@ export function chainPriors(finals: Map<number, number>): Map<number, number> {
   return priors;
 }
 
+/**
+ * Admit teams promoted to FBS partway through the window, and retire teams
+ * that left.
+ *
+ * ## The defect this fixes
+ *
+ * `replaySeason` decides "is this team FBS?" by `priors.has(teamId)`, and
+ * `priors` is seeded ONCE — from `priorsFromSp(seasons[0].prevSp)` — and then
+ * chained forward by `chainPriors`, which carries exactly the key set it was
+ * given. `finalRatings` is likewise built by iterating the priors it started
+ * with. So the FBS pool is whatever SP+ listed in one year, frozen for the
+ * whole window, and a team that joins FBS later never enters it: it is priced
+ * at the flat FCS anchor (−30) for every game it plays, in every season, with
+ * no error anywhere.
+ *
+ * At a three-season window seeded from 2022 that is Jacksonville State and Sam
+ * Houston (2023) and Kennesaw State (2024) — small enough to have gone
+ * unnoticed for the whole life of the backtest. Seeded from 2014 it is also
+ * Charlotte, Coastal Carolina, Liberty, UAB's return and James Madison, and it
+ * corrupts the FBS-vs-FCS slice — which is precisely the slice `--tune-fcs`
+ * exists to fit.
+ *
+ * This is the same shape as `emptyIsHealthy` and as the caching of `[]`: a
+ * default that is correct on a narrow window and wrong on a wide one, with no
+ * symptom in between.
+ *
+ * ## The rule
+ *
+ * CFBD rates FBS teams in SP+, so presence in season S's SP+ IS the membership
+ * test, and the rating is a ready-made seed.
+ *
+ * Retirement is gated on the feed being HEALTHY for that season rather than on
+ * two consecutive absences. A single missing SP+ row is ambiguous between "this
+ * team left FBS" and "CFBD is short that year", and the two want opposite
+ * treatment — but the ambiguity is only real when the feed itself is thin. When
+ * SP+ returns a full slate and a team is not in it, that is a relegation, and
+ * `scripts/probe-cfbd-history.ts` is what establishes per-season feed health in
+ * the first place. Below the floor nothing is retired, which fails toward
+ * keeping a team in the pool: a stale FBS rating on a team that plays no FBS
+ * games costs nothing, while wrongly dropping one prices a whole season at −30.
+ */
+export function admitNewFbs(
+  priors: Map<number, number>,
+  spThisSeason: Map<number, number>,
+  opts: { healthyFloor?: number } = {},
+): { priors: Map<number, number>; admitted: number[]; retired: number[] } {
+  // No SP+ for this season means no evidence either way — leave the pool alone
+  // rather than retiring everybody, which is what an empty map would do.
+  if (spThisSeason.size === 0) {
+    return { priors: new Map(priors), admitted: [], retired: [] };
+  }
+
+  const next = new Map(priors);
+  const admitted: number[] = [];
+  const retired: number[] = [];
+
+  for (const [id, rating] of spThisSeason) {
+    if (!next.has(id)) {
+      next.set(id, rating);
+      admitted.push(id);
+    }
+  }
+
+  const healthy = spThisSeason.size >= (opts.healthyFloor ?? 100);
+  if (healthy) {
+    for (const id of priors.keys()) {
+      if (spThisSeason.has(id)) continue;
+      next.delete(id);
+      retired.push(id);
+    }
+  }
+
+  return { priors: next, admitted, retired };
+}
+
 /** Hard bound on a seeded preseason tilt. A tilt of 10 means an offense 20
  *  points better than its own defense relative to even — past anything real,
  *  so a bad chain or a stray SP+ row can't produce a nonsense total. */
@@ -469,6 +642,94 @@ export function scaleTilts(tilts: Map<number, number>, scale: number): Map<numbe
     out.set(teamId, Math.max(-MAX_TILT, Math.min(MAX_TILT, scale * tilt)));
   }
   return out;
+}
+
+/**
+ * Point-in-time per-team home-field advantage, built from seasons strictly
+ * before `before`.
+ *
+ * Mirrors `build-preseason.ts` step 7 exactly — FBS-vs-FBS only, non-neutral
+ * only, `(meanHomeMargin − meanAwayMargin) / 2`, clamped to 0..6 — but with
+ * two differences that matter for a replay:
+ *
+ *  1. **Membership is per-season, not "the current FBS list".** The production
+ *     build approximates FBS-vs-FBS by 2026 membership across 2015–2024, which
+ *     is a documented approximation there and would be lookahead here.
+ *  2. **The window is strictly prior.** A team's HFA for season S is built from
+ *     what happened before S, which is the only version of this quantity a
+ *     week-1 prediction could have known.
+ *
+ * 2020 is always excluded, in both directions. An empty-stadium season
+ * measures a different quantity, and the whole claim of a per-team HFA is that
+ * it measures the same one repeatedly.
+ *
+ * Returns raw values and their mean; `centeredBlendedHfa` needs both.
+ */
+export function rawTeamHfa(
+  seasons: readonly SeasonData[],
+  fbsIds: ReadonlySet<number>,
+  opts: { before: number; excludeSeasons?: readonly number[] },
+): { raw: Map<number, number>; mean: number | null } {
+  const skip = new Set(opts.excludeSeasons ?? [COVID_SEASON]);
+  const homeMargins = new Map<number, number[]>();
+  const awayMargins = new Map<number, number[]>();
+
+  for (const season of seasons) {
+    if (season.season >= opts.before || skip.has(season.season)) continue;
+    for (const g of season.games) {
+      if (g.homePoints === null || g.awayPoints === null || g.neutralSite) continue;
+      // Home slates carry the FCS buy games and away slates do not, so a raw
+      // home average is inflated by scheduling rather than by home field
+      // (audit 03:M-1b). Restricting to FBS-vs-FBS is the same-source version
+      // of SPEC §2.3's residuals.
+      if (!fbsIds.has(g.homeId) || !fbsIds.has(g.awayId)) continue;
+      const margin = g.homePoints - g.awayPoints;
+      homeMargins.set(g.homeId, [...(homeMargins.get(g.homeId) ?? []), margin]);
+      awayMargins.set(g.awayId, [...(awayMargins.get(g.awayId) ?? []), -margin]);
+    }
+  }
+
+  const avg = (xs: number[] | undefined) => (xs && xs.length > 0 ? mean(xs) : null);
+  const raw = new Map<number, number>();
+  for (const id of new Set([...homeMargins.keys(), ...awayMargins.keys()])) {
+    const h = avg(homeMargins.get(id));
+    const a = avg(awayMargins.get(id));
+    if (h === null || a === null) continue;
+    raw.set(id, Math.min(6, Math.max(0, (h - a) / 2)));
+  }
+  return { raw, mean: raw.size === 0 ? null : mean([...raw.values()]) };
+}
+
+/**
+ * Split-half correlation of raw team HFA across disjoint prior seasons.
+ *
+ * This is `--tune-team-hfa`'s Gate 0 and it runs before any MAE is computed.
+ * If a team's home edge does not correlate with itself across two disjoint
+ * samples, there is no per-team signal to blend and `teamHfaBlend` is 0 — no
+ * downstream accuracy number can rescue a quantity that does not reproduce.
+ * Odd and even years, 2020 excluded from both.
+ */
+export function hfaSplitHalf(
+  seasons: readonly SeasonData[],
+  fbsIds: ReadonlySet<number>,
+  before: number,
+): { r: number; n: number } {
+  const all = seasons.filter((s) => s.season < before && s.season !== COVID_SEASON);
+  const odd = all.filter((s) => s.season % 2 === 1);
+  const even = all.filter((s) => s.season % 2 === 0);
+  const a = rawTeamHfa(odd, fbsIds, { before }).raw;
+  const b = rawTeamHfa(even, fbsIds, { before }).raw;
+
+  const ids = [...a.keys()].filter((id) => b.has(id));
+  if (ids.length < 3) return { r: NaN, n: ids.length };
+  const xs = ids.map((id) => a.get(id) as number);
+  const ys = ids.map((id) => b.get(id) as number);
+  const mx = mean(xs);
+  const my = mean(ys);
+  const cov = mean(xs.map((x, i) => (x - mx) * (ys[i] - my)));
+  const sx = Math.sqrt(mean(xs.map((x) => (x - mx) ** 2)));
+  const sy = Math.sqrt(mean(ys.map((y) => (y - my) ** 2)));
+  return { r: sx === 0 || sy === 0 ? NaN : cov / (sx * sy), n: ids.length };
 }
 
 export function teamIdsByNameFrom(seasons: SeasonData[]): Map<string, number> {

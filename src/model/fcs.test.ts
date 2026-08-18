@@ -121,3 +121,39 @@ describe("fcsRatingOf", () => {
     expect(fcsRatingOf(50, undefined, split)).toBe(-35);
   });
 });
+
+describe("FBS membership is not constant across a wide window", () => {
+  // James Madison's games are FCS buy games through 2021 and FBS games from
+  // 2022. A single `fbsIds` set has to be wrong about one half or the other,
+  // which at a 2015-2025 window would corrupt the very population --tune-fcs
+  // fits its two numbers on.
+  const PROMOTED = 99;
+  const games: FcsGame[] = [
+    // Two genuine buy games while still FCS.
+    { season: 2020, homeId: 1, awayId: PROMOTED, homePoints: 40, awayPoints: 10 },
+    { season: 2021, homeId: 2, awayId: PROMOTED, homePoints: 35, awayPoints: 14 },
+    // An FBS-vs-FBS game after promotion, which says nothing about FCS.
+    { season: 2023, homeId: 1, awayId: PROMOTED, homePoints: 24, awayPoints: 27 },
+  ];
+
+  it("counts the pre-promotion games and stops at the promotion", () => {
+    const perSeason = (season: number) =>
+      new Set(season >= 2022 ? [1, 2, PROMOTED] : [1, 2]);
+    const margins = fcsMarginsVsFbs(games, perSeason, { before: 2026 });
+    expect(margins.get(PROMOTED)).toEqual({ avgMargin: -25.5, n: 2 });
+  });
+
+  it("a frozen set gets it wrong in whichever direction it is frozen", () => {
+    // Frozen pre-promotion: the 2023 FBS game is counted as a buy game and
+    // drags the average toward zero.
+    expect(fcsMarginsVsFbs(games, new Set([1, 2]), { before: 2026 }).get(PROMOTED)?.n).toBe(3);
+    // Frozen post-promotion: the real buy games vanish entirely.
+    expect(
+      fcsMarginsVsFbs(games, new Set([1, 2, PROMOTED]), { before: 2026 }).get(PROMOTED),
+    ).toBeUndefined();
+  });
+
+  it("still accepts a plain set, which every existing caller passes", () => {
+    expect(fcsMarginsVsFbs(games, new Set([1, 2]), { before: 2021 }).get(PROMOTED)?.n).toBe(1);
+  });
+});

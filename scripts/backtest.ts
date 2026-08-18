@@ -4,6 +4,8 @@
  * Usage:
  *   CFBD_API_KEY=... npx tsx scripts/backtest.ts             # fetch + run 2023–2025
  *   npx tsx scripts/backtest.ts --cached                     # reuse .backtest-cache/
+ *   npx tsx scripts/backtest.ts --seasons=2023-2025          # the pre-2026-08-18 reference window
+ *   npx tsx scripts/backtest.ts --warmup=2 --covid=score     # window shape (scripts/lib/window.ts)
  *   npx tsx scripts/backtest.ts --tune                       # grid-search K / HFA, fit σ + slope
  *   npx tsx scripts/backtest.ts --tune-sigma                 # fit priorSigmaExtra (early-week uncertainty)
  *   npx tsx scripts/backtest.ts --tune-preseason-tilts       # should preseason off/def carry a shape?
@@ -13,6 +15,7 @@
  *   npx tsx scripts/backtest.ts --tune-ensemble              # blend weekly Elo + prior SP+ into our margin
  *   npx tsx scripts/backtest.ts --tune-hfa                   # home-field alone, judged on bias + MAE + calibration
  *   npx tsx scripts/backtest.ts --tune-fcs                   # is "top-tier FCS" a real category? (P1-2)
+ *   npx tsx scripts/backtest.ts --tune-team-hfa              # is a per-team home edge real? (02:M-05)
  *   npx tsx scripts/backtest.ts --tune-anchors               # week-1 Elo / preseason poll anchor weights
  *   npx tsx scripts/backtest.ts --tune-prior                 # preseason carryover weight
  *   npx tsx scripts/backtest.ts --tune-sp-blend              # prior-year baseline: replay finals vs final SP+
@@ -32,12 +35,20 @@
  *
  * Scope: validates K-factor, prior decay, margin cap, HFA, win-prob slope and
  * margin sigma, and calibration vs the stored CFBD line. It does NOT validate
- * CLV or line movement — no historical movement data exists.
+ * CLV or line movement — no historical movement data exists, and eleven
+ * seasons of a window that has none is still none.
+ *
+ * Window: 2015-2025 by default since 2026-08-18, scoring nine seasons (2015 is
+ * the SP+ bootstrap, 2020 is chained but not scored). Every figure recorded
+ * before that date was computed on 2023-2025, reachable with
+ * `--seasons=2023-2025`. A number without its window label is not comparable to
+ * anything — see scripts/lib/window.ts.
  */
 
 import { pathToFileURL } from "node:url";
 import {
   DEFAULT_PARAMS,
+  centeredBlendedHfa,
   churnAdjustment,
   coachingAdjustmentContinuous,
   priorWeight,
@@ -50,8 +61,10 @@ import {
   chainPriors,
   chainTilts,
   consensusLine,
+  hfaSplitHalf,
   loadSeason,
   priorsFromSp,
+  rawTeamHfa,
   replaySeason,
   scaleTilts,
   subTiltsFromSp,
@@ -59,15 +72,93 @@ import {
   type ReplayPrediction,
   type SeasonData,
 } from "./lib/replay";
+import {
+  DEFAULT_WINDOW,
+  LEGACY_WINDOW,
+  makeWindow,
+  parseSeasonWindow,
+  SeasonWindowError,
+  perEraTable,
+  perSeasonTable,
+  splitWindow,
+  type SeasonWindow,
+} from "./lib/window";
+import { eraFlip, erasIn, latestEraIn } from "./lib/eras";
+import { CoverageError, assertFeedCoverage, loadCoverageManifest } from "./lib/coverage";
 
-const SEASONS = [2023, 2024, 2025];
+/**
+ * The replayed window and the scored subset of it.
+ *
+ * These were `[2023, 2024, 2025]` and `SEASONS.slice(1)` until 2026-08-18,
+ * when the archive backfill (BF-4) settled the question that had kept them
+ * there: CFBD line coverage runs 95-100% per season back to 2015, not the
+ * 55-70% that had been assumed. `WINDOW` is now parsed from argv by `main()`
+ * before any season is loaded — see scripts/lib/window.ts for the flags and
+ * for why every number must be reported with its window label.
+ *
+ * They stay module-level `let`s rather than being threaded through ~25 call
+ * sites: every tuner reads them at call time and `main()` is the only writer,
+ * so there is exactly one assignment and no site can capture a stale window.
+ * The default is the wide window, so a path that somehow ran without `main()`
+ * would still use the documented default rather than a silent legacy one.
+ */
+let WINDOW: SeasonWindow = makeWindow(
+  Array.from(
+    { length: DEFAULT_WINDOW.to - DEFAULT_WINDOW.from + 1 },
+    (_, i) => DEFAULT_WINDOW.from + i,
+  ),
+);
+let SEASONS: number[] = WINDOW.all;
 
 /** Seasons the tuners score on: the bootstrap year is excluded because its
- *  priors come from SP+ rather than from our own chain either way. */
-const SCORED = SEASONS.slice(1);
+ *  priors come from SP+ rather than from our own chain either way, and COVID
+ *  2020 is excluded because an empty-stadium season measures a different
+ *  quantity (scripts/lib/eras.ts). Both are still replayed, so the prior chain
+ *  is unbroken. */
+let SCORED: number[] = WINDOW.scored;
 
 const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 const maeOf = (xs: number[]) => mean(xs.map(Math.abs));
+
+/**
+ * Restrict predictions to the scored window.
+ *
+ * Until 2026-08-18 only the prior-construction tuners honoured `SCORED`;
+ * `--tune`, `--tune-hfa`, `--tune-epa` and `--tune-sigma` pooled every loaded
+ * season including the SP+-seeded bootstrap. That was tolerable when the
+ * bootstrap was one season in three and every season was comparable. It is not
+ * tolerable once the window also contains COVID 2020, whose home-field
+ * advantage is a different quantity — so every tuner now scores the same set,
+ * and the four that changed have their restated numbers in the changelog.
+ */
+const scoredOnly = <T extends { season: number }>(xs: readonly T[]): T[] =>
+  xs.filter((x) => SCORED.includes(x.season));
+
+/**
+ * The two rules every wide-window fit must clear on top of its own
+ * pre-registered criteria, printed with the grid so they are read before the
+ * winner is.
+ *
+ * They exist because of Q8, generalised. `returningProdWeight` was fitted
+ * against an input distribution that no longer exists, and a parameter pooled
+ * over eleven seasons has that defect structurally: 2015 college football had
+ * no portal, no NIL, an intact Pac-12 and a four-team playoff.
+ */
+function eraNote(parameter: string): string {
+  const latest = latestEraIn(SCORED);
+  const eras = erasIn(SCORED);
+  if (eras.length < 2) {
+    return `\n(Single era in this window — the era-flip and recency rules do not apply.)`;
+  }
+  return (
+    `\nTWO RULES BEFORE ${parameter.toUpperCase()} SHIPS, on top of this tuner's own criteria:\n` +
+    `  era-flip: refit within each of ${eras.map((e) => e.era.id).join(", ")} separately. If the\n` +
+    `    per-era argmins do not agree within one grid step, the pooled winner is an average of\n` +
+    `    eras that want different values — record "era-dependent", ship nothing (eraFlip()).\n` +
+    `  recency: the ${latest?.id ?? "latest"}-only metric (${latest?.seasons.join(", ") ?? "?"}) must not be worse than\n` +
+    `    the incumbent's by more than 1 SE. Next season resembles ${latest?.id ?? "the latest era"}, not 2015.`
+  );
+}
 
 function nll(preds: ReplayPrediction[]): number {
   const graded = preds.filter((p) => p.favoriteWon !== null);
@@ -1043,6 +1134,166 @@ async function tuneCoaching(seasons: SeasonData[], teamIdsByName: Map<string, nu
 }
 
 /**
+ * --tune-team-hfa: is a per-team home-field advantage real, and does 0.5 earn
+ * its place? (02:M-05 / 03:M-1v)
+ *
+ * `teamHfaBlend` has shipped at 0.5 since SPEC §2.3 was written and has never
+ * been validated by any replay. STATUS records it as blocked on "CFBD
+ * publishing 2026 data", and that was the wrong blocker: it is only true if the
+ * validation means "score the 2026 team_hfa table". It does not. `teamHfaBlend`
+ * is a model parameter, and the point-in-time question — build each team's HFA
+ * from seasons strictly BEFORE S, price S with it, score S — needs no 2026 data
+ * at all. It needs prior seasons, which is exactly what the wide window is.
+ *
+ * The reason nobody noticed is structural and worth stating: production prices
+ * with a per-team table and the replay priced with a flat scalar, so the ~+1.9
+ * inflation audit 03:M-1 found in that table could not appear in any
+ * calibration report. `replaySeason` now accepts `hfaByTeam`, which closes the
+ * gap that made M-1 invisible.
+ *
+ * PRE-REGISTERED, fixed before the first number is printed:
+ *
+ *   Gate 0 — identification, and it runs FIRST. Split-half correlation of raw
+ *   team HFA across disjoint prior seasons (odd vs even years, 2020 excluded
+ *   from both) must be >= 0.30 over >= 100 teams. If a team's home edge does
+ *   not reproduce against itself on disjoint samples there is nothing to blend,
+ *   no accuracy number can rescue it, and the answer is teamHfaBlend = 0 —
+ *   which is what the STATUS row already names as the fallback. Failing Gate 0
+ *   closes 02:M-05 on evidence rather than by deferral.
+ *
+ *   Only if Gate 0 clears, grid the blend and ship a non-zero value only if ALL:
+ *     1. pooled MAE improves by >= 0.05 vs blend 0 — a bar, not an argmin;
+ *     2. home-signed bias |t| < 2 at the winner, and no worse than at blend 0.
+ *        This is the number M-1 threatened, so it is the one that must hold;
+ *     3. every win-probability bucket within 3 points;
+ *     4. the winner is INTERIOR to the grid. A winner at 1.0 is unconverged and
+ *        ships nothing — five parameters in this file have already run to a
+ *        boundary, which the changelog calls the single most reliable
+ *        diagnostic of the whole effort;
+ *     5. the era-flip and recency rules below both clear.
+ *
+ * 2020 is excluded from the raw-HFA source window, always and separately from
+ * the scoring exclusion. An empty-stadium season measures a different quantity,
+ * and the entire claim of a per-team HFA is that it measures the same one
+ * repeatedly.
+ *
+ * Whatever happens, it gets a decisions-table row carrying the window label.
+ */
+function tuneTeamHfa(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
+  console.log("\n== --tune-team-hfa ==  does a per-team home edge exist, and is 0.5 right?");
+  console.log(
+    "Pre-registered: Gate 0 is a split-half correlation >= 0.30 over >= 100 teams. If that\n" +
+      "fails, teamHfaBlend = 0 and 02:M-05 closes on evidence. If it passes, a value ships only\n" +
+      "on: pooled MAE better by >= 0.05, |t| on home bias < 2 and no worse than at blend 0,\n" +
+      "every win-prob bucket within 3 points, and an INTERIOR winner.\n",
+  );
+
+  const fbsIds = new Set(priorsFromSp(seasons[0].prevSp, teamIdsByName).keys());
+  for (const s of seasons) {
+    for (const id of priorsFromSp(s.sp ?? [], teamIdsByName).keys()) fbsIds.add(id);
+  }
+
+  // Gate 0, before any accuracy number exists.
+  const firstScored = SCORED[0];
+  const split = hfaSplitHalf(seasons, fbsIds, firstScored);
+  console.log(
+    `Gate 0 — split-half correlation of raw team HFA (seasons < ${firstScored}, 2020 excluded): ` +
+      `r = ${Number.isNaN(split.r) ? "n/a" : split.r.toFixed(3)} over n = ${split.n} teams.`,
+  );
+  if (!(split.r >= 0.3) || split.n < 100) {
+    console.log(
+      "\nGATE 0 FAILS. A team's home edge does not reproduce against itself on disjoint\n" +
+        "samples, so there is no per-team signal to blend and no MAE number below could mean\n" +
+        "anything. Pre-registered outcome: set teamHfaBlend = 0 and record it. That is 02:M-05\n" +
+        "answered on evidence — the same shape as Q4 being answered by --tune-fcs's Gate 0.",
+    );
+    if (split.n > 0) console.log("(Grid still printed below, for the record only.)\n");
+  }
+
+  const replayAll = (blend: number) => {
+    const params: ModelParams = { ...DEFAULT_PARAMS, teamHfaBlend: blend };
+    let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
+    const all: ReplayPrediction[] = [];
+    for (const season of seasons) {
+      // Strictly-prior HFA: what a week-1 prediction for this season could
+      // actually have known. Rebuilt per season, which is the whole point.
+      const { raw, mean: rawMean } = rawTeamHfa(seasons, fbsIds, { before: season.season });
+      const hfaByTeam = new Map<number, number>();
+      for (const [id, value] of raw) {
+        hfaByTeam.set(id, centeredBlendedHfa(value, rawMean, params));
+      }
+      const { predictions, finalRatings } = replaySeason(
+        season,
+        priors,
+        params,
+        undefined,
+        undefined,
+        blend === 0 ? undefined : hfaByTeam,
+      );
+      all.push(...predictions);
+      priors = chainPriors(finalRatings);
+    }
+    return scoredOnly(all);
+  };
+
+  console.log("blend   MAE      bias(±SE)       NLL      worst bucket   mean applied HFA");
+  const rows: Array<{ blend: number; mae: number; bias: number; se: number; nll: number }> = [];
+  for (const blend of [0, 0.25, 0.5, 0.75, 1.0]) {
+    const preds = replayAll(blend);
+    const errs = preds.map((p) => p.actualMargin - p.margin);
+    const bias = mean(errs);
+    const sigma = Math.sqrt(mean(errs.map((e) => e * e)));
+    const se = sigma / Math.sqrt(errs.length);
+    const graded = preds.filter((p) => p.favoriteWon !== null);
+    let worst = 0;
+    for (const [lo, hi] of [[0.5, 0.6], [0.6, 0.7], [0.7, 0.8], [0.8, 0.9], [0.9, 1.01]] as const) {
+      const b = graded.filter((p) => p.favWinProb >= lo && p.favWinProb < hi);
+      if (b.length < 50) continue;
+      worst = Math.max(
+        worst,
+        Math.abs(mean(b.map((p) => p.favWinProb)) - b.filter((p) => p.favoriteWon).length / b.length) *
+          100,
+      );
+    }
+    const { raw, mean: rawMean } = rawTeamHfa(seasons, fbsIds, {
+      before: SCORED[SCORED.length - 1],
+    });
+    const applied =
+      raw.size === 0
+        ? DEFAULT_PARAMS.baseHfa
+        : mean(
+            [...raw.values()].map((v) =>
+              centeredBlendedHfa(v, rawMean, { ...DEFAULT_PARAMS, teamHfaBlend: blend }),
+            ),
+          );
+    rows.push({ blend, mae: maeOf(errs), bias, se, nll: nll(preds) });
+    console.log(
+      `${blend.toFixed(2)}    ${maeOf(errs).toFixed(3)}   ${bias >= 0 ? "+" : ""}${bias.toFixed(2)} ±${se.toFixed(2)}    ` +
+        `${nll(preds).toFixed(4)}   ${worst.toFixed(1)} pts        ${applied.toFixed(2)}`,
+    );
+  }
+
+  const flat = rows.find((r) => r.blend === 0);
+  const best = rows.reduce((a, b) => (b.mae < a.mae ? b : a));
+  if (flat) {
+    const gain = flat.mae - best.mae;
+    const interior = best.blend !== 0 && best.blend !== 1.0;
+    console.log(
+      `\nBest blend ${best.blend} — MAE gain vs flat ${gain >= 0 ? "+" : ""}${gain.toFixed(3)} ` +
+        `(bar 0.05), |t| on bias ${Math.abs(best.bias / best.se).toFixed(2)} (bar < 2), ` +
+        `${interior ? "INTERIOR" : "AT A GRID EDGE — unconverged, ships nothing"}.`,
+    );
+    console.log(
+      gain >= 0.05 && interior && Math.abs(best.bias / best.se) < 2 && split.r >= 0.3
+        ? `→ every pre-registered criterion clears. Record ${best.blend} with the window label.`
+        : "→ at least one criterion fails: teamHfaBlend stays where it is, or goes to 0 per Gate 0.\n" +
+            "   Record the numbers either way — a rejection with a number in it is the point.",
+    );
+  }
+  console.log(eraNote("teamHfaBlend"));
+}
+
+/**
  * --tune-fcs: is "top-tier FCS" a real category, and what are the two numbers?
  *
  * SPEC §2.1 has always specified two FCS buckets (top ≈ −25, other ≈ −35) and
@@ -1096,10 +1347,29 @@ async function tuneFcs(seasons: SeasonData[], teamIdsByName: Map<string, number>
       "+/-1.5 of -30 (a split, not a level shift).\n",
   );
 
-  // FBS = anything that carries a prior from SP+ in the first season. The
-  // teams file is not loaded here, and "had an FBS rating" is the same
-  // definition replaySeason uses to decide who is an FCS opponent.
-  const fbsIds = new Set(priorsFromSp(seasons[0].prevSp, teamIdsByName).keys());
+  // FBS membership, per season rather than frozen at the first one.
+  //
+  // This read `priorsFromSp(seasons[0].prevSp)` — the FBS list of ONE year,
+  // applied to the whole window. Over 2023-25 that was nearly harmless. Over
+  // 2015-2025 it would classify James Madison's 2023 games, Coastal Carolina's
+  // 2018 games and Liberty's 2019 games as FCS buy games, which is precisely
+  // the population this tuner fits its two numbers on: it would answer the
+  // question it exists to settle, confidently, using games that are not buy
+  // games at all. See admitNewFbs in scripts/lib/replay.ts.
+  const fbsBySeason = new Map<number, Set<number>>();
+  for (const s of seasons) {
+    const sp = priorsFromSp(s.sp ?? [], teamIdsByName);
+    fbsBySeason.set(
+      s.season,
+      new Set(sp.size > 0 ? sp.keys() : priorsFromSp(s.prevSp, teamIdsByName).keys()),
+    );
+  }
+  // Per-season lookup, so a promoted team's pre-promotion games still count as
+  // buy games and its post-promotion games stop counting. Falls back to the
+  // union when a season has no SP+ at all, which keeps the old behaviour rather
+  // than declaring everybody FCS.
+  const anyFbs = new Set([...fbsBySeason.values()].flatMap((set) => [...set]));
+  const fbsIds = (season: number): ReadonlySet<number> => fbsBySeason.get(season) ?? anyFbs;
   const allGames = seasons.flatMap((s) => s.games);
 
   // Buckets per scored season, lookahead-clean.
@@ -1235,14 +1505,15 @@ function tuneHfa(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
       all.push(...predictions);
       priors = chainPriors(finalRatings);
     }
-    const errs = all.map((p) => p.actualMargin - p.margin);
+    const scored = scoredOnly(all);
+    const errs = scored.map((p) => p.actualMargin - p.margin);
     const bias = mean(errs);
     const sigma = Math.sqrt(mean(errs.map((e) => e * e)));
     const se = sigma / Math.sqrt(errs.length);
 
     // Largest calibration gap across the win-prob buckets — the thing the
     // joint refit quietly broke.
-    const graded = all.filter((p) => p.favoriteWon !== null);
+    const graded = scored.filter((p) => p.favoriteWon !== null);
     let worst = 0;
     for (const [lo, hi] of [[0.5, 0.6], [0.6, 0.7], [0.7, 0.8], [0.8, 0.9], [0.9, 1.01]] as const) {
       const b = graded.filter((p) => p.favWinProb >= lo && p.favWinProb < hi);
@@ -1253,13 +1524,14 @@ function tuneHfa(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
     }
     console.log(
       `${baseHfa.toFixed(1)}    ${bias >= 0 ? "+" : ""}${bias.toFixed(2)} ±${se.toFixed(2)}    ` +
-        `${maeOf(errs).toFixed(3)}   ${nll(all).toFixed(4)}   ${worst.toFixed(1)} pts`,
+        `${maeOf(errs).toFixed(3)}   ${nll(scored).toFixed(4)}   ${worst.toFixed(1)} pts`,
     );
   }
   console.log(
     "\nShip a value only if it moves bias toward zero WITHOUT growing MAE or the\n" +
       "worst bucket miss. A calibration regression is not worth a bias fix.",
   );
+  console.log(eraNote("baseHfa"));
 }
 
 /**
@@ -1470,18 +1742,36 @@ function lastEloOfSeason(
 
 /**
  * The closing line is the most accurate public estimate of a CFB margin there
- * is, at 11.98 MAE over 2023–25. Anything claiming to beat it by a wide margin
- * in a backtest has a leak, not an edge — so say so loudly rather than letting
- * a spectacular number read as success.
+ * is. Anything claiming to beat it by a wide margin in a backtest has a leak,
+ * not an edge — so say so loudly rather than letting a spectacular number read
+ * as success.
+ *
+ * This was hardcoded 11.98, measured on 2023-25. That is fine while the window
+ * IS 2023-25 and wrong the moment it is not: the market's accuracy is not a
+ * constant of nature, and policing an eleven-season run with a three-season
+ * bar would either cry leak on every old season or miss a real one. Computed
+ * from the loaded predictions instead, so the guard calibrates itself to
+ * whatever window is running and there is one less number to re-fit by hand.
+ *
+ * Falls back to the historical constant when a window carries no stored lines
+ * at all, so the check can never silently switch itself off.
  */
-const MARKET_MAE = 11.98;
+const MARKET_MAE_2023_25 = 11.98;
+
+let marketMae = MARKET_MAE_2023_25;
+
+function calibrateMarketBar(predictions: readonly ReplayPrediction[]): void {
+  const withLine = predictions.filter((p) => p.vegasSpread !== null);
+  if (withLine.length < 100) return;
+  marketMae = maeOf(withLine.map((p) => p.actualMargin + (p.vegasSpread as number)));
+}
 
 function warnIfTooGood(label: string, mae: number) {
-  if (mae < MARKET_MAE) {
+  if (mae < marketMae) {
     console.log(
-      `!! ${label} MAE ${mae.toFixed(3)} beats the closing line (${MARKET_MAE}). Treat this as a\n` +
-        "   lookahead bug until proven otherwise: check that every input was knowable\n" +
-        "   BEFORE kickoff, not merely published with that week's label.",
+      `!! ${label} MAE ${mae.toFixed(3)} beats the closing line (${marketMae.toFixed(2)} on this\n` +
+        "   window). Treat this as a lookahead bug until proven otherwise: check that every\n" +
+        "   input was knowable BEFORE kickoff, not merely published with that week's label.",
     );
   }
 }
@@ -1525,13 +1815,14 @@ function tuneEpa(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
     }
     // Scored on the model's own accuracy against real results — the efficiency
     // blend changes how ratings LEARN, never what they are graded against.
-    const errs = all.map((p) => p.actualMargin - p.margin);
+    const scored = scoredOnly(all);
+    const errs = scored.map((p) => p.actualMargin - p.margin);
     const mae = maeOf(errs);
     const sigma = Math.sqrt(mean(errs.map((e) => e * e)));
-    const early = all.filter((p) => p.week <= 4);
+    const early = scored.filter((p) => p.week <= 4);
     console.log(
       `${epaWeight.toFixed(2).padStart(7)}     ${mae.toFixed(3)}      ${sigma.toFixed(2)}     ` +
-        `${nll(all).toFixed(4)}   ${maeOf(early.map((p) => p.actualMargin - p.margin)).toFixed(2)}`,
+        `${nll(scored).toFixed(4)}   ${maeOf(early.map((p) => p.actualMargin - p.margin)).toFixed(2)}`,
     );
     if (!best || mae < best.mae) best = { w: epaWeight, mae };
   }
@@ -1540,7 +1831,7 @@ function tuneEpa(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
     console.log(
       best.w === 0
         ? "→ scores win; efficiency adds nothing here. Keep epaWeight 0."
-        : `→ set epaWeight=${best.w}. Market MAE is 11.98 — that is the bar this is\n` +
+        : `→ set epaWeight=${best.w}. Market MAE is ${marketMae.toFixed(2)} — that is the bar this is\n` +
             "  chasing, and closing the gap to it is the whole point of the change.",
     );
     if (best.w === 1) {
@@ -1591,6 +1882,9 @@ async function tuneChurn(seasons: SeasonData[], teamIdsByName: Map<string, numbe
   // sign for the most talented rosters, i.e. losing production would slightly
   // *help* them. That should lose, but the grid has to be able to say so.
   let best: { w: number; r: number; nll: number } | null = null;
+  let gridMin = Infinity;
+  let gridMax = -Infinity;
+  const bestByEra = new Map<string, { argmin: number; nll: number }>();
   const perSeasonOfBest = new Map<number, number>();
   for (const returningProdWeight of [0, 3, 4, 5, 6, 7, 8, 10]) {
     for (const talentReloadStrength of [0, 0.5, 1, 1.5, 2]) {
@@ -1638,6 +1932,17 @@ async function tuneChurn(seasons: SeasonData[], teamIdsByName: Map<string, numbe
           `${n.toFixed(4)}      ${maeOf(early.map((p) => p.actualMargin - p.margin)).toFixed(2)}       ` +
           `${((clamped / Math.max(churnCount, 1)) * 100).toFixed(1)}%`,
       );
+      gridMin = Math.min(gridMin, n);
+      gridMax = Math.max(gridMax, n);
+      // Per-era argmin, tracked alongside the pooled one. A pooled winner that
+      // no era actually wants is an average, not a fit.
+      for (const { era, seasons: eraSeasons } of erasIn(SCORED)) {
+        const eraNll = nll(early.filter((p) => eraSeasons.includes(p.season)));
+        const current = bestByEra.get(era.id);
+        if (!current || eraNll < current.nll) {
+          bestByEra.set(era.id, { argmin: returningProdWeight, nll: eraNll });
+        }
+      }
       if (!best || n < best.nll) {
         best = { w: returningProdWeight, r: talentReloadStrength, nll: n };
         // Per-season NLL for the leader: two seasons is a thin holdout, but a
@@ -1658,6 +1963,35 @@ async function tuneChurn(seasons: SeasonData[], teamIdsByName: Map<string, numbe
         [...perSeasonOfBest].map(([s, v]) => `${s} ${v.toFixed(4)}`).join("  ") +
         " — a split where one season carries the whole gain is overfit, not fitted.",
     );
+    // The likelihood surface here was flat at the old window: everything from
+    // weight 6-10 x reload 1-2 scored 0.3940-0.3944, and the argmin slid to
+    // whichever grid edge it was given. Print the RANGE across the grid, because
+    // that is what distinguishes the two explanations more data can separate:
+    // flat-because-noisy shrinks with n, flat-because-unidentified does not.
+    console.log(
+      `NLL range across the whole grid: ${(gridMax - gridMin).toFixed(4)} ` +
+        `(${gridMin.toFixed(4)}-${gridMax.toFixed(4)}). At the 2023-25 window this was ~0.0004. ` +
+        `If it is still ~0.0004 at ${SCORED.length} scored seasons, the parameter is ` +
+        `UNIDENTIFIED given the other terms, not merely noisy — and the honest answer is 0.`,
+    );
+    // The era-flip rule, actually evaluated rather than only described.
+    const byEra = [...bestByEra].map(([era, v]) => ({ era: era as never, argmin: v.argmin }));
+    if (byEra.length >= 2) {
+      // One grid step on the weight axis: the grid is 0,3,4,5,6,7,8,10, so the
+      // modal step is 1.
+      const flip = eraFlip(byEra, 1);
+      console.log(
+        `Per-era argmin on returningProdWeight: ` +
+          byEra.map((b) => `${b.era} ${b.argmin}`).join("  ") +
+          ` — spread ${flip.spread}. ${
+            flip.agree
+              ? "Within one grid step: the eras agree, and the pooled winner is a fit."
+              : "WIDER than one grid step: the eras want different values, so the pooled winner " +
+                "is an average of them. Pre-registered outcome — record era-dependent, ship nothing."
+          }`,
+      );
+    }
+    console.log(eraNote("returningProdWeight"));
     if (best.r >= 2 || best.w >= 10) {
       console.log("!! WARNING: winner sits at the grid edge — unconverged, widen before shipping.");
     }
@@ -2074,10 +2408,94 @@ async function main() {
   const tuneEnsembleFlag = process.argv.includes("--tune-ensemble");
   const tuneHfaFlag = process.argv.includes("--tune-hfa");
   const tuneFcsFlag = process.argv.includes("--tune-fcs");
+  const tuneTeamHfaFlag = process.argv.includes("--tune-team-hfa");
 
-  console.log(`Loading seasons ${SEASONS.join(", ")} ${useCache ? "(cache preferred)" : "(fetching)"}…`);
+  // The window comes first: it decides what is loaded, what is scored, and how
+  // every number below is labelled.
+  WINDOW = parseSeasonWindow(process.argv);
+  SEASONS = WINDOW.all;
+  SCORED = WINDOW.scored;
+
+  const experiment =
+    [
+      ["tune-prior", tunePrior],
+      ["tune-sp-blend", tuneSp],
+      ["tune-preseason-tilts", tuneTilts],
+      ["tune-sigma", tuneSigmaFlag],
+      ["tune-coaching", tuneCoachingFlag],
+      ["tune-anchors", tuneAnchorsFlag],
+      ["tune-churn", tuneChurnFlag],
+      ["tune-epa", tuneEpaFlag],
+      ["tune-ensemble", tuneEnsembleFlag],
+      ["tune-hfa", tuneHfaFlag],
+      ["tune-fcs", tuneFcsFlag],
+      ["tune-team-hfa", tuneTeamHfaFlag],
+      ["diagnose-edges", diagnose],
+      ["diagnose-tiers", diagnoseTiersFlag],
+      ["tune-tier-recenter", tuneTierRecenterFlag],
+      ["tune", tune],
+    ].find(([, on]) => on)?.[0] as string | undefined;
+
+  // Refuse a window whose feeds this experiment cannot cover, BEFORE spending a
+  // call on it. A tuner that silently scores eight of eleven seasons and prints
+  // a number labelled eleven is the failure this exists to prevent.
+  assertFeedCoverage(experiment ?? "report", WINDOW, loadCoverageManifest());
+
+  console.log(
+    `Window ${WINDOW.label} — replaying ${SEASONS.length} seasons, scoring ${SCORED.length} ` +
+      `(${SCORED.join(", ")}).`,
+  );
+  if (WINDOW.warmup.length > 0) {
+    console.log(`  warm-up, chained but not scored: ${WINDOW.warmup.join(", ")} (SP+ priors)`);
+  }
+  if (WINDOW.chainOnly.length > 0) {
+    console.log(
+      `  chain-only, replayed but not scored: ${WINDOW.chainOnly.join(", ")} ` +
+        `(COVID — empty stadiums collapse HFA and the Pac-12 played no non-conference games)`,
+    );
+  }
+  console.log(
+    `!! Every number below is specific to this window. A decisions-table row without ` +
+      `"${WINDOW.label}" in it is not comparable to one that has it.`,
+  );
+  const isLegacy =
+    SEASONS[0] === LEGACY_WINDOW.from && SEASONS[SEASONS.length - 1] === LEGACY_WINDOW.to;
+  if (!isLegacy) {
+    console.log(
+      `   Every figure recorded in docs/ before 2026-08-18 was computed on ` +
+        `${LEGACY_WINDOW.from}-${LEGACY_WINDOW.to}. Reproduce one exactly with ` +
+        `--seasons=${LEGACY_WINDOW.from}-${LEGACY_WINDOW.to}.`,
+    );
+  }
+  // Season-wise holdout. Stated up front, on every run, because the point of a
+  // wide window is that a genuine holdout finally becomes affordable for every
+  // tuner rather than only for --tune-ensemble.
+  try {
+    const { fit, holdout } = splitWindow(WINDOW, 2);
+    console.log(
+      `   Holdout available: fit ${fit[0]}-${fit[fit.length - 1]}, hold out ${holdout.join(", ")}. ` +
+        `No parameter should ship on a fit-set gain alone — the holdout gain must be the same ` +
+        `sign and at least half the size.`,
+    );
+  } catch {
+    console.log(
+      `   No holdout at this width: ${SCORED.length} scored seasons is too few to partition. ` +
+        `Widen with --seasons=${DEFAULT_WINDOW.from}-${DEFAULT_WINDOW.to}.`,
+    );
+  }
+
+  console.log(`Loading ${useCache ? "(cache preferred)" : "(fetching)"}…`);
   const seasons: SeasonData[] = [];
-  for (const s of SEASONS) seasons.push(await loadSeason(s, useCache));
+  for (const s of SEASONS) {
+    seasons.push(
+      await loadSeason(s, useCache, {
+        // Only --tune-epa reads PPA; at epaWeight 0 nothing else does.
+        withAdvanced: tuneEpaFlag,
+        // SP+ for the season itself drives FBS membership (admitNewFbs).
+        withSp: true,
+      }),
+    );
+  }
 
   const teamIdsByName = teamIdsByNameFrom(seasons);
 
@@ -2129,6 +2547,18 @@ async function main() {
     await tuneFcs(seasons, teamIdsByName);
     return;
   }
+  if (tuneTeamHfaFlag) {
+    tuneTeamHfa(seasons, teamIdsByName);
+    return;
+  }
+
+  // Membership churn is printed once, on the reference run, rather than on
+  // every grid point — but it IS printed. A team silently entering or leaving
+  // the rating pool is exactly the class of change that produced the frozen-pool
+  // defect this machinery fixes.
+  let logChurn = false;
+  const nameById = new Map<number, number | string>();
+  for (const [name, id] of teamIdsByName) nameById.set(id, name);
 
   const run = (params: ModelParams): ReplayPrediction[] => {
     // No preseason tilt here, and that does NOT match production (02:M-12).
@@ -2148,18 +2578,40 @@ async function main() {
     let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
     const all: ReplayPrediction[] = [];
     for (const season of seasons) {
-      const { predictions, finalRatings } = replaySeason(season, priors, params);
+      const { predictions, finalRatings, admitted, retired } = replaySeason(season, priors, params);
       all.push(...predictions);
+      if (logChurn && (admitted.length > 0 || retired.length > 0)) {
+        const name = (id: number) => nameById.get(id) ?? String(id);
+        console.log(
+          `  ${season.season}: FBS pool ` +
+            [
+              admitted.length > 0 ? `+${admitted.map(name).join(", ")}` : "",
+              retired.length > 0 ? `-${retired.map(name).join(", ")}` : "",
+            ]
+              .filter(Boolean)
+              .join("  "),
+        );
+      }
       priors = chainPriors(finalRatings);
     }
     return all;
   };
 
   if (!tune) {
+    logChurn = true;
+    console.log("\nFBS membership changes applied to the pool (admitNewFbs):");
     const predictions = run(DEFAULT_PARAMS);
-    console.log(report(predictions, DEFAULT_PARAMS));
-    if (tuneSigmaFlag) tuneSigma(predictions);
-    if (diagnose) diagnoseEdges(predictions);
+    logChurn = false;
+    calibrateMarketBar(predictions);
+    const scored = scoredOnly(predictions);
+    console.log(report(scored, DEFAULT_PARAMS));
+    // Per-season and per-era tables print on ALL predictions, so the unscored
+    // seasons appear as marked rows rather than vanishing. A season excluded
+    // without a trace is indistinguishable from one that was never loaded.
+    console.log(perSeasonTable(predictions, WINDOW));
+    console.log(perEraTable(predictions, WINDOW));
+    if (tuneSigmaFlag) tuneSigma(scored);
+    if (diagnose) diagnoseEdges(scored);
     return;
   }
 
@@ -2175,7 +2627,7 @@ async function main() {
   for (const kFactor of [0.2, 0.25, 0.3, 0.35, 0.4]) {
     for (const baseHfa of [2.0, 2.4, 2.8, 3.2, 3.6, 4.0]) {
       const params: ModelParams = { ...DEFAULT_PARAMS, kFactor, baseHfa };
-      const predictions = run(params);
+      const predictions = scoredOnly(run(params));
       const graded = predictions.filter((p) => p.favoriteWon !== null);
       const nll =
         -graded.reduce(
@@ -2202,7 +2654,15 @@ async function main() {
 // tests, and importing this file must not kick off a full backtest.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((err) => {
-    console.error(err);
+    // A refused window or an uncovered feed is a message to read, not a stack
+    // to decode: both already name the constraint and the flag that satisfies
+    // it, and burying that under ten frames of module loader is how a helpful
+    // error reads as a crash.
+    if (err instanceof SeasonWindowError || err instanceof CoverageError) {
+      console.error(`\n${err.message}\n`);
+    } else {
+      console.error(err);
+    }
     process.exit(1);
   });
 }

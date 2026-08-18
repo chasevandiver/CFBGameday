@@ -320,3 +320,107 @@ describe("cached", () => {
     expect(called).toBe(false);
   });
 });
+
+describe("FBS membership across a wide window (admitNewFbs)", () => {
+  // The defect: `priors` is seeded once and `chainPriors` carries exactly the
+  // key set it was given, so a team promoted to FBS mid-window is priced at the
+  // flat FCS anchor for the rest of the decade with no error anywhere.
+  it("admits a team that appears in this season's SP+ but not in the priors", () => {
+    const promoted = 50;
+    const sp = [
+      { team: "T10", rating: 12 },
+      { team: "T50", rating: -4 },
+    ] as unknown as SeasonData["sp"];
+    const withNewcomer: SeasonData = {
+      ...season,
+      sp,
+      games: [...season.games, game(7, 1, 10, promoted, 30, 20)],
+    };
+
+    const before = replaySeason(season, priors, DEFAULT_PARAMS);
+    expect(before.admitted).toEqual([]);
+    expect(before.finalRatings.has(promoted)).toBe(false);
+
+    const after = replaySeason(withNewcomer, priors, DEFAULT_PARAMS);
+    expect(after.admitted).toEqual([promoted]);
+    // Admitted at its SP+ rating, and carried into the chain rather than being
+    // re-priced as an FCS opponent next season.
+    expect(after.finalRatings.has(promoted)).toBe(true);
+  });
+
+  it("is identity when the caller did not load SP+ for the season", () => {
+    // `withSp` is opt-in, so every pre-existing call site keeps its behaviour.
+    const withoutSp = replaySeason(season, priors, DEFAULT_PARAMS);
+    const withEmptySp = replaySeason({ ...season, sp: [] }, priors, DEFAULT_PARAMS);
+    expect(withEmptySp.predictions).toEqual(withoutSp.predictions);
+    expect(withEmptySp.admitted).toEqual([]);
+    expect(withEmptySp.retired).toEqual([]);
+  });
+
+  it("does not retire anybody on a thin SP+ feed", () => {
+    // A single missing SP+ row is ambiguous between "left FBS" and "CFBD is
+    // short that year". The ambiguity is only real when the feed is thin, so
+    // retirement is gated on feed health and fails toward keeping the team.
+    const thin = [{ team: "T10", rating: 12 }] as unknown as SeasonData["sp"];
+    const out = replaySeason({ ...season, sp: thin }, priors, DEFAULT_PARAMS);
+    expect(out.retired).toEqual([]);
+    expect(out.finalRatings.has(20)).toBe(true);
+  });
+});
+
+describe("per-team HFA in the replay (02:M-05 / 03:M-1v)", () => {
+  it("prices at flat baseHfa when no per-team map is passed", () => {
+    // Identity: this is what every replay did before 2026-08-18, and it is why
+    // audit 03:M-1 was invisible to the backtest — production priced with a
+    // per-team table and the replay priced with a scalar.
+    const flat = replaySeason(season, priors, DEFAULT_PARAMS);
+    const alsoFlat = replaySeason(season, priors, DEFAULT_PARAMS, undefined, undefined, undefined);
+    expect(alsoFlat.predictions).toEqual(flat.predictions);
+  });
+
+  it("shifts a home team's priced margin by exactly its HFA difference", () => {
+    const flat = replaySeason(season, priors, DEFAULT_PARAMS);
+    const hfa = new Map([[10, DEFAULT_PARAMS.baseHfa + 2]]);
+    const withTeamHfa = replaySeason(season, priors, DEFAULT_PARAMS, undefined, undefined, hfa);
+
+    const week1Flat = flat.predictions.find((p) => p.gameId === 1);
+    const week1Team = withTeamHfa.predictions.find((p) => p.gameId === 1);
+    expect(week1Team!.margin - week1Flat!.margin).toBeCloseTo(2, 6);
+
+    // A game team 10 does not host is untouched.
+    const awayFlat = flat.predictions.find((p) => p.gameId === 2);
+    const awayTeam = withTeamHfa.predictions.find((p) => p.gameId === 2);
+    expect(awayTeam!.margin).toBeCloseTo(awayFlat!.margin, 6);
+  });
+});
+
+describe("the PPA index is not built when nothing reads it", () => {
+  it("produces identical predictions with and without advanced stats at epaWeight 0", () => {
+    // Proof that the fetch is skippable: at the shipped epaWeight of 0,
+    // `blendedPoints` returns the raw score before touching PPA, so building a
+    // Map over ~10k rows once per season per grid point buys nothing.
+    const withAdvanced = replaySeason(
+      { ...season, advanced: [] as never },
+      priors,
+      DEFAULT_PARAMS,
+    );
+    const without = replaySeason(season, priors, DEFAULT_PARAMS);
+    expect(withAdvanced.predictions).toEqual(without.predictions);
+    expect(DEFAULT_PARAMS.epaWeight).toBe(0);
+  });
+});
+
+describe("a PPA blend without a PPA feed is refused, not degraded", () => {
+  it("throws rather than silently scoring the raw margin", () => {
+    // blendedPoints falls back to the raw score whenever the efficiency margin
+    // is null, so this would otherwise produce a plausible score-only number
+    // labelled as an efficiency fit.
+    expect(() =>
+      replaySeason(season, priors, { ...DEFAULT_PARAMS, epaWeight: 0.3 }),
+    ).toThrow(/withAdvanced/);
+  });
+
+  it("is silent at epaWeight 0, which is what ships", () => {
+    expect(() => replaySeason(season, priors, DEFAULT_PARAMS)).not.toThrow();
+  });
+});
