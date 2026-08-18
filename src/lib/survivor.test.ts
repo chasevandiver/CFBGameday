@@ -5,6 +5,7 @@ import {
   poolWeeks,
   poolRulesLine,
   survivorStandings,
+  teamsSpentElsewhere,
   type SurvivorGameView,
   type SurvivorPickRowView,
   type SurvivorPool,
@@ -196,5 +197,39 @@ describe("poolRulesLine", () => {
     expect(poolRulesLine({ ...pool, conference: null, strikes: 2 }, "nfl")).toBe(
       "NFL · 2 strikes and out · each team once",
     );
+  });
+});
+
+describe("teamsSpentElsewhere", () => {
+  const entry = {
+    weeks: [
+      { week: 1, seasonType: "regular" as const, outcome: "won" as const, teamId: 10, gameId: 1 },
+      { week: 2, seasonType: "regular" as const, outcome: "pending" as const, teamId: 40, gameId: 2 },
+      { week: 3, seasonType: "regular" as const, outcome: "pending" as const, teamId: null, gameId: null },
+    ],
+  };
+
+  it("leaves out the week being viewed, so your own pick is not 'already used'", () => {
+    expect(teamsSpentElsewhere(entry, { week: 2, seasonType: "regular" })).toEqual([10]);
+    // Which is the whole point: the board must not refuse the team you are
+    // already holding, because `make_survivor_pick` does not.
+    expect(
+      blockReason(
+        40,
+        "SEC",
+        game(2, 2, 40, 41, { startTs: future(1), status: "scheduled" }),
+        teamsSpentElsewhere(entry, { week: 2, seasonType: "regular" }),
+        pool,
+        NOW,
+      ),
+    ).toBeNull();
+  });
+
+  it("counts every other week, and skips the ones with no pick", () => {
+    expect(teamsSpentElsewhere(entry, { week: 3, seasonType: "regular" })).toEqual([10, 40]);
+  });
+
+  it("matches on the season type too", () => {
+    expect(teamsSpentElsewhere(entry, { week: 1, seasonType: "postseason" })).toEqual([10, 40]);
   });
 });

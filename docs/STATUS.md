@@ -731,6 +731,52 @@ deliberate deferrals, each recorded below with what it would take.
       wrong in a way nobody would notice, and CLV is graded against it. Normalise
       on write in the ESPN parser, and backfill. · **S**
 
+### 2.1g Owner report, 2026-08-18 — a survivor pick had no receipt
+
+- [x] **SURV-1 — the survivor board never said a pick landed.** Owner report:
+      *"The Survivor Pool Group doesn't do anything when you click a team for
+      that week. I just selected one and there isn't a review picks or any
+      action item to see if the bet was confirmed."*
+      The write itself was fine — `make_survivor_pick` was inserting the row —
+      so this is the acknowledgement, not the pick. Three things made a landed
+      pick invisible, and the first is a regression of something the pick'em
+      board had already fixed:
+      **`SurvivorPicker` disabled every button on the board while any write was
+      in flight** (`disabled={blocked || pending}`), which is audit 08/UX-10
+      verbatim — the treatment `PickButtons` abandoned because a whole board
+      greying out and coming back reads as "my tap did nothing". **The only
+      confirmation was a border colour** on one of ~30 buttons plus a 11px
+      caption above the list, off-screen by the time you have scrolled to the
+      game you wanted. And **there was no bottom bar**: pick'em has had one
+      since PickBoard — what you hold, that it saved, and a *Review picks* way
+      out — and survivor, the format where you make exactly one pick a week, had
+      no equivalent and no review destination at all (`/groups/[slug]/week/[week]`
+      redirects a survivor pool straight back home).
+      Fixed by giving survivor the same three things pick'em already has: only
+      the tapped button carries the in-flight cue and nothing is disabled by a
+      write that is out; the card you picked says so in words, under your thumb;
+      and a fixed bar in the thumb zone carries the held team, `saved`, and a
+      link to a new **Your picks** season log — week, crest, and what that week
+      did to you, which is also the first place the pool's history is readable
+      as anything but a row of crests.
+
+- [x] **SURV-2 — the board refused a rule the database does not have.** Your own
+      current pick was drawn with the caption "already used", because
+      `SurvivorHome` passed `usedTeamIds` — which includes the week being
+      viewed — to `blockReason`. `make_survivor_pick` deliberately excludes that
+      week (0053) so re-picking the same team is the no-op it looks like, so the
+      board was stating a refusal that would never have fired.
+      `teamsSpentElsewhere` in `src/lib/survivor.ts` is the fix, with three unit
+      assertions, one of which pins the `blockReason` composition rather than the
+      helper alone.
+
+- [x] **SURV-3 — a held pick could be tapped after its kickoff.** The board let a
+      chosen team stay live once its game had started (`blocked` was suppressed
+      whenever `chosen`), but `remove_survivor_pick` refuses with "Kickoff — that
+      pick is locked." So the one tap that looked available on a locked card
+      could only produce an error. The card now reads "locked in" and the button
+      is disabled, which is what the RPC has always meant.
+
 ### 2.2 This week (Aug 14–18)
 
 - [x] **P1-1** Shipped 2026-08-13. A **Game status** section on `/admin`

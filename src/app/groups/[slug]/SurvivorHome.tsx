@@ -12,10 +12,14 @@ import { fetchGroupMembers, type GroupSummary } from "../../../lib/groups";
 import { DEFAULT_TZ, kickParts, tzLabel } from "../../../lib/kick";
 import {
   blockReason,
+  isStrike,
+  OUTCOME_WORD,
   poolRulesLine,
   survivorStandings,
+  teamsSpentElsewhere,
   type SurvivorEntry,
   type SurvivorPool,
+  type SurvivorWeekResult,
 } from "../../../lib/survivor";
 import {
   fetchSurvivorPicks,
@@ -67,25 +71,41 @@ export async function SurvivorHome({
     .filter((g) => g.week === weekRef.week && g.seasonType === weekRef.seasonType)
     .sort((a, b) => (a.startTs ?? "9999").localeCompare(b.startTs ?? "9999"));
 
+  // Teams spent in OTHER weeks. `usedTeamIds` includes this week's own pick, and
+  // passing that in labelled your current pick "already used" — a rule
+  // `make_survivor_pick` does not enforce (0053 excludes the week being
+  // written).
+  const spentElsewhere = me ? teamsSpentElsewhere(me, weekRef) : [];
+
   const board: PickableGame[] = weekGames.map((g) => {
     const kick = g.startTs ? kickParts(g.startTs, DEFAULT_TZ) : null;
     const side = (teamId: number) => {
       const team = scope.teams.get(teamId)!;
       return {
         team,
-        block: blockReason(teamId, team.conference, g, me?.usedTeamIds ?? [], pool),
+        block: blockReason(teamId, team.conference, g, spentElsewhere, pool),
       };
     };
     return {
       gameId: g.id,
       kick: kick ? `${kick.day} ${kick.time} ${tzLabel(DEFAULT_TZ)}` : "TBD",
+      // Same clock the RPC keeps: a TBD kickoff counts as locked rather than as
+      // open forever.
+      locked: g.startTs === null || new Date(g.startTs) <= new Date(),
       away: side(g.awayTeamId),
       home: side(g.homeTeamId),
     };
   });
 
   return (
-    <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
+    <main
+      id="main"
+      /* pb-28 clears the picker's fixed bar, the same reservation
+         /groups/[slug]/picks makes. Without a bar there is nothing to clear. */
+      className={`mx-auto w-full max-w-3xl flex-1 px-4 pt-6 ${
+        userId && !(me?.eliminated ?? false) && board.length > 0 ? "pb-28" : "pb-6"
+      }`}
+    >
       <GroupSwitcher groups={mine} activeSlug={group.slug} />
 
       <div className="mt-3 mb-1 flex flex-wrap items-baseline justify-between gap-2">
@@ -202,9 +222,41 @@ export async function SurvivorHome({
             games={board}
             currentTeamId={me?.current?.teamId ?? null}
             eliminated={me?.eliminated ?? false}
+            reviewHref={me ? "#my-picks" : null}
           />
         )}
       </section>
+
+      {/* ---- your season ---- */}
+      {me && (
+        <section className="mb-7 scroll-mt-16" id="my-picks" aria-labelledby="my-picks-heading">
+          <div className="mb-2.5 flex items-baseline gap-2">
+            <h2 id="my-picks-heading" className="text-sm text-accent">
+              Your picks
+            </h2>
+            <span className="h-px flex-1 bg-chalk/10" aria-hidden />
+            <span className="stat text-[11px] text-dim">
+              {me.usedTeamIds.length} of {me.weeks.length} weeks in
+            </span>
+          </div>
+          <ul className="flex flex-col gap-1.5">
+            {me.weeks.map((w) => (
+              <PickLogRow
+                key={`${w.seasonType}:${w.week}`}
+                result={w}
+                team={w.teamId === null ? null : (scope.teams.get(w.teamId) ?? null)}
+                sport={sport}
+                viewing={w.week === weekRef.week && w.seasonType === weekRef.seasonType}
+              />
+            ))}
+            {me.weeks.length === 0 && (
+              <li className="card px-6 py-8 text-center text-sm text-dim">
+                The pool has no weeks yet.
+              </li>
+            )}
+          </ul>
+        </section>
+      )}
 
       {/* ---- who's left ---- */}
       <section aria-labelledby="alive-heading">
@@ -277,6 +329,70 @@ export async function SurvivorHome({
         members={members}
       />
     </main>
+  );
+}
+
+/**
+ * One week of your own season: what you took, and what it did to you.
+ *
+ * The "where you stand" card above answers "am I alive" with a row of crests,
+ * which is the right size for a glance and useless for the question the owner
+ * asked — whether a pick actually went in. A week with no team says so in
+ * words, and the week being viewed is marked so the log and the board overhead
+ * are legibly the same week.
+ */
+function PickLogRow({
+  result,
+  team,
+  sport,
+  viewing,
+}: {
+  result: SurvivorWeekResult;
+  team: import("../../../lib/slate").TeamView | null;
+  sport: "cfb" | "nfl";
+  /** This is the week the board above is showing. */
+  viewing: boolean;
+}) {
+  const struck = isStrike(result.outcome);
+  return (
+    <li
+      className={`card flex items-center gap-2.5 px-3 py-2 ${
+        viewing ? "ring-1 ring-inset ring-accent/40" : ""
+      }`}
+    >
+      {/* Fixed column so the log reads as a column of weeks rather than a
+          ragged list. CFB's postseason label ("Bowls & CFP") is the long one and
+          the only one that ever truncates, so it carries a title. */}
+      <span
+        className="stat w-20 shrink-0 truncate text-[11px] uppercase tracking-wider text-chalk/45"
+        title={weekLabel(result, sport)}
+      >
+        {weekLabel(result, sport)}
+      </span>
+      {team ? (
+        <>
+          <TeamMark team={team} size={22} />
+          <span className="min-w-0 flex-1 truncate text-sm text-chalk">{team.school}</span>
+        </>
+      ) : (
+        <span className="min-w-0 flex-1 truncate text-sm text-dim">
+          {result.outcome === "missed" ? "No pick — week closed" : "Nothing in yet"}
+        </span>
+      )}
+      <span
+        className={`stat shrink-0 text-[10.5px] uppercase tracking-wider ${
+          result.outcome === "won"
+            ? "text-win"
+            : struck
+              ? "text-loss"
+              : team
+                ? "text-accent"
+                : "text-dim"
+        }`}
+      >
+        {team && result.outcome === "pending" ? "in" : OUTCOME_WORD[result.outcome]}
+      </span>
+    </li>
   );
 }
 
