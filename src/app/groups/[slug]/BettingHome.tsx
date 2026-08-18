@@ -158,6 +158,15 @@ export async function BettingHome({
         <WeekJump base={`/groups/${group.slug}`} weeks={weeks} current={weekRef} sport="cfb" />
         {share && <ShareSheetButton sheet={share} />}
         {myCard && <ShareImageButton payload={myCard} filename="the-slate-bets.png" label="My bets image" />}
+        {group.role === "admin" && (
+          <Link
+            href={`/groups/${group.slug}/settings`}
+            className="stat inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-chalk/20 px-3.5 text-sm text-chalk hover:border-chalk/50"
+          >
+            <Users size={14} aria-hidden />
+            Members
+          </Link>
+        )}
         {joinCode && <JoinCode code={joinCode} />}
       </div>
 

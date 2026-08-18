@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import type { GroupKind } from "../../lib/db-types";
 import { archiveGroup, regenerateJoinCode, setGroupLeagues, updateGroup } from "../../app/actions/groups";
 
 /**
@@ -17,6 +18,7 @@ export function GroupAdmin({
   name,
   visibility,
   hidePicks,
+  kind,
   leagues,
   joinCode,
 }: {
@@ -24,10 +26,18 @@ export function GroupAdmin({
   name: string;
   visibility: "private" | "public";
   hidePicks: boolean;
-  /** Pick'em league scope (0042); the settings page only renders for pick'em. */
+  /**
+   * All three kinds reach this page. Two of the controls below are pick'em's
+   * alone — a betting group has no board to scope to a league (the RPC refuses
+   * one) and no picks to hide — so they are absent rather than present and
+   * ignored.
+   */
+  kind: GroupKind;
+  /** Pick'em league scope (0042). */
   leagues: Array<"cfb" | "nfl">;
   joinCode: string;
 }) {
+  const pickem = kind === "pickem";
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +50,7 @@ export function GroupAdmin({
   const [confirmArchive, setConfirmArchive] = useState(false);
 
   const leaguesDirty =
-    [...draftLeagues].sort().join(",") !== [...leagues].sort().join(",");
+    pickem && [...draftLeagues].sort().join(",") !== [...leagues].sort().join(",");
   const dirty =
     draftName.trim() !== name ||
     draftVis !== visibility ||
@@ -85,7 +95,9 @@ export function GroupAdmin({
       </label>
 
       <fieldset className="flex flex-col gap-1.5">
-        <legend className="mb-1 text-xs text-dim">Who can see the board</legend>
+        <legend className="mb-1 text-xs text-dim">
+          {pickem ? "Who can see the board" : "Who can see it"}
+        </legend>
         {(["private", "public"] as const).map((v) => (
           <label key={v} className="flex min-h-11 items-center gap-2 text-sm text-chalk">
             <input
@@ -99,56 +111,60 @@ export function GroupAdmin({
         ))}
       </fieldset>
 
-      <fieldset className="flex flex-col gap-1.5">
-        <legend className="mb-1 text-xs text-dim">When picks become visible</legend>
-        <label className="flex min-h-11 items-center gap-2 text-sm text-chalk">
-          <input
-            type="radio"
-            name="hide-picks"
-            checked={!draftHide}
-            onChange={() => setDraftHide(false)}
-          />
-          As soon as they&rsquo;re made
-        </label>
-        <label className="flex min-h-11 items-center gap-2 text-sm text-chalk">
-          <input
-            type="radio"
-            name="hide-picks"
-            checked={draftHide}
-            onChange={() => setDraftHide(true)}
-          />
-          At each game&rsquo;s kickoff
-        </label>
-        <p className="text-[11px] leading-snug text-dim">
-          Your own picks are always visible to you. Hiding the rest stops the group copying
-          whoever&rsquo;s hot; the board still says how many are in.
-        </p>
-      </fieldset>
-
-      <fieldset className="flex flex-col gap-1.5">
-        <legend className="mb-1 text-xs text-dim">Leagues on the board</legend>
-        {(
-          [
-            ["cfb", "College football"],
-            ["nfl", "NFL"],
-          ] as const
-        ).map(([l, label]) => (
-          <label key={l} className="flex min-h-11 items-center gap-2 text-sm text-chalk">
+      {pickem && (
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="mb-1 text-xs text-dim">When picks become visible</legend>
+          <label className="flex min-h-11 items-center gap-2 text-sm text-chalk">
             <input
-              type="checkbox"
-              checked={draftLeagues.includes(l)}
-              // the RPC refuses an empty scope; don't offer the click that hits it
-              disabled={draftLeagues.includes(l) && draftLeagues.length === 1}
-              onChange={() => toggleLeague(l)}
+              type="radio"
+              name="hide-picks"
+              checked={!draftHide}
+              onChange={() => setDraftHide(false)}
             />
-            {label}
+            As soon as they&rsquo;re made
           </label>
-        ))}
-        <p className="text-[11px] leading-snug text-dim">
-          Each league keeps its own weeks and boards — CFB week 3 and NFL week 1 run side by
-          side. Turning a league off hides its future boards; settled weeks keep their history.
-        </p>
-      </fieldset>
+          <label className="flex min-h-11 items-center gap-2 text-sm text-chalk">
+            <input
+              type="radio"
+              name="hide-picks"
+              checked={draftHide}
+              onChange={() => setDraftHide(true)}
+            />
+            At each game&rsquo;s kickoff
+          </label>
+          <p className="text-[11px] leading-snug text-dim">
+            Your own picks are always visible to you. Hiding the rest stops the group copying
+            whoever&rsquo;s hot; the board still says how many are in.
+          </p>
+        </fieldset>
+      )}
+
+      {pickem && (
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="mb-1 text-xs text-dim">Leagues on the board</legend>
+          {(
+            [
+              ["cfb", "College football"],
+              ["nfl", "NFL"],
+            ] as const
+          ).map(([l, label]) => (
+            <label key={l} className="flex min-h-11 items-center gap-2 text-sm text-chalk">
+              <input
+                type="checkbox"
+                checked={draftLeagues.includes(l)}
+                // the RPC refuses an empty scope; don't offer the click that hits it
+                disabled={draftLeagues.includes(l) && draftLeagues.length === 1}
+                onChange={() => toggleLeague(l)}
+              />
+              {label}
+            </label>
+          ))}
+          <p className="text-[11px] leading-snug text-dim">
+            Each league keeps its own weeks and boards — CFB week 3 and NFL week 1 run side by
+            side. Turning a league off hides its future boards; settled weeks keep their history.
+          </p>
+        </fieldset>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         <button

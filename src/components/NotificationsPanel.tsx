@@ -41,12 +41,16 @@ const TOKENS: Record<string, string> = {
   picks_due: "{{count}} {{group}} {{kickoff}}",
   log_bets: "{{group}} {{kickoff}}",
   bad_beat: "{{team}} {{home}} {{away}} {{detail}}",
+  added_to_group: "{{group}} {{admin}}",
+  watchdog: "{{jobs}}",
 };
 
 const LABELS: Record<string, string> = {
   picks_due: "Picks closing",
   log_bets: "Log your bets",
   bad_beat: "Bad beats",
+  added_to_group: "Added to a group",
+  watchdog: "A job went silent",
   admin: "Ad-hoc and tests",
 };
 

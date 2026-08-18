@@ -189,7 +189,10 @@ export async function updateNotificationSetting(formData: FormData): Promise<Pus
   if (!admin) return { ok: false, message: "Commissioner only" };
 
   const kind = String(formData.get("kind") ?? "") as NotificationKind;
-  if (!["picks_due", "bad_beat", "log_bets", "admin"].includes(kind)) {
+  // 'watchdog' was missing here, so its copy was uneditable despite 0037
+  // saying otherwise — the allowlist was written before that kind existed.
+  const editable = ["picks_due", "bad_beat", "log_bets", "admin", "watchdog", "added_to_group"];
+  if (!editable.includes(kind)) {
     return { ok: false, message: "Unknown notification kind" };
   }
   const lead = Number(formData.get("lead_minutes") ?? 0);

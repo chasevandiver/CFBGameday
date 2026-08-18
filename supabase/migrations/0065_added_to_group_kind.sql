@@ -1,0 +1,12 @@
+-- Being added to a group tells you so (GRP-2) — part 1 of 2.
+--
+-- 0064 gave an admin a second way in: name somebody and they are on the board.
+-- The person added finds out by noticing a new group, which is the one thing
+-- the join-code door never had to solve — you cannot type a code by accident.
+-- Being added is not consented to, so it should at least be *announced*.
+--
+-- Same split as 0032/0033 and 0036/0037, and for the same reason: Postgres
+-- refuses to USE a new enum value in the transaction that adds it, and 0066
+-- seeds a row keyed on this one. A single file fails with "unsafe use of new
+-- value".
+alter type public.notification_kind add value if not exists 'added_to_group';
