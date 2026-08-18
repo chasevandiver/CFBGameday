@@ -154,15 +154,16 @@ jobs:
       # is eight minutes of runway spent re-answering a settled question.
       - name: BT-5 experiments (one-time, delete after recording)
         run: |
+          # tee, not a redirect of the whole block: `{ ... } >> $SUMMARY` sends
+          # the group's stdout to the file and nothing to the job log, which
+          # makes the result unreadable from anywhere except the summary page.
+          npx tsx scripts/backtest.ts --tune-team-hfa 2>&1 | tee teamhfa.log
+          npx tsx scripts/backtest.ts --tune-fcs 2>&1 | tee fcs.log
           {
             echo '### --tune-team-hfa (02:M-05 / 03:M-1v)'
-            echo '```'
-            npx tsx scripts/backtest.ts --tune-team-hfa 2>&1 | tail -60
-            echo '```'
+            echo '```'; tail -60 teamhfa.log; echo '```'
             echo '### --tune-fcs (Q4)'
-            echo '```'
-            npx tsx scripts/backtest.ts --tune-fcs 2>&1 | tail -60
-            echo '```'
+            echo '```'; tail -60 fcs.log; echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
       # The edge gate runs on every model PR: if a change ever makes the model
