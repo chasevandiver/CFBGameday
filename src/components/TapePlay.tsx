@@ -178,7 +178,11 @@ export function TapePlay({
         </section>
       )}
 
-      {error && <p className="text-xs text-loss">{error}</p>}
+      {error && (
+        <p className="text-xs text-loss" role="alert">
+          {error}
+        </p>
+      )}
 
       {state.done && (
         <section className="card gtg-slide-up px-4 py-5 text-center">
@@ -204,7 +208,7 @@ export function TapePlay({
                   setTimeout(() => setCopied(false), 2000);
                 });
             }}
-            className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg bg-elev px-4 text-sm font-semibold text-chalk ring-1 ring-inset ring-chalk/12 hover:ring-accent/40"
+            className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg bg-elev px-4 text-sm font-semibold text-chalk ring-1 ring-inset ring-chalk/12 hover:ring-accent/40 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
           >
             {copied ? <Check size={16} aria-hidden /> : <Copy size={16} aria-hidden />}
             {copied ? "Copied" : "Share"}

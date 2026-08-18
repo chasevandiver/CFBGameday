@@ -150,14 +150,19 @@ export function DepthChartPlay({
                 onClick={() => toggle(id)}
                 disabled={pending || state.done}
                 aria-pressed={active}
-                className={`flex min-h-[4.25rem] flex-col items-center justify-center gap-1 rounded-lg px-1 py-2 text-center transition-colors disabled:opacity-60 ${
+                className={`flex min-h-[4.25rem] min-w-0 flex-col items-center justify-center gap-1 rounded-lg px-1 py-2 text-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:opacity-60 ${
                   active
                     ? "bg-accent text-accent-ink"
                     : "bg-elev text-chalk ring-1 ring-inset ring-chalk/12 hover:ring-accent/40"
                 }`}
               >
                 <TeamMark team={t} size={22} />
-                <span className="text-[11px] leading-tight font-semibold">{t.school}</span>
+                {/* A tile is ~80px wide and "Southern Mississippi" is not. Two
+                    lines then an ellipsis, so a long name shortens the label
+                    rather than the grid. */}
+                <span className="line-clamp-2 w-full text-[11px] leading-tight font-semibold break-words">
+                  {t.school}
+                </span>
               </button>
             );
           })}
@@ -176,7 +181,7 @@ export function DepthChartPlay({
             type="button"
             onClick={submit}
             disabled={picked.length !== 4 || pending}
-            className="min-h-11 rounded-lg bg-accent px-5 text-sm font-semibold text-accent-ink transition-opacity disabled:opacity-40"
+            className="min-h-11 rounded-lg bg-accent px-5 text-sm font-semibold text-accent-ink transition-opacity focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:opacity-40"
           >
             Submit
           </button>
@@ -190,7 +195,11 @@ export function DepthChartPlay({
           {flash === "one_away" ? "One away" : "Not those four"}
         </p>
       )}
-      {error && <p className="text-xs text-loss">{error}</p>}
+      {error && (
+        <p className="text-xs text-loss" role="alert">
+          {error}
+        </p>
+      )}
 
       {state.done && (
         <section className="card gtg-slide-up px-4 py-5 text-center">
@@ -230,7 +239,7 @@ export function DepthChartPlay({
                   setTimeout(() => setCopied(false), 2000);
                 });
             }}
-            className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg bg-elev px-4 text-sm font-semibold text-chalk ring-1 ring-inset ring-chalk/12 hover:ring-accent/40"
+            className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg bg-elev px-4 text-sm font-semibold text-chalk ring-1 ring-inset ring-chalk/12 hover:ring-accent/40 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
           >
             {copied ? <Check size={16} aria-hidden /> : <Copy size={16} aria-hidden />}
             {copied ? "Copied" : "Share"}

@@ -54,9 +54,9 @@ function Side({
   won: boolean;
 }) {
   return (
-    <div className="flex flex-1 flex-col items-center gap-2 px-1">
+    <div className="flex min-w-0 flex-1 flex-col items-center gap-2 px-1">
       <TeamMark team={team} size={40} glow={won} />
-      <span className="text-center text-sm text-chalk">{team.school}</span>
+      <span className="w-full text-center text-sm break-words text-chalk">{team.school}</span>
       {/* An em-dash rather than a blank: the slot has to hold its height, or
           the whole block jumps when the score arrives. */}
       <span className="scorebug text-6xl leading-none text-chalk">{value ?? "—"}</span>

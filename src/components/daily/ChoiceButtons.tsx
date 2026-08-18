@@ -9,7 +9,10 @@
  *
  * `flex-wrap` with `flex-1` is what lets two long school names and four short
  * bands both lay out without a per-caller decision — two choices take half the
- * width each, four wrap to two rows, and neither case needs a grid.
+ * width each, four wrap to two rows, and neither case needs a grid. `min-w-0`
+ * and `break-words` are what stop "Middle Tennessee" from pushing the row wider
+ * than the screen: a flex child will not shrink below its content without the
+ * first, and will not wrap a long word without the second.
  */
 export function ChoiceButtons({
   choices,
@@ -33,7 +36,7 @@ export function ChoiceButtons({
             disabled={disabled}
             aria-pressed={active}
             onClick={() => onPick(c)}
-            className={`min-h-11 flex-1 rounded-lg px-3 text-sm font-semibold transition-colors disabled:opacity-60 ${
+            className={`min-h-11 min-w-0 flex-1 rounded-lg px-3 text-sm font-semibold break-words transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:opacity-60 ${
               active
                 ? "bg-accent text-accent-ink"
                 : "bg-elev text-chalk ring-1 ring-inset ring-chalk/12 hover:ring-accent/40"
