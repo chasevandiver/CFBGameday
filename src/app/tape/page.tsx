@@ -166,6 +166,20 @@ export default async function TapePage({
             </ul>
           </section>
         )}
+
+        {/* PRAC-1. Same component as above with `practice`, so practice cannot
+            drift into practising a slightly different game — and the practice
+            route has no write path at all, which is what makes "nothing
+            recorded" a property of the code rather than a claim here. */}
+        {user && (
+          <section className="mt-6">
+            <h2 className="mb-1 text-sm text-accent">Practice</h2>
+            <p className="mb-3 text-xs text-dim">
+              Another game from the archive, unscored. Nothing here touches your record or the board.
+            </p>
+            <TapePlay crests={{}} practice />
+          </section>
+        )}
       </main>
     </>
   );

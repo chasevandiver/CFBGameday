@@ -132,7 +132,12 @@ export async function generateTape(
   const existing = new Set(((existingRows ?? []) as Array<{ day: string }>).map((r) => r.day));
 
   const missing = days.filter((d) => !existing.has(d));
-  if (missing.length === 0) {
+  /* A full queue still has to check the practice pool — otherwise practice can
+     only ever be filled on a day the queue happens to be short, which is most
+     days never. The gap query is one count, so an already-full pool costs
+     nothing. */
+  const needPractice = (await practiceGap(db, "tape_practice")) > 0;
+  if (missing.length === 0 && !needPractice) {
     return { generated: 0, daysQueued: await countQueued(db, "tape_puzzles", days[0]!) };
   }
 
@@ -186,7 +191,16 @@ export async function generateTape(
     generated += 1;
   }
 
-  return { generated, daysQueued: await countQueued(db, "tape_puzzles", days[0]!) };
+  /* The practice pool rides along on the deck and school names this run has
+     already paid for. Topping it up in its own job would mean loading eleven
+     seasons of games, polls and lines a second time. */
+  const practice = await topUpTapePractice(db, pool, schools);
+
+  return {
+    generated,
+    daysQueued: await countQueued(db, "tape_puzzles", days[0]!),
+    ...(practice > 0 ? { practiceAdded: practice } : {}),
+  };
 }
 
 async function schoolNames(
@@ -401,7 +415,8 @@ export async function generateChains(
   const existing = new Set(((existingRows ?? []) as Array<{ day: string }>).map((r) => r.day));
 
   const missing = days.filter((d) => !existing.has(d));
-  if (missing.length === 0) {
+  const needPractice = (await practiceGap(db, "chains_practice")) > 0;
+  if (missing.length === 0 && !needPractice) {
     return { generated: 0, daysQueued: await countQueued(db, "chains_puzzles", days[0]!) };
   }
 
@@ -442,7 +457,13 @@ export async function generateChains(
     generated += 1;
   }
 
-  return { generated, daysQueued: await countQueued(db, "chains_puzzles", days[0]!) };
+  const practice = await topUpChainsPractice(db, pool, schools);
+
+  return {
+    generated,
+    daysQueued: await countQueued(db, "chains_puzzles", days[0]!),
+    ...(practice > 0 ? { practiceAdded: practice } : {}),
+  };
 }
 
 /* ---- Depth Chart --------------------------------------------------------- */
@@ -685,7 +706,8 @@ export async function generateDepthChart(
     .lte("day", days[days.length - 1]!);
   const existing = new Set(((existingRows ?? []) as Array<{ day: string }>).map((r) => r.day));
   const missing = days.filter((d) => !existing.has(d));
-  if (missing.length === 0) {
+  const needPractice = (await practiceGap(db, "dc_practice")) > 0;
+  if (missing.length === 0 && !needPractice) {
     return { generated: 0, daysQueued: await countQueued(db, "dc_puzzles", days[0]!) };
   }
 
@@ -732,14 +754,151 @@ export async function generateDepthChart(
     generated += 1;
   }
 
+  const practice = await topUpDcPractice(db, facts, kinds);
+
   return {
     generated,
     daysQueued: await countQueued(db, "dc_puzzles", days[0]!),
     facts: facts.length,
+    ...(practice.made > 0 ? { practiceAdded: practice.made } : {}),
+    ...(practice.failed > 0 ? { practiceFailed: practice.failed } : {}),
     /* Logged, never silent: a generator that quietly produced fewer days than
        it was asked for would read as healthy right up until the queue ran out. */
     ...(generated < missing.length ? { failed: missing.length - generated, rejects } : {}),
   };
+}
+
+/* ---- PRAC-1: practice pools ---------------------------------------------
+ *
+ * Topped up alongside the queue, reusing the same builders and — for Depth
+ * Chart — the same validator, so a practice round is as fair as a real one.
+ * Generating practice on a cheaper path is exactly how that property gets
+ * quietly lost.
+ *
+ * Idempotent by construction: each pool is filled to `PRACTICE_POOL` and a run
+ * that finds it full does nothing, so steady-state cost is one count query per
+ * game.
+ */
+
+export const PRACTICE_POOL = 30;
+
+/** How many rounds are missing from a pool. */
+async function practiceGap(db: SupabaseClient, table: string): Promise<number> {
+  const { count } = await db.from(table).select("id", { count: "exact", head: true });
+  return Math.max(0, PRACTICE_POOL - (count ?? 0));
+}
+
+/**
+ * The Tape's practice pool.
+ *
+ * Drawn from the SAME salience-filtered, eligibility-checked deck the daily uses
+ * — practice on an easier or thinner deck would be practice for a different
+ * game. Today's fixture is not excluded: the pool is thirty rounds deep against
+ * a deck of hundreds, so a collision is rare, and unlike Guess the Game the
+ * fixture is named on the first frame, so drawing it would be obvious and
+ * skippable rather than a spoiler.
+ */
+export async function topUpTapePractice(
+  db: SupabaseClient,
+  pool: DeckGame[],
+  schools: Map<number, string>,
+): Promise<number> {
+  const gap = await practiceGap(db, "tape_practice");
+  if (gap === 0) return 0;
+
+  const { data: taken } = await db.from("tape_practice").select("game_id");
+  const used = new Set(((taken ?? []) as Array<{ game_id: number }>).map((r) => r.game_id));
+
+  let made = 0;
+  for (const i of seededOrder(pool.length, "tape-practice")) {
+    if (made >= gap) break;
+    const game = pool[i]!;
+    if (used.has(game.id)) continue;
+    const home = schools.get(game.homeTeamId);
+    const away = schools.get(game.awayTeamId);
+    if (!home || !away) continue;
+
+    let questions;
+    try {
+      questions = buildTape(tapeCtxOf(game, home, away));
+    } catch {
+      continue; // eligibility already filtered these, but never ship a short round
+    }
+    const { error } = await db
+      .from("tape_practice")
+      .insert({ game_id: game.id, payload: { questions } });
+    if (error) throw new Error(`tape practice insert failed: ${error.message}`);
+    used.add(game.id);
+    made += 1;
+  }
+  return made;
+}
+
+/** Chains' practice pool. Seeds are namespaced so they cannot collide with a day. */
+export async function topUpChainsPractice(
+  db: SupabaseClient,
+  pool: DeckGame[],
+  schools: Map<number, string>,
+): Promise<number> {
+  const gap = await practiceGap(db, "chains_practice");
+  if (gap === 0) return 0;
+
+  const { data: taken } = await db.from("chains_practice").select("seed");
+  const used = new Set(((taken ?? []) as Array<{ seed: string }>).map((r) => r.seed));
+
+  let made = 0;
+  for (let n = 0; made < gap && n < PRACTICE_POOL * 4; n++) {
+    const seed = `practice:${n}`;
+    if (used.has(seed)) continue;
+    const deck = buildChains(seed, pool, schools);
+    if (deck.length === 0) continue;
+    const { error } = await db
+      .from("chains_practice")
+      .insert({ seed, payload: { deck } });
+    if (error) throw new Error(`chains practice insert failed: ${error.message}`);
+    made += 1;
+  }
+  return made;
+}
+
+/**
+ * Depth Chart's practice pool — the one that had to be stored.
+ *
+ * A fair board costs up to `DC_ATTEMPTS` validated draws, so generating one
+ * inside a request is not an option and an unfair board is not an acceptable
+ * fallback. These go through `buildDepthChart` unchanged, which means every
+ * practice board has passed the same uniqueness, rival-category and trap checks
+ * a real one has.
+ */
+export async function topUpDcPractice(
+  db: SupabaseClient,
+  facts: DcCategory[],
+  kinds: Map<string, string>,
+): Promise<{ made: number; failed: number }> {
+  const gap = await practiceGap(db, "dc_practice");
+  if (gap === 0) return { made: 0, failed: 0 };
+
+  const { data: taken } = await db.from("dc_practice").select("seed");
+  const used = new Set(((taken ?? []) as Array<{ seed: string }>).map((r) => r.seed));
+
+  let made = 0;
+  let failed = 0;
+  for (let n = 0; made < gap && n < PRACTICE_POOL * 3; n++) {
+    const seed = `practice:${n}`;
+    if (used.has(seed)) continue;
+    const { grid, traps } = buildDepthChart(seed, facts, kinds);
+    if (!grid) {
+      failed += 1;
+      continue;
+    }
+    const { error } = await db.from("dc_practice").insert({
+      seed,
+      payload: { groups: grid.groups, tiles: grid.tiles, traps },
+    });
+    if (error) throw new Error(`dc practice insert failed: ${error.message}`);
+    made += 1;
+  }
+  return { made, failed };
 }
 
 /** Re-exported so a caller does not have to reach into guess-game for it. */

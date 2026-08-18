@@ -28,6 +28,8 @@ interface Revealed extends FaceUp {
 
 interface ChainsState {
   day: string;
+  /** Practice only: which stored round this is. */
+  practiceId?: number;
   length: number;
   deckSize: number;
   busted: boolean;
@@ -47,10 +49,22 @@ interface ChainsState {
  * number.
  */
 export function ChainsPlay({
-  crests,
+  crests: initialCrests,
+  practice = false,
 }: {
   crests: Record<number, { school: string; abbr: string; color: string | null; logo: string | null }>;
+  /**
+   * Unscored mode (PRAC-1). The practice route returns the same payload shape,
+   * so this is a flag rather than a second component — a near-copy of a board is
+   * how practice ends up practising a slightly different game.
+   */
+  practice?: boolean;
 }) {
+  const endpoint = practice ? "/api/chains/practice" : "/api/chains";
+  /* The sides called so far. Practice replays them server-side on each submit,
+     so the run length reported is always the server's arithmetic. */
+  const [sides, setSides] = useState<Array<"left" | "right">>([]);
+  const [crests, setCrests] = useState(initialCrests);
   const [state, setState] = useState<ChainsState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -58,32 +72,59 @@ export function ChainsPlay({
 
   useEffect(() => {
     let live = true;
-    fetch("/api/chains")
+    fetch(endpoint)
       .then(async (r) => ({ ok: r.ok, body: await r.json() }))
       .then(({ ok, body }) => {
         if (!live) return;
-        if (ok) setState(body as ChainsState);
-        else setError((body as { error?: string }).error ?? "Could not load today's run");
+        if (ok) {
+          setState(body as ChainsState);
+          if ((body as { crests?: typeof initialCrests }).crests) {
+            setCrests((body as { crests: typeof initialCrests }).crests);
+          }
+        } else {
+          setError((body as { error?: string }).error ?? "Could not load the run");
+        }
       })
-      .catch(() => live && setError("Could not load today's run"));
+      .catch(() => live && setError("Could not load the run"));
     return () => {
       live = false;
     };
-  }, []);
+  }, [endpoint]);
 
   const call = (choice: "left" | "right") => {
     if (!state?.current || pending) return;
     const idx = state.current.idx;
+    const next = [...sides, choice];
     setError(null);
     startTransition(async () => {
-      const res = await fetch("/api/chains", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ idx, choice }),
+        body: JSON.stringify(
+          practice ? { id: state.practiceId, choices: next } : { idx, choice },
+        ),
       });
       const body = await res.json();
-      if (res.ok) setState(body as ChainsState);
-      else setError((body as { error?: string }).error ?? "That did not go through");
+      if (res.ok) {
+        if (practice) setSides(next);
+        setState(body as ChainsState);
+      } else setError((body as { error?: string }).error ?? "That did not go through");
+    });
+  };
+
+  /** A fresh unscored run. Practice only. */
+  const nextRun = () => {
+    setSides([]);
+    setError(null);
+    startTransition(async () => {
+      const res = await fetch(endpoint);
+      const body = await res.json();
+      if (res.ok) {
+        setState(body as ChainsState);
+        if ((body as { crests?: typeof initialCrests }).crests) {
+          setCrests((body as { crests: typeof initialCrests }).crests);
+        }
+      }
     });
   };
 
@@ -148,7 +189,24 @@ export function ChainsPlay({
         </p>
       )}
 
-      {state.done && (
+      {state.done && practice && (
+        <section className="card gtg-slide-up px-4 py-5 text-center">
+          <p className="display text-lg text-chalk">
+            {state.busted ? `${state.length} in a row` : "Cleared the deck"}
+          </p>
+          <p className="mt-1 text-xs text-dim">Practice — nothing recorded.</p>
+          <button
+            type="button"
+            onClick={nextRun}
+            disabled={pending}
+            className="mt-4 min-h-11 rounded-lg bg-accent px-5 text-sm font-semibold text-accent-ink transition-opacity focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:opacity-40"
+          >
+            Another run
+          </button>
+        </section>
+      )}
+
+      {state.done && !practice && (
         <section className="card gtg-slide-up px-4 py-5 text-center">
           <p className="display text-lg text-chalk">
             {state.busted ? `${state.length} in a row` : "Cleared the deck"}
