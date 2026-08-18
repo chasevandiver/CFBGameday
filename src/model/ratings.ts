@@ -193,7 +193,43 @@ export const DEFAULT_PARAMS: ModelParams = {
   // MAE gain, the 0.7–0.8 win-prob bucket off by 6.2 points instead of 1.6,
   // totals MAE 13.09 → 13.19. One scalar objective is not the model.
   baseHfa: 3.0,
-  teamHfaBlend: 0.5,
+  // 0.5 -> 0 (--tune-team-hfa, 2015-2025/warmup1/covid-chain, 2026-08-18).
+  //
+  // This shipped at 0.5 from SPEC §2.3 and was never validated by any replay —
+  // 02:M-05 / 03:M-1v tracked that for months, with the standing rule "else set
+  // blend 0". The rule has now fired on evidence.
+  //
+  // Gate 0 is an IDENTIFICATION test, deliberately run before any accuracy
+  // number exists: split-half correlation of raw per-team HFA across disjoint
+  // prior seasons (odd vs even years, 2020 excluded from both, seasons < 2025).
+  //
+  //   r = -0.196 over n = 134 teams
+  //
+  // Not merely below the 0.30 bar — negative. A team's home edge over one set
+  // of years is slightly ANTI-correlated with its own home edge over the other
+  // set. There is no per-team quantity being measured here; it is noise with a
+  // team's name on it, and blending noise toward the prediction can only add
+  // variance.
+  //
+  // The accuracy grid says the same thing independently, and monotonically:
+  //
+  //   blend   MAE      NLL      worst win-prob bucket
+  //   0.00    13.374   0.4957   2.5 pts
+  //   0.25    13.376   0.4958   2.7 pts
+  //   0.50    13.386   0.4963   2.7 pts   <- what shipped
+  //   0.75    13.405   0.4969   2.9 pts
+  //   1.00    13.429   0.4978   3.0 pts
+  //
+  // Every axis degrades as the blend rises. The shipped 0.5 was costing MAE
+  // 0.012 and NLL 0.0006 against flat. That is small, and it is also free to
+  // stop paying.
+  //
+  // This also retires the threat audit 03:M-1 raised: `centeredBlendedHfa`
+  // was a mitigation for a per-team table inflated ~+1.9 by scheduling, and at
+  // blend 0 that function returns `baseHfa` for every team, so the whole
+  // component is inert rather than merely centred. `teamHfaBlend` now sits at
+  // an identity default like every other unearned parameter here.
+  teamHfaBlend: 0,
   priorRatingWeight: 0.7,
   talentWeight: 0.3,
   priorDecayKnots: [

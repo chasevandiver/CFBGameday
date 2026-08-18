@@ -1619,8 +1619,26 @@ rather than absorbed silently.*
       monotonically at every weight. · dispatch
 - [ ] **02:M-04** `--production-chain` replay mode: measure backtest↔production
       prior drift · M · first in-season week
-- [ ] **02:M-05 / 03:M-1v** Team-HFA replay validation with a pre-registered
-      rule (else set blend 0) · M
+- [x] **02:M-05 / 03:M-1v — answered 2026-08-18, and the answer is 0.**
+      The standing rule ("else set blend 0") fired on evidence. Gate 0 is an
+      identification test run before any accuracy number exists: split-half
+      correlation of raw per-team HFA across disjoint prior seasons, odd vs
+      even, 2020 excluded from both. **r = −0.196 over n = 134 teams** — not
+      merely under the 0.30 bar but *negative*, so a team's home edge over one
+      set of years is slightly anti-correlated with its own edge over the other.
+      The accuracy grid agrees monotonically (MAE 13.374 → 13.429 and NLL
+      0.4957 → 0.4978 as the blend goes 0 → 1), so flat wins on every axis and
+      the shipped 0.5 was costing MAE 0.012 / NLL 0.0006 for nothing.
+      `teamHfaBlend` is now 0, which also retires audit 03:M-1 outright:
+      `centeredBlendedHfa` was a mitigation for an inflated per-team table, and
+      at blend 0 it returns `baseHfa` for every team.
+      **The gate had to be fixed before it could answer.** Its first run
+      evaluated at the FIRST scored season, which has one prior year — split
+      odd/even that is one half and nothing, and it printed "r = n/a over n = 0
+      teams" under the heading GATE 0 FAILS. An absent measurement reported as
+      evidence of absence would have closed this row on nothing. It now runs at
+      the last scored season and distinguishes "cannot be measured" from
+      "measured and failed", pinned by a test.
       **Unblocked 2026-08-18 — the recorded blocker was wrong.** `ratings.ts`
       said "the tuner for it can only run once CFBD publishes 2026 data", which
       is true only if the validation means *scoring the 2026 `team_hfa` table*.
