@@ -90,18 +90,8 @@ export default async function GuessGamePage({
           clue. Fewer guesses, more points.
         </p>
 
-        {user && (
-          <GamesScopePicker
-            groups={myGroups.map((m) => ({ slug: m.slug, name: m.name }))}
-            activeParam={scopeParam(scope)}
-          />
-        )}
-
         {user ? (
-          <>
-            <GuessGamePlay schools={(schoolRows ?? []) as SchoolOption[]} />
-            <GtgPractice schools={(schoolRows ?? []) as SchoolOption[]} />
-          </>
+          <GuessGamePlay schools={(schoolRows ?? []) as SchoolOption[]} />
         ) : (
           <div className="card px-6 py-12 text-center">
             <p className="display text-lg text-chalk/80">Today&rsquo;s puzzle is waiting</p>
@@ -114,8 +104,15 @@ export default async function GuessGamePage({
           </div>
         )}
 
+        {/* The pills used to sit above the game and take the top of the screen.
+            They belong to the board — they choose whose board you are looking
+            at — so they head it, and the puzzle owns the top. */}
         {user && (
           <section className="card mt-4 p-4">
+            <GamesScopePicker
+              groups={myGroups.map((m) => ({ slug: m.slug, name: m.name }))}
+              activeParam={scopeParam(scope)}
+            />
             <h2 className="mb-2 text-sm text-accent">The board — {scopeLabel(scope)}</h2>
             {board.length === 0 && (
               <p className="text-sm text-dim">
@@ -138,6 +135,8 @@ export default async function GuessGamePage({
             </ul>
           </section>
         )}
+
+        {user && <GtgPractice schools={(schoolRows ?? []) as SchoolOption[]} />}
       </main>
     </>
   );

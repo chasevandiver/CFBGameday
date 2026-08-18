@@ -247,10 +247,125 @@ export function gtgPayload(day: string, row: GtgRowState, answer: GtgAnswerCtx) 
   };
 }
 
-/** Spoiler-free share block: one emoji per attempt, nothing else. */
-export function gtgShareString(day: string, verdicts: GtgVerdict[], solved: boolean): string {
-  const cell = (v: GtgVerdict) => (v === "correct" ? "🟩" : v === "conference" ? "🟨" : "⬛");
-  const row = verdicts.map(cell).join("");
+/* ---- The board's presentation layer ------------------------------------
+ *
+ * Everything below is how a payload READS, not what it means. It lives here
+ * rather than in the component for one reason: it is pure, and the three
+ * things a redesign is most likely to get subtly wrong — which clue a slot
+ * shows, which chip a verdict lights, what the share block claims — are all
+ * cheaper to pin with a test than to eyeball on a phone.
+ */
+
+/**
+ * The four clue slots a wrong guess buys, in ladder order.
+ *
+ * The ladder's rung 0 (the final score) is NOT here: the score is the hero of
+ * the screen now, hoisted out of the clue list into the scoreboard block, so
+ * the slots are the four rungs that are still bought one miss at a time.
+ * Slot `i` corresponds to `gtgHints()` index `i + 1` and unlocks at
+ * `attempts >= i + 1`.
+ *
+ * `label` is the client's wording, deliberately not the server's. The route
+ * says "Home team" and "When"; a locked slot has to name what you are buying
+ * clearly enough to decide whether to spend a guess on it, and "When" does
+ * not do that.
+ */
+export const GTG_CLUE_SLOTS: ReadonlyArray<{ label: string }> = [
+  { label: "Home team record" },
+  { label: "Season" },
+  { label: "Home conference" },
+  { label: "The visitors" },
+];
+
+/**
+ * The final score, dug back out of the first clue.
+ *
+ * The scoreboard needs two integers and the payload carries one sentence
+ * ("31–17 (home–away)"), so this parses rather than reads a field. That is a
+ * presentation-layer workaround, not a design: the honest fix is for
+ * `gtgPayload` to carry `finalScore: { home, away }` alongside the hint, and
+ * this function is exactly the shape that change would delete. Kept pure and
+ * tested so the day the wording changes, a test fails instead of the hero
+ * element rendering blank.
+ *
+ * Matched on the label first and position second — a reordered ladder should
+ * lose the hero, not show week 4 as a score.
+ */
+export function parseFinalScore(hints: GtgHint[]): { home: number; away: number } | null {
+  const h = hints.find((x) => x.label === "Final score");
+  if (!h) return null;
+  const m = /(\d+)\D+(\d+)/.exec(h.value);
+  if (!m) return null;
+  return { home: Number(m[1]), away: Number(m[2]) };
+}
+
+export type GtgChipState = "hit" | "miss" | "unknown";
+export type GtgChipKey = "conf" | "region" | "record";
+
+export interface GtgChip {
+  key: GtgChipKey;
+  label: string;
+  state: GtgChipState;
+}
+
+/**
+ * How one guess reads as three chips.
+ *
+ * **Only CONF is real today, and that is a data limit rather than a style
+ * choice.** The server verdicts a guess as correct / same-conference / miss
+ * (`gtgVerdict`) and the payload carries nothing else about the team you
+ * named — not its region, not its record — so REGION and RECORD cannot be
+ * compared without the route returning them. They render `unknown` rather
+ * than `miss`, because a dark chip means "your team is not in their
+ * conference" and claiming that about a comparison nobody made is a lie in
+ * the only feedback this game gives.
+ *
+ * The exception is a correct guess: the team you named IS the answer, so
+ * every attribute matches by definition and all three light.
+ *
+ * When the route grows those two fields this becomes a real three-way
+ * comparison and nothing above it changes — that is why the chip state is a
+ * three-valued type instead of a boolean.
+ */
+export function gtgChips(verdict: GtgVerdict): GtgChip[] {
+  const conf: GtgChipState = verdict === "miss" ? "miss" : "hit";
+  const rest: GtgChipState = verdict === "correct" ? "hit" : "unknown";
+  return [
+    { key: "conf", label: "Conf", state: conf },
+    { key: "region", label: "Region", state: rest },
+    { key: "record", label: "Record", state: rest },
+  ];
+}
+
+const SHARE_CELL: Record<GtgChipState, string> = {
+  hit: "🟨",
+  miss: "⬛",
+  unknown: "⬜",
+};
+
+/**
+ * Spoiler-free share block: the chip grid, a header and a streak footer.
+ *
+ * Wordle's shape — one row per guess you actually spent, no padding out to
+ * six, because a solve in two that ships four blank rows reads as a worse
+ * result than it was. Three cells per row, in the same order and with the
+ * same meaning as the chips on screen, so the block is legible to someone
+ * who has played and gives away nothing to someone who has not: no school
+ * names, no score, no conference.
+ *
+ * `streak` is the device-local count (see `gtg-stats.ts`); 0 drops the footer
+ * rather than bragging about nothing.
+ */
+export function gtgShareBlock(
+  day: string,
+  verdicts: GtgVerdict[],
+  solved: boolean,
+  streak = 0,
+): string {
   const score = solved ? `${verdicts.length}/${GTG_MAX_ATTEMPTS}` : `X/${GTG_MAX_ATTEMPTS}`;
-  return `Guess the Game ${day} ${score}\n${row}`;
+  const grid = verdicts
+    .map((v) => gtgChips(v).map((c) => SHARE_CELL[c.state]).join(""))
+    .join("\n");
+  const footer = streak > 0 ? `\nStreak ${streak}` : "";
+  return `Guess the Game · ${day} · ${score}\n${grid}${footer}`;
 }

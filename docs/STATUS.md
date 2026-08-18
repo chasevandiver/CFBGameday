@@ -3058,6 +3058,55 @@ verified, merged, and live behind its own route".
       name, since a logo gives away exactly as much. 264 of 266 CFB teams have
       artwork; the other two fall back to the monogram.
 
+- [x] **GTG-8 — the puzzle read like a settings page**, 2026-08-18, owner
+      request ("it should feel like a game, not a form"). Presentation-layer
+      rewrite of `/guess-game`, mobile only, with the route, the payload and
+      the model untouched. The final score is hoisted out of the clue list
+      into a full-width scoreboard at 72px — the largest type on the screen by
+      3x, where it was previously set at 14px in a table row. All five clue
+      rungs render on load, the four unbought ones behind a lock and a dimmed
+      bar, so a wrong guess is a visible trade rather than a surprise; the one
+      a miss buys flips open over 300ms. A guess is now a crest, a name and
+      three fixed-width chips (CONF / REGION / RECORD) instead of an emoji
+      square and the trailing words "right conference". Six pips carry the
+      count. Both end states are new (a gold burst and the winning crest on a
+      solve, a card up from the bottom on a bust) and both hand off to a stats
+      strip. The group pills moved off the top of the screen to head the
+      board, which is what they actually select. Presentational parts live in
+      `src/components/guess/` and practice shares them, so the two halves of
+      the screen cannot drift apart. Verified rendered at 390px in both
+      themes: no tap target under 44px, no horizontal overflow, all five
+      animations wired and covered by the global reduced-motion clamp.
+
+- [ ] **GTG-9 — two of the three guess chips have no data behind them.**
+      Opened by GTG-8. The redesign asks each guess to report CONF, REGION and
+      RECORD against the answer, and the payload supports exactly one of them:
+      `gtgVerdict` returns correct / conference / miss, and nothing about the
+      guessed team's region or record reaches the client. Rather than paint a
+      dark chip for a comparison nobody made, `gtgChips` gives those two a
+      third `unknown` state (dashed, dimmed, "not compared" to a screen
+      reader) on every row except a correct guess, where all three match by
+      definition. The fix is small and belongs to the route, not the
+      component: return the guessed team's conference-region and
+      record-entering alongside the verdict, then flip the two `unknown`s in
+      `gtgChips` to a real comparison. Nothing above that function changes —
+      the chip state is already three-valued for this reason. **Held because
+      the brief for GTG-8 was explicitly presentation-only**; it is a data
+      change, and it should be a deliberate one.
+
+- [ ] **GTG-10 — streak, best solve and distribution are device-local.**
+      Opened by GTG-8. The end state's stats strip needs three numbers no
+      payload carries: `gtg_leaderboard()` aggregates points / solved / played
+      per user and nothing per-day, so a streak and a distribution cannot be
+      derived from anything the client receives. `src/lib/gtg-stats.ts` folds
+      each finished day into localStorage instead. The cost is real and stated
+      on the screen ("Kept on this device"): a second phone starts at zero and
+      clearing site data resets it. The real fix is a definer aggregate over
+      `gtg_guesses` returning per-day solved/attempts for the caller, which
+      `recordDay` can then be pointed at unchanged — it is already a pure fold
+      over one day at a time for that reason. Same hold as GTG-9: the brief
+      was presentation-only.
+
 **Arcade calibration**
 - [ ] **UX-41 — re-check the arcade weights after Week 6.** The four weights
       in `ARCADE` equalise each game's *theoretical* weekly ceiling into

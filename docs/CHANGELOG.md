@@ -169,6 +169,80 @@ shipping it.
 
 ## Log
 
+### Aug 18 — GTG-8: Guess the Game, redesigned as a game
+
+Owner brief, one sentence of which is the whole diagnosis: "the current
+version reads like a settings page and that is the problem." It did. The most
+interesting thing on the screen — a final score from an archive game — was set
+at 14px in a two-column table between "Home team" and "When", at exactly the
+same size as its own label, and the six-guess ladder was invisible until you
+had already paid for a rung of it.
+
+Presentation only, by instruction. **The route, the payload, the hint ladder,
+the rendezvous selection and the model are untouched**; every change is in
+components, one pure formatting module and a CSS block. The anti-spoiler
+property is unchanged and still proved by the route test — the answer arrives
+exactly when it always did.
+
+What shipped:
+
+- **The score is the hero.** Full-width scoreboard, two numerals at 72px split
+  off a hairline with HOME / AWAY beneath, on `.scorebug` (Barlow Condensed
+  700, tabular). Measured in the browser: 72px against a 24px next-largest, so
+  the hierarchy is a fact rather than an intention. Tabular figures mean 7 → 10
+  does not move the divider.
+- **All five clue slots render on load**, the four unbought ones behind a lock
+  and a dimmed bar sized to the value it replaces, so unlocking swaps text for
+  text without moving the row. The clue a miss buys hinges open over 300ms.
+  This is the change with the most behavioural weight: a wrong guess is now a
+  trade you can see before you make it.
+- **Guesses read as three fixed-width chips** (CONF / REGION / RECORD) after
+  the crest and the school, replacing one emoji square plus the words "right
+  conference". Fixed columns so gold reads *down* the list.
+- **Six pips** under the scoreboard, gold as spent and red on the sixth.
+- **Two end states**: a gold radial burst under the winning crest with
+  "Solved in N", or a card up from the bottom with "Out of guesses". Both hand
+  off to a stats strip (streak, best solve, solves-by-guess).
+- **The group pills moved down** to head the leaderboard, which is what they
+  actually choose. The puzzle owns the top of the screen.
+- **The share block is a chip grid**, Wordle-shaped: header with the date and
+  the score, one row of three squares per guess actually spent, a streak
+  footer. Still spoiler-free — no names, no score, no conference — and still
+  pinned by a test that asserts so.
+
+Practice mode shares the same presentational parts (`src/components/guess/`)
+rather than keeping the old clue table two scrolls further down the same page.
+
+No new dependencies, no new tokens, no new fonts. All five animations are CSS
+keyframes in the existing `Motion` block and inherit the global
+`prefers-reduced-motion` clamp. Verified rendered at 390px in both themes:
+nothing under a 44px tap target, no horizontal overflow, hero confirmed
+largest, and the unlock flip confirmed to replay on the locked → unlocked
+class swap rather than only on mount.
+
+**Two things the brief asked for that the data cannot yet support**, both
+recorded as open (`docs/STATUS.md` GTG-9, GTG-10) rather than faked:
+
+1. *REGION and RECORD chips.* `gtgVerdict` returns correct / conference /
+   miss and the payload says nothing about the guessed team's region or
+   record. Those two chips therefore render a third `unknown` state — dashed
+   and dimmed, "not compared" to a screen reader — on every row but a correct
+   guess, where all three match by definition. A dark chip would have been a
+   claim about a comparison nobody performed, in the only feedback this game
+   gives. `gtgChips` is three-valued precisely so the route can light them
+   later without touching a component.
+2. *Streak, best solve, distribution.* `gtg_leaderboard()` aggregates per
+   user, never per day, so none of the three is derivable client-side.
+   `src/lib/gtg-stats.ts` folds each finished day into localStorage and the
+   screen says "Kept on this device" — a second phone starts at zero. The fold
+   (`recordDay`) is pure, idempotent by day and tested, so a future definer
+   aggregate can feed it unchanged.
+
+Both are data changes, and the brief was explicitly presentation-only. Doing
+them quietly would have been the wrong call twice over: it would have exceeded
+the brief, and it would have buried the fact that two thirds of the new chip
+row is currently decorative.
+
 ### Aug 17 — M-5 + F11: the opener test on Receipts, the soft map on Edges
 
 The owner asked the fair question — if flagged edges went 49.2%, can't we

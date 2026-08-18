@@ -941,6 +941,92 @@ html[data-theme="light"] .field-strip {
   animation: fade-swap 300ms ease both;
 }
 
+/* ---- Guess the Game -------------------------------------------------
+   Four motions, all CSS because that is the whole motion vocabulary this
+   codebase has and a puzzle screen is not the place to add a library. The
+   global reduced-motion clamp below covers every one of them. */
+
+/* A clue slot unlocking: the row hinges down from its own top edge, which is
+   the only cue that it was there all along and just opened. */
+@keyframes gtg-unlock {
+  from {
+    opacity: 0;
+    transform: rotateX(-72deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.gtg-unlock {
+  transform-origin: top center;
+  animation: gtg-unlock 300ms ease-out both;
+}
+
+/* A guess landing on the list. Same idiom as .card-in, a little further so it
+   reads as arriving under the rows already there rather than fading in. */
+@keyframes gtg-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.gtg-row-in {
+  animation: gtg-row-in 260ms ease-out both;
+}
+
+/* The win burst: gold, behind the crest, gone before it can be looked at. */
+@keyframes gtg-burst {
+  0% {
+    opacity: 0;
+    transform: scale(0.35);
+  }
+  35% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+}
+.gtg-burst {
+  background: radial-gradient(circle, var(--accent) 0%, transparent 68%);
+  animation: gtg-burst 900ms ease-out both;
+}
+
+@keyframes gtg-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.62);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.gtg-pop {
+  animation: gtg-pop 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* The loss card, arriving from the bottom of the screen. */
+@keyframes gtg-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.gtg-slide-up {
+  animation: gtg-slide-up 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
