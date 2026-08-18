@@ -31,6 +31,7 @@ describe("gamesHubRows — ordering", () => {
     expect(gamesHubRows(s).map((r) => r.id)).toEqual([
       "streak",
       "tape",
+      "chains",
       "guess-game",
       "guess-lines",
       "six-pack",
@@ -47,7 +48,7 @@ describe("gamesHubRows — ordering", () => {
   });
 
   it("always returns every game, in every state", () => {
-    expect(gamesHubRows(EMPTY_HUB_STATE)).toHaveLength(5);
+    expect(gamesHubRows(EMPTY_HUB_STATE)).toHaveLength(6);
   });
 });
 
@@ -161,5 +162,36 @@ describe("gamesHubRows — The Tape", () => {
 
   it("is never outstanding for a signed-out viewer", () => {
     expect(tapeRow({ answered: 0 }, false).outstanding).toBe(false);
+  });
+});
+
+describe("gamesHubRows — Chains", () => {
+  const chainsRow = (over: Partial<GamesHubState["chains"]>, signedIn = true) =>
+    gamesHubRows({
+      ...EMPTY_HUB_STATE,
+      signedIn,
+      chains: { hasToday: true, length: 0, done: false, ...over },
+    }).find((r) => r.id === "chains")!;
+
+  it("a day with no run reads 'no run', not 'not played'", () => {
+    const row = gamesHubRows({ ...EMPTY_HUB_STATE, signedIn: true }).find((r) => r.id === "chains")!;
+    expect(row.state).toBe("No run today");
+    expect(row.outstanding).toBe(false);
+  });
+
+  /** A live run reads differently from a finished one of the same length. */
+  it("distinguishes a run still going from one that ended", () => {
+    expect(chainsRow({ length: 4 }).state).toBe("4 and running");
+    expect(chainsRow({ length: 4, done: true }).state).toBe("4 in a row");
+  });
+
+  it("stays outstanding while the run is live", () => {
+    expect(chainsRow({ length: 0 }).outstanding).toBe(true);
+    expect(chainsRow({ length: 6 }).outstanding).toBe(true);
+    expect(chainsRow({ length: 6, done: true }).outstanding).toBe(false);
+  });
+
+  it("is never outstanding for a signed-out viewer", () => {
+    expect(chainsRow({ length: 0 }, false).outstanding).toBe(false);
   });
 });

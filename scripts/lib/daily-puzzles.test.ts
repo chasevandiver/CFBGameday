@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { QUEUE_FLOOR, queueDays, queueVerdict, tapeCtxOf } from "./daily-puzzles";
+import {
+  QUEUE_FLOOR,
+  buildChains,
+  cardValue,
+  queueDays,
+  queueVerdict,
+  seededOrder,
+  tapeCtxOf,
+} from "./daily-puzzles";
+import { cardGap, chainsWinner } from "../../src/lib/chains";
 import { buildTape, tapeEligible } from "../../src/lib/tape";
 import type { DeckGame } from "../../src/lib/salience-data";
 
@@ -111,5 +120,141 @@ describe("tapeCtxOf", () => {
   it("is ineligible when the archive has no market for that game", () => {
     const ctx = tapeCtxOf(deckGame({ spread: null, total: null }), "Auburn", "Alabama");
     expect(tapeEligible(ctx)).toBe(false);
+  });
+});
+
+/* ---- Chains's deck builder ---------------------------------------------- */
+
+describe("seededOrder", () => {
+  it("is deterministic for a seed, so a repair run rebuilds the same deck", () => {
+    expect(seededOrder(20, "2026-08-18")).toEqual(seededOrder(20, "2026-08-18"));
+  });
+
+  it("differs between days", () => {
+    expect(seededOrder(20, "2026-08-18")).not.toEqual(seededOrder(20, "2026-08-19"));
+  });
+
+  it("is a permutation, losing and duplicating nothing", () => {
+    const order = seededOrder(50, "2026-08-18");
+    expect([...order].sort((a, b) => a - b)).toEqual(Array.from({ length: 50 }, (_, i) => i));
+  });
+});
+
+describe("cardValue", () => {
+  const g = (over: Partial<DeckGame> = {}) =>
+    ({
+      id: 1,
+      seasonId: 2019,
+      week: 5,
+      seasonType: "regular",
+      startTs: null,
+      homeTeamId: 1,
+      awayTeamId: 2,
+      homePoints: 45,
+      awayPoints: 17,
+      homeConference: null,
+      awayConference: null,
+      neutralSite: false,
+      conferenceGame: true,
+      venueId: null,
+      notes: null,
+      spread: -13.5,
+      total: 55.5,
+      pollPublished: true,
+      homeRank: null,
+      awayRank: null,
+      salience: {} as DeckGame["salience"],
+      ...over,
+    }) as DeckGame;
+
+  it("reads the three game-level comparands", () => {
+    expect(cardValue("total_points", g())).toBe(62);
+    expect(cardValue("margin", g())).toBe(28);
+    expect(cardValue("spread", g())).toBe(13.5);
+  });
+
+  it("uses the absolute spread, so either side's favourite compares", () => {
+    expect(cardValue("spread", g({ spread: 13.5 }))).toBe(13.5);
+  });
+
+  it("returns null rather than zero when the archive has no line", () => {
+    // Zero would read as a pick'em and mint a card comparing a real favourite
+    // against a fictional one.
+    expect(cardValue("spread", g({ spread: null }))).toBeNull();
+  });
+});
+
+describe("buildChains", () => {
+  const pool: DeckGame[] = Array.from({ length: 60 }, (_, i) =>
+    ({
+      id: i + 1,
+      seasonId: 2015 + (i % 10),
+      week: (i % 13) + 1,
+      seasonType: "regular",
+      startTs: null,
+      homeTeamId: 1,
+      awayTeamId: 2,
+      homePoints: 10 + ((i * 7) % 50),
+      awayPoints: 3 + ((i * 11) % 40),
+      homeConference: null,
+      awayConference: null,
+      neutralSite: false,
+      conferenceGame: true,
+      venueId: null,
+      notes: null,
+      spread: ((i * 3) % 27) - 13,
+      total: 50,
+      pollPublished: true,
+      homeRank: null,
+      awayRank: null,
+      salience: {} as DeckGame["salience"],
+    }) as DeckGame,
+  );
+  const schools = new Map([
+    [1, "Georgia"],
+    [2, "Auburn"],
+  ]);
+
+  it("builds a full deck", () => {
+    expect(buildChains("2026-08-18", pool, schools, 12)).toHaveLength(12);
+  });
+
+  it("is deterministic, so everyone gets the same run", () => {
+    const a = buildChains("2026-08-18", pool, schools, 12);
+    const b = buildChains("2026-08-18", pool, schools, 12);
+    expect(a.map((c) => `${c.kind}:${c.leftValue}:${c.rightValue}`)).toEqual(
+      b.map((c) => `${c.kind}:${c.leftValue}:${c.rightValue}`),
+    );
+  });
+
+  it("gives a different run on a different day", () => {
+    const a = buildChains("2026-08-18", pool, schools, 12);
+    const b = buildChains("2026-08-19", pool, schools, 12);
+    expect(a.map((c) => c.leftValue)).not.toEqual(b.map((c) => c.leftValue));
+  });
+
+  /** The property that turns run length from a coin flip into a ladder. */
+  it("orders easiest first", () => {
+    const deck = buildChains("2026-08-18", pool, schools, 12);
+    const gaps = deck.map(cardGap);
+    for (let i = 1; i < gaps.length; i++) expect(gaps[i - 1]!).toBeGreaterThanOrEqual(gaps[i]!);
+  });
+
+  /** A run has nowhere to put a void, so a tie is never minted. */
+  it("never mints a card with equal values", () => {
+    for (const c of buildChains("2026-08-18", pool, schools, 12)) {
+      expect(c.leftValue).not.toBe(c.rightValue);
+    }
+  });
+
+  it("mixes the kinds rather than shipping twelve of one", () => {
+    const kinds = new Set(buildChains("2026-08-18", pool, schools, 12).map((c) => c.kind));
+    expect(kinds.size).toBeGreaterThan(1);
+  });
+
+  it("answers every card correctly", () => {
+    for (const c of buildChains("2026-08-18", pool, schools, 12)) {
+      expect(c.answer).toBe(chainsWinner(c.kind, c.leftValue, c.rightValue));
+    }
   });
 });

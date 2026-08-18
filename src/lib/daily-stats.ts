@@ -23,13 +23,23 @@ export interface DailyStats {
   bestStreak: number;
   /** The best score reached on any day, or null before the first one. */
   best: number | null;
-  /** Days by score: `dist[i]` is how many days scored `i`. */
+  /**
+   * Days by score: `dist[i]` is how many days scored `i`. GROWS to fit rather
+   * than being fixed width — a fixed eight buckets silently dropped every
+   * Chains run past seven, and a distribution that quietly omits the good days
+   * is worse than no distribution.
+   */
   dist: number[];
   played: number;
   won: number;
 }
 
+/** Where a distribution starts. It grows past this as scores arrive. */
 export const DAILY_BUCKETS = 8;
+
+/** A score past this is not counted into the distribution — a guard against a
+ *  corrupt row allocating an enormous array, not a real ceiling. */
+export const DAILY_MAX_SCORE = 200;
 
 export const EMPTY_DAILY: DailyStats = {
   lastDay: null,
@@ -74,7 +84,10 @@ export function recordDayResult(
   const streak = won ? (continues ? prev.streak + 1 : 1) : 0;
 
   const dist = [...prev.dist];
-  if (Number.isInteger(score) && score >= 0 && score < DAILY_BUCKETS) dist[score]! += 1;
+  if (Number.isInteger(score) && score >= 0 && score <= DAILY_MAX_SCORE) {
+    while (dist.length <= score) dist.push(0);
+    dist[score]! += 1;
+  }
 
   const best =
     prev.best === null

@@ -14,7 +14,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { productDate, streakFold, type StreakPickLike } from "./streak";
 
-export type GameId = "guess-lines" | "streak" | "guess-game" | "six-pack" | "tape";
+export type GameId = "guess-lines" | "streak" | "guess-game" | "six-pack" | "tape" | "chains";
 
 export interface GamesHubState {
   /** Guess the Lines: this week's slate, and how much of it you've called. */
@@ -27,6 +27,8 @@ export interface GamesHubState {
   sixPack: { open: boolean; entered: boolean; correct: number | null };
   /** The Tape: whether there is a round today, and how far you got. */
   tape: { hasToday: boolean; answered: number; done: boolean; correct: number | null };
+  /** Chains: whether there is a run today, and how long yours got. */
+  chains: { hasToday: boolean; length: number; done: boolean };
   signedIn: boolean;
 }
 
@@ -47,11 +49,12 @@ export const EMPTY_HUB_STATE: GamesHubState = {
   gtg: { attempts: 0, solved: false, played: false },
   sixPack: { open: false, entered: false, correct: null },
   tape: { hasToday: false, answered: 0, done: false, correct: null },
+  chains: { hasToday: false, length: 0, done: false },
   signedIn: false,
 };
 
 /** Fixed order once outstanding-ness ties: daily games first, weekly last. */
-const ORDER: GameId[] = ["streak", "tape", "guess-game", "guess-lines", "six-pack"];
+const ORDER: GameId[] = ["streak", "tape", "chains", "guess-game", "guess-lines", "six-pack"];
 
 export function gamesHubRows(s: GamesHubState): GamesHubRow[] {
   const slateSize = s.lines.open + s.lines.mine;
@@ -93,6 +96,20 @@ export function gamesHubRows(s: GamesHubState): GamesHubRow[] {
             ? `${s.tape.answered} of 5 answered`
             : "Not played",
       outstanding: s.signedIn && s.tape.hasToday && !s.tape.done,
+    },
+    {
+      id: "chains",
+      href: "/chains",
+      name: "Chains",
+      blurb: "Two games, one question. Keep calling them until you miss.",
+      state: !s.chains.hasToday
+        ? "No run today"
+        : s.chains.done
+          ? `${s.chains.length} in a row`
+          : s.chains.length > 0
+            ? `${s.chains.length} and running`
+            : "Not played",
+      outstanding: s.signedIn && s.chains.hasToday && !s.chains.done,
     },
     {
       id: "guess-lines",
@@ -144,8 +161,18 @@ export async function fetchGamesHub(
 ): Promise<GamesHubState> {
   const today = productDate(new Date());
 
-  const [slateRes, myGuessRes, streakDayRes, myStreakRes, gtgRes, sixPackRes, tapeDayRes, tapeMineRes] =
-    await Promise.all([
+  const [
+    slateRes,
+    myGuessRes,
+    streakDayRes,
+    myStreakRes,
+    gtgRes,
+    sixPackRes,
+    tapeDayRes,
+    tapeMineRes,
+    chainsDayRes,
+    chainsMineRes,
+  ] = await Promise.all([
     supabase.from("guess_line_slates").select("game_id"),
     userId
       ? supabase.from("line_guesses").select("game_id, abs_error").eq("user_id", userId)
@@ -180,6 +207,16 @@ export async function fetchGamesHub(
       ? supabase
           .from("tape_entries")
           .select("answers, correct, completed_at")
+          .eq("user_id", userId)
+          .eq("day", today)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    // CHAIN-2, same honest degradation as the two reads above.
+    supabase.from("chains_puzzles").select("day").eq("day", today).maybeSingle(),
+    userId
+      ? supabase
+          .from("chains_runs")
+          .select("length, ended_at")
           .eq("user_id", userId)
           .eq("day", today)
           .maybeSingle()
@@ -229,6 +266,10 @@ export async function fetchGamesHub(
     correct: number;
     completed_at: string | null;
   } | null;
+  const chains = (chainsMineRes?.data ?? null) as {
+    length: number;
+    ended_at: string | null;
+  } | null;
 
   return {
     lines: {
@@ -252,6 +293,11 @@ export async function fetchGamesHub(
       answered: tape?.answers?.length ?? 0,
       done: tape?.completed_at != null,
       correct: tape?.completed_at != null ? tape.correct : null,
+    },
+    chains: {
+      hasToday: chainsDayRes?.data != null,
+      length: chains?.length ?? 0,
+      done: chains?.ended_at != null,
     },
     sixPack: {
       open: questionCount > 0,

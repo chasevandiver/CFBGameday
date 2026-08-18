@@ -3382,9 +3382,29 @@ under it is being replaced by **three** games, tried side by side —
       groups of four, four mistakes. The build is the uniqueness validator: a
       grid is only fair if exactly one partition satisfies it, and generating
       categories from a fact index produces overlapping tiles constantly.
-- [ ] **CHAIN-1/2 — Chains** (`/chains`). A fixed daily higher-or-lower run,
-      ordered by decreasing gap so it is a skill ladder rather than a
-      geometric random variable.
+- [x] **CHAIN-1/2 — Chains** (`/chains`), 2026-08-18. A fixed daily run of
+      higher-or-lower over the archive: two games side by side, which had more
+      points / was won by more / had the bigger favourite. Keep calling until
+      you miss; run length is the score. Migration **0069**,
+      `src/lib/chains.ts` (pure) + `chains-data.ts`, `/api/chains`, `/chains`,
+      `ChainsPlay`.
+      A comparison cannot be the thing the owner complained about — there is no
+      space to guess into, it is one in two every time, and the only thing that
+      moves you off the coin flip is knowing something.
+      **The deck is ordered by decreasing gap**, normalised per kind, and that
+      is the load-bearing piece: a run of coin flips is a geometric random
+      variable and says nothing about the player, so easiest-first is what
+      turns run length into a ladder. Card one is a blowout comparison; card
+      fifteen is two numbers a point apart.
+      **Ties are refused at generation rather than voided at play** — six-pack
+      grades a push as `void`, and a run has nowhere to put one, since there is
+      no slot between "kept going" and "stopped". Refused by the generator and
+      again by a check constraint.
+      The deck is the answer key AND the future of the run, so `chains_cards`
+      carries no select policy and the route ships exactly one face-up card.
+      The rest arrives only once the run ends — which is the payoff, not a
+      leak: "you stopped on card nine, here is what ten through twenty were" is
+      the reason to come back.
 - [ ] **TRIAL-1 — the arcade fold, once.** The three trial games deliberately
       do **not** feed `arcade.ts` while the trial runs, and Guess the Game is
       left running untouched as the control. `weeklyCeiling()` equalises each

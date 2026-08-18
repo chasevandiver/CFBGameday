@@ -69,10 +69,27 @@ describe("recordDayResult", () => {
     expect(s.dist[5]).toBe(1);
   });
 
-  it("ignores a score outside the buckets rather than writing off the end", () => {
-    const s = recordDayResult(EMPTY_DAILY, "2026-08-18", true, 99);
-    expect(s.dist.some((n) => n > 0)).toBe(false);
+  /**
+   * The distribution grows to fit. It was fixed at eight buckets when this was
+   * lifted out of `gtg-stats.ts`, where six guesses is a hard ceiling — which
+   * silently dropped every Chains run past seven. A distribution that quietly
+   * omits the good days is worse than no distribution.
+   */
+  it("grows the distribution to fit a long run", () => {
+    const s = recordDayResult(EMPTY_DAILY, "2026-08-18", true, 17);
+    expect(s.dist[17]).toBe(1);
     expect(s.played).toBe(1);
+  });
+
+  it("refuses an absurd score rather than allocating for it", () => {
+    const s = recordDayResult(EMPTY_DAILY, "2026-08-18", true, 10_000_000);
+    expect(s.dist.length).toBeLessThan(1000);
+    expect(s.played).toBe(1);
+  });
+
+  it("ignores a negative or fractional score", () => {
+    expect(recordDayResult(EMPTY_DAILY, "2026-08-18", true, -1).dist.some((n) => n > 0)).toBe(false);
+    expect(recordDayResult(EMPTY_DAILY, "2026-08-18", true, 1.5).dist.some((n) => n > 0)).toBe(false);
   });
 
   /**

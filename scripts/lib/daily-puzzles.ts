@@ -33,6 +33,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchSalienceDeck, type DeckGame } from "../../src/lib/salience-data";
 import { buildTape, tapeEligible, type TapeCtx } from "../../src/lib/tape";
+import {
+  CHAINS_DECK,
+  chainsOrder,
+  chainsPrompt,
+  chainsWinner,
+  isMintable,
+  type ChainsCard,
+  type ChainsKind,
+} from "../../src/lib/chains";
 import { fnv1a, pickDailyGame } from "../../src/lib/guess-game";
 import { productDate, productDateOffset } from "../../src/lib/streak";
 
@@ -237,6 +246,7 @@ export async function dailyPuzzlesJob(db: SupabaseClient): Promise<Json> {
 
   const generators: Array<[string, (db: SupabaseClient, now: Date) => Promise<GenerateResult>]> = [
     ["tape", generateTape],
+    ["chains", generateChains],
   ];
 
   for (const [name, run] of generators) {
@@ -257,6 +267,174 @@ export async function dailyPuzzlesJob(db: SupabaseClient): Promise<Json> {
     );
   }
   return { day: today, ...detail };
+}
+
+/* ---- Chains -------------------------------------------------------------- */
+
+/** How deep into the salience ranking Chains will reach. */
+export const CHAINS_POOL = 2500;
+
+/**
+ * A deterministic shuffle of `0..n-1` from a seed.
+ *
+ * Fisher-Yates driven by the same FNV-1a the rendezvous hash uses, so a repair
+ * run reproduces the same deck rather than a different one. `Math.random()`
+ * would make regeneration produce a puzzle nobody else is playing.
+ */
+export function seededOrder(n: number, seed: string): number[] {
+  const idx = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) {
+    const j = fnv1a(`${seed}:${i}`) % (i + 1);
+    [idx[i]!, idx[j]!] = [idx[j]!, idx[i]!];
+  }
+  return idx;
+}
+
+/** The value each kind compares, or null when this game cannot supply it. */
+export function cardValue(kind: ChainsKind, g: DeckGame): number | null {
+  switch (kind) {
+    case "total_points":
+      return g.homePoints + g.awayPoints;
+    case "margin":
+      return Math.abs(g.homePoints - g.awayPoints);
+    case "spread":
+      return g.spread === null ? null : Math.abs(g.spread);
+    case "ap_finish":
+      /* Not a game-level fact — a team's final poll finish. Chains does not
+         mint these yet; the kind exists because inverting the comparison for a
+         poll rank is the thing that ships wrong, and `chainsWinner` already
+         handles and tests it. Recorded rather than half-built. */
+      return null;
+    default: {
+      const exhaustive: never = kind;
+      return exhaustive;
+    }
+  }
+}
+
+const CHAINS_KINDS: ChainsKind[] = ["total_points", "margin", "spread"];
+
+/** How a game reads on a card. */
+function sideOf(g: DeckGame, home: string, away: string) {
+  return {
+    label: `${away} at ${home}`,
+    sub:
+      g.seasonType === "postseason"
+        ? `${g.seasonId} · Postseason`
+        : `${g.seasonId} · Week ${g.week}`,
+    teamId: g.homeTeamId,
+  };
+}
+
+/**
+ * One day's deck: pairs drawn from the pool, ordered easiest first.
+ *
+ * Pure given its inputs, so the ordering property has a test that needs no
+ * database. Cards whose two values are equal are DROPPED rather than kept — a
+ * run has nowhere to put a tie.
+ */
+export function buildChains(
+  day: string,
+  pool: DeckGame[],
+  schools: Map<number, string>,
+  size = CHAINS_DECK,
+): ChainsCard[] {
+  const order = seededOrder(pool.length, day);
+  const cards: ChainsCard[] = [];
+
+  /* Walk the shuffled pool two at a time, cycling kinds so a deck is not four
+     scoring cards in a row. Over-draws, because ties and missing values thin
+     the result and a short deck would silently shorten everybody's ceiling. */
+  for (let i = 0; i + 1 < order.length && cards.length < size * 3; i += 2) {
+    const a = pool[order[i]!]!;
+    const b = pool[order[i + 1]!]!;
+    const kind = CHAINS_KINDS[cards.length % CHAINS_KINDS.length]!;
+
+    const left = cardValue(kind, a);
+    const right = cardValue(kind, b);
+    if (left === null || right === null || !isMintable(left, right)) continue;
+
+    const aHome = schools.get(a.homeTeamId);
+    const aAway = schools.get(a.awayTeamId);
+    const bHome = schools.get(b.homeTeamId);
+    const bAway = schools.get(b.awayTeamId);
+    if (!aHome || !aAway || !bHome || !bAway) continue;
+
+    cards.push({
+      kind,
+      prompt: chainsPrompt(kind),
+      left: sideOf(a, aHome, aAway),
+      right: sideOf(b, bHome, bAway),
+      leftValue: left,
+      rightValue: right,
+      answer: chainsWinner(kind, left, right),
+    });
+  }
+
+  return chainsOrder(cards).slice(0, size);
+}
+
+/**
+ * Fill Chains' queue. Idempotent by day for the same reason The Tape's is: a
+ * regenerated day would rewrite a deck somebody has already played through.
+ */
+export async function generateChains(
+  db: SupabaseClient,
+  now: Date,
+  target = QUEUE_TARGET,
+): Promise<GenerateResult> {
+  const days = queueDays(now, target);
+
+  const { data: existingRows } = await db
+    .from("chains_puzzles")
+    .select("day")
+    .gte("day", days[0]!)
+    .lte("day", days[days.length - 1]!);
+  const existing = new Set(((existingRows ?? []) as Array<{ day: string }>).map((r) => r.day));
+
+  const missing = days.filter((d) => !existing.has(d));
+  if (missing.length === 0) {
+    return { generated: 0, daysQueued: await countQueued(db, "chains_puzzles", days[0]!) };
+  }
+
+  /* A far wider pool than The Tape's. A comparison is not a recall test, so an
+     obscure game is a perfectly good card — it only has to have a number. */
+  const pool = (await fetchSalienceDeck(db)).slice(0, CHAINS_POOL);
+  if (pool.length < 4) throw new Error("chains: not enough games — has backfill-games run?");
+  const schools = await schoolNames(db, pool);
+
+  let generated = 0;
+  for (const day of missing) {
+    const deck = buildChains(day, pool, schools);
+    if (deck.length === 0) continue;
+
+    const { error: pErr } = await db
+      .from("chains_puzzles")
+      .insert({ day, deck_size: deck.length });
+    if (pErr) throw new Error(`chains: ${day} puzzle insert failed: ${pErr.message}`);
+
+    const { error: cErr } = await db.from("chains_cards").insert(
+      deck.map((c, idx) => ({
+        day,
+        idx,
+        kind: c.kind,
+        prompt: c.prompt,
+        left_label: c.left.label,
+        left_sub: c.left.sub,
+        left_team: c.left.teamId,
+        right_label: c.right.label,
+        right_sub: c.right.sub,
+        right_team: c.right.teamId,
+        left_value: c.leftValue,
+        right_value: c.rightValue,
+        answer: c.answer,
+      })),
+    );
+    if (cErr) throw new Error(`chains: ${day} cards insert failed: ${cErr.message}`);
+    generated += 1;
+  }
+
+  return { generated, daysQueued: await countQueued(db, "chains_puzzles", days[0]!) };
 }
 
 /** Re-exported so a caller does not have to reach into guess-game for it. */

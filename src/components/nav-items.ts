@@ -43,7 +43,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     label: "Games",
     href: "/games",
-    also: ["/guess-lines", "/streak", "/guess-game", "/six-pack", "/tape"],
+    also: ["/guess-lines", "/streak", "/guess-game", "/six-pack", "/tape", "/chains"],
     primary: true,
     icon: Gamepad2,
   },

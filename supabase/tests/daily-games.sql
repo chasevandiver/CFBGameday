@@ -231,6 +231,74 @@ select public.expect_denied('anon cannot execute the tape board', null,
   'permission denied');
 
 -- ---------------------------------------------------------------------------
+-- CHAIN-2 (0069): Chains. The deck is both the answer key AND the future of
+-- the run, so it must not be readable at all — a player who can read card nine
+-- before answering card one has a list, not a run.
+-- ---------------------------------------------------------------------------
+
+\echo '# chains: the deck is not readable'
+\o /dev/null
+insert into chains_puzzles (day, deck_size) values (current_date, 2);
+insert into chains_cards
+  (day, idx, kind, prompt, left_label, right_label, left_value, right_value, answer)
+values
+  (current_date, 0, 'total_points', 'Which game had more points?',
+   'Alabama at Auburn', 'Texas at Oklahoma', 62, 93, 'right'),
+  (current_date, 1, 'margin', 'Which was won by more?',
+   'Georgia at Florida', 'Michigan at Ohio State', 28, 3, 'left');
+\o
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.chk('a member cannot read the deck at all',
+    not exists (select 1 from chains_cards where day = current_date));
+  select pg_temp.chk('but the day itself is readable',
+    exists (select 1 from chains_puzzles where day = current_date));
+rollback;
+
+\echo '# chains: the queue does not leak tomorrow'
+\o /dev/null
+insert into chains_puzzles (day, deck_size) values (current_date + 30, 2);
+\o
+begin;
+  select test_as(:ann::uuid);
+  set local timezone to 'UTC';
+  select pg_temp.chk('a future run is invisible from a UTC session',
+    not exists (select 1 from chains_puzzles where day = current_date + 30));
+rollback;
+
+\echo '# chains: a card with no answer cannot be stored'
+select public.expect_denied('equal values -> check constraint', null,
+  $q$insert into chains_cards
+       (day, idx, kind, prompt, left_label, right_label, left_value, right_value, answer)
+     values (current_date, 9, 'margin', 'x', 'a', 'b', 21, 21, 'left')$q$,
+  'chains_card_has_an_answer');
+
+\echo '# chains: own-row containment'
+\o /dev/null
+insert into chains_runs (user_id, day, length, busted, ended_at)
+values (:ann::uuid, current_date, 1, true, now());
+\o
+begin;
+  select test_as(:bob::uuid);
+  select pg_temp.chk('bob cannot read ann''s run',
+    not exists (select 1 from chains_runs where user_id = :ann::uuid));
+  select pg_temp.chk('the board answers without exposing the deck',
+    exists (select 1 from chains_leaderboard() where played > 0));
+rollback;
+select public.expect_denied('direct chains run insert -> denied', :bob::uuid,
+  $q$insert into chains_runs (user_id, day)
+     values ('22222222-2222-2222-2222-222222222222', current_date)$q$,
+  'permission denied');
+select public.expect_denied('a member cannot write the deck', :bob::uuid,
+  $q$insert into chains_cards
+       (day, idx, kind, prompt, left_label, right_label, left_value, right_value, answer)
+     values (current_date, 8, 'margin', 'x', 'a', 'b', 1, 2, 'right')$q$,
+  'permission denied');
+select public.expect_denied('anon cannot execute the chains board', null,
+  $q$select * from chains_leaderboard()$q$,
+  'permission denied');
+
+-- ---------------------------------------------------------------------------
 -- R2-D4 (0061): reactions — visibility rides the subject's own RLS.
 -- ---------------------------------------------------------------------------
 -- The hidden-pick case is the one that matters: reacting to a pick the blind
