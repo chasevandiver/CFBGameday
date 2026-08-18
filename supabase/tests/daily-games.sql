@@ -267,11 +267,25 @@ begin;
 rollback;
 
 \echo '# chains: a card with no answer cannot be stored'
-select public.expect_denied('equal values -> check constraint', null,
-  $q$insert into chains_cards
-       (day, idx, kind, prompt, left_label, right_label, left_value, right_value, answer)
-     values (current_date, 9, 'margin', 'x', 'a', 'b', 21, 21, 'left')$q$,
-  'chains_card_has_an_answer');
+-- Deliberately NOT through expect_denied: that helper impersonates a member or
+-- anon, and every write to this table is revoked from both, so the insert dies
+-- on the grant before the constraint is ever evaluated — which would make this
+-- a vacuous test wearing a green tick. The check exists to catch the GENERATOR
+-- (service role) minting a tie, so it has to be exercised as the writer.
+begin;
+  do $$
+  begin
+    insert into chains_cards
+      (day, idx, kind, prompt, left_label, right_label, left_value, right_value, answer)
+    values (current_date, 9, 'margin', 'x', 'a', 'b', 21, 21, 'left');
+    raise notice 'FAIL  a tie is refused at the database (no error raised)';
+  exception
+    when check_violation then
+      raise notice 'PASS  a tie is refused at the database -> %', sqlerrm;
+    when others then
+      raise notice 'FAIL  a tie is refused at the database (wrong error: %)', sqlerrm;
+  end $$;
+rollback;
 
 \echo '# chains: own-row containment'
 \o /dev/null

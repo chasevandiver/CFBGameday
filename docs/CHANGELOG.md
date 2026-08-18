@@ -486,6 +486,148 @@ Talent published in September does not get loaded at all.
 build already falls back. What changed is whether the gate stops the load, and
 whether the fallback is visible afterwards.
 
+### Aug 18 — Guess the Game is replaced by three games, tried side by side
+
+Owner: *"I like the concept, but it's way too random. There's hardly any trivia
+around it and just trying to randomly guess a team. We need to come up with
+something else."* Asked for a handful of thought-out options, picked three of
+them, and asked to see how they play.
+
+**The diagnosis, because it is half the design.** Two independent causes, both
+in the code. `cfbDeck` takes every CFB regular-season final we hold a score for,
+uniformly weighted — so most days the puzzle is a Tuesday MACtion game nobody
+watched, and knowing football cannot help because there is nothing to know. And
+`gtgHints` carries almost no information until its last rung: a final score
+narrows 266 teams to 266, a record to ~130, a conference to ~16, and the
+visitors to one. Burning guesses to reach rung four is the rational play, which
+is exactly what "randomly guessing a team" feels like.
+
+**SAL-1 fixes the first half and no mechanic change could.** A better question
+about a forgettable game is still a question about a forgettable game.
+`salienceScore` ranks how much a game was an *event*. The weights are a
+judgement and are labelled as one — there is no training signal for
+"memorable" — so the tests pin properties instead: total-nullability (a NaN
+would make `Array.sort` order-dependent garbage and corrupt the deck silently),
+monotonicity per term, and a **golden ordering** over four real games. That last
+one is the only test that catches weights which are individually sensible and
+collectively wrong, which is what the complaint was actually about.
+
+**The three, and what each is for.**
+
+*The Tape* (`/tape`) inverts the ask. The game is named up front with crests,
+then five questions arrive one at a time: who won · who was favoured · by how
+much · over or under the real closing total · was the home team ranked that
+week. Worst case is one in four instead of one in 266, and the questions chain,
+so it rewards reasoning as well as recall.
+
+*Chains* (`/chains`) is a fixed daily run of higher-or-lower. Structurally it
+cannot be the thing complained about: there is no space to guess into, and the
+only thing that moves you off a coin flip is knowing something.
+
+*Depth Chart* (`/depth-chart`) is sixteen teams and four hidden groups of four.
+
+**Three decisions worth recording because they were close.**
+
+1. **Answers are frozen at generation.** `six-pack.ts`'s closure rule says a
+   question must settle from the slate's own games so the grader never waits
+   forever. For a game played in 2018 the risk is not grading, it is
+   generation — so the rule is applied a step earlier and comes out stronger: a
+   question is minted only if its answer is already computable, and stored with
+   it. No pending state, no settler returning null, no re-grade. A corrected
+   poll row next season cannot restate an answer somebody was already scored
+   against.
+
+2. **Generated ahead with a queue, not computed on read.** This is GTG-1's
+   lesson made structural. Guess the Game hashed the day against a deck read at
+   request time: no job, no cadence, nothing that could be late — which is why
+   its empty deck went unnoticed for weeks. `daily-puzzles` banks a fortnight
+   and **fails below four days**, so a transient error with the queue full is a
+   green run carrying an error string, and a generator broken for ten days is a
+   red one, days before any player sees an empty screen. The rendezvous hash did
+   not go away; it moved inside the generator, so the same day still yields the
+   same puzzle for everybody.
+
+3. **Two of the three cannot promise secrecy, and say so.** `games`,
+   `line_snapshots` and `poll_rankings` are all anon-readable (migration 0011),
+   and more decisively the answers are on the open internet. Guess the Game's
+   anti-spoiler contract worked because the game's IDENTITY was hidden; once The
+   Tape names the fixture, every fact about it is a search away. Withholding the
+   score until the round is over is worth doing and the routes do it — calling
+   it a guarantee would have been a lie, so the migration headers and the tests
+   say what is actually being claimed. **Depth Chart is the exception and it is
+   the point of having it**: the hidden thing is not a fact but a *grouping*,
+   which is not derivable from public data at all.
+
+**Depth Chart's validator, and the measurement that changed it.**
+
+A grid is fair only if exactly one assignment of tiles to categories is
+possible. Generating categories from a fact index produces overlapping tiles
+constantly, and a grid with two solutions marks a correct player wrong — not
+hard, *unfair*, which is worse than the problem being fixed.
+
+`countPartitions` decides it exactly: a DFS over (tile index, remaining capacity
+per group). That is the permanent of a structured 0/1 matrix — #P-hard at scale
+and trivial at this one, because the capacity vector collapses the state space
+to 16 × 5⁴ = 10,000 states. Sub-millisecond, and it runs at generation. It
+early-exits at two, and caching a truncated count is safe for a reason worth
+writing down: a truncated value is always ≥ the limit, so any parent reusing it
+also reaches the limit — the answer is exact below two and "at least two" above,
+which is precisely the question. There is a test for the case a naive "any tile
+in two categories is ambiguous" heuristic gets wrong: an overlap the capacities
+still resolve.
+
+**The rival-category check was wrong on first build, and only measuring showed
+it.** It rejected any grid where another stored fact covered exactly four of the
+sixteen tiles — and threw away about three quarters of otherwise-fair grids,
+because a dense index almost always has some fact lying exactly over one of the
+chosen groups. The reject histogram is what diagnosed it: 151 of 200 attempts
+`rival_category`, 0 `too_easy`. **A rival whose four tiles ARE an intended group
+is corroboration, not ambiguity** — a second true label over the same four leads
+to the same submission and the same verdict. With that, generation succeeds on
+over 90% of days, pinned by a test over sixty. The histogram stayed, because
+`ambiguous` means the index has too much overlap and `too_easy` means too
+little, and the fix for one is the opposite of the fix for the other.
+
+The external-ambiguity promise is **bounded and written into 0070's header**,
+because someone will eventually find a grouping we never stored: no fact in
+`dc_facts` covers exactly four of the tiles beyond the intended four. NYT's
+Connections has the same hole. If it proves too weak the fix is to widen the
+index, not to weaken the validator.
+
+**Rejected, and why — do not re-propose.**
+
+- **Column grants instead of route-only tables.** `revoke select (answer) …`,
+  the 0040/0052 pattern, does work. But PostgREST's `select *` *errors* on a
+  revoked column rather than omitting it, so every incidental reader breaks
+  instead of degrading — and each of these games also has to hide rows a player
+  has not reached, which no column grant can express.
+- **Renaming `src/components/guess/`.** A new `src/components/daily/` takes the
+  three pieces that are genuinely shared. `EndState` and `StatsStrip` were
+  deliberately copied rather than shared: four different screens wearing one
+  name would be a props union with four mutually exclusive branches.
+- **Refactoring `gtg-stats.ts` onto `daily-stats.ts`.** The arithmetic moved and
+  the tests came with it, but Guess the Game is the control these three are
+  being tried against, and churning it during the trial buys nothing.
+- **Wiring the three into `arcade.ts`.** Deliberately not done — see below.
+
+**The three trial games do not feed the arcade, and Guess the Game is left
+running untouched.** `weeklyCeiling()` equalises each game's weekly ceiling into
+[60,70]; adding three now and retiring two later would re-score a live
+cumulative board twice, and this file's own header says a total that decreases
+is one nobody trusts. Chains is the sharpest case: its ceiling is a generation
+parameter rather than a structural one, and nobody knows the right cap before
+there is data. One commit at the end of the trial picks the winner, retires the
+rest, and moves the ceiling once, with the measured distributions recorded
+(TRIAL-1).
+
+**One bug found while building, worth its own line.** `daily-stats`'
+distribution was fixed at eight buckets — lifted from `gtg-stats`, where six
+guesses is a hard ceiling — which silently dropped every Chains run past seven.
+It grows to fit now, with a guard against a corrupt row allocating an enormous
+array. A distribution that quietly omits the good days is worse than none.
+
+**No model change.** No parameter moved.
+
 ### Aug 18 — BF-1/2/3: the archive gets eight seasons, a market and polls
 
 Owner on Guess the Game: *"I like the concept, but it's way too random. There's
