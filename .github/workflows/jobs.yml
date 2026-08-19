@@ -76,6 +76,13 @@ on:
           # it is the bootstrap prior for a 2015 start, so if it is empty the
           # default window has to begin later.
           - probe-history
+          # Did the load actually land? load-preseason prints "Done: N rows
+          # loaded" and never reads back what it wrote, so a green run that
+          # loaded the wrong thing looks exactly like one that worked. Chained
+          # onto every load below as well as dispatchable — the Aug 22
+          # escalation fires unattended, and STATUS says of the checkpoint four
+          # days later: "do not let this get decided by silence".
+          - verify-preseason
           # THIRD, and not because it runs often — it runs once. GitHub's
           # mobile dispatch form renders about TWELVE options and then stops,
           # so this list's back half is unreachable from a phone. At position
@@ -539,6 +546,7 @@ jobs:
             # Preview only — the JSON goes to a scratch dir and is discarded.
             preseason-preview) npx tsx scripts/build-preseason.ts --out "$RUNNER_TEMP/preseason" --top 40 ;;
             preseason-check) npx tsx scripts/build-preseason.ts --check --out "$RUNNER_TEMP/preseason-check" ;;
+            verify-preseason) npx tsx scripts/verify-preseason.ts ;;
             # Handled by its own step below, so that a preseason refresh which
             # declines (and exits 0 on purpose) can never skip it.
             cfbd-probe) echo "access probe runs in the CFBD access probe step" ;;
@@ -612,7 +620,11 @@ jobs:
                 npx tsx scripts/load-preseason.ts --dir "$DIR" --bootstrap
               else
                 npx tsx scripts/load-preseason.ts --dir "$DIR"
-              fi ;;
+              fi
+              # Read back what landed. Reached only when a load actually ran —
+              # a declined refresh exits 0 above, so this cannot go red on the
+              # days the gate is correctly saying "not yet".
+              npx tsx scripts/verify-preseason.ts ;;
             questions|verdicts|drop)
               if [ -z "$ANTHROPIC_API_KEY" ]; then
                 echo "ANTHROPIC_API_KEY not set — skipping LLM generation"
