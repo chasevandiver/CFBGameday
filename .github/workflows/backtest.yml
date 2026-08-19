@@ -36,6 +36,7 @@ on:
           - tune-hfa
           - tune-fcs
           - tune-team-hfa
+          - tune-talent-source
           - diagnose-tiers
           - tune-tier-recenter
       seasons:

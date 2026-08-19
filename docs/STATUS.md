@@ -1218,6 +1218,37 @@ to a full 138-team board on the 2025 talent file before refusing to load it.
       season with completed games and `ratings-update` owns the numbers from
       then on, so talent arriving after Aug 29 does not get loaded at all — the
       last automatic chance is the Aug 27 11:00 UTC refresh.
+- [x] **CFBD-4 — the substitute is now machinery, not a probe verdict.** Landed
+      2026-08-19. CFBD-1's probe learned to say "raw material in, derived file
+      missing" — but even when it says so, nothing could act on it: there was
+      no path from the classes to a rating. `scripts/lib/recruiting-talent.ts` turns
+      the trailing four classes into a roster-talent baseline on the composite's
+      exact scale (mean-of-available × 4, ≥2 classes, z × 5.5 clamped ±18 — with
+      the z pinned to the FBS pool rather than inherited from the feed, which is
+      BT-6's shape problem deliberately not reproduced). `build-preseason.ts`
+      reads `TALENT_SOURCE` (**identity default `composite`** — unset, every
+      prior build byte-reproduces): at `recruiting`, an unpublished composite
+      falls first to the class substitute (floor: 120 matched FBS teams) and
+      only then to last season's file. What ships is stamped —
+      `detail.talent_kind` on every component row, `/model` renders the
+      substitute note affirmatively (absence still reads as unknown, never
+      fresh) — and the `--check` gate treats a healthy substitute as a note,
+      not a decline, because the env var is only ever set on the tuner's
+      verdict. Probe + coverage manifest gain `recruiting/teams` (13 rows,
+      2013–2025; re-probe owed — the committed manifest predates the feed).
+- [ ] **CFBD-5 — the decision the machinery exists for.** Dispatch
+      `backtest.ts --tune-talent-source` (in `backtest.yml`'s experiment list)
+      and act on its pre-registered rule: Gate 0 identification (≥120 FBS
+      matched every scored season, median r vs the same-season composite
+      ≥ 0.85), Gate 1 non-inferiority vs the STALE arm it would replace
+      (pooled ΔNLL ≤ +0.0010, ΔMAE ≤ +0.03, wks 1–4 ΔMAE ≤ +0.05), Gate 2 the
+      same bounds on the latest era alone. Adopt = `TALENT_SOURCE=recruiting`
+      on `preseason-refresh`/`preseason-force`, so the Aug 22 self-force ships
+      a rating with the incoming class in it instead of a stale one; reject =
+      a decisions-table row and the stale fallback stands. Either way the
+      fresh composite remains first choice and the mechanism is inert the day
+      CFBD publishes. **Worth doing before Aug 22, and worthless after
+      Aug 27** — the last automatic load. · dispatch
 
 ### 2.5 The hard dates
 
@@ -1829,7 +1860,16 @@ rather than absorbed silently.*
       grid-boundary optimum, un-flatten an unidentified likelihood surface, or
       reverse a directional failure like `--tune-epa`, which degraded
       monotonically at every weight. · dispatch
-- [ ] **BT-6 — `talent` changes shape mid-window, and the floor cannot see it.**
+- [x] **BT-6 — `talent` changes shape mid-window, and the floor cannot see it.**
+      **Closed 2026-08-19 by the intersection it asked for.** `loadPriorInputs`
+      — which every talent-reading tuner now goes through, `--tune-prior` and
+      `--tune-sp-blend` having carried private copies of the same z loop until
+      today — prints the per-season count of FBS (SP+) ids that actually landed
+      a talent value, and warns loudly under 95% of the pool. No CFBD calls, no
+      manifest change: the runtime layer the coverage header always said a
+      manifest cannot replace. The table prints on every load, so no
+      talent-reading number can be recorded on the wide window without it
+      standing above the grid. Original finding kept below.
       Found while reviewing the committed manifest, 2026-08-19; not a gate
       failure, which is why it needs recording rather than fixing on the spot.
       Row counts run 232, 237, **157**, 237, 231, 219, 224, 233, 240, **134**,

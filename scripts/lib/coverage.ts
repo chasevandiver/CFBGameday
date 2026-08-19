@@ -34,7 +34,8 @@ export type FeedKey =
   | "stats/game/advanced"
   | "ratings/elo@wk1"
   | "ratings/elo@weekly"
-  | "rankings@wk1";
+  | "rankings@wk1"
+  | "recruiting/teams";
 
 export type CoverageVerdict = "OK" | "THIN" | "EMPTY" | "DENIED" | "ERROR" | "UNPROBED";
 
@@ -75,6 +76,12 @@ export const FEED_REQUIREMENTS: Record<string, FeedKey[]> = {
   "diagnose-edges": ["ratings/sp"],
   "diagnose-tiers": ["ratings/sp", "talent"],
   "tune-tier-recenter": ["ratings/sp", "talent"],
+  // The manifest attests recruiting/teams at the SEASON being entered; the
+  // trailing classes behind it (season−3…) predate the manifest's own range
+  // for the oldest seasons, so the tuner also prints a per-season matched
+  // count and its Gate 0 refuses thin coverage at runtime — the second layer
+  // this file's header says a manifest cannot replace.
+  "tune-talent-source": ["ratings/sp", "talent", "recruiting/teams"],
 };
 
 const MANIFEST_PATH = path.join(
@@ -108,6 +115,11 @@ export const FEED_FLOORS: Record<FeedKey, number> = {
   "ratings/elo@wk1": 100,
   "ratings/elo@weekly": 100,
   "rankings@wk1": 20,
+  // The feed lists ranked classes, not the FBS: some G5 classes go unranked
+  // in older years, and the trailing-4-class construction tolerates gaps
+  // (MIN_CLASSES in recruiting-talent.ts). 80 is "the join will land for the
+  // bulk of the pool", not "every team is present".
+  "recruiting/teams": 80,
 };
 
 export interface CoverageComplaint {

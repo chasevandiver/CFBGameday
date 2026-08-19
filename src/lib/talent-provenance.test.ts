@@ -1,24 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { talentProvenance } from "./talent-provenance";
 
+const fresh = { substitute: false, substituteTeams: 0 };
+
 describe("talentProvenance", () => {
   it("reports a forced build with the season it fell back to", () => {
     const rows = Array.from({ length: 138 }, () => ({
       detail: { talent_source: 2025, talent_stale: true },
     }));
-    expect(talentProvenance(rows)).toEqual({ stale: true, source: 2025, teams: 138 });
+    expect(talentProvenance(rows)).toEqual({ stale: true, source: 2025, teams: 138, ...fresh });
   });
 
   it("is silent when the build had the current talent file", () => {
     const rows = [{ detail: { talent_source: 2026, talent_stale: false } }];
-    expect(talentProvenance(rows)).toEqual({ stale: false, source: null, teams: 0 });
+    expect(talentProvenance(rows)).toEqual({ stale: false, source: null, teams: 0, ...fresh });
   });
 
   it("does not claim freshness for rows written before the stamp existed", () => {
     // The whole point: production's 2026.2.0 components carry neither field.
     // Absence must read as "unknown" and render nothing, not as "fresh".
     const rows = [{ detail: { proxies: ["ol_share=0.5"] } }, { detail: null }, { detail: 7 }];
-    expect(talentProvenance(rows)).toEqual({ stale: false, source: null, teams: 0 });
+    expect(talentProvenance(rows)).toEqual({ stale: false, source: null, teams: 0, ...fresh });
   });
 
   it("counts a partial stamp rather than rounding it to all or nothing", () => {
@@ -28,7 +30,7 @@ describe("talentProvenance", () => {
       { detail: { talent_stale: true, talent_source: 2025 } },
       { detail: { talent_stale: false, talent_source: 2026 } },
     ];
-    expect(talentProvenance(rows)).toEqual({ stale: true, source: 2025, teams: 2 });
+    expect(talentProvenance(rows)).toEqual({ stale: true, source: 2025, teams: 2, ...fresh });
   });
 
   it("treats a truthy-but-not-true stamp as unstamped", () => {
@@ -42,10 +44,30 @@ describe("talentProvenance", () => {
       stale: true,
       source: null,
       teams: 1,
+      ...fresh,
     });
   });
 
   it("is empty on no rows", () => {
-    expect(talentProvenance([])).toEqual({ stale: false, source: null, teams: 0 });
+    expect(talentProvenance([])).toEqual({ stale: false, source: null, teams: 0, ...fresh });
+  });
+
+  it("reports the recruiting-class substitute, which is current but not the composite", () => {
+    const rows = [
+      { detail: { talent_source: 2026, talent_stale: false, talent_kind: "recruiting" } },
+      { detail: { talent_source: 2026, talent_stale: false, talent_kind: "recruiting" } },
+    ];
+    expect(talentProvenance(rows)).toEqual({
+      stale: false,
+      source: null,
+      teams: 0,
+      substitute: true,
+      substituteTeams: 2,
+    });
+  });
+
+  it("does not read a composite build as a substitute", () => {
+    const rows = [{ detail: { talent_source: 2026, talent_stale: false, talent_kind: "composite" } }];
+    expect(talentProvenance(rows).substitute).toBe(false);
   });
 });

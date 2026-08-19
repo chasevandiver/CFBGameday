@@ -75,9 +75,10 @@ edit to this table.
 
 ## Decisions log
 
-Fourteen experiments, each with a decision rule fixed **before** the run. Four
-shipped; three have their rules registered and are not yet decided —
-`--tune-fcs`, `--tune-team-hfa` (both now runnable at the wide window) and the
+Fifteen experiments, each with a decision rule fixed **before** the run. Four
+shipped; four have their rules registered and are not yet decided —
+`--tune-fcs`, `--tune-team-hfa` (both now runnable at the wide window),
+`--tune-talent-source` (dispatch owed before Aug 22 — see CFBD-5) and the
 opener test (decided by in-season data, ~mid-October at the earliest).
 
 **Every row from here on carries its window label.** Rows without one were
@@ -102,6 +103,7 @@ and must say so. See "The window changed" below.
 | `--diagnose-tiers` (chain grid) | Cross-tier G5-signed edge, wks 1–4: bare chain **+7.08 (t=14.8)**; best variant (0.7·finals+0.3·talent) still **+4.81 (t=10.6)**. On the 2026 wk-1 market all six constructions land **+9.7…+10.4** — incl. α=0 (pure SP+ baseline) and FCS −25/−35. | Rejected as fixes: **no prior-chain construction moves the 2026 number.** `REPLAY_SHARE` stays 0.5 (re-tested, not re-litigated). Root cause isolated to pool-LEVEL regression, not the blend. |
 | `--tune-fcs` | **Not yet run** — the flag, the bucket rule and the pre-registered criteria landed 2026-08-13; the run is queued for after Week 0. Closest existing number: `--diagnose-tiers` scored FCS −25/−35 as two of its six constructions and **none of the six moved the 2026 cross-tier figure** (all landed +9.7…+10.4). That was a different question — pool level, not FBS-vs-FCS accuracy — so it does not settle this one, but it is the reason not to assume the spec's values are right. | Pending. Both params ship at −30 (identity), so nothing depends on the answer. Gate 0 is a two-sample \|t\| ≥ 2 between the buckets' vs-actual bias at the flat anchor; failing it ships nothing and answers Q4 **on evidence** rather than by deferral. |
 | `--tune-tier-recenter` | Market-anchored: wks 2–4 cross-tier edge (out-of-fit) **+5.41 → +0.78 (t=1.5)**; wks 1–4 bias vs actual **−6.31 (t −4.7) → −1.57 (t −1.2)**; P4vP4 +0.51 unmoved; pooled MAE **13.22 → 13.14**, NLL **0.4994 → 0.4956**; worst bucket 2.7. Static δ=4 matches on 2023–25 but under-corrects 2026 by ~6 (fits: +4.4 '24, +4.7 '25, **+10.4 '26**). | **Shipped (2026.5.0).** All four pre-registered criteria passed; market-anchored chosen over a constant because the offseason P4/G5 divergence is accelerating. |
+| `--tune-talent-source` | **Registered 2026-08-19, dispatch owed (CFBD-5).** The question is the FALLBACK, not the model: when `/talent` is unpublished, is a roster estimate from the trailing four recruiting classes (`scripts/lib/recruiting-talent.ts` — the composite's own raw material, signed by February) closer to the composite the model was tuned on than last season's stale file, which is what the Aug 22 `--force` ships today? Arena: the production-shaped chain with only the talent input differing per arm (fresh composite / stale composite / recruiting classes / none). | Pending. Rule fixed before the run: Gate 0 identification (≥120 FBS matched every scored season, median r(recruiting, same-season composite) ≥ 0.85), Gate 1 non-inferiority vs the STALE arm (pooled ΔNLL ≤ +0.0010, ΔMAE ≤ +0.03, wks 1–4 ΔMAE ≤ +0.05), Gate 2 = Gate 1 on the latest era alone. Adopt → `TALENT_SOURCE=recruiting` on the preseason jobs (identity default `composite`; fresh composite always first choice, machinery inert the day CFBD publishes). Any gate fails → stale stands, row records the number. |
 | Opener test (03:M-5) | **Registered, not yet decided.** Surface shipped 2026-08-17: Receipts grades every frozen lean opener → close (`openerClv`), 4+ bucket broken out. Backtest residual it tests: 4+ bucket **51.8%, avg CLV +0.27**, every bucket positive — real drift, all absorbed by the close. | Pending, rule fixed before any 2026 data: strategy conversation only at avg CLV vs opener ≥ **+1.0** over n ≥ 200 leans (~mid-Oct earliest); **abandon** at ≤ +0.3 by n = 200 — that replicates the backtest. Read-side only; no parameter moves on either outcome. CFBD's opener is when-posted, not a bettable price, so even a pass is evidence, not a wager. |
 
 ### Why edges are not bets
@@ -202,6 +204,52 @@ shipping it.
 ---
 
 ## Log
+
+### Aug 19 — the talent the season is waiting on gets a substitute, and a tuner to judge it
+
+The only red gate between production and 2026.5.0 is CFBD's unpublished 2026
+talent composite, and the standing answer (Q1/CFBD-3) is to ship **last
+season's** composite from Aug 22 — a rating with no incoming class in it. The
+composite is a derived file over classes signed by February, and CFBD-1's
+probe already distinguishes "raw material in, derived file missing" — but even
+when it says so, nothing can act on it. What landed today is the path from the
+classes to a rating, gated exactly like every other model change:
+
+- **`scripts/lib/recruiting-talent.ts`** — trailing four classes →
+  mean-of-available × 4 (≥2 classes required) → z × 5.5 clamped ±18, the
+  composite's exact scale. The z is pinned to the FBS pool rather than
+  inherited from the feed: `/talent` returned FBS+FCS through 2023 and
+  FBS-only after (BT-6), and the substitute does not reproduce that shape
+  problem. What it structurally cannot see is the portal — the model prices
+  that separately, and how much the residual gap costs is the tuner's question,
+  not an assumption. 8 tests.
+- **`backtest.ts --tune-talent-source`** — four arms on the production-shaped
+  chain, only the talent input differing: fresh composite, stale composite
+  (today's fallback), recruiting classes, none. Pre-registered rule in the
+  decisions table; the bar is non-inferiority against the STALE arm, because
+  that is the thing it would replace — on any day CFBD has published, the
+  composite is used and all of this is inert.
+- **BT-6 closed on the way** — every talent-reading tuner now goes through
+  `loadPriorInputs` (two private copies of the z loop deleted), which prints
+  the per-season FBS∩talent join count and warns under 95%. The runtime floor
+  the manifest could not be.
+- **`build-preseason.ts` reads `TALENT_SOURCE`** — identity default
+  `composite` reproduces every prior build byte-for-byte; `recruiting` (set
+  only on the tuner's verdict) tries the class substitute before the stale
+  file, floors it at 120 matched FBS teams, stamps `detail.talent_kind` on
+  every component row, and `/model` renders the substitute note affirmatively.
+  A healthy substitute is a `--check` note rather than a decline; a thin one
+  falls through to the stale path and says so.
+- **Coverage machinery extended** — `recruiting/teams` is a declared feed
+  (floor 80) for the new tuner, and `probe-cfbd-history.ts` probes it
+  2013–2025 counting only classes with real points. The committed manifest
+  predates the feed, so a re-probe is owed with the CFBD-5 dispatch; until it
+  lands the tuner warns rather than refuses, and its own Gate 0 counts the
+  join at runtime either way.
+
+The decision itself is **not taken here** — CFBD-5 in `docs/STATUS.md` owns
+the dispatch and the rule acts on the numbers, not on the idea sounding right.
+The idea sounding right is precisely what this table exists to check.
 
 ### Aug 19 — the load that could not tell you whether it worked
 

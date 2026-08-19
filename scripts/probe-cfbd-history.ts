@@ -22,11 +22,13 @@
  *
  * ## Cost
  *
- * 78 calls, one time: 12 seasons of SP+ (2014-2025 — 2014 is the bootstrap
- * prior for a 2015 start and is the single load-bearing row here) and 11 each
+ * 91 calls, one time: 12 seasons of SP+ (2014-2025 — 2014 is the bootstrap
+ * prior for a 2015 start and is the single load-bearing row here), 11 each
  * of talent, returning production, advanced stats, week-1 Elo, week-8 Elo and
- * week-1 rankings. Week 8 stands in for `--tune-ensemble`'s weeks 1-15;
- * probing all 165 is not worth 165 calls to learn what week 8 already says.
+ * week-1 rankings, and 13 of recruiting classes (2013-2025 — classes reach
+ * three years behind the first chained season). Week 8 stands in for
+ * `--tune-ensemble`'s weeks 1-15; probing all 165 is not worth 165 calls to
+ * learn what week 8 already says.
  *
  * That is 0.26% of a 30,000/month Tier 2 budget running at ~10,000. For scale,
  * `probe-cfbd.ts` is 17 calls and runs daily.
@@ -59,6 +61,13 @@ import {
 const SP_FROM = 2014;
 const FROM = 2015;
 const TO = 2025;
+/**
+ * Recruiting classes reach back before everything else: `--tune-talent-source`
+ * approximates the roster entering season N from the classes of N−3…N, and the
+ * first chained season of a 2015-start window is 2016 — so 2013 is the oldest
+ * class any tuner reads.
+ */
+const RECRUITING_FROM = 2013;
 
 /**
  * `count` exists because array length is only a usable measure for the FLAT,
@@ -98,6 +107,16 @@ const FEEDS: Array<{
         0,
       ),
   },
+  // The composite's raw material and the `--tune-talent-source` substitute.
+  // Counted as classes with a real points value: a row whose points are null
+  // cannot feed the roster estimate, so counting it would overstate coverage.
+  {
+    feed: "recruiting/teams",
+    from: RECRUITING_FROM,
+    call: (y) => cfbd.recruitingTeams(y),
+    count: (rows) =>
+      (rows as Array<{ points: number | null }>).filter((r) => r.points !== null).length,
+  },
 ];
 
 /**
@@ -128,7 +147,8 @@ export function coverageGrid(rows: readonly CoverageRow[], seasons: readonly num
 
 async function main() {
   const write = process.argv.includes("--write");
-  const seasons = Array.from({ length: TO - SP_FROM + 1 }, (_, i) => SP_FROM + i);
+  const earliest = Math.min(...FEEDS.map((f) => f.from));
+  const seasons = Array.from({ length: TO - earliest + 1 }, (_, i) => earliest + i);
   const rows: CoverageRow[] = [];
 
   console.log(`Probing CFBD history ${SP_FROM}-${TO} across ${FEEDS.length} feeds…\n`);

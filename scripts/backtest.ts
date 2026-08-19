@@ -19,6 +19,7 @@
  *   npx tsx scripts/backtest.ts --tune-anchors               # week-1 Elo / preseason poll anchor weights
  *   npx tsx scripts/backtest.ts --tune-prior                 # preseason carryover weight
  *   npx tsx scripts/backtest.ts --tune-sp-blend              # prior-year baseline: replay finals vs final SP+
+ *   npx tsx scripts/backtest.ts --tune-talent-source         # /talent unpublished: stale composite vs recruiting classes
  *   npx tsx scripts/backtest.ts --diagnose-edges             # THE EDGE GATE: market MAE + encompassing regression
  *   npx tsx scripts/backtest.ts --diagnose-tiers             # cross-classification level vs prior-chain construction
  *   npx tsx scripts/backtest.ts --tune-tier-recenter         # validate the week-1-anchored tier recentring patch
@@ -78,6 +79,7 @@ import {
   makeWindow,
   parseSeasonWindow,
   SeasonWindowError,
+  metricsOf,
   perEraTable,
   perSeasonTable,
   splitWindow,
@@ -368,25 +370,10 @@ export function gradeAts(
  * chained seasons (2024–2025; 2023 is the SP+ bootstrap either way).
  */
 async function tunePriorCarryover(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
-  const { cfbd } = await import("../src/lib/cfbd");
-  const { cached } = await import("./lib/replay");
-
-  // talent baseline per season, on the rating points scale (z × 5.5, clamped)
-  const talentBySeason = new Map<number, Map<number, number>>();
-  for (const season of SEASONS) {
-    const talent = await cached(`talent-${season}`, () => cfbd.talent(season), true);
-    const vals = talent.map((t) => t.talent);
-    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
-    const std = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length);
-    const map = new Map<number, number>();
-    for (const t of talent) {
-      const id = teamIdsByName.get(t.team);
-      if (id !== undefined) {
-        map.set(id, Math.max(-18, Math.min(18, ((t.talent - mean) / std) * 5.5)));
-      }
-    }
-    talentBySeason.set(season, map);
-  }
+  // talent baseline per season, on the rating points scale (z × 5.5, clamped).
+  // Was a private copy of this loop; loadPriorInputs is byte-identical on the
+  // same cache keys and also prints the BT-6 join floor.
+  const { talentBySeason } = await loadPriorInputs(teamIdsByName);
 
   console.log("carryover w   early-wk NLL   early-wk MAE   (weeks 1–4 of 2024–2025)");
   let best: { w: number; nll: number } | null = null;
@@ -427,27 +414,9 @@ async function tunePriorCarryover(seasons: SeasonData[], teamIdsByName: Map<stri
  * and scores weeks 1–4 of the chained seasons.
  */
 async function tuneSpBlend(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
-  const { cfbd } = await import("../src/lib/cfbd");
-  const { cached } = await import("./lib/replay");
-
-  const talentBySeason = new Map<number, Map<number, number>>();
-  const spFinalBySeason = new Map<number, Map<number, number>>();
-  for (const season of SEASONS) {
-    const talent = await cached(`talent-${season}`, () => cfbd.talent(season), true);
-    const vals = talent.map((t) => t.talent);
-    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
-    const std = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length);
-    const tMap = new Map<number, number>();
-    for (const t of talent) {
-      const id = teamIdsByName.get(t.team);
-      if (id !== undefined) tMap.set(id, Math.max(-18, Math.min(18, ((t.talent - mean) / std) * 5.5)));
-    }
-    talentBySeason.set(season, tMap);
-
-    // final SP+ of the season itself (used as next season's baseline input)
-    const sp = await cached(`sp-${season}`, () => cfbd.spRatings(season), true);
-    spFinalBySeason.set(season, priorsFromSp(sp, teamIdsByName));
-  }
+  // Same shared loader as every other prior-construction tuner (was a second
+  // private copy of the z-scale loop).
+  const { talentBySeason, spFinalBySeason } = await loadPriorInputs(teamIdsByName);
 
   console.log("alpha (replay share)   early-wk NLL   early-wk MAE");
   let best: { a: number; nll: number } | null = null;
@@ -478,6 +447,255 @@ async function tuneSpBlend(seasons: SeasonData[], teamIdsByName: Map<string, num
     if (!best || nll < best.nll) best = { a, nll };
   }
   if (best) console.log(`\nBest replay share: alpha=${best.a}`);
+}
+
+/**
+ * --tune-talent-source: when CFBD has not published the season's `/talent`
+ * composite, what should stand in for it — last season's composite (what
+ * `build-preseason.ts` falls back to today, and what the Aug 22 `--force`
+ * date ships), or a roster estimate built from the recruiting classes the
+ * composite is derived from (`scripts/lib/recruiting-talent.ts`)?
+ *
+ * The question is NOT "does recruiting beat the composite". On any day CFBD
+ * has published, the composite is used and this whole mechanism is inert. The
+ * question is which FALLBACK is closer to the composite the model was tuned
+ * on — so the bar is non-inferiority against the stale arm, plus an
+ * identification gate that the substitute actually tracks the thing it
+ * substitutes for.
+ *
+ * Arena: the production-shaped chain (base = 0.5×finals + 0.5×final SP+,
+ * prior = 0.7×base + 0.3×talent — the same construction `--tune-tier-recenter`
+ * and `--tune-churn` price with), replayed over the window with ONLY the
+ * talent input differing per arm. Each arm is pure: the fresh arm never falls
+ * back, the stale arm never peeks forward.
+ *
+ * Decision rule (pre-registered, fixed before the first run):
+ * recruiting replaces the stale composite as build-preseason's FIRST fallback
+ * (`TALENT_SOURCE=recruiting`; stale stays the last resort) only if —
+ *   0. identification: recruiting matches ≥ 120 of the FBS (SP+) pool in every
+ *      scored season, and the median per-season r(recruiting, same-season
+ *      composite) ≥ 0.85;
+ *   1. accuracy: recruiting-arm pooled NLL ≤ stale-arm + 0.0010, pooled MAE ≤
+ *      stale-arm + 0.03, weeks-1–4 MAE ≤ stale-arm + 0.05;
+ *   2. recency: rule 1's NLL and MAE bounds also hold on the latest era alone
+ *      (next August resembles the portal era, not 2015).
+ * Any gate failing = rejected, recorded in the decisions table like any other
+ * no, and the stale fallback stands.
+ */
+async function tuneTalentSource(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
+  const { cfbd } = await import("../src/lib/cfbd");
+  const { cached } = await import("./lib/replay");
+  const { classPointsByTeam, rosterClassPoints, scaleToTalentPoints } = await import(
+    "./lib/recruiting-talent"
+  );
+  const { tierOf } = await import("./lib/tiers");
+
+  const { talentBySeason, spFinalBySeason } = await loadPriorInputs(teamIdsByName);
+
+  // Recruiting classes for every year the trailing-4 construction reaches:
+  // three behind the first chained season through the last season replayed.
+  const lastSeason = SEASONS[SEASONS.length - 1];
+  const byYear = new Map<number, Map<string, number>>();
+  for (let y = SEASONS[1] - 3; y <= lastSeason; y++) {
+    const rows = await cached(`recruiting-${y}`, () => cfbd.recruitingTeams(y), true);
+    byYear.set(y, classPointsByTeam(rows));
+  }
+
+  // Baseline per season, z-scored over that season's FBS (SP+) pool — the
+  // population pin recruiting-talent.ts documents, and the same pool the
+  // join-floor table above counts against.
+  const recruitingBySeason = new Map<number, Map<number, number>>();
+  for (const season of SEASONS) {
+    const pool = new Set(spFinalBySeason.get(season)?.keys() ?? []);
+    recruitingBySeason.set(
+      season,
+      scaleToTalentPoints(rosterClassPoints(byYear, season), teamIdsByName, pool),
+    );
+  }
+
+  console.log("\n== --tune-talent-source ==  which fallback when /talent is unpublished?");
+  console.log(
+    "Decision rule (fixed before running): adopt recruiting as the FIRST fallback only if\n" +
+      "  gate 0: ≥120 FBS teams matched every scored season AND median r(recr, composite) ≥ 0.85;\n" +
+      "  gate 1: vs the STALE arm, pooled NLL +≤0.0010, pooled MAE +≤0.03, wks1–4 MAE +≤0.05;\n" +
+      "  gate 2: gate 1's NLL/MAE bounds again on the latest era alone.\n" +
+      "The fresh composite stays first choice either way — this decides the fallback only.\n",
+  );
+
+  // ---- Gate 0: does the substitute track the thing it substitutes for? ----
+  const confBySeason = new Map<number, Map<number, { name: string; conf: string | null }>>();
+  for (const s of seasons) {
+    const m = new Map<number, { name: string; conf: string | null }>();
+    for (const g of s.games) {
+      m.set(g.homeId, { name: g.homeTeam, conf: g.homeConference ?? null });
+      m.set(g.awayId, { name: g.awayTeam, conf: g.awayConference ?? null });
+    }
+    confBySeason.set(s.season, m);
+  }
+  const separation = (ratings: Map<number, number>, season: number): string => {
+    const teams = confBySeason.get(season);
+    if (!teams) return "–";
+    const pool: Record<"P4" | "G5", number[]> = { P4: [], G5: [] };
+    for (const [id, rating] of ratings) {
+      const t = teams.get(id);
+      if (!t) continue;
+      const tier = tierOf(t.conf, t.name, season, true);
+      if (tier === "P4" || tier === "G5") pool[tier].push(rating);
+    }
+    if (pool.P4.length === 0 || pool.G5.length === 0) return "–";
+    return (mean(pool.P4) - mean(pool.G5)).toFixed(1);
+  };
+  const corrOverPool = (
+    a: Map<number, number>,
+    b: Map<number, number>,
+    pool: Iterable<number>,
+  ): number | null => {
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (const id of pool) {
+      const x = a.get(id);
+      const y = b.get(id);
+      if (x !== undefined && y !== undefined) {
+        xs.push(x);
+        ys.push(y);
+      }
+    }
+    if (xs.length < 20) return null;
+    const mx = mean(xs);
+    const my = mean(ys);
+    let sxy = 0;
+    let sxx = 0;
+    let syy = 0;
+    for (let i = 0; i < xs.length; i++) {
+      sxy += (xs[i] - mx) * (ys[i] - my);
+      sxx += (xs[i] - mx) ** 2;
+      syy += (ys[i] - my) ** 2;
+    }
+    return sxx === 0 || syy === 0 ? null : sxy / Math.sqrt(sxx * syy);
+  };
+
+  console.log(
+    "season   FBS pool   comp joined   recr joined   r(recr,comp)   r(stale,comp)   P4−G5 comp / recr",
+  );
+  const rRecr: number[] = [];
+  let coverageOk = true;
+  for (const season of SCORED) {
+    const pool = spFinalBySeason.get(season);
+    const comp = talentBySeason.get(season);
+    const stale = talentBySeason.get(season - 1);
+    const recr = recruitingBySeason.get(season);
+    if (!pool || !comp || !recr) continue;
+    const ids = [...pool.keys()];
+    const compJoined = ids.filter((id) => comp.has(id)).length;
+    const recrJoined = ids.filter((id) => recr.has(id)).length;
+    if (recrJoined < 120) coverageOk = false;
+    const r1 = corrOverPool(recr, comp, ids);
+    if (r1 !== null) rRecr.push(r1);
+    const r2 = stale ? corrOverPool(stale, comp, ids) : null;
+    console.log(
+      `${season}     ${String(pool.size).padStart(5)}       ${String(compJoined).padStart(5)}   ` +
+        `      ${String(recrJoined).padStart(5)}         ${r1 === null ? "  –  " : r1.toFixed(3)}` +
+        `          ${r2 === null ? "  –  " : r2.toFixed(3)}         ${separation(comp, season)} / ${separation(recr, season)}`,
+    );
+  }
+  const medianR = rRecr.length
+    ? [...rRecr].sort((a, b) => a - b)[Math.floor(rRecr.length / 2)]
+    : null;
+  const gate0 = coverageOk && medianR !== null && medianR >= 0.85;
+  console.log(
+    `gate 0: coverage ${coverageOk ? "OK" : "FAILS (<120 somewhere)"}, median r(recr,comp) ` +
+      `${medianR === null ? "unmeasurable" : medianR.toFixed(3)} vs 0.85 → ${gate0 ? "PASSES" : "FAILS"}`,
+  );
+
+  // ---- Replay arms: only the talent input differs ---------------------------
+  const REPLAY_SHARE = 0.5; // --tune-sp-blend's fitted value, as production ships
+  type Arm = { label: string; talentAt: ((entering: number) => Map<number, number>) | null };
+  const arms: Arm[] = [
+    { label: "fresh composite", talentAt: (s) => talentBySeason.get(s) ?? new Map() },
+    { label: "stale composite", talentAt: (s) => talentBySeason.get(s - 1) ?? new Map() },
+    { label: "recruiting classes", talentAt: (s) => recruitingBySeason.get(s) ?? new Map() },
+    { label: "no talent (≡ 0)", talentAt: null },
+  ];
+
+  interface ArmScore {
+    label: string;
+    mae: number;
+    nll: number;
+    bias: string;
+    earlyMae: number;
+    lateEraMae: number;
+    lateEraNll: number;
+  }
+  const latest = latestEraIn(SCORED);
+  const results: ArmScore[] = [];
+  for (const arm of arms) {
+    let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
+    const all: ReplayPrediction[] = [];
+    for (const season of seasons) {
+      const { predictions, finalRatings } = replaySeason(season, priors, DEFAULT_PARAMS);
+      all.push(...predictions);
+      const entering = season.season + 1;
+      const sp = spFinalBySeason.get(season.season)!;
+      const talent = arm.talentAt?.(entering);
+      const next = new Map<number, number>();
+      for (const [teamId, rating] of finalRatings) {
+        const s = sp.get(teamId);
+        const base = s !== undefined ? REPLAY_SHARE * rating + (1 - REPLAY_SHARE) * s : rating;
+        next.set(teamId, talent ? 0.7 * base + 0.3 * (talent.get(teamId) ?? -8) : 0.7 * base);
+      }
+      priors = next;
+    }
+    const scored = scoredOnly(all);
+    const m = metricsOf(scored)!;
+    const early = scored.filter((p) => p.week <= 4);
+    const late = latest ? scored.filter((p) => latest.seasons.includes(p.season)) : [];
+    const lateM = metricsOf(late);
+    results.push({
+      label: arm.label,
+      mae: m.mae,
+      nll: m.nll,
+      bias: `${m.bias >= 0 ? "+" : ""}${m.bias.toFixed(2)}±${m.biasSe.toFixed(2)}`,
+      earlyMae: maeOf(early.map((p) => p.actualMargin - p.margin)),
+      lateEraMae: lateM?.mae ?? NaN,
+      lateEraNll: lateM?.nll ?? NaN,
+    });
+  }
+
+  console.log(
+    `\narm                     pooled MAE   pooled NLL   bias±SE        wks1–4 MAE   ${latest?.id ?? "latest"} MAE/NLL`,
+  );
+  for (const r of results) {
+    console.log(
+      `${r.label.padEnd(24)}${r.mae.toFixed(3).padStart(8)}    ${r.nll.toFixed(4).padStart(9)}   ` +
+        `${r.bias.padEnd(14)} ${r.earlyMae.toFixed(2).padStart(8)}      ${r.lateEraMae.toFixed(2)} / ${r.lateEraNll.toFixed(4)}`,
+    );
+  }
+
+  // ---- Gates 1–2 and the verdict -------------------------------------------
+  const stale = results.find((r) => r.label === "stale composite")!;
+  const recr = results.find((r) => r.label === "recruiting classes")!;
+  const gate1 =
+    recr.nll <= stale.nll + 0.001 &&
+    recr.mae <= stale.mae + 0.03 &&
+    recr.earlyMae <= stale.earlyMae + 0.05;
+  const gate2 =
+    recr.lateEraNll <= stale.lateEraNll + 0.001 && recr.lateEraMae <= stale.lateEraMae + 0.03;
+  console.log(
+    `\ngate 1 (vs stale, pooled): ΔNLL ${(recr.nll - stale.nll).toFixed(4)}, ΔMAE ` +
+      `${(recr.mae - stale.mae).toFixed(3)}, Δwks1–4 MAE ${(recr.earlyMae - stale.earlyMae).toFixed(3)} ` +
+      `→ ${gate1 ? "PASSES" : "FAILS"}`,
+  );
+  console.log(
+    `gate 2 (${latest?.id ?? "latest"} era only): ΔNLL ${(recr.lateEraNll - stale.lateEraNll).toFixed(4)}, ` +
+      `ΔMAE ${(recr.lateEraMae - stale.lateEraMae).toFixed(3)} → ${gate2 ? "PASSES" : "FAILS"}`,
+  );
+  console.log(
+    gate0 && gate1 && gate2
+      ? "\n→ ADOPT: set TALENT_SOURCE=recruiting on preseason-refresh/preseason-force (stale stays\n" +
+          "  the last resort), and record this table in the decisions log with its window label."
+      : "\n→ REJECT: the stale composite remains the only fallback. Record the failing gate in the\n" +
+          "  decisions log with its window label — a no is a result.",
+  );
 }
 
 /**
@@ -843,6 +1061,10 @@ async function tuneTierRecenter(seasons: SeasonData[], teamIdsByName: Map<string
 /**
  * Talent baselines and final SP+ per season, on the rating-points scale —
  * the two ingredients every prior-construction tuner needs.
+ *
+ * Every talent-reading tuner comes through here (tune-prior and tune-sp-blend
+ * carried private copies of the z loop until 2026-08-19), which is what makes
+ * the join-floor print below cover all of them at once.
  */
 async function loadPriorInputs(teamIdsByName: Map<string, number>) {
   const { cfbd } = await import("../src/lib/cfbd");
@@ -863,7 +1085,46 @@ async function loadPriorInputs(teamIdsByName: Map<string, number>) {
     const sp = await cached(`sp-${season}`, () => cfbd.spRatings(season), true);
     spFinalBySeason.set(season, priorsFromSp(sp, teamIdsByName));
   }
+  printTalentJoinFloor(talentBySeason, spFinalBySeason);
   return { talentBySeason, spFinalBySeason };
+}
+
+/**
+ * BT-6's runtime floor: the manifest counts the FEED, this counts the JOIN.
+ *
+ * `/talent` changed shape mid-window — FBS+FCS through 2023, FBS-only from
+ * 2024, with 2017 an outlier at 157 rows against ~235 either side — and every
+ * season still clears the manifest floor of 100, so `assertFeedCoverage`
+ * passes and keeps passing. The question that decides whether a talent-read
+ * tuner's number is honest is one level down: how many of the season's FBS
+ * ids (the SP+ population, which is what the chains price) actually landed a
+ * talent value. A per-season set intersection over data already in memory —
+ * printed on every load so no talent-reading tuner can record a number
+ * without this table above it, and loud below 95%.
+ */
+function printTalentJoinFloor(
+  talentBySeason: Map<number, Map<number, number>>,
+  spFinalBySeason: Map<number, Map<number, number>>,
+) {
+  const parts: string[] = [];
+  const thin: string[] = [];
+  for (const season of SEASONS) {
+    const pool = spFinalBySeason.get(season);
+    const talent = talentBySeason.get(season);
+    if (!pool || pool.size === 0 || !talent) continue;
+    let joined = 0;
+    for (const id of pool.keys()) if (talent.has(id)) joined++;
+    parts.push(`${season}: ${joined}/${pool.size}`);
+    if (joined < pool.size * 0.95) thin.push(`${season} (${joined}/${pool.size})`);
+  }
+  console.log(`talent joined to the FBS (SP+) pool, per season — ${parts.join("  ")}`);
+  if (thin.length > 0) {
+    console.log(
+      `!! talent join under 95% of the pool for ${thin.join(", ")} — those seasons' FBS teams ` +
+        `fall to the −8 constant in every talent-reading chain, and a pooled number over them ` +
+        `is partly fitted to that constant. Record the count next to any figure you keep.`,
+    );
+  }
 }
 
 /**
@@ -2432,6 +2693,7 @@ async function main() {
   const tuneHfaFlag = process.argv.includes("--tune-hfa");
   const tuneFcsFlag = process.argv.includes("--tune-fcs");
   const tuneTeamHfaFlag = process.argv.includes("--tune-team-hfa");
+  const tuneTalentSourceFlag = process.argv.includes("--tune-talent-source");
   // Isolation switch for the FBS-membership fix (BT-3). Admission is ON by
   // default and always should be — a frozen pool is simply wrong on any window
   // wider than the one it was frozen at. This exists so the fix can be MEASURED
@@ -2461,6 +2723,7 @@ async function main() {
       ["tune-hfa", tuneHfaFlag],
       ["tune-fcs", tuneFcsFlag],
       ["tune-team-hfa", tuneTeamHfaFlag],
+      ["tune-talent-source", tuneTalentSourceFlag],
       ["diagnose-edges", diagnose],
       ["diagnose-tiers", diagnoseTiersFlag],
       ["tune-tier-recenter", tuneTierRecenterFlag],
@@ -2543,6 +2806,10 @@ async function main() {
   }
   if (tuneSp) {
     await tuneSpBlend(seasons, teamIdsByName);
+    return;
+  }
+  if (tuneTalentSourceFlag) {
+    await tuneTalentSource(seasons, teamIdsByName);
     return;
   }
   if (diagnoseTiersFlag) {
