@@ -28,19 +28,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Same command as jobs.yml's probe-history task; the manifest bytes are
-      # printed so they can be committed by hand, exactly like that task does.
-      - name: CFBD history probe (recruiting/teams added)
+      # Run 32278070129's probe found /recruiting/teams ERROR for 2019-2023
+      # with OK either side, surviving cfbd.ts's built-in retry. Before any
+      # verdict is recorded: the actual status per year, twice, spaced out.
+      - name: Diagnose recruiting/teams 2019-2023
         run: |
-          npx tsx scripts/probe-cfbd-history.ts --write | tee probe.log
-          {
-            echo '### scripts/lib/cfbd-coverage.json'
-            echo '```json'
-            cat scripts/lib/cfbd-coverage.json
-            echo '```'
-          } | tee -a "$GITHUB_STEP_SUMMARY"
-      # Same command as backtest.yml's experiment path, default window.
-      - name: tune-talent-source
-        run: |
-          npx tsx scripts/backtest.ts --tune-talent-source | tee tune.log
-          { echo '```'; cat tune.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          set -o pipefail
+          npx tsx scripts/tmp-diagnose-recruiting.ts | tee diag.log
+          { echo '```'; cat diag.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
