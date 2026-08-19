@@ -16,6 +16,7 @@
 
 import { espn, espnCallCount, nflStoredWeek, parseEvent } from "../src/lib/espn";
 import { ESPN_SEASON_TYPE } from "../src/lib/espn";
+import { normalizeProvider } from "../src/lib/providers";
 import { SEASON, chunk, createSink } from "./lib/ingest";
 import { envDays, idleSkip } from "./lib/idle";
 import { logEspnCalls, recordJobRun } from "./lib/jobs-core";
@@ -107,7 +108,11 @@ async function run(
     .filter((g) => g.odds !== null && (g.odds.spread !== null || g.odds.total !== null))
     .map((g) => ({
       game_id: g.id,
-      provider: g.odds!.provider,
+      // Normalised here as well as in the parser, and deliberately: the
+      // invariant belongs to line_snapshots, not to whichever feed filled
+      // it, and DQ-14 got in because the split was assumed to be one
+      // writer's problem. Idempotent by construction.
+      provider: normalizeProvider(g.odds!.provider),
       source: "espn",
       spread: g.odds!.spread,
       spread_open: g.odds!.spreadOpen,

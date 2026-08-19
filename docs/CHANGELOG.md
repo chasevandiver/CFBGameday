@@ -203,6 +203,124 @@ shipping it.
 
 ## Log
 
+### Aug 19 — one book under two names, and the tracked row was wrong about the fix
+
+DQ-14 said "one book is stored under two provider names" on game 401873278, and
+prescribed normalising in the ESPN parser. Both halves were wrong, and the
+second one changed what the fix had to be.
+
+Reading `line_snapshots` instead of the one game: it is **82 games**, and
+`Draft Kings` splits **102 rows from `cfbd-backfill` against 33 from `espn`**.
+Fixing the ESPN parser alone would have left three quarters of the defect in
+place and ticked the box — CFBD emits both spellings too.
+
+So: one normaliser in `src/lib/providers.ts`, applied at all four writers of
+`line_snapshots`, with a test that fails if a writer stops using it. It matches
+on the name with casing, spacing and punctuation squashed out, so the next
+spelling of a book already here ("DRAFTKINGS", "draft-kings") lands without
+another edit. A rename list only catches the variants already observed, which is
+how this got past two audits.
+
+Why it matters at all: `consensusFromSnapshots` takes the latest row **per
+provider** and means them, so a book under two spellings is averaged against
+itself and carries double the weight of every other book. On the real shape from
+game 401762521 — the same book at −6.0 and −6.5 under two names, against one
+other book at −3.0 — the split consensus is **−5.0** and the correct one is
+**−4.5**. Still a plausible half-point, which is exactly why nobody noticed.
+
+**Regional books are deliberately not merged.** `Caesars`, `Caesars
+(Pennsylvania)` and `Caesars Sportsbook (Colorado)` look like the same defect
+and are not: their date ranges are disjoint and they co-occur on **0 of 9,496**
+games. Merging them would invent a double-count rather than remove one.
+
+Migration **0072** renames the existing rows and then dedupes. The dedupe is not
+housekeeping — 1,487 (game_id, provider, captured_at) groups hold more than one
+row once the rename collapses the spellings, and in **9 of them the rows
+disagree on the spread**. There the latest-per-provider fold picks whichever row
+came back first, so the consensus line would be nondeterministic: today's answer
+and tomorrow's could differ with no write in between. That is worse than the
+double-count it replaces. Highest `id` wins, which is the precedence an
+append-only table already implies.
+
+**And the bigger one it turned up: `consensus` is stored as if it were a book.**
+CFBD's `/lines` returns a synthetic `consensus` provider beside the individual
+books, and the archive backfill stores it like any other — so the mean averages
+a blend against its own components. **6,029 games** carry it beside a real book
+and it **changes the snapped line on 1,823 of them (30%)**, mean absolute gap
+0.768 points. Archive only; the newest such row is 2023-09-04, so no Week 0
+grading reads one. Recorded as **DQ-15** rather than fixed here, because it is a
+decision: deleting the rows would remove the **486 games where `consensus` is
+the only market**, and there is a second question behind it — `teamrankings` and
+`numberfire` are aggregators rather than sportsbooks, and whether they count as
+books is an owner's call rather than a lookup.
+
+1,646 tests (11 new). **No parameter moved.**
+
+---
+
+### Aug 19 — the coverage manifest lands, and the probe's own count was the bug
+
+`scripts/lib/cfbd-coverage.json` is now a reviewed fact rather than an empty
+placeholder: `probedAt: 2026-08-19`, 78 rows, from run `32208194660`. That flips
+`assertFeedCoverage` from a warning into a gate — a tuner whose feed is thin for
+the old end of the window now refuses to print a number instead of quietly
+scoring fewer seasons than its label claims.
+
+**The load-bearing row: `/ratings/sp` 2014 is OK at 129 rows.** A 2015 season
+seeds its priors from 2014 SP+, so the 2015–2025 default window that shipped on
+Aug 18 now rests on a measurement rather than an assumption.
+
+**Two constraints the probe found, both permanent.**
+
+| Feed | Coverage | What it costs |
+|---|---|---|
+| `ratings/elo@wk1` | thin 2015–2021 (78–96 rows vs. a floor of 100), OK 2022–2025 (131–136) | `--tune-anchors` is confined to the recent end however wide the window gets. It was one of the two near-miss re-tests; that re-test cannot be run on the wide corpus at all. |
+| `stats/game/advanced` | thin 2020 only (70 rows) | Nothing. 2020 is chain-only and unscored, so `--tune-epa` never reads it. |
+
+Checked against the real default window before committing: of the seventeen
+entries in `FEED_REQUIREMENTS`, **sixteen pass and only `--tune-anchors` is
+refused** — with an error that names its own fix (`--seasons=2021-2025`) rather
+than just stopping. `--tune-epa` passing on a window whose 2020 is thin is the
+`scored`/`all` split doing exactly what it was built for.
+
+**The first run's answer was wrong, and the shape of the wrongness is why.**
+Run `32206890515` reported `rankings@wk1` as thin for *all eleven* seasons.
+Uniformity across a decade is the signature of a broken instrument, not a
+broken feed — genuine coverage gaps vary by year. `/rankings` returns an array
+of WEEK objects with the ranked teams nested at `polls[].ranks[]`, so a
+single-week query is length 1 against a floor of 20, in every season, forever.
+The probe was counting weeks and calling them teams.
+
+Fixed by letting a feed declare *how* it is counted rather than special-casing
+this one, so the next nested payload does not repeat it silently. On the re-run
+`rankings@wk1` is OK for all eleven at 125–250 ranked teams, and **every other
+row is unchanged** — which is the check that matters: a fix that had moved other
+rows would have been a second bug.
+
+**One thing the floor cannot see, recorded as BT-6 rather than fixed here.**
+`talent` runs 232, 237, **157**, 237, 231, 219, 224, 233, 240, **134**, **134**
+for 2015→2025 — the feed looks like FBS+FCS in the older seasons and FBS-only
+from 2024, and 2017 is an outlier at 157 against ~235 either side. Every season
+clears the floor of 100, so the gate passes and will keep passing. The floor
+asks whether the join lands at all; it does not ask whether it landed for the
+same population each season, and six experiments read this feed. Settling it is
+a per-season set intersection over already-cached data and zero CFBD calls.
+
+The manifest from the first run was deliberately not committed. Freezing a wrong
+verdict into the file that gates the tuners is worse than having no file, because
+the wrong file stops warning.
+
+Also: `jobs.yml` now prints the written manifest into the run summary as well as
+uploading it. The step comment already asked for a by-hand review, and an
+artifact you have to download and unzip is a worse review surface than a diff —
+and it expires, while the run's summary does not. `tee -a`, not `>>`: sending a
+group's stdout straight at `$GITHUB_STEP_SUMMARY` writes the file and leaves the
+job log empty.
+
+**No parameter moved.** The count fix and the summary print are PR #94; the manifest itself is committed separately, since it is data the fix produced rather than part of the fix.
+
+---
+
 ### Aug 18 — the backtest window opens to 2015, and the FBS pool turns out to have been frozen
 
 **The question was whether the archive backfill could tune the model. It could

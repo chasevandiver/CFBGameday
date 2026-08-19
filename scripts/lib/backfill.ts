@@ -36,6 +36,7 @@
 
 import { cfbd, cfbdCallCount, type CfbdGame, type CfbdLine } from "../../src/lib/cfbd";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { normalizeProvider } from "../../src/lib/providers";
 import { chunk } from "./ingest";
 import { logCfbdCalls, syncRankingsFor } from "./jobs-core";
 import { resolvedWeek, weekZeroIds } from "./weeks";
@@ -288,7 +289,7 @@ export function backfillSnapshotRows(
       }
       rows.push({
         game_id: game.id,
-        provider: l.provider,
+        provider: normalizeProvider(l.provider),
         source: BACKFILL_LINE_SOURCE,
         spread: l.spread,
         spread_open: l.spreadOpen,

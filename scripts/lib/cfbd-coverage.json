@@ -1,5 +1,474 @@
 {
-  "probedAt": null,
-  "note": "Per-season CFBD auxiliary-feed coverage, 2014-2025. Produced by scripts/probe-cfbd-history.ts (npm run probe:history) and committed as a reviewed fact so scripts/lib/coverage.ts can refuse an under-covered window without spending a CFBD call. probedAt null means never probed: assertFeedCoverage warns rather than throws in that state. Games and lines are deliberately absent — BF-4 already verified those from Supabase at zero CFBD cost (docs/STATUS.md, 95-100% line coverage per season back to 2015).",
-  "rows": []
+  "probedAt": "2026-08-19",
+  "note": "Per-season CFBD auxiliary-feed coverage, 2014-2025. Produced by scripts/probe-cfbd-history.ts (npm run probe:history) and committed as a reviewed fact so scripts/lib/coverage.ts can refuse an under-covered window without spending a CFBD call. Games and lines are deliberately absent — BF-4 verified those from Supabase at zero CFBD cost.",
+  "rows": [
+    {
+      "season": 2014,
+      "feed": "ratings/sp",
+      "verdict": "OK",
+      "rows": 129
+    },
+    {
+      "season": 2015,
+      "feed": "ratings/sp",
+      "verdict": "OK",
+      "rows": 129
+    },
+    {
+      "season": 2016,
+      "feed": "ratings/sp",
+      "verdict": "OK",
+      "rows": 129
+    },
+    {
+      "season": 2017,
+      "feed": "ratings/sp",
+      "verdict": "OK",
+      "rows": 129
+    },
+    {
+      "season": 2018,
+      "feed": "ratings/sp",
+      "verdict": "OK",
+      "rows": 131
+    },
+    {
+      "season": 2019,
+      "feed": "ratings/sp",
+      "verdict": "OK",
+      "rows": 131
+    },
+    {
+      "season": 2020,
+      "feed": "ratings/sp",
+      "verdict": "OK",
+      "rows": 131
+    },
+    {
+      "season": 2021,
+      "feed": "ratings/sp",
+      "verdict": "OK",
+      "rows": 131
+    },
+    {
+      "season": 2022,
+      "feed": "ratings/sp",
+      "verdict": "OK",
+      "rows": 132
+    },
+    {
+      "season": 2023,
+      "feed": "ratings/sp",
+      "verdict": "OK",
+      "rows": 134
+    },
+    {
+      "season": 2024,
+      "feed": "ratings/sp",
+      "verdict": "OK",
+      "rows": 135
+    },
+    {
+      "season": 2025,
+      "feed": "ratings/sp",
+      "verdict": "OK",
+      "rows": 137
+    },
+    {
+      "season": 2015,
+      "feed": "talent",
+      "verdict": "OK",
+      "rows": 232
+    },
+    {
+      "season": 2016,
+      "feed": "talent",
+      "verdict": "OK",
+      "rows": 237
+    },
+    {
+      "season": 2017,
+      "feed": "talent",
+      "verdict": "OK",
+      "rows": 157
+    },
+    {
+      "season": 2018,
+      "feed": "talent",
+      "verdict": "OK",
+      "rows": 237
+    },
+    {
+      "season": 2019,
+      "feed": "talent",
+      "verdict": "OK",
+      "rows": 231
+    },
+    {
+      "season": 2020,
+      "feed": "talent",
+      "verdict": "OK",
+      "rows": 219
+    },
+    {
+      "season": 2021,
+      "feed": "talent",
+      "verdict": "OK",
+      "rows": 224
+    },
+    {
+      "season": 2022,
+      "feed": "talent",
+      "verdict": "OK",
+      "rows": 233
+    },
+    {
+      "season": 2023,
+      "feed": "talent",
+      "verdict": "OK",
+      "rows": 240
+    },
+    {
+      "season": 2024,
+      "feed": "talent",
+      "verdict": "OK",
+      "rows": 134
+    },
+    {
+      "season": 2025,
+      "feed": "talent",
+      "verdict": "OK",
+      "rows": 134
+    },
+    {
+      "season": 2015,
+      "feed": "player/returning",
+      "verdict": "OK",
+      "rows": 128
+    },
+    {
+      "season": 2016,
+      "feed": "player/returning",
+      "verdict": "OK",
+      "rows": 128
+    },
+    {
+      "season": 2017,
+      "feed": "player/returning",
+      "verdict": "OK",
+      "rows": 128
+    },
+    {
+      "season": 2018,
+      "feed": "player/returning",
+      "verdict": "OK",
+      "rows": 130
+    },
+    {
+      "season": 2019,
+      "feed": "player/returning",
+      "verdict": "OK",
+      "rows": 130
+    },
+    {
+      "season": 2020,
+      "feed": "player/returning",
+      "verdict": "OK",
+      "rows": 130
+    },
+    {
+      "season": 2021,
+      "feed": "player/returning",
+      "verdict": "OK",
+      "rows": 128
+    },
+    {
+      "season": 2022,
+      "feed": "player/returning",
+      "verdict": "OK",
+      "rows": 130
+    },
+    {
+      "season": 2023,
+      "feed": "player/returning",
+      "verdict": "OK",
+      "rows": 131
+    },
+    {
+      "season": 2024,
+      "feed": "player/returning",
+      "verdict": "OK",
+      "rows": 133
+    },
+    {
+      "season": 2025,
+      "feed": "player/returning",
+      "verdict": "OK",
+      "rows": 134
+    },
+    {
+      "season": 2015,
+      "feed": "stats/game/advanced",
+      "verdict": "OK",
+      "rows": 250
+    },
+    {
+      "season": 2016,
+      "feed": "stats/game/advanced",
+      "verdict": "OK",
+      "rows": 252
+    },
+    {
+      "season": 2017,
+      "feed": "stats/game/advanced",
+      "verdict": "OK",
+      "rows": 260
+    },
+    {
+      "season": 2018,
+      "feed": "stats/game/advanced",
+      "verdict": "OK",
+      "rows": 254
+    },
+    {
+      "season": 2019,
+      "feed": "stats/game/advanced",
+      "verdict": "OK",
+      "rows": 250
+    },
+    {
+      "season": 2020,
+      "feed": "stats/game/advanced",
+      "verdict": "THIN",
+      "rows": 70
+    },
+    {
+      "season": 2021,
+      "feed": "stats/game/advanced",
+      "verdict": "OK",
+      "rows": 254
+    },
+    {
+      "season": 2022,
+      "feed": "stats/game/advanced",
+      "verdict": "OK",
+      "rows": 366
+    },
+    {
+      "season": 2023,
+      "feed": "stats/game/advanced",
+      "verdict": "OK",
+      "rows": 340
+    },
+    {
+      "season": 2024,
+      "feed": "stats/game/advanced",
+      "verdict": "OK",
+      "rows": 366
+    },
+    {
+      "season": 2025,
+      "feed": "stats/game/advanced",
+      "verdict": "OK",
+      "rows": 382
+    },
+    {
+      "season": 2015,
+      "feed": "ratings/elo@wk1",
+      "verdict": "THIN",
+      "rows": 78
+    },
+    {
+      "season": 2016,
+      "feed": "ratings/elo@wk1",
+      "verdict": "THIN",
+      "rows": 83
+    },
+    {
+      "season": 2017,
+      "feed": "ratings/elo@wk1",
+      "verdict": "THIN",
+      "rows": 90
+    },
+    {
+      "season": 2018,
+      "feed": "ratings/elo@wk1",
+      "verdict": "THIN",
+      "rows": 88
+    },
+    {
+      "season": 2019,
+      "feed": "ratings/elo@wk1",
+      "verdict": "THIN",
+      "rows": 92
+    },
+    {
+      "season": 2020,
+      "feed": "ratings/elo@wk1",
+      "verdict": "THIN",
+      "rows": 10
+    },
+    {
+      "season": 2021,
+      "feed": "ratings/elo@wk1",
+      "verdict": "THIN",
+      "rows": 96
+    },
+    {
+      "season": 2022,
+      "feed": "ratings/elo@wk1",
+      "verdict": "OK",
+      "rows": 131
+    },
+    {
+      "season": 2023,
+      "feed": "ratings/elo@wk1",
+      "verdict": "OK",
+      "rows": 133
+    },
+    {
+      "season": 2024,
+      "feed": "ratings/elo@wk1",
+      "verdict": "OK",
+      "rows": 133
+    },
+    {
+      "season": 2025,
+      "feed": "ratings/elo@wk1",
+      "verdict": "OK",
+      "rows": 136
+    },
+    {
+      "season": 2015,
+      "feed": "ratings/elo@weekly",
+      "verdict": "OK",
+      "rows": 130
+    },
+    {
+      "season": 2016,
+      "feed": "ratings/elo@weekly",
+      "verdict": "OK",
+      "rows": 130
+    },
+    {
+      "season": 2017,
+      "feed": "ratings/elo@weekly",
+      "verdict": "OK",
+      "rows": 132
+    },
+    {
+      "season": 2018,
+      "feed": "ratings/elo@weekly",
+      "verdict": "OK",
+      "rows": 131
+    },
+    {
+      "season": 2019,
+      "feed": "ratings/elo@weekly",
+      "verdict": "OK",
+      "rows": 131
+    },
+    {
+      "season": 2020,
+      "feed": "ratings/elo@weekly",
+      "verdict": "OK",
+      "rows": 101
+    },
+    {
+      "season": 2021,
+      "feed": "ratings/elo@weekly",
+      "verdict": "OK",
+      "rows": 130
+    },
+    {
+      "season": 2022,
+      "feed": "ratings/elo@weekly",
+      "verdict": "OK",
+      "rows": 131
+    },
+    {
+      "season": 2023,
+      "feed": "ratings/elo@weekly",
+      "verdict": "OK",
+      "rows": 133
+    },
+    {
+      "season": 2024,
+      "feed": "ratings/elo@weekly",
+      "verdict": "OK",
+      "rows": 134
+    },
+    {
+      "season": 2025,
+      "feed": "ratings/elo@weekly",
+      "verdict": "OK",
+      "rows": 136
+    },
+    {
+      "season": 2015,
+      "feed": "rankings@wk1",
+      "verdict": "OK",
+      "rows": 201
+    },
+    {
+      "season": 2016,
+      "feed": "rankings@wk1",
+      "verdict": "OK",
+      "rows": 200
+    },
+    {
+      "season": 2017,
+      "feed": "rankings@wk1",
+      "verdict": "OK",
+      "rows": 200
+    },
+    {
+      "season": 2018,
+      "feed": "rankings@wk1",
+      "verdict": "OK",
+      "rows": 200
+    },
+    {
+      "season": 2019,
+      "feed": "rankings@wk1",
+      "verdict": "OK",
+      "rows": 250
+    },
+    {
+      "season": 2020,
+      "feed": "rankings@wk1",
+      "verdict": "OK",
+      "rows": 125
+    },
+    {
+      "season": 2021,
+      "feed": "rankings@wk1",
+      "verdict": "OK",
+      "rows": 225
+    },
+    {
+      "season": 2022,
+      "feed": "rankings@wk1",
+      "verdict": "OK",
+      "rows": 225
+    },
+    {
+      "season": 2023,
+      "feed": "rankings@wk1",
+      "verdict": "OK",
+      "rows": 250
+    },
+    {
+      "season": 2024,
+      "feed": "rankings@wk1",
+      "verdict": "OK",
+      "rows": 250
+    },
+    {
+      "season": 2025,
+      "feed": "rankings@wk1",
+      "verdict": "OK",
+      "rows": 250
+    }
+  ]
 }
