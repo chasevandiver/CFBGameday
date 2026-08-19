@@ -1,0 +1,52 @@
+# TEMPORARY — the BT-5 wide-window re-fits of the two prior-construction
+# parameters, dispatched by push because this session cannot dispatch
+# backtest.yml. Deleted in the commit that records the results.
+#
+# Question (owner-raised, 2026-08-19, after the SP+ comparison): is 0.70
+# scoreboard carryover too high in the portal era? Our board's deviations
+# from SP+ 2026 correlate with prior-year rating (+0.18) and not with talent
+# (+0.04), and all three stored week-1 market lines side with SP+'s
+# direction.
+#
+# Decision rule, fixed BEFORE these runs (same shape as every other tuner):
+# a changed priorRatingWeight (or REPLAY_SHARE) ships only if, at the wide
+# window, the argmin beats the incumbent by ≥ 0.003 early-week NLL, sits in
+# the grid interior, AND the E4-only run's argmin agrees within one grid
+# step (era-flip rule). Anything less is recorded as a no and 0.70 stands.
+name: tmp-prior-refit
+on:
+  push:
+    branches: [claude/cfbd-talent-alternative-model-an4s4r]
+jobs:
+  refit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: tune-prior (wide window)
+        run: |
+          set -o pipefail
+          npx tsx scripts/backtest.ts --tune-prior | tee prior-wide.log
+          { echo '### tune-prior — 2015-2025'; echo '```'; cat prior-wide.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: tune-prior (E4 only)
+        run: |
+          set -o pipefail
+          npx tsx scripts/backtest.ts --tune-prior --seasons=2023-2025 | tee prior-e4.log
+          { echo '### tune-prior — 2023-2025 (scores E4: 2024-2025)'; echo '```'; cat prior-e4.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: tune-sp-blend (wide window)
+        run: |
+          set -o pipefail
+          npx tsx scripts/backtest.ts --tune-sp-blend | tee sp-wide.log
+          { echo '### tune-sp-blend — 2015-2025'; echo '```'; cat sp-wide.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: tune-sp-blend (E4 only)
+        run: |
+          set -o pipefail
+          npx tsx scripts/backtest.ts --tune-sp-blend --seasons=2023-2025 | tee sp-e4.log
+          { echo '### tune-sp-blend — 2023-2025 (scores E4: 2024-2025)'; echo '```'; cat sp-e4.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

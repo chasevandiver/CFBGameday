@@ -375,9 +375,16 @@ async function tunePriorCarryover(seasons: SeasonData[], teamIdsByName: Map<stri
   // same cache keys and also prints the BT-6 join floor.
   const { talentBySeason } = await loadPriorInputs(teamIdsByName);
 
-  console.log("carryover w   early-wk NLL   early-wk MAE   (weeks 1–4 of 2024–2025)");
+  console.log("carryover w   early-wk NLL   early-wk MAE   (weeks 1–4 of chained seasons)");
   let best: { w: number; nll: number } | null = null;
-  for (const w of [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]) {
+  // Widened below 0.5 on 2026-08-19, before the wide-window re-run (BT-5 /
+  // the SP+-comparison question in the changelog): the hypothesis under test
+  // is that portal-era roster turnover makes scoreboard carryover decay
+  // faster, i.e. the optimum may sit LOWER than the fitted 0.7 — and a grid
+  // whose floor is 0.5 cannot distinguish "0.5 is right" from "wants less
+  // than 0.5", the boundary-pinning defect the changelog calls the most
+  // reliable diagnostic in this repo.
+  for (const w of [0.3, 0.4, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]) {
     let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
     const early: ReplayPrediction[] = [];
     for (const season of seasons) {
