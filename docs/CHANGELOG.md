@@ -76,10 +76,11 @@ edit to this table.
 
 ## Decisions log
 
-Fifteen experiments, each with a decision rule fixed **before** the run. Five
-shipped; three have their rules registered and are not yet decided —
-`--tune-fcs`, `--tune-team-hfa` (both now runnable at the wide window) and the
-opener test (decided by in-season data, ~mid-October at the earliest).
+Seventeen experiments (two of them wide-window re-fits of already-shipped
+parameters), each with a decision rule fixed **before** the run. Five shipped;
+three have their rules registered and are not yet decided — `--tune-fcs`,
+`--tune-team-hfa` (both now runnable at the wide window) and the opener test
+(decided by in-season data, ~mid-October at the earliest).
 
 **Every row from here on carries its window label.** Rows without one were
 computed on `2023-2025/warmup1`, which was the only window that existed when
@@ -104,6 +105,8 @@ and must say so. See "The window changed" below.
 | `--tune-fcs` | **Not yet run** — the flag, the bucket rule and the pre-registered criteria landed 2026-08-13; the run is queued for after Week 0. Closest existing number: `--diagnose-tiers` scored FCS −25/−35 as two of its six constructions and **none of the six moved the 2026 cross-tier figure** (all landed +9.7…+10.4). That was a different question — pool level, not FBS-vs-FCS accuracy — so it does not settle this one, but it is the reason not to assume the spec's values are right. | Pending. Both params ship at −30 (identity), so nothing depends on the answer. Gate 0 is a two-sample \|t\| ≥ 2 between the buckets' vs-actual bias at the flat anchor; failing it ships nothing and answers Q4 **on evidence** rather than by deferral. |
 | `--tune-tier-recenter` | Market-anchored: wks 2–4 cross-tier edge (out-of-fit) **+5.41 → +0.78 (t=1.5)**; wks 1–4 bias vs actual **−6.31 (t −4.7) → −1.57 (t −1.2)**; P4vP4 +0.51 unmoved; pooled MAE **13.22 → 13.14**, NLL **0.4994 → 0.4956**; worst bucket 2.7. Static δ=4 matches on 2023–25 but under-corrects 2026 by ~6 (fits: +4.4 '24, +4.7 '25, **+10.4 '26**). | **Shipped (2026.5.0).** All four pre-registered criteria passed; market-anchored chosen over a constant because the offseason P4/G5 divergence is accelerating. |
 | `--tune-talent-source` `2015-2025/warmup1/covid-chain` | **All three pre-registered gates pass** (run 32278795011, 2026-08-19). Gate 0: full FBS coverage every scored season (128–136 of pool) and **median r(recruiting, same-season composite) = 0.942** vs a bar of 0.85 (per-season 0.899–0.979). Arms on the production-shaped chain, pooled over 9 scored seasons: fresh composite MAE 13.221 / NLL 0.4905, **stale composite 13.229 / 0.4907** (today's Aug 22 fallback), **recruiting classes 13.162 / 0.4891**, no-talent 13.292 / 0.4931. Gate 1 vs stale: ΔNLL **−0.0017**, ΔMAE **−0.067**, wks 1–4 ΔMAE **−0.175** (bars were ≤ +0.001/+0.03/+0.05 — it cleared them by improving, not by staying close). Gate 2 (E4 era alone): ΔNLL −0.0013, ΔMAE −0.037. | **Shipped as the fallback.** `TALENT_SOURCE=recruiting` on every preseason build task in `jobs.yml`; the fresh composite stays first choice, the stale file drops to last resort, and the mechanism is inert the day CFBD publishes. **One observation deliberately not acted on:** the recruiting arm also beat the FRESH composite (MAE −0.059, NLL −0.0014 — comparable to shipped changes for scale). That is a different question with a different rule, and this experiment's rule only governs the fallback; replacing the composite outright would need its own pre-registered row. |
+| `--tune-prior` re-fit `2015-2025/warmup1/covid-chain` + `2023-2025/warmup1/covid-chain` (E4) | Owner hypothesis, 2026-08-19: 0.70 scoreboard carryover is too high in the portal era — raised after the SP+ comparison (our board deviates from SP+ 2026 along prior-year rating, corr +0.18, not talent, +0.04; all three stored week-1 market lines sided with SP+'s direction). Grid widened to 0.30 **before** the run so a low optimum could not pin at the old 0.5 floor. Wide window (n=2794 early games): NLL **monotone worse as carryover falls** — 0.30 → 0.4306/14.78, 0.50 → 0.4179/14.35, **0.70 → 0.4117/14.10**, argmin 0.80 → 0.4110 (grid EDGE, Δ vs 0.70 only 0.0007 against a 0.003 bar). E4-only (n=616): interior argmin 0.65 at 0.3798 with 0.70 at 0.3801 — Δ 0.0003, noise. Era-flip: wide argmin 0.80 vs E4 argmin 0.65, three grid steps apart. | **Rejected — 0.70 stands, and the hypothesis is refuted in the direction it was posed.** Lower carryover is worse everywhere, at every step, in both windows; the pooled data mildly wants MORE (but at an edge, under the bar, and era-flipped, so nothing ships). The board's lean toward proven 2025 results over talent is the model earning early-week points, not a bug. The deviations from SP+ remain honest disagreements — graded from week 1 by the frozen receipts and CLV. |
+| `--tune-sp-blend` re-fit `2015-2025/warmup1/covid-chain` + `2023-2025/warmup1/covid-chain` (E4) | α = 0.5 is the argmin at BOTH windows: wide 0.4095 (vs 0.4106 pure SP+, 0.4121 pure replay), E4 0.3793. Interior, eras agree exactly. | **Confirmed — `REPLAY_SHARE` stays 0.5**, now re-earned on eleven seasons instead of carried from three. Notably α=0 (leaning fully on SP+'s opponent-adjusted final) is worse than the 50/50, which is more independent evidence against regressing harder toward SP+-style inputs. |
 | Opener test (03:M-5) | **Registered, not yet decided.** Surface shipped 2026-08-17: Receipts grades every frozen lean opener → close (`openerClv`), 4+ bucket broken out. Backtest residual it tests: 4+ bucket **51.8%, avg CLV +0.27**, every bucket positive — real drift, all absorbed by the close. | Pending, rule fixed before any 2026 data: strategy conversation only at avg CLV vs opener ≥ **+1.0** over n ≥ 200 leans (~mid-Oct earliest); **abandon** at ≤ +0.3 by n = 200 — that replicates the backtest. Read-side only; no parameter moves on either outcome. CFBD's opener is when-posted, not a bettable price, so even a pass is evidence, not a wager. |
 
 ### Why edges are not bets
@@ -204,6 +207,40 @@ shipping it.
 ---
 
 ## Log
+
+### Aug 19 — "too much 2025 in the number?" — asked properly, and answered no
+
+The owner compared the live top 25 to SP+ 2026 and raised the right kind of
+objection: Texas Tech at #1 (SP+: #8, AP: #12) looks like over-weighting last
+season. The pattern is real and measurable — across all 138 teams the boards
+correlate 0.926, but our gap vs SP+ correlates +0.18 with prior-year rating
+and only +0.04 with talent, and every big divergence fits it (higher than SP+:
+Utah/Vanderbilt/Iowa/Arizona, all high-prev low-talent; lower: LSU/Michigan/
+Florida/Alabama, the reverse). The three stored week-1 market lines all sided
+with SP+'s direction. That is a legitimate hypothesis: portal-era roster
+turnover should make scoreboard carryover decay faster.
+
+So it went to the tuners rather than to a debate, with the rule fixed first
+(ship only on ≥0.003 early-week NLL over the incumbent, interior argmin, E4
+agreement within one grid step) and `--tune-prior`'s grid widened to 0.30
+BEFORE the run so "wants less than 0.5" could not hide at an edge. Run
+32288545303, both windows:
+
+**Lower carryover is monotonically worse.** Every step down from 0.70 costs
+early-week accuracy at the wide window (0.50 costs 0.0062 NLL / 0.25 MAE;
+0.30 costs 0.019 / 0.68), and the E4-only run agrees in shape with a flat
+interior around 0.65–0.70 (Δ 0.0003 — noise). The pooled argmin actually sits
+at 0.80 — the top edge, under the bar, and era-flipped vs E4's 0.65, so
+nothing ships in either direction. `--tune-sp-blend` re-earned α = 0.5 exactly
+at both windows, with pure-SP+ (α=0) worse — independent evidence against
+regressing harder toward SP+-style inputs.
+
+Verdict recorded in the decisions table: **0.70 stands, twice-earned.** The
+model believing breakout seasons more than SP+ does is where its early-week
+accuracy comes from, not a defect. Whether that survives contact with 2026 is
+exactly what the week-1 frozen receipts and CLV grade — the honest arbiter the
+product was built around. Both temp run scaffolds deleted; the widened grid
+stays, with its reason in the code.
 
 ### Aug 19 — the talent the season is waiting on gets a substitute, and a tuner to judge it
 
