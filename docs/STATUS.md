@@ -793,7 +793,7 @@ deliberate deferrals, each recorded below with what it would take.
       providers 12 → 11, and total rows 33,470 → 31,891 — **exactly the 1,579
       the dry count predicted**, which is the check that the delete hit what it
       was aimed at and nothing else.
-- [ ] **DQ-15 — CFBD's `consensus` is stored as if it were a book.** Found
+- [x] **DQ-15 — CFBD's `consensus` is stored as if it were a book.** Found
       2026-08-19 while fixing DQ-14, by reading the provider table instead of
       the one game. `/lines` returns a synthetic `consensus` provider alongside
       the individual books and `backfillSnapshotRows` stores it like any other,
