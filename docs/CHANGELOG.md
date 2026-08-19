@@ -203,6 +203,74 @@ shipping it.
 
 ## Log
 
+### Aug 19 — DQ-15 decided: an aggregate is not a book, and the fix nearly deleted three lines
+
+CFBD's `/lines` returns a synthetic `consensus` provider **alongside** the
+individual books, and the archive backfill stored it like any other. Every
+consensus site takes the latest snapshot per provider and means them, so a blend
+was being averaged with its own components — DQ-14's double-count under a
+different name and about seventy times the reach.
+
+**The rule: books when there are books, the aggregate alone when there are
+none.** An aggregate is a bad thing to average *with* a book and a perfectly
+good thing to use *instead* of one.
+
+The fallback is the design rather than a safety net. **486 games have
+`consensus` and nothing else**, and 2015–2018 has no per-book coverage in this
+table at all — the only providers there are `consensus`, `teamrankings` and
+`numberfire`. Deleting the aggregate would not have corrected those games, it
+would have deleted their market and taken the early seasons of the puzzle
+archive with them.
+
+**`teamrankings` and `numberfire` count as books**, deliberately. They are
+aggregator sites rather than sportsbooks, so the case for excluding them is
+real — and refused for one decisive reason: they are the only market for
+2015–2018. There is no version of that change that improves a single line.
+
+**Landed in all three implementations at once** (migration 0074):
+`consensusFromSnapshots`, the `line_consensus` view, and `make_pick`.
+`consensus.ts` says the SQL "mirrors" it, and that is an obligation rather than
+a note — its own header records the phantom CLV a half-point rounding mismatch
+between them already caused. A test pins the migration's aggregate list against
+`AGGREGATE_PROVIDERS` so they cannot drift.
+
+#### Verifying the fix caught a regression inside it
+
+The first cut filtered whole rows: drop the aggregate whenever any book is
+present. Checking the view against the rule — rather than trusting that it did
+what it said — turned up **three archive games where `consensus` posts a spread
+and no total, while teamrankings and numberfire post a total and no spread**.
+Row-level, "a book exists" was true, the aggregate was dropped, and the only
+spread those games had became **null**. The fix was deleting lines.
+
+The rule is now **per market**: a book that only hangs a total says nothing about
+who is quoting the spread. `make_pick` needed no change, since it already selects
+one market and filters its nulls before the rule applies.
+
+#### Numbers
+
+| | |
+|---|---|
+| games with a line | 9,496 |
+| carrying `consensus` | 6,515 |
+| carrying it beside a real book | 6,029 |
+| **games whose spread moved** | **1,813** (30.1%) |
+| mean shift where it moved | **0.850 pts** |
+| consensus-only games preserved by the fallback | 486 |
+
+Applied live and verified against an independently written per-market rule: **0
+disagreements on spread, 0 on total** across 9,497 games, and the three broken
+games no longer among the movers.
+
+**Inert against live play.** The newest `consensus` row is 2023-09-04 — it exists
+only in the archive BF-4 backfilled. No 2026 game has one, so `make_pick` and the
+slate compute exactly what they computed yesterday. What changes is the puzzle
+archive and anything reading a historical line.
+
+1,658 tests. **No parameter moved.**
+
+---
+
 ### Aug 19 — a healthy handoff that looked exactly like a dead job
 
 `scoreboard-loop` had thirteen rows in `job_runs` reading `status = 'running'`

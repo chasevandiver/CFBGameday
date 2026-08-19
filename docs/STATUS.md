@@ -814,6 +814,38 @@ deliberate deferrals, each recorded below with what it would take.
       aggregators rather than sportsbooks, and whether they count as books is
       the owner's call, not a lookup. Both feed the puzzle archive
       (Guess the Lines grades against `openingSpread`). · **S** · decision
+      **Decided and shipped 2026-08-19. The rule is: books when there are
+      books, the aggregate alone when there are none.** An aggregate is a bad
+      thing to average WITH a book and a perfectly good thing to use INSTEAD of
+      one, and that fallback is the design rather than a safety net — it is what
+      keeps the 486 consensus-only games and the whole of 2015–2018, which has
+      no per-book coverage in this table at all.
+      **`teamrankings` and `numberfire` count as books**, deliberately. The case
+      for calling them aggregates is real — they are aggregator sites, not
+      sportsbooks — and it is refused for one decisive reason: they are the only
+      market for 2015–2018, so excluding them could not improve a single line,
+      only route those seasons through the fallback or empty them.
+      Landed in **all three implementations at once** (migration **0074**):
+      `consensusFromSnapshots`, the `line_consensus` view and `make_pick`.
+      `consensus.ts` says the SQL mirrors it, and that is an obligation rather
+      than a note — its own header records the phantom-CLV bug a half-point
+      rounding mismatch between them already caused. A test pins the migration's
+      aggregate list against `AGGREGATE_PROVIDERS` so they cannot drift.
+      **Verifying it caught a regression in the fix itself.** The first cut
+      filtered whole rows: drop the aggregate whenever any book is present.
+      Three archive games have `consensus` posting a spread and no total while
+      teamrankings and numberfire post a total and no spread — row-level, "a
+      book exists" was true, the aggregate was dropped, and **the only spread
+      those games had became null**. The fix was deleting lines. The rule is now
+      per market: a book that only hangs a total says nothing about who is
+      quoting the spread. `make_pick` needed no such change, since it already
+      selects one market and filters its nulls first.
+      Applied live and verified against an independently written per-market
+      rule: **0 disagreements on spread, 0 on total** across 9,497 games, and
+      **1,813 games' spread moved** by a mean 0.850 points — the predicted
+      number exactly, with the three broken games no longer among them. Inert
+      against live play: the newest `consensus` row is 2023-09-04, so no 2026
+      game has one.
 
 ### 2.1g Owner report, 2026-08-18 — a survivor pick had no receipt (PR #88)
 
