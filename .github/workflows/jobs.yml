@@ -656,6 +656,22 @@ jobs:
           name: cfbd-coverage
           path: scripts/lib/cfbd-coverage.json
           if-no-files-found: warn
+      # ...and print it, because an artifact you have to download is a worse
+      # review surface than a diff. The manifest is committed by hand, so the
+      # bytes have to reach a human somehow; the summary puts them one click
+      # from the run and keeps them after the artifact's retention lapses.
+      # `tee`, not a plain redirect: sending the group's stdout to the summary
+      # file alone leaves the job log empty, which is how the last step that did
+      # this produced a green run nobody could read.
+      - name: Print coverage manifest
+        if: ${{ always() && steps.task.outputs.task == 'probe-history' }}
+        run: |
+          {
+            echo '### scripts/lib/cfbd-coverage.json'
+            echo '```json'
+            cat scripts/lib/cfbd-coverage.json
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
       # The raw board, kept whether the run passed or failed — a STALE verdict
       # is precisely when you want the samples, and the window it saw cannot be
       # replayed (/scoreboard has no year/week parameter).
