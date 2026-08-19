@@ -203,6 +203,69 @@ shipping it.
 
 ## Log
 
+### Aug 19 — the load that could not tell you whether it worked
+
+`load-preseason.ts` upserts rows and prints `Done: N rows loaded`. It never
+reads the database back. So the job is green whenever the writes did not error,
+and **a green run that loaded the wrong thing looks exactly like one that
+worked** — the same shape as OPS-4 earlier tonight, where a healthy handoff and
+a dead process wrote the same `job_runs` row.
+
+That matters on a date. The Q1 escalation fires **Aug 22 at 11:00 UTC,
+unattended**, and it is the first time the build → load path will ever have
+completed for 2026. `docs/STATUS.md` says of the checkpoint four days later:
+*"Do not let this get decided by silence."* Until now the only thing standing
+between a silent bad load and Week 0 was someone reading a calendar and running
+queries by hand, twice.
+
+So `verify-preseason` asserts the post-load invariants — a full board, one
+`model_version` matching the code, `team_hfa` and `preseason_components` in step
+with it, `talent_stale` all-or-nothing, the halves reconstructing the overall,
+and the chain intact. Chained onto every load so a bad load fails its own run,
+and dispatchable. Reached only when a load actually ran, so it cannot go red on
+the days the readiness gate is correctly saying "not yet".
+
+**Against production right now it says the two true things** — better validation
+than the unit tests:
+
+```
+::error:: model_version is 2026.2.0, code ships 2026.5.0 — the load did not take
+::error:: team_hfa carries 70 distinct blended_hfa values; teamHfaBlend is 0,
+          so a current build has exactly 1 — these rows are from an older build
+```
+
+Both clear on Aug 22 if the escalation works, and stay red if it does not. The
+`team_hfa` one is the sharp check: that table is derived at build time, so it is
+exactly the thing that can go stale while the ratings beside it look new.
+
+#### Two bugs in the checker, both found by running it rather than trusting it
+
+The halves check used a `1e-6` tolerance and flagged **64 of 138** rows.
+`build-preseason` asserts the halves sum to within `1e-9` *before* rounding and
+then stores all three columns at two decimals — so overall −3.15 with offense
+−1.58 stores defense −1.58 and the sum is −3.16. The tolerance was measuring the
+storage format, not the arithmetic. Now 0.011: two roundings of up to 0.005.
+
+The chain check compared each team against last season's board — of which this
+project has **zero rows**. The comparison set was empty, so the check passed for
+every team while testing nothing. That is `--tune-team-hfa`'s Gate 0 defect
+again, three weeks and one subsystem apart: an absent measurement reported as
+evidence of absence. It is now a **notice rather than a failure** — loud about
+being unevaluable, and not a reason to turn a good load red, which is the
+cry-wolf pattern `jobs.yml` warns about in three separate places.
+
+Also corrected: STATUS said the FBS-admission fix stopped production "pricing
+Jacksonville State, Sam Houston, Kennesaw State, Missouri State and Delaware at
+−30". Read against the live board, those five sit at **−3.15 to −13.90** and the
+whole floor is −24.52. What is true is that all five carry `final_prev_rating`
+**null** — no chain term at all, a thinner basis rather than a broken number.
+The −30 came from the replay and was carried to production without being read
+there.
+
+1,682 tests (14 new). **No parameter moved.**
+
+---
+
 ### Aug 19 — the quality floor, computed: a focus ring that only worked at night
 
 The Aug 21 item asks for a light-mode pass with contrast "computed, never

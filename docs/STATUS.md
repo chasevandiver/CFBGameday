@@ -1263,6 +1263,33 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       **Still needs a human:** the real-device pass at 375px. Nothing here was
       seen rendered — it is all computed from the stylesheet and the source, and
       that is the half a machine can do.
+- [x] **OPS-19 — `verify-preseason`: read back what the load actually wrote.**
+      Built 2026-08-19. `load-preseason.ts` upserts rows and prints
+      `Done: N rows loaded`; it never reads the database back, so a run is green
+      whenever the writes did not error and **a green run that loaded the wrong
+      thing is indistinguishable from one that worked** — the same shape as
+      OPS-4. Until now the only thing between a silent bad load and Week 0 was
+      someone reading this file's calendar and running queries by hand, twice.
+      Chained onto every load (so a bad load fails its own run) and dispatchable
+      at position 3. It is reached only when a load actually ran — a declined
+      refresh exits 0 above it — so it cannot go red on the days the gate is
+      correctly saying "not yet".
+      **Against production right now it says the two true things**, which is the
+      validation that matters more than the unit tests: `model_version is
+      2026.2.0, code ships 2026.5.0 — the load did not take`, and `team_hfa
+      carries 70 distinct blended_hfa values; teamHfaBlend is 0, so a current
+      build has exactly 1 — these rows are from an older build`. Both clear on
+      Aug 22 if the escalation works, and stay red if it does not.
+      **Two bugs in it, both found by running it against production rather than
+      trusting it.** The halves check used a 1e-6 tolerance and flagged **64 of
+      138** rows: the build asserts the halves sum before rounding and then
+      stores all three columns at two decimals, so the tolerance was measuring
+      the storage format rather than the arithmetic (now 0.011). And the chain
+      check compared against last season's board — of which this project has
+      **zero** rows — so it silently passed for every team. That is
+      `--tune-team-hfa`'s Gate 0 defect again: an absent measurement reported as
+      evidence of absence. It is now a **notice, not a failure**: loud about
+      being unevaluable, and not a reason to turn a good load red.
 - [ ] **Aug 22** — 🔴 **The Q1 escalation fires**, 11:00 UTC, unattended:
       `preseason-refresh` stops declining and loads the best build available.
       **Verify the same day** — `ratings` at 2026.5.0 for 138 teams, `/ratings`
@@ -1704,6 +1731,22 @@ rather than absorbed silently.*
       Missouri State and Delaware instead of pricing them at −30. Landed
       2026-08-18, before the Aug 22 `--force` switch, so `preseason-refresh`
       picks it up on its own well inside the Aug 27 window.
+      **Corrected 2026-08-19 — "instead of pricing them at −30" was wrong about
+      production, and the real effect is smaller and sharper.** Read against the
+      live 2026.2.0 board rather than reasoned from the replay bug: those five
+      sit at **−3.15 to −13.90**, not −30, and the whole board's floor is
+      −24.52. What is actually true is that all five carry
+      `final_prev_rating` **null** in `preseason_components` — the chain has no
+      prior-season rating for them, so their number rests entirely on talent,
+      churn and luck with no carry-over term, a thinner basis than every other
+      team rather than a broken one.
+      That makes the fix's effect **testable**: after the 2026.5.0 build those
+      five should carry a real `final_prev_rating`. `verify-preseason` asserts
+      exactly that, so "did Track B reach production" stops being a claim and
+      becomes a check. The −30 figure came from the replay, where the frozen
+      pool really did flatten a mid-window entrant, and was carried across to
+      production without being read there — the same mistake as DQ-14 and OPS-4,
+      three rows apart.
 - [x] **BT-1 — the history probe ran, 2026-08-19** (run `32206890515`, 78 calls).
       **The load-bearing row came back OK: `/ratings/sp` 2014 has 129 rows, so a
       2015 window start is seedable** and the default window stands. SP+ is OK
