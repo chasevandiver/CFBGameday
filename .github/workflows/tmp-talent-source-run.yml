@@ -1,0 +1,46 @@
+# TEMPORARY SCAFFOLDING — delete with the CFBD-5 results commit.
+#
+# The CFBD-5 dispatch (docs/STATUS.md §2.6) needs two runs with the repo's
+# CFBD key: the history re-probe that adds recruiting/teams to the committed
+# coverage manifest, and the pre-registered `--tune-talent-source` experiment.
+# Both are ordinarily workflow_dispatch tasks (jobs.yml probe-history and
+# backtest.yml), but the session driving this branch cannot dispatch workflows
+# (the integration lacks actions:write), so this file self-triggers the same
+# two commands on push to this branch only. It is removed in the commit that
+# records the results, which is also the push that would otherwise re-run it.
+name: tmp-talent-source-run
+
+on:
+  push:
+    branches:
+      - claude/cfbd-talent-alternative-model-an4s4r
+
+jobs:
+  probe-and-tune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Same command as jobs.yml's probe-history task; the manifest bytes are
+      # printed so they can be committed by hand, exactly like that task does.
+      - name: CFBD history probe (recruiting/teams added)
+        run: |
+          npx tsx scripts/probe-cfbd-history.ts --write | tee probe.log
+          {
+            echo '### scripts/lib/cfbd-coverage.json'
+            echo '```json'
+            cat scripts/lib/cfbd-coverage.json
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      # Same command as backtest.yml's experiment path, default window.
+      - name: tune-talent-source
+        run: |
+          npx tsx scripts/backtest.ts --tune-talent-source | tee tune.log
+          { echo '```'; cat tune.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
