@@ -162,6 +162,14 @@ async function main() {
       } catch (error) {
         outcome = { error };
       }
+      // Pacing, learned the expensive way: run 32278070129 fired all 91 calls
+      // back-to-back and CFBD returned transient errors for five consecutive
+      // recruiting years near the end of the burst — errors that outlived
+      // cfbd.ts's single retry and would have been committed as ERROR verdicts
+      // gating every tuner that reads the feed. The same five years answered OK
+      // twice each when paced (run 32278431303). A quarter second between calls
+      // costs ~23s per probe and keeps a rate-limit blip out of the manifest.
+      await new Promise((r) => setTimeout(r, 250));
       const classified = classifyProbe(outcome);
       rows.push({
         season: year,
