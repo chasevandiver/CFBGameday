@@ -43,7 +43,7 @@
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { cfbd, cfbdCallCount } from "../src/lib/cfbd";
+import { cfbd, cfbdCallCount, type CfbdRankingWeek } from "../src/lib/cfbd";
 import { createServiceClient } from "../src/lib/supabase/service";
 import { logCfbdCalls } from "./lib/jobs-core";
 import { classifyProbe } from "./lib/probe";
@@ -60,14 +60,44 @@ const SP_FROM = 2014;
 const FROM = 2015;
 const TO = 2025;
 
-const FEEDS: Array<{ feed: FeedKey; from: number; call: (year: number) => Promise<unknown[]> }> = [
+/**
+ * `count` exists because array length is only a usable measure for the FLAT,
+ * one-row-per-team payloads. The first real run of this probe reported
+ * `rankings@wk1` as "thin" for all eleven seasons, which is the signature of a
+ * broken measurement rather than a coverage gap — genuine gaps vary by year.
+ * `/rankings` returns an array of WEEK objects, so a single-week query is
+ * length 1 against a floor of 20, forever, in every season. The ranked teams
+ * are nested two levels down at `polls[].ranks[]`.
+ *
+ * Left as a per-feed function rather than a special case, because the next
+ * nested payload someone adds would repeat the bug silently: a feed now has to
+ * say how it is counted, not just what floor it clears.
+ */
+const FEEDS: Array<{
+  feed: FeedKey;
+  from: number;
+  call: (year: number) => Promise<unknown[]>;
+  count?: (rows: unknown[]) => number;
+}> = [
   { feed: "ratings/sp", from: SP_FROM, call: (y) => cfbd.spRatings(y) },
   { feed: "talent", from: FROM, call: (y) => cfbd.talent(y) },
   { feed: "player/returning", from: FROM, call: (y) => cfbd.returningProduction(y) },
+  // Week 1 keeps the response small at the same one-call cost. The verdict
+  // therefore describes WEEK 1, not the season — which is why 2020 reads thin
+  // (a COVID-delayed opening weekend), not because the season lacks PPA.
   { feed: "stats/game/advanced", from: FROM, call: (y) => cfbd.advancedGameStats(y, { week: 1 }) },
   { feed: "ratings/elo@wk1", from: FROM, call: (y) => cfbd.eloRatings(y, 1) },
   { feed: "ratings/elo@weekly", from: FROM, call: (y) => cfbd.eloRatings(y, 8) },
-  { feed: "rankings@wk1", from: FROM, call: (y) => cfbd.rankings(y, { week: 1 }) },
+  {
+    feed: "rankings@wk1",
+    from: FROM,
+    call: (y) => cfbd.rankings(y, { week: 1 }),
+    count: (rows) =>
+      (rows as CfbdRankingWeek[]).reduce(
+        (n, w) => n + (w.polls ?? []).reduce((m, p) => m + (p.ranks ?? []).length, 0),
+        0,
+      ),
+  },
 ];
 
 /**
@@ -103,11 +133,12 @@ async function main() {
 
   console.log(`Probing CFBD history ${SP_FROM}-${TO} across ${FEEDS.length} feeds…\n`);
 
-  for (const { feed, from, call } of FEEDS) {
+  for (const { feed, from, call, count } of FEEDS) {
     for (let year = from; year <= TO; year++) {
       let outcome: { rows: number } | { error: unknown };
       try {
-        outcome = { rows: (await call(year)).length };
+        const rows = await call(year);
+        outcome = { rows: count ? count(rows) : rows.length };
       } catch (error) {
         outcome = { error };
       }
