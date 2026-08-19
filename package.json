@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "typecheck": "next typegen && tsc --noEmit",
     "backtest": "tsx scripts/backtest.ts",
     "brand": "tsx scripts/build-brand-assets.ts",
     "db:test": "bash scripts/db-test.sh",

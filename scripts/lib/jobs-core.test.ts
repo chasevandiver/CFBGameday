@@ -456,7 +456,7 @@ describe("recordJobRun and the cancelled-run hole (OPS-4)", () => {
     // one hole should not open another.
     const { db } = fakeDb();
     const before = process.listenerCount("SIGTERM");
-    for (let i = 0; i < 5; i++) await recordJobRun(db, "j", async () => null);
+    for (let i = 0; i < 5; i++) await recordJobRun(db, "j", async () => ({}));
     expect(process.listenerCount("SIGTERM")).toBe(before);
   });
 
@@ -469,7 +469,7 @@ describe("recordJobRun and the cancelled-run hole (OPS-4)", () => {
         // The handler settles the row; the job body would be killed here for
         // real, so what matters is the row, not this promise.
         await new Promise((r) => setTimeout(r, 5));
-        return null;
+        return {};
       });
       await run;
       expect(updates[0].status).toBe("canceled");
@@ -487,7 +487,7 @@ describe("recordJobRun and the cancelled-run hole (OPS-4)", () => {
       await recordJobRun(db, "j", async () => {
         process.emit("SIGTERM");
         await new Promise((r) => setTimeout(r, 5));
-        return null;
+        return {};
       });
       expect(updates).toHaveLength(1);
     } finally {
