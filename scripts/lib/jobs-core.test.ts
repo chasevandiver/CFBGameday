@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { CfbdScoreboardGame } from "../../src/lib/cfbd";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
-import { closingConsensus, detectCoverFlips, freezableGames, SNAPSHOT_COLS, SCOREBOARD_COLS, scoreboardPatch, watchdogVerdict, type ScoreboardRow } from "./jobs-core";
+import { closingConsensus, detectCoverFlips, freezableGames, recordJobRun, SNAPSHOT_COLS, SCOREBOARD_COLS, scoreboardPatch, watchdogVerdict, type ScoreboardRow } from "./jobs-core";
 
 describe("SNAPSHOT_COLS", () => {
   it("selects spread_open, which the opener silently falls back without", () => {
@@ -416,5 +416,82 @@ describe("detectCoverFlips — bad beats and backdoor covers (audit 10/G9)", () 
 
   it("a game seen for the first time has no previous score to compare", () => {
     expect(detectCoverFlips({ home_points: null, away_points: null }, late(), lines)).toEqual([]);
+  });
+});
+
+describe("recordJobRun and the cancelled-run hole (OPS-4)", () => {
+  /**
+   * The hourly scoreboard loops overlap by design and the workflow's
+   * concurrency group cancels the old one, so the process is signalled and
+   * neither the ok nor the error branch ever runs. Thirteen rows had piled up
+   * reading `running` with a null `finished_at` — a healthy handoff shaped
+   * exactly like a job that died.
+   */
+  const fakeDb = () => {
+    const updates: Record<string, unknown>[] = [];
+    const db = {
+      from: () => ({
+        insert: () => ({ select: () => ({ single: async () => ({ data: { id: 7 } }) }) }),
+        update: (patch: Record<string, unknown>) => ({
+          eq: async () => {
+            updates.push(patch);
+          },
+        }),
+      }),
+    } as unknown as Parameters<typeof recordJobRun>[0];
+    return { db, updates };
+  };
+
+  it("records a normal run as ok", async () => {
+    const { db, updates } = fakeDb();
+    await recordJobRun(db, "j", async () => ({ ticks: 1 }));
+    expect(updates).toHaveLength(1);
+    expect(updates[0].status).toBe("ok");
+    expect(updates[0].finished_at).toBeTruthy();
+  });
+
+  it("does not leak a signal listener per call", async () => {
+    // A long-lived process calls this more than once. Leaking a pair each time
+    // eventually trips Node's MaxListenersExceeded warning, and the fix for
+    // one hole should not open another.
+    const { db } = fakeDb();
+    const before = process.listenerCount("SIGTERM");
+    for (let i = 0; i < 5; i++) await recordJobRun(db, "j", async () => ({}));
+    expect(process.listenerCount("SIGTERM")).toBe(before);
+  });
+
+  it("writes `canceled` when the runner signals it, instead of leaving `running`", async () => {
+    const { db, updates } = fakeDb();
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    try {
+      const run = recordJobRun(db, "scoreboard-loop", async () => {
+        process.emit("SIGTERM");
+        // The handler settles the row; the job body would be killed here for
+        // real, so what matters is the row, not this promise.
+        await new Promise((r) => setTimeout(r, 5));
+        return {};
+      });
+      await run;
+      expect(updates[0].status).toBe("canceled");
+      expect(updates[0].finished_at).toBeTruthy();
+      expect(updates[0].error).toContain("SIGTERM");
+    } finally {
+      exit.mockRestore();
+    }
+  });
+
+  it("never writes twice, so a signal racing a normal finish cannot double-report", async () => {
+    const { db, updates } = fakeDb();
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    try {
+      await recordJobRun(db, "j", async () => {
+        process.emit("SIGTERM");
+        await new Promise((r) => setTimeout(r, 5));
+        return {};
+      });
+      expect(updates).toHaveLength(1);
+    } finally {
+      exit.mockRestore();
+    }
   });
 });

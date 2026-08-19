@@ -203,6 +203,64 @@ shipping it.
 
 ## Log
 
+### Aug 19 — a healthy handoff that looked exactly like a dead job
+
+`scoreboard-loop` had thirteen rows in `job_runs` reading `status = 'running'`
+with a null `finished_at`. OPS-4 guessed the cause — the hourly cron overlapping
+a 63-minute loop, GitHub cancelling the older run — and the guess was right.
+It was also confirmable from `job_runs` alone; the Actions list the row said to
+check was never needed.
+
+A run is stuck **exactly when the next one starts before it ends**: 03:50 stuck
+/ 04:39 ok, 10:17 stuck / 11:15 ok, and the 20:31 → 21:28 → 22:30 chain all
+stuck with 23:28 ok. `jobs.yml` sets `concurrency: cancel-in-progress: true`,
+commented "the hourly scoreboard loops overlap by design; the new run replaces
+the old". So the cancellation is the design working, and one healthy handoff per
+hour of live football was writing a row shaped like a job that died.
+
+**The tracked mechanism was wrong, and the correction moved the fix.** OPS-4
+called it "a hole in the thing that is supposed to notice holes" because the
+watchdog reads `job_runs`. It does — but `watchdogJob`'s `lastOkAgeH` filters
+`.eq("status", "ok")`, so a stuck `running` row was never counted as a success
+and never blinded it. The watchdog was fine throughout.
+
+The real blind spot was **`/admin`**. Its freshness card takes the latest run per
+job and calls anything that is not `error` healthy, so a cancelled row rendered
+green — and so would a loop that had genuinely crashed, in the one place someone
+would look.
+
+Both halves fixed:
+
+- `recordJobRun` traps SIGINT/SIGTERM and writes `canceled`. Recording it when
+  it happens beats sweeping stale rows later, and it leaves a lingering
+  `running` row meaning something real: killed hard enough that even the handler
+  did not land.
+- The card shows a `running` row older than three hours as **"never finished"**
+  in amber. Three hours because the longest job is the ~63-minute loop; a run
+  inside that window is left alone, since asserting it is dead is the same
+  mistake in the other direction.
+
+**The database caught a bug that would otherwise have shipped silently.**
+`job_runs_status_check` was `IN ('running','ok','error')` and refused
+`canceled` — the migration failed on its first attempt, which is the only
+reason anyone found out. `recordJobRun`'s `finish` swallows write errors *on
+purpose* ("observability must never break the thing it observes"), so the
+constraint violation would have been caught and dropped, the row would have
+stayed `running`, and the fix would have looked shipped while doing nothing at
+all. Migration **0073** widens the constraint and settles the thirteen rows, and
+**must be applied before the deploy** — it is inert against the running code,
+which is what makes that ordering safe.
+
+`finished_at` stays null on the settled rows. Setting it to `started_at` would
+claim a zero-second run and `started_at + 63 minutes` would be a guess wearing a
+timestamp; nobody observed these finish, and that is what a null says — the rule
+`backfillSnapshotRows` already applies to a line with no kickoff.
+
+Applied live and verified: scoreboard-loop reads **15 `ok` / 13 `canceled` / 0
+stuck**. 1,650 tests (4 new). **No parameter moved.**
+
+---
+
 ### Aug 19 — one book under two names, and the tracked row was wrong about the fix
 
 DQ-14 said "one book is stored under two provider names" on game 401873278, and

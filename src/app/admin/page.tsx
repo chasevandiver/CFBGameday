@@ -140,6 +140,13 @@ export default async function AdminPage() {
     freeze: 8 * 24,
     "scoreboard-loop": 8 * 24,
   };
+  // OPS-4. `recordJobRun` now writes `canceled` when the runner signals it, so
+  // a row still reading `running` long after it started means the process was
+  // killed hard enough not to get a word in. Anything not `error` used to
+  // render green, which meant a dead loop showed as healthy here — the one
+  // place someone would look. The longest job is the ~63-minute scoreboard
+  // loop, so three hours is unambiguous rather than tuned.
+  const STALE_RUNNING_H = 3;
   type RunRow = { job: string; started_at: string; status: string; error: string | null };
   const latestRun = new Map<string, RunRow>();
   for (const r of (runRows ?? []) as RunRow[]) {
@@ -159,9 +166,11 @@ export default async function AdminPage() {
         state:
           r.status === "error"
             ? ("error" as const)
-            : horizon !== undefined && ageH > horizon
-              ? ("overdue" as const)
-              : ("ok" as const),
+            : r.status === "running" && ageH > STALE_RUNNING_H
+              ? ("stale" as const)
+              : horizon !== undefined && ageH > horizon
+                ? ("overdue" as const)
+                : ("ok" as const),
       };
     })
     .sort((a, b) => a.job.localeCompare(b.job));
@@ -368,7 +377,8 @@ export default async function AdminPage() {
           <h2 className="mb-1 text-sm text-accent">Jobs</h2>
           <p className="mb-3 text-xs text-chalk/60">
             Last run per scheduled job. Red is a failed run; amber means the job hasn&rsquo;t run
-            inside its expected cadence — the failure mode that never sends an error anywhere.
+            inside its expected cadence, or started and never finished — the two failure modes
+            that never send an error anywhere.
           </p>
           {jobHealth.length === 0 ? (
             <p className="text-xs text-dim">
@@ -383,13 +393,19 @@ export default async function AdminPage() {
                     className={
                       j.state === "error"
                         ? "text-loss"
-                        : j.state === "overdue"
+                        : j.state === "overdue" || j.state === "stale"
                           ? "text-edge"
                           : "text-chalk/40"
                     }
                     title={j.error ?? undefined}
                   >
-                    {j.state === "error" ? "failed · " : j.state === "overdue" ? "overdue · " : ""}
+                    {j.state === "error"
+                      ? "failed · "
+                      : j.state === "stale"
+                        ? "never finished · "
+                        : j.state === "overdue"
+                          ? "overdue · "
+                          : ""}
                     {j.ageH < 1
                       ? `${Math.max(1, Math.round(j.ageH * 60))}m ago`
                       : j.ageH < 48

@@ -61,7 +61,7 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **1,316 tests across 98 files**, all green in-session 2026-08-18 along with `tsc` and lint, and `next build` compiles clean — run after the SURV-1…SURV-4 batch in §2.1g. The DB suite was **not** re-run for that batch and did not need to be: it changes no migration, no RPC and no policy, and `supabase/tests/survivor.sql`'s 27 assertions cover rules the UI now merely reports. *(The one `tsc` complaint, `LayoutProps` in `src/app/layout.tsx`, is Next's generated route types being absent until a build has run — it is not a source error and `next build` passes.)* Previously: **975 tests across 71 files**, all green in-session 2026-08-15 along with `tsc`, lint and `next build`, after the owner-report batch in §2.1e and the AUTH-2 proxy change. **257 DB assertions** against a real Postgres 16 cluster, 0 failed — 27 of them new in `supabase/tests/survivor.sql`, and three of those were rewritten after they passed for the wrong reason (the `raises` helper accepts any error, and the seed was refusing the pick on start-week rather than on the rule under test). Previously: **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
+| **Build** | **1,316 tests across 98 files**, all green in-session 2026-08-18 along with `tsc` and lint, and `next build` compiles clean — run after the SURV-1…SURV-4 batch in §2.1g. The DB suite was **not** re-run for that batch and did not need to be: it changes no migration, no RPC and no policy, and `supabase/tests/survivor.sql`'s 27 assertions cover rules the UI now merely reports. *(**Superseded 2026-08-19.** This said the one `tsc` complaint, `LayoutProps` in `src/app/layout.tsx`, was Next's generated route types being absent until a build has run. True, and it made a bare `tsc --noEmit` look permanently dirty — so a REAL type error hid in the noise and reached a Vercel deploy on 08-19 after `npm test` and `npm run lint` both passed. `npx next typegen` generates those types in about a second without a build, and the check is now **`npm run typecheck`** (`next typegen && tsc --noEmit`), which is clean. Run it before pushing; CI has always run both steps and would have caught it, but not before a red deploy.)* Previously: **975 tests across 71 files**, all green in-session 2026-08-15 along with `tsc`, lint and `next build`, after the owner-report batch in §2.1e and the AUTH-2 proxy change. **257 DB assertions** against a real Postgres 16 cluster, 0 failed — 27 of them new in `supabase/tests/survivor.sql`, and three of those were rewritten after they passed for the wrong reason (the `raises` helper accepts any error, and the seed was refusing the pick on start-week rather than on the rule under test). Previously: **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
 | **Scheduler** | 111 completed runs. Reds to date: one watchdog firing correctly on a cold `job_runs` table, and runs #107–109 — the backup verification sequence, each a real defect, all closed. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
@@ -711,7 +711,7 @@ deliberate deferrals, each recorded below with what it would take.
       either a `jobs → nfl-grade` dispatch or the daily cron's first run; a
       direct `update` was attempted and blocked by the sandbox classifier.
 
-- [ ] **OPS-4 — six `scoreboard-loop` runs are stuck at `running`.** 08-14
+- [x] **OPS-4 — six `scoreboard-loop` runs are stuck at `running`.** 08-14
       20:18, 21:13, 22:09 and 08-15 02:59, 03:50, 04:39 all have `status
       'running'` and a null `finished_at`; the two that completed (23:10, 01:43)
       are the ones that had live games. A run that dies without writing its
@@ -721,6 +721,41 @@ deliberate deferrals, each recorded below with what it would take.
       First suspect is the hourly cron overlapping a `--minutes 63` loop and
       GitHub cancelling the older run, which would leave the row exactly like
       this. Not yet confirmed; the Actions run list will say. · **S**
+      **Fixed 2026-08-19. The suspect was right and it was confirmable from
+      `job_runs` alone** — the Actions list was never needed. A run is stuck
+      exactly when the next one starts before it ends: 03:50 stuck / 04:39 ok,
+      10:17 stuck / 11:15 ok, 20:31 → 21:28 → 22:30 all stuck with 23:28 ok.
+      `jobs.yml` sets `concurrency: cancel-in-progress: true` with the comment
+      "the hourly scoreboard loops overlap by design; the new run replaces the
+      old". So it is a *healthy handoff* writing a row shaped exactly like a job
+      that died — one per hour of live football, growing with the season, and it
+      was **13** by today rather than six.
+      **The stated mechanism was wrong, and it mattered.** The watchdog is not
+      blinded: `watchdogJob`'s `lastOkAgeH` filters `.eq("status", "ok")`, so a
+      stuck `running` row was never counted as a success. It was fine
+      throughout. **`/admin` was the real blind spot** — the freshness card
+      takes the latest run per job and calls anything not `error` healthy, so a
+      cancelled row rendered green *and so would a loop that had genuinely
+      crashed*, in the one place someone would look.
+      Both halves fixed. `recordJobRun` traps SIGINT/SIGTERM and writes
+      `canceled`, so the record is made when it happens rather than swept up
+      later — and a row still reading `running` recovers its meaning: killed
+      hard enough that even the handler did not land. The card shows a
+      `running` row older than three hours as **"never finished"** in amber.
+      **The database caught a bug that would have shipped silently.**
+      `job_runs_status_check` was `IN ('running','ok','error')` and refused
+      `canceled`. `recordJobRun`'s `finish` swallows write errors on purpose —
+      "observability must never break the thing it observes" — so the violation
+      would have been caught and dropped, the row would have stayed `running`,
+      and the fix would have looked shipped while doing nothing. Migration
+      **0073** widens the constraint and settles the 13 rows; **it has to be
+      applied before the deploy**, and it is inert against the running code,
+      which is what makes that safe. Applied live 2026-08-19 and verified:
+      scoreboard-loop now reads 15 `ok` / 13 `canceled` / 0 stuck.
+      `finished_at` is deliberately left null on the settled rows — nobody
+      observed them finish, and a fabricated timestamp is worse than a missing
+      one (the rule `backfillSnapshotRows` already applies to a line with no
+      kickoff).
 
 - [x] **DQ-14 — one book is stored under two provider names.** Game 401873278
       carries `DraftKings` and `Draft Kings` in `line_snapshots`, so
@@ -751,7 +786,13 @@ deliberate deferrals, each recorded below with what it would take.
       rows disagree on the spread** — there the latest-per-provider fold would
       pick whichever row came back first, making the consensus line
       nondeterministic, which is worse than the double-count it replaces.
-      **Not yet applied to the live project.**
+      **Applied live 2026-08-19** as `provider_names`, after the deploy carrying
+      the normaliser so no un-normalised writer was still running. Verified
+      after: `Draft Kings` **0 rows** (was 135), duplicate
+      (game_id, provider, captured_at) groups **0** (was 1,523), distinct
+      providers 12 → 11, and total rows 33,470 → 31,891 — **exactly the 1,579
+      the dry count predicted**, which is the check that the delete hit what it
+      was aimed at and nothing else.
 - [ ] **DQ-15 — CFBD's `consensus` is stored as if it were a book.** Found
       2026-08-19 while fixing DQ-14, by reading the provider table instead of
       the one game. `/lines` returns a synthetic `consensus` provider alongside
