@@ -975,6 +975,19 @@ One sitting, ~2 h. Each is a doc edit, not a code change.
       here sits at an identity default. Either way it gets a decisions-table
       row. Caveat: `replaySeason` never calls `churnAdjustment`; read how
       `tuneChurn` builds its evaluation before trusting a number from it. · 1 h
+      **Amended 2026-08-18 (BT-2).** The wide window helps this more than the
+      game count suggests: churn enters only in the between-season prior chain,
+      so its effective n is chain transitions × teams — two transitions before,
+      nine now. Three things now print with the grid, all pre-registered: the
+      **NLL range across the whole grid** (at 2023–25 it was ~0.0004 across
+      everything, the signature of an *unidentified* parameter rather than a
+      noisy one — if that range does not shrink at 4.5× the transitions, the
+      honest answer is 0 and it is 0 permanently); the **per-era argmin**, since
+      returning production means something structurally different pre-portal and
+      post-one-time-transfer; and the recency rule. The other caveat stands and
+      is now the binding one: `netPortalPoints` measures headcount rather than
+      talent (04:DQ-12), so a bigger sample fits the same broken input more
+      precisely.
 - [ ] **`--tune-fcs` — registered, deliberately not run.** The flag, the bucket
       rule and the four pre-registered criteria landed 2026-08-13; both params
       sit at −30 so nothing depends on the answer. **Dispatch after Week 0**,
@@ -985,6 +998,16 @@ One sitting, ~2 h. Each is a doc edit, not a code change.
       Either way it gets a decisions-table row with the number. Caveat written
       into the tuner: the fit window is 1–2 prior seasons where production gets
       3, closable with two CFBD calls for 2021–22. · dispatch
+      **Residual closed 2026-08-18, and not the way it was written.** The
+      widening to 2015–2025 (BT-2) gives the bucket rule up to nine prior
+      seasons rather than two, so the "two CFBD calls for 2021–22" patch is
+      moot. It also turned up something the row could not have known: bucket
+      membership was built from **one season's** FBS list applied to the whole
+      window, so a team promoted mid-window counted as an FCS buy game
+      forever — this tuner would have answered its own question confidently
+      using games that are not buy games (BT-3). Fixed before the run, not
+      after it. Dispatch now takes `--seasons`, and the run must carry its
+      window label.
 - [ ] **Dispatch `observe-scoreboard` over the Aug 29 openers.** The probe
       proved `/scoreboard` **answers**; nothing yet proves it **moves**. A feed
       that renames a status string produces zero writes, `{live_or_final: 0}`
@@ -1495,10 +1518,141 @@ Two items remain open; the closed ones are kept for the record.
 - [ ] **07:OPS-16** Snapshot coarsening job — 2027, explicitly not now
 
 **Model, in-season (all tuner work, none of it accuracy-chasing)**
+
+*BT-1…BT-5 — the backtest window, 2026-08-18. Owner asked whether the 2015–22
+archive backfill could tune the model. It could not directly — the backfill
+writes to Supabase and the tuner reads CFBD into `.backtest-cache/`, two corpora
+with nothing between them — but it answered the question that had kept the
+window at three seasons for free: line coverage is 95–100% per season back to
+2015, not the 55–70% assumed. Owner then chose, against two rules this file
+states for itself: land the runs now rather than after Week 0, and make
+2015–2025 the default rather than an opt-in flag. Both are recorded as decisions
+rather than absorbed silently.*
+
+- [x] **BT-2 — the window is a parsed value, default 2015–2025**, 2026-08-18.
+      `scripts/lib/window.ts`; `--seasons=2023-2025` reaches the old reference
+      window and reproduces its split exactly (pinned by test). 2015 is the
+      SP+-seeded warm-up, **2020 is chain-only** — replayed so the chain into
+      2021 does not step across a two-year gap the chain has no term for, scored
+      by nothing, because empty stadiums collapse HFA league-wide and the
+      Pac-12 played no non-conference games. Nine scored seasons where there
+      were two. All tuners now score `SCORED`; four of them
+      (`--tune`, `--tune-hfa`, `--tune-epa`, `--tune-sigma`) previously pooled
+      every loaded season including the bootstrap. No parameter moved.
+- [x] **BT-3 — the FBS pool was frozen for the whole window**, 2026-08-18, found
+      while checking whether the window was really just a constant. It is not.
+      `replaySeason` decided FBS membership by `priors.has(teamId)`; `priors`
+      was seeded once and `chainPriors` carries exactly the key set it is given,
+      so **any team promoted to FBS mid-window was priced at the flat FCS anchor
+      (−30) for every game it ever played, with no error anywhere.** Over
+      2023–25 that is three schools and went unnoticed for the life of the
+      backtest; from 2015 it is roughly ten, concentrated in the FBS-vs-FCS
+      slice `--tune-fcs` fits on. Fixed by `admitNewFbs`, applied **inside**
+      `replaySeason` rather than in each of the dozen caller chain loops —
+      eleven of twelve fixed is worse than none, because the twelfth produces a
+      number that looks comparable and is not. Retirement is gated on feed
+      health so a thin SP+ year cannot mass-relegate the league.
+      `fcsMarginsVsFbs` now accepts a per-season membership lookup.
+      Generalised into the changelog's methodology findings, which is where the
+      transferable part lives.
+      **Measured, and it is not a small number.** `--no-admit` reproduces the
+      frozen pool as its own control, so the fix is compared against its own
+      absence on an identical sample rather than against a report from before
+      the widening (which also scored a different set of seasons — that
+      comparison suggested a cross-tier regression and was an artefact of the
+      sample change, which is exactly why it was isolated instead of acted on).
+      Same window, same scored set: **MAE 13.22 → 12.93, NLL 0.5051 → 0.4861**,
+      bias unmoved, every season improving ~0.29, cross-tier unchanged at 0.57
+      SE. The tier recentre shipped on MAE −0.08 / NLL −0.0038; this is five
+      times that NLL gain.
+      **Now live in production's path too**: `build-preseason.ts` and
+      `diagnose-tiers-2026.ts` pass `withSp`, so the pool the 2026 ratings are
+      built from admits Jacksonville State, Sam Houston, Kennesaw State,
+      Missouri State and Delaware instead of pricing them at −30. Landed
+      2026-08-18, before the Aug 22 `--force` switch, so `preseason-refresh`
+      picks it up on its own well inside the Aug 27 window.
+- [ ] **BT-1 — dispatch the CFBD history probe.** `npm run probe:history`
+      (`scripts/probe-cfbd-history.ts`), 78 calls one time, 0.26% of the monthly
+      budget. Per-season row counts for SP+, talent, returning production, PPA,
+      Elo and polls, 2014–2025, written to `scripts/lib/cfbd-coverage.json` and
+      committed as a reviewed fact so `assertFeedCoverage` can refuse an
+      under-covered window in CI without a key. **The load-bearing row is 2014
+      SP+** — it is the bootstrap prior for a 2015 start, and without it the
+      window starts wherever SP+ does. Until this runs the manifest reads
+      `probedAt: null` and every affected tuner warns rather than refusing.
+      Games and lines are deliberately not probed: BF-4 answered that from
+      Supabase for nothing. **Schedule 08-19–21 or 09-01+, never 08-22/26/27/28**
+      — those are the `preseason-refresh` escalation, checkpoint and freeze
+      days, and nothing here may compete with getting production off 2026.2.0. · dispatch
+- [x] **BT-4 — the restatement is paid, and paid continuously**, 2026-08-18.
+      Runs `32186646908` and `32187035313`. The table is in
+      `docs/CHANGELOG.md`; the headline is that on an identical 2,629-game
+      basis the code change is MAE 13.25 → 12.96, and at the wide window the
+      edge gate returns **b₁ = −0.043 (t = −1.46)** against +0.035 (t = 0.83)
+      at n = 7,639. Rather than a one-off table, `backtest.yml` now runs the
+      reference window beside the default on **every model PR**, so the
+      comparison cannot go stale — a changelog entry is true the day it is
+      written and drifts after. Marked as transition scaffolding and pinned by
+      a test, so it is deleted on purpose once the docs are reconciled.
+      **Two findings fell out of it.** The market's own MAE is
+      window-dependent (11.98 vs 12.24), which is why the leak detector's bar
+      had to stop being a constant. And 2020's chain-only row came in at bias
+      **−1.98 ± 0.73**, the most negative of eleven seasons — the pre-registered
+      prediction for an empty-stadium season, so the exclusion machinery has a
+      free integrity check and it passed.
+      *(As written this morning: "Making 2015–2025 the default means every figure
+      in CHANGELOG and STATUS predating 2026-08-18 was computed on a different
+      corpus… Owed: one run at each window, side by side, in its own commit…
+      Until it lands, no wide-window number should be compared to a recorded
+      one." That was right about the debt and wrong about the instrument — it
+      assumed a one-off table, and a table someone has to keep true is the same
+      shape of defect as a comment that describes code it has drifted from.)*
+- [ ] **BT-5 — the wide-window runs, in this order.** Each carries its window
+      label and gets a decisions-table row either way: `--tune-team-hfa` (the
+      headline unlock — see 02:M-05 below), `--tune-fcs` (its own residual now
+      closed), `--diagnose-edges` at n ≈ 10k, then the near-miss re-tests
+      (`--tune-anchors` failed by 0.0004 against a 0.003 bar) with the original
+      bars restated first and unchanged, then Q8 `--tune-churn` last. Honest
+      expectations are written into each tuner: more data cannot move a
+      grid-boundary optimum, un-flatten an unidentified likelihood surface, or
+      reverse a directional failure like `--tune-epa`, which degraded
+      monotonically at every weight. · dispatch
 - [ ] **02:M-04** `--production-chain` replay mode: measure backtest↔production
       prior drift · M · first in-season week
-- [ ] **02:M-05 / 03:M-1v** Team-HFA replay validation with a pre-registered
-      rule (else set blend 0) · M
+- [x] **02:M-05 / 03:M-1v — answered 2026-08-18, and the answer is 0.**
+      The standing rule ("else set blend 0") fired on evidence. Gate 0 is an
+      identification test run before any accuracy number exists: split-half
+      correlation of raw per-team HFA across disjoint prior seasons, odd vs
+      even, 2020 excluded from both. **r = −0.196 over n = 134 teams** — not
+      merely under the 0.30 bar but *negative*, so a team's home edge over one
+      set of years is slightly anti-correlated with its own edge over the other.
+      The accuracy grid agrees monotonically (MAE 13.374 → 13.429 and NLL
+      0.4957 → 0.4978 as the blend goes 0 → 1), so flat wins on every axis and
+      the shipped 0.5 was costing MAE 0.012 / NLL 0.0006 for nothing.
+      `teamHfaBlend` is now 0, which also retires audit 03:M-1 outright:
+      `centeredBlendedHfa` was a mitigation for an inflated per-team table, and
+      at blend 0 it returns `baseHfa` for every team.
+      **The gate had to be fixed before it could answer.** Its first run
+      evaluated at the FIRST scored season, which has one prior year — split
+      odd/even that is one half and nothing, and it printed "r = n/a over n = 0
+      teams" under the heading GATE 0 FAILS. An absent measurement reported as
+      evidence of absence would have closed this row on nothing. It now runs at
+      the last scored season and distinguishes "cannot be measured" from
+      "measured and failed", pinned by a test.
+      **Unblocked 2026-08-18 — the recorded blocker was wrong.** `ratings.ts`
+      said "the tuner for it can only run once CFBD publishes 2026 data", which
+      is true only if the validation means *scoring the 2026 `team_hfa` table*.
+      It does not: `teamHfaBlend` is a model parameter and the point-in-time
+      question — build each team's HFA from seasons **before** S, price S with
+      it, score S — needs prior seasons, which BT-2 just supplied. Five
+      independently scored seasons are available today with no 2026 data at all.
+      `--tune-team-hfa` landed with the pre-registered rules; **Gate 0 is a
+      split-half correlation (identification), not an accuracy bar**, because a
+      home edge that does not reproduce against itself on disjoint samples
+      cannot be rescued by any MAE number. Dispatch after the coverage probe.
+      Note for whoever runs it: `replaySeason` priced at a flat `baseHfa` until
+      today, which is exactly why 03:M-1's ~+1.9 inflation was invisible to
+      every calibration report — `hfaByTeam` closes that gap.
 - [ ] **02:M-13 / 03:M-4** Real per-team tempo + `--tune-tempo` · M
 - [ ] **03:M-6/M-7/M-8b/M-9a** Decay-knot grid, heteroscedastic σ, smooth cap,
       rest/travel tuner · S each

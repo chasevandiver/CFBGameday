@@ -54,7 +54,29 @@ on:
           # Also on the Sunday 15:00 UTC cron. Only copy of
           # predictions/picks/bets outside the 7-day PITR window.
           - backup
-          # SECOND, and not because it runs often — it runs once. GitHub's
+          # SECOND, and it is here for reachability, not for topic. Grouping it
+          # next to `cfbd-probe` — which is what it is *about* — put it at
+          # position 22, and this list has now twice proved that its back half
+          # cannot be reached: `backup` at 14 was undiscoverable, and a job at
+          # 34 could not be started by the only person meant to start it. A
+          # dispatch-only job nobody can find is a job that does not exist.
+          # Keep it near the top until the manifest is committed; re-sorting it
+          # tidily by subject re-creates the same problem a third time.
+          #
+          # It also earns the slot under this list's actual rule (safe to run by
+          # mistake): read-only against CFBD and the database alike — it writes
+          # a JSON file in the runner and one api_call_log meter row, nothing
+          # else. A stray tap costs 78 CFBD calls and changes no product data.
+          #
+          # What it answers: for each SEASON, does the feed carry enough rows to
+          # fit anything on? A different question from `cfbd-probe`, which asks
+          # what the KEY grants — access does not vary by year and data does.
+          # Writes scripts/lib/cfbd-coverage.json, which the backtest reads to
+          # refuse a window it cannot cover. The load-bearing row is 2014 SP+:
+          # it is the bootstrap prior for a 2015 start, so if it is empty the
+          # default window has to begin later.
+          - probe-history
+          # THIRD, and not because it runs often — it runs once. GitHub's
           # mobile dispatch form renders about TWELVE options and then stops,
           # so this list's back half is unreachable from a phone. At position
           # 34 this job could not be started by the person who needs to start
@@ -520,6 +542,7 @@ jobs:
             # Handled by its own step below, so that a preseason refresh which
             # declines (and exits 0 on purpose) can never skip it.
             cfbd-probe) echo "access probe runs in the CFBD access probe step" ;;
+            probe-history) echo "coverage probe runs in the CFBD history probe step" ;;
             # Dispatch this over a kickoff. 70 min fits inside the 75-min job
             # timeout with room for npm ci. Goes RED on STALE/UNKNOWN_STATUS —
             # the two states where the live layer is broken and every other
@@ -617,6 +640,22 @@ jobs:
       - name: CFBD access probe
         if: ${{ always() && (steps.task.outputs.task == 'preseason-refresh' || steps.task.outputs.task == 'cfbd-probe') }}
         run: npx tsx scripts/probe-cfbd.ts
+      # The coverage probe, dispatch-only and deliberately NOT chained to
+      # preseason-refresh: 78 calls is cheap once and wasteful daily, and a
+      # completed season's coverage does not change. `--write` updates the
+      # committed manifest; the diff is the deliverable and has to be reviewed
+      # and committed by hand, because it is what turns assertFeedCoverage from
+      # a warning into a gate.
+      - name: CFBD history probe
+        if: ${{ always() && steps.task.outputs.task == 'probe-history' }}
+        run: npx tsx scripts/probe-cfbd-history.ts --write
+      - name: Upload coverage manifest
+        if: ${{ always() && steps.task.outputs.task == 'probe-history' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfbd-coverage
+          path: scripts/lib/cfbd-coverage.json
+          if-no-files-found: warn
       # The raw board, kept whether the run passed or failed — a STALE verdict
       # is precisely when you want the samples, and the window it saw cannot be
       # replayed (/scoreboard has no year/week parameter).

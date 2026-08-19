@@ -1,0 +1,5 @@
+{
+  "probedAt": null,
+  "note": "Per-season CFBD auxiliary-feed coverage, 2014-2025. Produced by scripts/probe-cfbd-history.ts (npm run probe:history) and committed as a reviewed fact so scripts/lib/coverage.ts can refuse an under-covered window without spending a CFBD call. probedAt null means never probed: assertFeedCoverage warns rather than throws in that state. Games and lines are deliberately absent — BF-4 already verified those from Supabase at zero CFBD cost (docs/STATUS.md, 95-100% line coverage per season back to 2015).",
+  "rows": []
+}

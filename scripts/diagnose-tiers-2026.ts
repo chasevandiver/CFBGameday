@@ -84,7 +84,10 @@ async function main() {
 
   // ---- data ---------------------------------------------------------------
   const seasons: SeasonData[] = [];
-  for (const s of REPLAY_SEASONS) seasons.push(await loadSeason(s, true));
+  // Same FBS-membership fix as build-preseason (BT-3): this diagnostic
+  // replicates that build deliberately, so it has to replicate the pool too or
+  // its numbers stop describing the thing it is diagnosing.
+  for (const s of REPLAY_SEASONS) seasons.push(await loadSeason(s, true, { withSp: true }));
   const idsByName = teamIdsByNameFrom(seasons);
 
   const spBySeason = new Map<number, Map<number, number>>();

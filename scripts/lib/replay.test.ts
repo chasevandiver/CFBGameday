@@ -8,6 +8,7 @@ import {
   MAX_TILT,
   cached,
   chainTilts,
+  hfaSplitHalf,
   replaySeason,
   scaleTilts,
   type SeasonData,
@@ -318,5 +319,163 @@ describe("cached", () => {
     );
     expect(again).toEqual([{ id: 7 }]);
     expect(called).toBe(false);
+  });
+});
+
+describe("FBS membership across a wide window (admitNewFbs)", () => {
+  // The defect: `priors` is seeded once and `chainPriors` carries exactly the
+  // key set it was given, so a team promoted to FBS mid-window is priced at the
+  // flat FCS anchor for the rest of the decade with no error anywhere.
+  it("admits a team that appears in this season's SP+ but not in the priors", () => {
+    const promoted = 50;
+    const sp = [
+      { team: "T10", rating: 12 },
+      { team: "T50", rating: -4 },
+    ] as unknown as SeasonData["sp"];
+    const withNewcomer: SeasonData = {
+      ...season,
+      sp,
+      games: [...season.games, game(7, 1, 10, promoted, 30, 20)],
+    };
+
+    const before = replaySeason(season, priors, DEFAULT_PARAMS);
+    expect(before.admitted).toEqual([]);
+    expect(before.finalRatings.has(promoted)).toBe(false);
+
+    const after = replaySeason(withNewcomer, priors, DEFAULT_PARAMS);
+    expect(after.admitted).toEqual([promoted]);
+    // Admitted at its SP+ rating, and carried into the chain rather than being
+    // re-priced as an FCS opponent next season.
+    expect(after.finalRatings.has(promoted)).toBe(true);
+  });
+
+  it("is identity when the caller did not load SP+ for the season", () => {
+    // `withSp` is opt-in, so every pre-existing call site keeps its behaviour.
+    const withoutSp = replaySeason(season, priors, DEFAULT_PARAMS);
+    const withEmptySp = replaySeason({ ...season, sp: [] }, priors, DEFAULT_PARAMS);
+    expect(withEmptySp.predictions).toEqual(withoutSp.predictions);
+    expect(withEmptySp.admitted).toEqual([]);
+    expect(withEmptySp.retired).toEqual([]);
+  });
+
+  it("does not retire anybody on a thin SP+ feed", () => {
+    // A single missing SP+ row is ambiguous between "left FBS" and "CFBD is
+    // short that year". The ambiguity is only real when the feed is thin, so
+    // retirement is gated on feed health and fails toward keeping the team.
+    const thin = [{ team: "T10", rating: 12 }] as unknown as SeasonData["sp"];
+    const out = replaySeason({ ...season, sp: thin }, priors, DEFAULT_PARAMS);
+    expect(out.retired).toEqual([]);
+    expect(out.finalRatings.has(20)).toBe(true);
+  });
+});
+
+describe("per-team HFA in the replay (02:M-05 / 03:M-1v)", () => {
+  it("prices at flat baseHfa when no per-team map is passed", () => {
+    // Identity: this is what every replay did before 2026-08-18, and it is why
+    // audit 03:M-1 was invisible to the backtest — production priced with a
+    // per-team table and the replay priced with a scalar.
+    const flat = replaySeason(season, priors, DEFAULT_PARAMS);
+    const alsoFlat = replaySeason(season, priors, DEFAULT_PARAMS, undefined, undefined, undefined);
+    expect(alsoFlat.predictions).toEqual(flat.predictions);
+  });
+
+  it("shifts a home team's priced margin by exactly its HFA difference", () => {
+    const flat = replaySeason(season, priors, DEFAULT_PARAMS);
+    const hfa = new Map([[10, DEFAULT_PARAMS.baseHfa + 2]]);
+    const withTeamHfa = replaySeason(season, priors, DEFAULT_PARAMS, undefined, undefined, hfa);
+
+    const week1Flat = flat.predictions.find((p) => p.gameId === 1);
+    const week1Team = withTeamHfa.predictions.find((p) => p.gameId === 1);
+    expect(week1Team!.margin - week1Flat!.margin).toBeCloseTo(2, 6);
+
+    // A game team 10 does not host is untouched.
+    const awayFlat = flat.predictions.find((p) => p.gameId === 2);
+    const awayTeam = withTeamHfa.predictions.find((p) => p.gameId === 2);
+    expect(awayTeam!.margin).toBeCloseTo(awayFlat!.margin, 6);
+  });
+});
+
+describe("the PPA index is not built when nothing reads it", () => {
+  it("produces identical predictions with and without advanced stats at epaWeight 0", () => {
+    // Proof that the fetch is skippable: at the shipped epaWeight of 0,
+    // `blendedPoints` returns the raw score before touching PPA, so building a
+    // Map over ~10k rows once per season per grid point buys nothing.
+    const withAdvanced = replaySeason(
+      { ...season, advanced: [] as never },
+      priors,
+      DEFAULT_PARAMS,
+    );
+    const without = replaySeason(season, priors, DEFAULT_PARAMS);
+    expect(withAdvanced.predictions).toEqual(without.predictions);
+    expect(DEFAULT_PARAMS.epaWeight).toBe(0);
+  });
+});
+
+describe("a PPA blend without a PPA feed is refused, not degraded", () => {
+  it("throws rather than silently scoring the raw margin", () => {
+    // blendedPoints falls back to the raw score whenever the efficiency margin
+    // is null, so this would otherwise produce a plausible score-only number
+    // labelled as an efficiency fit.
+    expect(() =>
+      replaySeason(season, priors, { ...DEFAULT_PARAMS, epaWeight: 0.3 }),
+    ).toThrow(/withAdvanced/);
+  });
+
+  it("is silent at epaWeight 0, which is what ships", () => {
+    expect(() => replaySeason(season, priors, DEFAULT_PARAMS)).not.toThrow();
+  });
+});
+
+describe("hfaSplitHalf distinguishes no-signal from no-data", () => {
+  const g = (id: number, season: number, homeId: number, awayId: number, hp: number, ap: number) =>
+    ({
+      id,
+      season,
+      week: 1,
+      seasonType: "regular",
+      startDate: `${season}-09-01T16:00:00.000Z`,
+      startTimeTBD: false,
+      neutralSite: false,
+      conferenceGame: true,
+      venueId: null,
+      homeId,
+      homeTeam: `T${homeId}`,
+      homePoints: hp,
+      homePostgameWinProbability: null,
+      awayId,
+      awayTeam: `T${awayId}`,
+      awayPoints: ap,
+      completed: true,
+      notes: null,
+    }) as CfbdGame;
+
+  const seasonWith = (year: number): SeasonData => ({
+    season: year,
+    games: [g(year * 10 + 1, year, 10, 20, 30, 20), g(year * 10 + 2, year, 20, 10, 24, 21)],
+    lines: [],
+    prevSp: [],
+  });
+
+  it("returns n = 0 when only one prior season exists, rather than a correlation", () => {
+    // One prior year splits into odd-and-nothing, so there is no second half to
+    // correlate against. The caller must read this as "cannot be evaluated",
+    // never as "the correlation is zero" — an absent measurement reported as
+    // evidence of absence is how a window problem becomes a model result.
+    const out = hfaSplitHalf([seasonWith(2015)], new Set([10, 20]), 2016);
+    expect(out.n).toBe(0);
+    expect(Number.isNaN(out.r)).toBe(true);
+  });
+
+  it("excludes 2020 from both halves", () => {
+    const seasons = [2015, 2016, 2020].map(seasonWith);
+    const withCovid = hfaSplitHalf(seasons, new Set([10, 20]), 2021);
+    const withoutCovid = hfaSplitHalf(
+      seasons.filter((s) => s.season !== 2020),
+      new Set([10, 20]),
+      2021,
+    );
+    // An empty-stadium season measures a different quantity, so including it
+    // must change nothing.
+    expect(withCovid.n).toBe(withoutCovid.n);
   });
 });

@@ -70,10 +70,17 @@ export interface FcsMargin {
  * comment says readers must tolerate undefined), and silently reclassifying
  * every team as FCS because a cache file is old is exactly the kind of failure
  * that would look like a modelling result.
+ *
+ * `fbsIds` may be a per-season LOOKUP rather than one set, and over a wide
+ * window it must be. FBS membership is not constant: James Madison's games are
+ * FCS buy games through 2021 and FBS games from 2022, and a single set has to
+ * be wrong about one half or the other. A set is still accepted, because over
+ * a three-season window it is the same answer and every existing caller passes
+ * one.
  */
 export function fcsMarginsVsFbs(
   games: FcsGame[],
-  fbsIds: ReadonlySet<number>,
+  fbsIds: ReadonlySet<number> | ((season: number) => ReadonlySet<number>),
   opts: { before: number },
 ): Map<number, FcsMargin> {
   const totals = new Map<number, { sum: number; n: number }>();
@@ -82,8 +89,9 @@ export function fcsMarginsVsFbs(
     if (g.season >= opts.before) continue;
     if (g.homePoints === null || g.awayPoints === null) continue;
 
-    const homeIsFbs = fbsIds.has(g.homeId);
-    const awayIsFbs = fbsIds.has(g.awayId);
+    const fbs = typeof fbsIds === "function" ? fbsIds(g.season) : fbsIds;
+    const homeIsFbs = fbs.has(g.homeId);
+    const awayIsFbs = fbs.has(g.awayId);
     // Exactly one side FBS. FBS-vs-FBS says nothing about an FCS team, and
     // FCS-vs-FCS is not on a scale we can read — those games are never in the
     // corpus anyway, since CFBD's classification=fbs filter drops them.

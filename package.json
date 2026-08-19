@@ -12,6 +12,7 @@
     "brand": "tsx scripts/build-brand-assets.ts",
     "db:test": "bash scripts/db-test.sh",
     "probe:cfbd": "tsx scripts/probe-cfbd.ts",
+    "probe:history": "tsx scripts/probe-cfbd-history.ts",
     "observe:scoreboard": "tsx scripts/observe-scoreboard.ts"
   },
   "dependencies": {

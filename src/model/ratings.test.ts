@@ -273,13 +273,21 @@ describe("pricing", () => {
 });
 
 describe("HFA blending", () => {
+  // These exercise the FUNCTIONS at an explicit blend, not the shipped
+  // parameter. `teamHfaBlend` went to 0 on 2026-08-18 (--tune-team-hfa: Gate 0
+  // split-half r = −0.196, so there is no per-team signal to blend), which made
+  // every assertion written against DEFAULT_PARAMS trivially true and stopped
+  // them testing anything. The machinery still has to be correct for the day
+  // somebody re-opens the question with a better per-team estimate.
+  const HALF = { ...DEFAULT_PARAMS, teamHfaBlend: 0.5 };
+
   it("is 50/50 team vs FBS average, and falls back to the average", () => {
     // Assert the RELATIONSHIP, not the constant — this used to hardcode 2.3
     // and broke when baseHfa was refit to 3.0, which is a test failing for the
     // wrong reason.
-    const base = DEFAULT_PARAMS.baseHfa;
-    expect(blendedHfa(4.1)).toBeCloseTo(0.5 * 4.1 + 0.5 * base);
-    expect(blendedHfa(null)).toBe(base);
+    const base = HALF.baseHfa;
+    expect(blendedHfa(4.1, HALF)).toBeCloseTo(0.5 * 4.1 + 0.5 * base);
+    expect(blendedHfa(null, HALF)).toBe(base);
   });
 
   it("centered blend: mean applied HFA equals the fitted baseHfa", () => {
@@ -287,10 +295,10 @@ describe("HFA blending", () => {
     // slates carry the FCS buy games), so blending toward them re-biases
     // every price toward the home side. Centering keeps the between-team
     // spread while pinning the mean to what --tune-hfa actually fit.
-    const base = DEFAULT_PARAMS.baseHfa;
+    const base = HALF.baseHfa;
     const raws = [2.1, 4.9, 6.0, 5.4, 3.8]; // mean 4.44, well above base
     const mean = raws.reduce((s, v) => s + v, 0) / raws.length;
-    const blended = raws.map((r) => centeredBlendedHfa(r, mean));
+    const blended = raws.map((r) => centeredBlendedHfa(r, mean, HALF));
     const blendedMean = blended.reduce((s, v) => s + v, 0) / blended.length;
     expect(blendedMean).toBeCloseTo(base);
     // between-team ordering survives at half strength
@@ -299,11 +307,23 @@ describe("HFA blending", () => {
   });
 
   it("centered blend falls back to baseHfa and never goes negative", () => {
-    const base = DEFAULT_PARAMS.baseHfa;
-    expect(centeredBlendedHfa(null, 4.4)).toBe(base);
-    expect(centeredBlendedHfa(3.0, null)).toBe(base);
+    const base = HALF.baseHfa;
+    expect(centeredBlendedHfa(null, 4.4, HALF)).toBe(base);
+    expect(centeredBlendedHfa(3.0, null, HALF)).toBe(base);
     // an extreme low raw against a high mean floors at 0, not below
-    expect(centeredBlendedHfa(0, 12)).toBe(0);
+    expect(centeredBlendedHfa(0, 12, HALF)).toBe(0);
+  });
+
+  it("is inert as shipped: every team gets the flat baseHfa", () => {
+    // The point of teamHfaBlend = 0. This is what retires audit 03:M-1 — an
+    // inflated per-team table cannot bias anything it is no longer consulted
+    // for, so `centeredBlendedHfa` stops being a mitigation and becomes a
+    // no-op.
+    expect(DEFAULT_PARAMS.teamHfaBlend).toBe(0);
+    for (const raw of [0, 2.1, 6.0, 12]) {
+      expect(centeredBlendedHfa(raw, 4.44)).toBe(DEFAULT_PARAMS.baseHfa);
+      expect(blendedHfa(raw)).toBe(DEFAULT_PARAMS.baseHfa);
+    }
   });
 });
 
