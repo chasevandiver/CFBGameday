@@ -722,7 +722,7 @@ deliberate deferrals, each recorded below with what it would take.
       GitHub cancelling the older run, which would leave the row exactly like
       this. Not yet confirmed; the Actions run list will say. · **S**
 
-- [ ] **DQ-14 — one book is stored under two provider names.** Game 401873278
+- [x] **DQ-14 — one book is stored under two provider names.** Game 401873278
       carries `DraftKings` and `Draft Kings` in `line_snapshots`, so
       `consensusFromSnapshots` — which takes the latest row *per provider* and
       means them — averaged one book against itself. It did not change the
@@ -730,6 +730,49 @@ deliberate deferrals, each recorded below with what it would take.
       would have been anyway), but a consensus that double-counts a book is
       wrong in a way nobody would notice, and CLV is graded against it. Normalise
       on write in the ESPN parser, and backfill. · **S**
+      **Fixed 2026-08-19, and this row was wrong twice — the second one changed
+      the fix.** Read against `line_snapshots` rather than the one game:
+      it is **82 games**, not one; and `Draft Kings` splits **102 rows from
+      `cfbd-backfill` against 33 from `espn`**, so normalising the ESPN parser
+      as prescribed would have left three quarters of the defect in place and
+      ticked the box. CFBD emits both spellings too.
+      One normaliser (`src/lib/providers.ts`), applied at all four writers, with
+      a test that fails if a writer stops using it. It matches on the name with
+      casing, spacing and punctuation squashed out, so the next spelling of a
+      book already here lands without another edit — a rename list only catches
+      what has been seen, which is how this survived two audits.
+      **Regional books are deliberately not merged.** `Caesars`, `Caesars
+      (Pennsylvania)` and `Caesars Sportsbook (Colorado)` look like the same
+      defect and are not: their date ranges are disjoint and they co-occur on
+      **0 of 9,496** games, so merging would invent a double-count.
+      Migration **0072** renames the rows and then dedupes. The dedupe is not
+      housekeeping: 1,487 (game_id, provider, captured_at) groups hold more than
+      one row once the rename collapses the spellings, and in **9 of them the
+      rows disagree on the spread** — there the latest-per-provider fold would
+      pick whichever row came back first, making the consensus line
+      nondeterministic, which is worse than the double-count it replaces.
+      **Not yet applied to the live project.**
+- [ ] **DQ-15 — CFBD's `consensus` is stored as if it were a book.** Found
+      2026-08-19 while fixing DQ-14, by reading the provider table instead of
+      the one game. `/lines` returns a synthetic `consensus` provider alongside
+      the individual books and `backfillSnapshotRows` stores it like any other,
+      so `consensusFromSnapshots` averages a blend against its own components —
+      the same double-count as DQ-14, about seventy times wider.
+      **6,029 games carry `consensus` beside at least one real book**, and
+      including it **changes the snapped consensus line on 1,823 of them (30%)**.
+      Mean absolute gap between the `consensus` row and the book mean is 0.768
+      points; max 32.5. Archive only — the newest such row is 2023-09-04, so
+      nothing in Week 0 grading reads one.
+      **A decision, not a defect to just fix**, which is why it is its own row.
+      Dropping the rows is wrong: **486 games have `consensus` and nothing
+      else**, and deleting it removes them from the market entirely. Excluding
+      aggregates from the *mean* while keeping the rows preserves those 486 and
+      fixes the other 6,029 — `AGGREGATE_PROVIDERS` in `src/lib/providers.ts`
+      names the set and deliberately does not yet act on it. There is a second
+      question stacked behind it: `teamrankings` and `numberfire` are
+      aggregators rather than sportsbooks, and whether they count as books is
+      the owner's call, not a lookup. Both feed the puzzle archive
+      (Guess the Lines grades against `openingSpread`). · **S** · decision
 
 ### 2.1g Owner report, 2026-08-18 — a survivor pick had no receipt (PR #88)
 

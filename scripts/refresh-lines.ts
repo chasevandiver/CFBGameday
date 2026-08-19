@@ -13,6 +13,7 @@
  */
 
 import { cfbd, cfbdCallCount } from "../src/lib/cfbd";
+import { normalizeProvider } from "../src/lib/providers";
 import { logCfbdCalls, recordJobRun } from "./lib/jobs-core";
 import { idleSkip, envDays } from "./lib/idle";
 import { SEASON, chunk, createSink } from "./lib/ingest";
@@ -89,7 +90,7 @@ async function run(
     .flatMap((game) =>
       game.lines.map((l) => ({
         game_id: game.id,
-        provider: l.provider,
+        provider: normalizeProvider(l.provider),
         source: "cfbd",
         spread: l.spread,
         spread_open: l.spreadOpen,

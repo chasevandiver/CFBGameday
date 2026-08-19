@@ -16,6 +16,8 @@
  * a silent inversion would poison the append-only line_snapshots table.
  */
 
+import { normalizeProvider } from "./providers";
+
 const BASE_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/";
 
 export class EspnError extends Error {
@@ -316,7 +318,7 @@ export function parseEventOdds(
   const total = typeof o.overUnder === "number" ? o.overUnder : parseTotalLine(o.total?.over?.close?.line);
 
   return {
-    provider: o.provider?.name ?? o.provider?.displayName ?? "ESPN",
+    provider: normalizeProvider(o.provider?.name ?? o.provider?.displayName ?? "ESPN"),
     spread,
     // openers only make sense alongside a trusted current line
     spreadOpen: spread === null ? null : parseSpreadLine(o.pointSpread?.home?.open?.line),

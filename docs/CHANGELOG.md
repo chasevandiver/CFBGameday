@@ -203,6 +203,61 @@ shipping it.
 
 ## Log
 
+### Aug 19 — one book under two names, and the tracked row was wrong about the fix
+
+DQ-14 said "one book is stored under two provider names" on game 401873278, and
+prescribed normalising in the ESPN parser. Both halves were wrong, and the
+second one changed what the fix had to be.
+
+Reading `line_snapshots` instead of the one game: it is **82 games**, and
+`Draft Kings` splits **102 rows from `cfbd-backfill` against 33 from `espn`**.
+Fixing the ESPN parser alone would have left three quarters of the defect in
+place and ticked the box — CFBD emits both spellings too.
+
+So: one normaliser in `src/lib/providers.ts`, applied at all four writers of
+`line_snapshots`, with a test that fails if a writer stops using it. It matches
+on the name with casing, spacing and punctuation squashed out, so the next
+spelling of a book already here ("DRAFTKINGS", "draft-kings") lands without
+another edit. A rename list only catches the variants already observed, which is
+how this got past two audits.
+
+Why it matters at all: `consensusFromSnapshots` takes the latest row **per
+provider** and means them, so a book under two spellings is averaged against
+itself and carries double the weight of every other book. On the real shape from
+game 401762521 — the same book at −6.0 and −6.5 under two names, against one
+other book at −3.0 — the split consensus is **−5.0** and the correct one is
+**−4.5**. Still a plausible half-point, which is exactly why nobody noticed.
+
+**Regional books are deliberately not merged.** `Caesars`, `Caesars
+(Pennsylvania)` and `Caesars Sportsbook (Colorado)` look like the same defect
+and are not: their date ranges are disjoint and they co-occur on **0 of 9,496**
+games. Merging them would invent a double-count rather than remove one.
+
+Migration **0072** renames the existing rows and then dedupes. The dedupe is not
+housekeeping — 1,487 (game_id, provider, captured_at) groups hold more than one
+row once the rename collapses the spellings, and in **9 of them the rows
+disagree on the spread**. There the latest-per-provider fold picks whichever row
+came back first, so the consensus line would be nondeterministic: today's answer
+and tomorrow's could differ with no write in between. That is worse than the
+double-count it replaces. Highest `id` wins, which is the precedence an
+append-only table already implies.
+
+**And the bigger one it turned up: `consensus` is stored as if it were a book.**
+CFBD's `/lines` returns a synthetic `consensus` provider beside the individual
+books, and the archive backfill stores it like any other — so the mean averages
+a blend against its own components. **6,029 games** carry it beside a real book
+and it **changes the snapped line on 1,823 of them (30%)**, mean absolute gap
+0.768 points. Archive only; the newest such row is 2023-09-04, so no Week 0
+grading reads one. Recorded as **DQ-15** rather than fixed here, because it is a
+decision: deleting the rows would remove the **486 games where `consensus` is
+the only market**, and there is a second question behind it — `teamrankings` and
+`numberfire` are aggregators rather than sportsbooks, and whether they count as
+books is an owner's call rather than a lookup.
+
+1,646 tests (11 new). **No parameter moved.**
+
+---
+
 ### Aug 19 — the coverage manifest lands, and the probe's own count was the bug
 
 `scripts/lib/cfbd-coverage.json` is now a reviewed fact rather than an empty

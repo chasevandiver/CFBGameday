@@ -62,6 +62,7 @@ import {
   type TeamRating,
 } from "../src/model/ratings";
 import { createServiceClient } from "../src/lib/supabase/service";
+import { normalizeProvider } from "../src/lib/providers";
 import { buildCoachTransitions } from "./lib/coaching";
 import { logCfbdCalls } from "./lib/jobs-core";
 import { envNum } from "./lib/env-num";
@@ -729,7 +730,7 @@ async function main() {
       .flatMap((game) =>
         game.lines.map((l) => ({
           game_id: game.id,
-          provider: l.provider,
+          provider: normalizeProvider(l.provider),
           source: "cfbd",
           spread: l.spread,
           spread_open: l.spreadOpen,
