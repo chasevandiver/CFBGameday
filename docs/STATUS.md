@@ -1653,6 +1653,28 @@ rather than absorbed silently.*
       grid-boundary optimum, un-flatten an unidentified likelihood surface, or
       reverse a directional failure like `--tune-epa`, which degraded
       monotonically at every weight. · dispatch
+- [ ] **BT-6 — `talent` changes shape mid-window, and the floor cannot see it.**
+      Found while reviewing the committed manifest, 2026-08-19; not a gate
+      failure, which is why it needs recording rather than fixing on the spot.
+      Row counts run 232, 237, **157**, 237, 231, 219, 224, 233, 240, **134**,
+      **134** for 2015→2025. Two separate things: the feed appears to return
+      FBS+FCS for the older seasons and FBS-only from 2024, and **2017 is an
+      outlier at 157 against ~235 either side**. Every season clears the floor
+      of 100, so `assertFeedCoverage` passes and will keep passing.
+      The floor asks "will the name→id join land at all", and the honest answer
+      here is yes. It does not ask "did the join land for the same POPULATION
+      each season", and six experiments read this feed (`--tune-prior`,
+      `--tune-sp-blend`, `--tune-coaching`, `--tune-churn`, `--diagnose-tiers`,
+      `--tune-tier-recenter`). If 2017's 157 rows are FBS+FCS mixed, FBS
+      coverage that season could be well under 130 while the manifest says OK —
+      the exact silent-degradation failure the coverage machinery exists to
+      stop, one level down from where it currently looks.
+      **Cheap to settle and not yet settled:** count how many of each season's
+      FBS ids actually appear in `talent`, rather than counting the feed. That
+      is a per-season set intersection over data already cached, no CFBD calls.
+      Do it before any talent-reading tuner's number is recorded on the wide
+      window; it does not block `--tune-fcs`, `--tune-team-hfa` or
+      `--diagnose-edges`, none of which read talent. · S
 - [ ] **02:M-04** `--production-chain` replay mode: measure backtest↔production
       prior drift · M · first in-season week
 - [x] **02:M-05 / 03:M-1v — answered 2026-08-18, and the answer is 0.**

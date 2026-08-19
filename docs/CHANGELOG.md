@@ -242,6 +242,15 @@ this one, so the next nested payload does not repeat it silently. On the re-run
 row is unchanged** — which is the check that matters: a fix that had moved other
 rows would have been a second bug.
 
+**One thing the floor cannot see, recorded as BT-6 rather than fixed here.**
+`talent` runs 232, 237, **157**, 237, 231, 219, 224, 233, 240, **134**, **134**
+for 2015→2025 — the feed looks like FBS+FCS in the older seasons and FBS-only
+from 2024, and 2017 is an outlier at 157 against ~235 either side. Every season
+clears the floor of 100, so the gate passes and will keep passing. The floor
+asks whether the join lands at all; it does not ask whether it landed for the
+same population each season, and six experiments read this feed. Settling it is
+a per-season set intersection over already-cached data and zero CFBD calls.
+
 The manifest from the first run was deliberately not committed. Freezing a wrong
 verdict into the file that gates the tuners is worse than having no file, because
 the wrong file stops warning.
