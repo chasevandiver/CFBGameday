@@ -1932,6 +1932,36 @@ rather than absorbed silently.*
       Note for whoever runs it: `replaySeason` priced at a flat `baseHfa` until
       today, which is exactly why 03:M-1's ~+1.9 inflation was invisible to
       every calibration report — `hfaByTeam` closes that gap.
+- [ ] **CFBD-6 — recruiting classes also beat the FRESH composite, and that is
+      a different question from the one CFBD-5 answered.** Recorded 2026-08-19,
+      the same day the substitute shipped, from the same dispatch
+      (run `32278795011`, `2015-2025/warmup1/covid-chain`). Pooled over 9
+      scored seasons on the production-shaped chain: **recruiting classes MAE
+      13.162 / NLL 0.4891** against **fresh composite 13.221 / 0.4905** — ΔMAE
+      −0.059, ΔNLL −0.0014, comparable to shipped changes for scale.
+      **Deliberately not acted on**, and the reason is the point rather than
+      caution: `--tune-talent-source`'s pre-registered rule governs only what
+      stands in *while `/talent` is unpublished*. It asked whether the
+      substitute is non-inferior to the stale file, and every gate was written
+      against that arm. Beating the fresh composite is a claim the experiment
+      was not built to test and its gates cannot license — adopting it here
+      would be reading a number the rule never covered, which is the failure
+      mode `docs/CHANGELOG.md`'s decisions table exists to prevent.
+      **What it would need:** its own row and its own pre-registered rule,
+      dispatched with a window label — a bar stated before the run, a control
+      for the composite being a *derived* file (the classes are its raw
+      material, so the two are not independent), and an era split, since one
+      pooled number over nine seasons can hide a sign flip. One run, one
+      observation, not adversarially verified.
+      **Nearly moot for 2026, with one live exception.** `/talent?year=2026` is
+      empty, so the composite is not first choice in practice — the build takes
+      the recruiting path either way. The exception is CFBD publishing between
+      now and the **Aug 27** refresh (`load-preseason` refuses a season with
+      completed games, so that is the last automatic load): the current rule
+      would then silently swap in the arm that measured slightly worse. Ship it
+      as designed if that happens — re-deciding a model parameter inside launch
+      week is the worse trade, and §1's verdict stands that no model-accuracy
+      work belongs before Aug 29. · **S** · decision · after launch
 - [ ] **02:M-13 / 03:M-4** Real per-team tempo + `--tune-tempo` · M
 - [ ] **03:M-6/M-7/M-8b/M-9a** Decay-knot grid, heteroscedastic σ, smooth cap,
       rest/travel tuner · S each
