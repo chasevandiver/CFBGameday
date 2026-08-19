@@ -66,7 +66,8 @@ export function GameStatusPanel({ open, dead }: { open: AdminGameView[]; dead: A
             setGameId(e.target.value);
             setArmed(null);
           }}
-          className="min-h-11 min-w-40 flex-1 rounded-lg border border-chalk/25 bg-elev px-3 py-2 text-sm text-chalk focus:border-accent focus:outline-none"
+          aria-label="Game"
+          className="min-h-11 min-w-40 flex-1 rounded-lg border border-chalk/25 bg-elev px-3 py-2 text-sm text-chalk focus:border-accent focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
         >
           <option value="">Select a game…</option>
           {open.map((g) => (

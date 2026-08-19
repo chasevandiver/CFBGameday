@@ -101,26 +101,28 @@ export function NotificationsPanel({
           required
           maxLength={120}
           placeholder="Title"
-          className="h-9 w-full rounded-lg border border-chalk/12 bg-elev px-3 text-sm text-chalk placeholder:text-chalk/35 focus:border-accent/60 focus:outline-none"
+          aria-label="Notification title"
+          className="h-9 w-full rounded-lg border border-chalk/12 bg-elev px-3 text-sm text-chalk placeholder:text-chalk/35 focus:border-accent/60 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
         />
         <input
           name="body"
           maxLength={300}
           placeholder="Body"
-          className="h-9 w-full rounded-lg border border-chalk/12 bg-elev px-3 text-sm text-chalk placeholder:text-chalk/35 focus:border-accent/60 focus:outline-none"
+          aria-label="Notification body"
+          className="h-9 w-full rounded-lg border border-chalk/12 bg-elev px-3 text-sm text-chalk placeholder:text-chalk/35 focus:border-accent/60 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
         />
         <div className="flex flex-wrap gap-2">
           <input
             name="url"
             defaultValue="/"
-            className="stat h-9 w-28 rounded-lg border border-chalk/12 bg-elev px-2 text-xs text-chalk focus:border-accent/60 focus:outline-none"
+            className="stat h-9 w-28 rounded-lg border border-chalk/12 bg-elev px-2 text-xs text-chalk focus:border-accent/60 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
             aria-label="Link"
           />
           <select
             name="audience"
             defaultValue="me"
             aria-label="Audience"
-            className="h-9 flex-1 rounded-lg border border-chalk/12 bg-elev px-2 text-xs text-chalk focus:border-accent/60 focus:outline-none"
+            className="h-9 flex-1 rounded-lg border border-chalk/12 bg-elev px-2 text-xs text-chalk focus:border-accent/60 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
           >
             {audiences.map((a) => (
               <option key={a.value} value={a.value}>
@@ -164,7 +166,7 @@ export function NotificationsPanel({
                       min={0}
                       max={1440}
                       defaultValue={s.lead_minutes}
-                      className="stat h-8 w-16 rounded-md border border-chalk/12 bg-elev px-1.5 text-right text-xs text-chalk focus:border-accent/60 focus:outline-none"
+                      className="stat h-8 w-16 rounded-md border border-chalk/12 bg-elev px-1.5 text-right text-xs text-chalk focus:border-accent/60 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
                     />
                     min ahead
                   </label>
@@ -176,14 +178,14 @@ export function NotificationsPanel({
                 defaultValue={s.title}
                 maxLength={120}
                 aria-label={`${LABELS[s.kind]} title`}
-                className="mb-1.5 h-8 w-full rounded-md border border-chalk/12 bg-elev px-2 text-xs text-chalk focus:border-accent/60 focus:outline-none"
+                className="mb-1.5 h-8 w-full rounded-md border border-chalk/12 bg-elev px-2 text-xs text-chalk focus:border-accent/60 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
               />
               <input
                 name="body"
                 defaultValue={s.body}
                 maxLength={300}
                 aria-label={`${LABELS[s.kind]} body`}
-                className="h-8 w-full rounded-md border border-chalk/12 bg-elev px-2 text-xs text-chalk focus:border-accent/60 focus:outline-none"
+                className="h-8 w-full rounded-md border border-chalk/12 bg-elev px-2 text-xs text-chalk focus:border-accent/60 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
               />
               <div className="mt-2 flex items-center justify-between gap-2">
                 <code className="text-[10px] text-dim">{TOKENS[s.kind]}</code>

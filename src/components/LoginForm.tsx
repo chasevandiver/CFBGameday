@@ -157,10 +157,12 @@ export function LoginForm({ linkFailed }: { linkFailed: boolean }) {
             type="email"
             required
             autoComplete="email"
+            spellCheck={false}
+            aria-label="Email address"
             placeholder="you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="rounded-lg border border-chalk/25 bg-elev px-4 py-3 text-chalk placeholder:text-chalk/40 focus:border-accent focus:outline-none"
+            className="rounded-lg border border-chalk/25 bg-elev px-4 py-3 text-chalk placeholder:text-chalk/40 focus:border-accent focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
           />
           <button
             type="submit"

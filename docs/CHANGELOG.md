@@ -203,6 +203,135 @@ shipping it.
 
 ## Log
 
+### Aug 19 — the quality floor, computed: a focus ring that only worked at night
+
+The Aug 21 item asks for a light-mode pass with contrast "computed, never
+eyeballed". So it is computed — `src/lib/contrast.ts` reads `globals.css` and
+derives WCAG ratios from the palette itself, and `contrast.test.ts` pins them.
+A second copy of a colour is how a palette and its accessibility guarantee stop
+agreeing, so there isn't one.
+
+**The focus-ring finding is the one worth reading.** 17 controls used
+`focus:outline-none` with nothing but `focus:border-accent` to mark focus.
+Measured against the idle border they replace:
+
+| idle border | dark | light |
+|---|---|---|
+| `chalk/12` | 6.81 | **2.95** |
+| `chalk/15` | 6.19 | **2.77** |
+| `chalk/25` | 4.45 | **2.20** |
+
+The same markup is an obvious focus change at night and a barely perceptible one
+in daylight. It is invisible to anyone testing in the default theme, which is
+the whole reason the light-mode pass is a separate line item. All 17 now carry
+`focus-visible:outline-2 outline-offset-1 outline-accent` — the pattern the
+other 23 focusable elements already use, not a new one — and a test scans every
+`.tsx` so the next copied class string cannot reintroduce it.
+
+**UX-06's three suspects are all confirmed**, and the row understated the scope.
+On the card face — which is `--glass-surface` over the page, **not** `--surface`;
+in dark mode #201a14, not #241d16 — light mode is legible from `/60` up and dark
+from `/50`. Below that sits **164 className strings in light mode and 112 in
+dark**, and the 3:1 large-text exemption applies to none of them: the usages are
+9–14px.
+
+Deliberately **not swept**. Bumping every failing step to the nearest passing one
+collapses `/25` through `/55` into one value in light mode and erases the
+hierarchy the ladder exists to create. The real fix is named semantic steps whose
+value differs per theme — a token change plus ~164 call sites, which under
+DESIGN.md means one screen converted and approved first. Not a thing to start ten
+days from Week 0.
+
+**And one the row never named: `--accent` fails AA as body text in light mode.**
+`#a97b0c` on the light card is **3.77:1** — fine as a focus ring or control
+border (SC 1.4.11 asks 3:1), not fine on the 11px text it carries in **277**
+className strings. Dark mode is 9.46, which is why it went unnoticed. Tracked as
+UX-06b and left as a decision: `--accent` is a brand colour and `docs/BRAND.md`
+owns it.
+
+Along the way the review turned up 8 form controls with no accessible name and
+two email inputs missing `autocomplete`/`spellcheck` — all fixed, all in the
+admin panels.
+
+**Two things a machine could not do**, said plainly rather than implied: nothing
+here was seen rendered, and the 375px real-device pass still needs hands. Also
+found and not fixed: 11 admin controls and 3 slate controls are under the 44px
+tap target DESIGN.md requires — a layout decision, already tracked under UX-08.
+
+Reduced motion passes: a global clamp plus real per-component fallbacks.
+
+1,671 tests (13 new). **No parameter moved.**
+
+---
+
+### Aug 19 — DQ-15 decided: an aggregate is not a book, and the fix nearly deleted three lines
+
+CFBD's `/lines` returns a synthetic `consensus` provider **alongside** the
+individual books, and the archive backfill stored it like any other. Every
+consensus site takes the latest snapshot per provider and means them, so a blend
+was being averaged with its own components — DQ-14's double-count under a
+different name and about seventy times the reach.
+
+**The rule: books when there are books, the aggregate alone when there are
+none.** An aggregate is a bad thing to average *with* a book and a perfectly
+good thing to use *instead* of one.
+
+The fallback is the design rather than a safety net. **486 games have
+`consensus` and nothing else**, and 2015–2018 has no per-book coverage in this
+table at all — the only providers there are `consensus`, `teamrankings` and
+`numberfire`. Deleting the aggregate would not have corrected those games, it
+would have deleted their market and taken the early seasons of the puzzle
+archive with them.
+
+**`teamrankings` and `numberfire` count as books**, deliberately. They are
+aggregator sites rather than sportsbooks, so the case for excluding them is
+real — and refused for one decisive reason: they are the only market for
+2015–2018. There is no version of that change that improves a single line.
+
+**Landed in all three implementations at once** (migration 0074):
+`consensusFromSnapshots`, the `line_consensus` view, and `make_pick`.
+`consensus.ts` says the SQL "mirrors" it, and that is an obligation rather than
+a note — its own header records the phantom CLV a half-point rounding mismatch
+between them already caused. A test pins the migration's aggregate list against
+`AGGREGATE_PROVIDERS` so they cannot drift.
+
+#### Verifying the fix caught a regression inside it
+
+The first cut filtered whole rows: drop the aggregate whenever any book is
+present. Checking the view against the rule — rather than trusting that it did
+what it said — turned up **three archive games where `consensus` posts a spread
+and no total, while teamrankings and numberfire post a total and no spread**.
+Row-level, "a book exists" was true, the aggregate was dropped, and the only
+spread those games had became **null**. The fix was deleting lines.
+
+The rule is now **per market**: a book that only hangs a total says nothing about
+who is quoting the spread. `make_pick` needed no change, since it already selects
+one market and filters its nulls before the rule applies.
+
+#### Numbers
+
+| | |
+|---|---|
+| games with a line | 9,496 |
+| carrying `consensus` | 6,515 |
+| carrying it beside a real book | 6,029 |
+| **games whose spread moved** | **1,813** (30.1%) |
+| mean shift where it moved | **0.850 pts** |
+| consensus-only games preserved by the fallback | 486 |
+
+Applied live and verified against an independently written per-market rule: **0
+disagreements on spread, 0 on total** across 9,497 games, and the three broken
+games no longer among the movers.
+
+**Inert against live play.** The newest `consensus` row is 2023-09-04 — it exists
+only in the archive BF-4 backfilled. No 2026 game has one, so `make_pick` and the
+slate compute exactly what they computed yesterday. What changes is the puzzle
+archive and anything reading a historical line.
+
+1,658 tests. **No parameter moved.**
+
+---
+
 ### Aug 19 — a healthy handoff that looked exactly like a dead job
 
 `scoreboard-loop` had thirteen rows in `job_runs` reading `status = 'running'`
