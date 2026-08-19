@@ -51,7 +51,7 @@ export function WeekJump({
           const [t, w] = e.target.value.split(":");
           router.push(`${base}${weekQuery({ seasonType: t as SeasonType, week: Number(w) }, { league })}`);
         }}
-        className="stat h-11 appearance-none rounded-lg border border-chalk/15 bg-elev pl-3 pr-8 text-sm text-chalk focus:border-accent/60 focus:outline-none"
+        className="stat h-11 appearance-none rounded-lg border border-chalk/15 bg-elev pl-3 pr-8 text-sm text-chalk focus:border-accent/60 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
       >
         {types.map((t) => (
           <optgroup key={t} label={seasonTypeLabel(t)}>

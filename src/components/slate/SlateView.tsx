@@ -643,7 +643,7 @@ export function SlateView({
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search teams"
               aria-label="Search by team name"
-              className="h-8 w-40 rounded-lg border border-chalk/12 bg-surface pl-8 pr-2 text-sm text-chalk placeholder:text-chalk/35 focus:border-accent/60 focus:outline-none"
+              className="h-8 w-40 rounded-lg border border-chalk/12 bg-surface pl-8 pr-2 text-sm text-chalk placeholder:text-chalk/35 focus:border-accent/60 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
             />
           </label>
           <FilterSelect
@@ -970,7 +970,7 @@ function WeekSelect({
                   : Number(e.target.value),
           )
         }
-        className="display h-8 appearance-none rounded-lg border border-chalk/12 bg-surface pl-3 pr-8 text-base text-chalk focus:border-accent/60 focus:outline-none disabled:opacity-60"
+        className="display h-8 appearance-none rounded-lg border border-chalk/12 bg-surface pl-3 pr-8 text-base text-chalk focus:border-accent/60 focus:outline-none disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
       >
         {/* August is real on the NFL side: week 1 is the Hall of Fame game */}
         {sport === "nfl" &&
@@ -1066,7 +1066,7 @@ function FilterSelect({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-8 appearance-none rounded-lg border border-chalk/12 bg-surface pl-3 pr-7 text-xs font-medium text-chalk focus:border-accent/60 focus:outline-none"
+        className="h-8 appearance-none rounded-lg border border-chalk/12 bg-surface pl-3 pr-7 text-xs font-medium text-chalk focus:border-accent/60 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
       >
         {options.map(([v, l]) => (
           <option key={v} value={v}>

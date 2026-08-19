@@ -56,7 +56,8 @@ export function AdjustmentsPanel({
           name="team_id"
           required
           defaultValue=""
-          className="min-w-40 flex-1 rounded-lg border border-chalk/25 bg-elev px-3 py-2 text-sm text-chalk focus:border-accent focus:outline-none"
+          aria-label="Team"
+          className="min-w-40 flex-1 rounded-lg border border-chalk/25 bg-elev px-3 py-2 text-sm text-chalk focus:border-accent focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
         >
           <option value="" disabled>
             Team…
@@ -75,14 +76,16 @@ export function AdjustmentsPanel({
           max="14"
           required
           placeholder="±pts"
-          className="w-24 rounded-lg border border-chalk/25 bg-elev px-3 py-2 text-sm text-chalk placeholder:text-chalk/40 focus:border-accent focus:outline-none"
+          aria-label="Adjustment in points"
+          className="w-24 rounded-lg border border-chalk/25 bg-elev px-3 py-2 text-sm text-chalk placeholder:text-chalk/40 focus:border-accent focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
         />
         <input
           name="reason"
           type="text"
           required
           placeholder="Reason (QB out, suspension…)"
-          className="min-w-52 flex-[2] rounded-lg border border-chalk/25 bg-elev px-3 py-2 text-sm text-chalk placeholder:text-chalk/40 focus:border-accent focus:outline-none"
+          aria-label="Reason"
+          className="min-w-52 flex-[2] rounded-lg border border-chalk/25 bg-elev px-3 py-2 text-sm text-chalk placeholder:text-chalk/40 focus:border-accent focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
         />
         <button
           type="submit"

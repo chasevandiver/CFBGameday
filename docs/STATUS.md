@@ -1246,6 +1246,23 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
 - [ ] **Aug 21** — Quality floor: real-device pass at 375 px, light-mode phone
       pass over the slate (contrast changes are computed, never eyeballed),
       reduced-motion + focus-ring check, `UX-06` residue.
+      **Done early, 2026-08-19, except the half that needs hands.** The
+      focus-ring check found **17 controls that removed their outline with
+      nothing to replace it** — all marking focus with `focus:border-accent`
+      alone, which measures **2.20–2.95:1 against the border it replaces in
+      light mode** and 4.45–6.81 in dark. The same markup is an obvious focus
+      change at night and a barely perceptible one in daylight, which is exactly
+      the light-mode gap this item exists to find and is invisible to anyone
+      testing in the default theme. All 17 now carry the outline the other 23
+      focusable elements already use, and a test scans the source so the next
+      copied class string cannot reintroduce it.
+      **Reduced motion passes** — a global clamp plus real per-component
+      fallbacks (the ticker becomes a swipeable strip and drops its duplicate
+      copy rather than freezing mid-scroll).
+      The `UX-06` contrast numbers are in that row; `UX-06b` is new.
+      **Still needs a human:** the real-device pass at 375px. Nothing here was
+      seen rendered — it is all computed from the stylesheet and the source, and
+      that is the half a machine can do.
 - [ ] **Aug 22** — 🔴 **The Q1 escalation fires**, 11:00 UTC, unattended:
       `preseason-refresh` stops declining and loads the best build available.
       **Verify the same day** — `ratings` at 2026.5.0 for 138 teams, `/ratings`
@@ -2346,6 +2363,45 @@ viewer's own bets, not the whole sheet.
 
 - [ ] **UX-06 (residue)** Sub-4.5 tokens: light `chalk/50–55` table headers,
       dark `/35–/45` decorative labels, edge-on-card — needs a rendered pass · S–M
+      **Measured 2026-08-19, and all three suspects are confirmed** — plus two
+      the row did not name. `src/lib/contrast.ts` computes WCAG ratios from
+      `globals.css` itself rather than from a second copy of the palette, and
+      `contrast.test.ts` pins them, so this is settled every time someone edits
+      a token rather than once.
+      On the card face (which is `--glass-surface` over the page, **not**
+      `--surface` — in dark mode #201a14, not #241d16):
+
+      | step | dark | light |
+      |---|---|---|
+      | `/35` | 2.95 | 2.20 |
+      | `/40` | 3.45 | 2.51 |
+      | `/45` | 4.01 | 2.88 |
+      | `/50` | **4.64** | 3.34 |
+      | `/55` | 5.33 | 3.89 |
+      | `/60` | 6.10 | **4.56** |
+
+      **Light mode is legible from `/60` up; dark from `/50`.** Below that,
+      164 className strings in light mode and 112 in dark are under AA — and
+      the 3:1 large-text exemption does not apply to any of them, because the
+      usages are 9–14px (`text-[10px]`, `text-[11px]`, `text-xs`, `text-sm`).
+      **Not swept, deliberately.** Bumping every failing step to the nearest
+      passing one collapses `/25`→`/55` into a single value in light mode and
+      erases the hierarchy the ladder exists to create. The real fix is named
+      semantic steps whose VALUE differs per theme so each holds its contrast —
+      a token change plus ~164 call sites, which under DESIGN.md means one
+      screen converted and approved before anything propagates. Not a thing to
+      start ten days from Week 0. · **decision**
+- [ ] **UX-06b — `--accent` fails AA as body text in light mode.** Found
+      2026-08-19 by the same pass; UX-06 never named it. `#a97b0c` on the light
+      card face is **3.77:1** — fine as a focus ring or control border (SC
+      1.4.11 asks 3:1) and **not** fine on the 11px text it carries in **277**
+      className strings. Dark mode is 9.46 and clean, which is why it went
+      unnoticed.
+      A decision rather than an edit: `--accent` is a brand colour and
+      `docs/BRAND.md` owns it, so darkening it for light mode is BRAND.md's call
+      and not this file's. Pinned in `contrast.test.ts` as a finding, asserted in
+      both directions so it fails if someone changes the colour without
+      revisiting the row. · **decision**
 - [x] **UX-21** Ledger "today" keyed to CT for non-CT bettors. Fixed
       2026-08-14 with UX-25, because they are one concern: the ledger now reads
       the viewer's stored zone. The bug it closes is narrow and real — a bet

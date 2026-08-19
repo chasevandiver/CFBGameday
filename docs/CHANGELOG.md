@@ -203,6 +203,67 @@ shipping it.
 
 ## Log
 
+### Aug 19 — the quality floor, computed: a focus ring that only worked at night
+
+The Aug 21 item asks for a light-mode pass with contrast "computed, never
+eyeballed". So it is computed — `src/lib/contrast.ts` reads `globals.css` and
+derives WCAG ratios from the palette itself, and `contrast.test.ts` pins them.
+A second copy of a colour is how a palette and its accessibility guarantee stop
+agreeing, so there isn't one.
+
+**The focus-ring finding is the one worth reading.** 17 controls used
+`focus:outline-none` with nothing but `focus:border-accent` to mark focus.
+Measured against the idle border they replace:
+
+| idle border | dark | light |
+|---|---|---|
+| `chalk/12` | 6.81 | **2.95** |
+| `chalk/15` | 6.19 | **2.77** |
+| `chalk/25` | 4.45 | **2.20** |
+
+The same markup is an obvious focus change at night and a barely perceptible one
+in daylight. It is invisible to anyone testing in the default theme, which is
+the whole reason the light-mode pass is a separate line item. All 17 now carry
+`focus-visible:outline-2 outline-offset-1 outline-accent` — the pattern the
+other 23 focusable elements already use, not a new one — and a test scans every
+`.tsx` so the next copied class string cannot reintroduce it.
+
+**UX-06's three suspects are all confirmed**, and the row understated the scope.
+On the card face — which is `--glass-surface` over the page, **not** `--surface`;
+in dark mode #201a14, not #241d16 — light mode is legible from `/60` up and dark
+from `/50`. Below that sits **164 className strings in light mode and 112 in
+dark**, and the 3:1 large-text exemption applies to none of them: the usages are
+9–14px.
+
+Deliberately **not swept**. Bumping every failing step to the nearest passing one
+collapses `/25` through `/55` into one value in light mode and erases the
+hierarchy the ladder exists to create. The real fix is named semantic steps whose
+value differs per theme — a token change plus ~164 call sites, which under
+DESIGN.md means one screen converted and approved first. Not a thing to start ten
+days from Week 0.
+
+**And one the row never named: `--accent` fails AA as body text in light mode.**
+`#a97b0c` on the light card is **3.77:1** — fine as a focus ring or control
+border (SC 1.4.11 asks 3:1), not fine on the 11px text it carries in **277**
+className strings. Dark mode is 9.46, which is why it went unnoticed. Tracked as
+UX-06b and left as a decision: `--accent` is a brand colour and `docs/BRAND.md`
+owns it.
+
+Along the way the review turned up 8 form controls with no accessible name and
+two email inputs missing `autocomplete`/`spellcheck` — all fixed, all in the
+admin panels.
+
+**Two things a machine could not do**, said plainly rather than implied: nothing
+here was seen rendered, and the 375px real-device pass still needs hands. Also
+found and not fixed: 11 admin controls and 3 slate controls are under the 44px
+tap target DESIGN.md requires — a layout decision, already tracked under UX-08.
+
+Reduced motion passes: a global clamp plus real per-component fallbacks.
+
+1,671 tests (13 new). **No parameter moved.**
+
+---
+
 ### Aug 19 — DQ-15 decided: an aggregate is not a book, and the fix nearly deleted three lines
 
 CFBD's `/lines` returns a synthetic `consensus` provider **alongside** the
