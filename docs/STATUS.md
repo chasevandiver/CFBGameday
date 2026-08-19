@@ -751,7 +751,13 @@ deliberate deferrals, each recorded below with what it would take.
       rows disagree on the spread** — there the latest-per-provider fold would
       pick whichever row came back first, making the consensus line
       nondeterministic, which is worse than the double-count it replaces.
-      **Not yet applied to the live project.**
+      **Applied live 2026-08-19** as `provider_names`, after the deploy carrying
+      the normaliser so no un-normalised writer was still running. Verified
+      after: `Draft Kings` **0 rows** (was 135), duplicate
+      (game_id, provider, captured_at) groups **0** (was 1,523), distinct
+      providers 12 → 11, and total rows 33,470 → 31,891 — **exactly the 1,579
+      the dry count predicted**, which is the check that the delete hit what it
+      was aimed at and nothing else.
 - [ ] **DQ-15 — CFBD's `consensus` is stored as if it were a book.** Found
       2026-08-19 while fixing DQ-14, by reading the provider table instead of
       the one game. `/lines` returns a synthetic `consensus` provider alongside
