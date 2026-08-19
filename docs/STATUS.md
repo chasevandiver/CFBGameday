@@ -1571,7 +1571,29 @@ rather than absorbed silently.*
       Missouri State and Delaware instead of pricing them at −30. Landed
       2026-08-18, before the Aug 22 `--force` switch, so `preseason-refresh`
       picks it up on its own well inside the Aug 27 window.
-- [ ] **BT-1 — dispatch the CFBD history probe.** `npm run probe:history`
+- [x] **BT-1 — the history probe ran, 2026-08-19** (run `32206890515`, 78 calls).
+      **The load-bearing row came back OK: `/ratings/sp` 2014 has 129 rows, so a
+      2015 window start is seedable** and the default window stands. SP+ is OK
+      for all of 2014–2025; `talent`, `player/returning` and weekly Elo are OK
+      for every season 2015–2025.
+      **Two real constraints.** `ratings/elo@wk1` is thin for 2015–2021 and only
+      usable 2022–2025, which limits `--tune-anchors` to the recent end no
+      matter how wide the window goes — worth knowing before that re-test is
+      scheduled, since it was one of the two near-misses. And
+      `stats/game/advanced` reads thin for 2020 only, which is a COVID-delayed
+      opening weekend rather than a missing season; 2020 is chain-only and
+      unscored, so nothing that matters reads it.
+      **The probe also caught a bug in itself, which is the useful part.** It
+      reported `rankings@wk1` as thin for *all eleven* seasons — the signature
+      of a broken measurement, because genuine coverage gaps vary by year.
+      `/rankings` returns an array of WEEK objects, so a single-week query is
+      length 1 against a floor of 20, in every season, forever; the ranked teams
+      are nested at `polls[].ranks[]`. Fixed by letting a feed declare *how* it
+      is counted rather than special-casing this one, so the next nested payload
+      does not repeat it silently. **The manifest is therefore not committed
+      yet** — committing it would have frozen a wrong verdict into the file that
+      gates the tuners. Re-dispatch `probe-history` and commit the result. · dispatch
+- [x] ~~**BT-1 — dispatch the CFBD history probe.**~~ `npm run probe:history`
       (`scripts/probe-cfbd-history.ts`), 78 calls one time, 0.26% of the monthly
       budget. Per-season row counts for SP+, talent, returning production, PPA,
       Elo and polls, 2014–2025, written to `scripts/lib/cfbd-coverage.json` and
