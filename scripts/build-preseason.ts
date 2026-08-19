@@ -69,6 +69,12 @@ import { envNum } from "./lib/env-num";
 import { fcsMarginsVsFbs, fcsRatingOf, fcsTopIds } from "../src/model/fcs";
 import { portalPoints, portalScale } from "./lib/portal";
 import {
+  ROSTER_CLASSES,
+  classPointsByTeam,
+  rosterClassPoints,
+  scaleToTalentPoints,
+} from "./lib/recruiting-talent";
+import {
   cached,
   chainPriors,
   chainTilts,
@@ -203,16 +209,58 @@ async function main() {
   );
   const transitions = buildCoachTransitions(coachRows, SEASON);
 
+  const fbs = teams.filter((t) => t.classification === "fbs");
+  const teamByName = new Map(teams.map((t) => [t.school, t]));
+
+  // Which source stands in when the season's /talent composite is unpublished.
+  // "composite" (the identity default) reproduces every prior build exactly:
+  // fall back to last season's composite and stamp it stale. "recruiting"
+  // substitutes a roster estimate from the current classes FIRST — the raw
+  // material the composite is derived from, published months earlier — and
+  // only falls to the stale composite if the class join comes up thin. Set it
+  // only on the evidence of `backtest.ts --tune-talent-source` (pre-registered
+  // rule; docs/CHANGELOG.md decisions table), never to make a red gate green.
+  const TALENT_SOURCE = (process.env.TALENT_SOURCE || "composite").trim();
+  if (TALENT_SOURCE !== "composite" && TALENT_SOURCE !== "recruiting") {
+    throw new Error(
+      `TALENT_SOURCE must be "composite" or "recruiting", got "${TALENT_SOURCE}"`,
+    );
+  }
+
   let talent = await cached(`talent-${SEASON}`, () => cfbd.talent(SEASON), true);
   let talentIsStale = false;
-  if (talent.length === 0) {
+  let talentKind: "composite" | "recruiting" = "composite";
+  let recruitingScaled: Map<number, number> | null = null;
+  if (talent.length === 0 && TALENT_SOURCE === "recruiting") {
+    const byYear = new Map<number, Map<string, number>>();
+    for (let y = SEASON - ROSTER_CLASSES + 1; y <= SEASON; y++) {
+      const rows = await cached(`recruiting-${y}`, () => cfbd.recruitingTeams(y), true);
+      byYear.set(y, classPointsByTeam(rows));
+    }
+    const idsByName = new Map(teams.map((t) => [t.school, t.id]));
+    const fbsIds = new Set(fbs.map((t) => t.id));
+    const scaled = scaleToTalentPoints(rosterClassPoints(byYear, SEASON), idsByName, fbsIds);
+    // The same floor the tuner's Gate 0 pre-registered: below it the estimate
+    // is not a population, and the stale composite is the lesser evil.
+    if (scaled.size >= 120) {
+      talentKind = "recruiting";
+      recruitingScaled = scaled;
+      console.log(
+        `  no ${SEASON} talent composite yet — recruiting-class substitute active ` +
+          `(${scaled.size} FBS teams from the ${SEASON - ROSTER_CLASSES + 1}–${SEASON} classes)`,
+      );
+    } else {
+      console.log(
+        `  no ${SEASON} talent composite and the recruiting substitute matched only ` +
+          `${scaled.size} FBS teams (need 120) — falling back to the stale composite`,
+      );
+    }
+  }
+  if (talent.length === 0 && talentKind === "composite") {
     console.log(`  no ${SEASON} talent yet — falling back to ${SEASON - 1}`);
     talentIsStale = true;
     talent = await cached(`talent-${SEASON - 1}`, () => cfbd.talent(SEASON - 1), true);
   }
-
-  const fbs = teams.filter((t) => t.classification === "fbs");
-  const teamByName = new Map(teams.map((t) => [t.school, t]));
 
   // FCS buckets (SPEC §2.1, P1-2). Production cannot compute this at runtime —
   // the database holds only the current season — so it is computed here, where
@@ -234,13 +282,24 @@ async function main() {
   );
 
   // ---- 3. Talent baseline (points scale) ------------------------------------
-  const talentVals = talent.map((t) => t.talent);
-  const tMean = talentVals.reduce((a, b) => a + b, 0) / talentVals.length;
-  const tStd = Math.sqrt(talentVals.reduce((a, b) => a + (b - tMean) ** 2, 0) / talentVals.length);
+  // Composite path: z × 5.5 clamped ±18 over the file's own population, as
+  // every version has shipped. Recruiting path: the same transform was already
+  // applied in scaleToTalentPoints, over the FBS pool (see recruiting-talent.ts
+  // for why the substitute pins its population instead of inheriting the
+  // feed's). Either way the map downstream is on the identical points scale.
   const talentBaseline = new Map<number, number>();
-  for (const t of talent) {
-    const team = teamByName.get(t.team);
-    if (team) talentBaseline.set(team.id, clamp(((t.talent - tMean) / tStd) * 5.5, -18, 18));
+  if (recruitingScaled) {
+    for (const [id, v] of recruitingScaled) talentBaseline.set(id, v);
+  } else {
+    const talentVals = talent.map((t) => t.talent);
+    const tMean = talentVals.reduce((a, b) => a + b, 0) / talentVals.length;
+    const tStd = Math.sqrt(
+      talentVals.reduce((a, b) => a + (b - tMean) ** 2, 0) / talentVals.length,
+    );
+    for (const t of talent) {
+      const team = teamByName.get(t.team);
+      if (team) talentBaseline.set(team.id, clamp(((t.talent - tMean) / tStd) * 5.5, -18, 18));
+    }
   }
   // Fallback for teams the talent file misses: their conference's mean, then
   // −8 only when a whole conference is absent. The flat −8 was a mid-table
@@ -544,7 +603,22 @@ async function main() {
   if (process.argv.includes("--check")) {
     const problems: string[] = [];
     if (talentIsStale) {
-      problems.push(`talent: ${SEASON} not published, using ${SEASON - 1} (no incoming class)`);
+      problems.push(
+        `talent: ${SEASON} not published, using ${SEASON - 1} (no incoming class)` +
+          (TALENT_SOURCE === "recruiting"
+            ? " — the recruiting substitute was requested and came up thin"
+            : ""),
+      );
+    }
+    // The substitute is NOT a problem line: TALENT_SOURCE=recruiting is only
+    // ever set after --tune-talent-source's pre-registered rule adopted it
+    // (a recorded decision, like the Aug 22 --force date), the incoming class
+    // IS in the number, and what shipped is stamped on every component row.
+    if (talentKind === "recruiting") {
+      console.log(
+        `  note: talent baseline is the recruiting-class substitute ` +
+          `(${SEASON} composite unpublished; ${talentBaseline.size} FBS teams matched)`,
+      );
     }
     // A partially published talent file passes the staleness check above while
     // every unmatched team silently takes the −8 constant — the 2026.2.0 bug
@@ -820,9 +894,13 @@ async function main() {
         // (not just the forced ones) so absence means "built before this
         // existed" rather than "fresh" — /model only ever renders the
         // affirmative, and a rebuild on real data clears the note by writing
-        // talent_stale: false over it.
+        // talent_stale: false over it. talent_kind says WHICH source the year
+        // refers to: the composite, or the recruiting-class substitute
+        // (--tune-talent-source) — a substitute build is current-season data,
+        // so it is not stale, but it still has to announce itself.
         talent_source: talentIsStale ? SEASON - 1 : SEASON,
         talent_stale: talentIsStale,
+        talent_kind: talentKind,
         // Auditability: what the coaching number was derived from, even when
         // the fitted params make it 0.
         new_hc: p.coach !== null,

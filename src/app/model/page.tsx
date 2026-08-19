@@ -85,6 +85,27 @@ export default async function ModelPage() {
           </section>
         )}
 
+        {talent.substitute && (
+          <section className="card mb-6 p-4">
+            <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-sm text-accent">
+                Talent baseline built from recruiting classes
+              </h2>
+              <span className="chip stat bg-chalk/10 text-chalk/60">
+                {talent.substituteTeams} teams
+              </span>
+            </div>
+            <p className="text-sm text-dim">
+              CFBD had not published the {seasonId} team-talent composite when these ratings were
+              built, so the baseline is a roster estimate from the last four recruiting classes
+              &mdash; the same material the composite is derived from, incoming class included.
+              The substitute was validated against the composite on the backtest before it was
+              allowed to ship, and what it cannot see (portal moves) the model prices separately.
+              The note clears itself the next time the ratings rebuild on the real composite.
+            </p>
+          </section>
+        )}
+
         <section className="card mb-6 p-4">
           <h2 className="mb-3 text-sm text-accent">Current parameters</h2>
           <div className="overflow-x-auto">

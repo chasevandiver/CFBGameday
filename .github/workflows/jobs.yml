@@ -544,8 +544,11 @@ jobs:
                 echo "wrote backup-$STAMP.sql.gz ($(du -h backup-$STAMP.sql.gz | cut -f1), $(echo $TABLES | wc -w) tables)"
               fi ;;
             # Preview only — the JSON goes to a scratch dir and is discarded.
-            preseason-preview) npx tsx scripts/build-preseason.ts --out "$RUNNER_TEMP/preseason" --top 40 ;;
-            preseason-check) npx tsx scripts/build-preseason.ts --check --out "$RUNNER_TEMP/preseason-check" ;;
+            # TALENT_SOURCE=recruiting on every preseason build task: adopted
+            # 2026-08-19 by --tune-talent-source's pre-registered rule (CFBD-5;
+            # decisions table). Inert the day CFBD publishes the composite.
+            preseason-preview) TALENT_SOURCE=recruiting npx tsx scripts/build-preseason.ts --out "$RUNNER_TEMP/preseason" --top 40 ;;
+            preseason-check) TALENT_SOURCE=recruiting npx tsx scripts/build-preseason.ts --check --out "$RUNNER_TEMP/preseason-check" ;;
             verify-preseason) npx tsx scripts/verify-preseason.ts ;;
             # Handled by its own step below, so that a preseason refresh which
             # declines (and exits 0 on purpose) can never skip it.
@@ -599,6 +602,15 @@ jobs:
             # $FORCE is unquoted on purpose: empty must expand to no argument.
             preseason-refresh|preseason-bootstrap|preseason-force)
               DIR="$RUNNER_TEMP/preseason"
+              # Adopted 2026-08-19 by --tune-talent-source (pre-registered
+              # rule; docs/CHANGELOG.md decisions table): while the season's
+              # /talent composite is unpublished, the build substitutes the
+              # trailing recruiting classes BEFORE falling to last season's
+              # composite. A healthy substitute makes --check READY, so the
+              # refresh loads a rating with the incoming class in it instead
+              # of waiting for the Aug 22 stale-talent force. Inert the day
+              # CFBD publishes.
+              export TALENT_SOURCE=recruiting
               FORCE=""
               if [ "${{ steps.task.outputs.task }}" = "preseason-force" ]; then
                 FORCE="--force"

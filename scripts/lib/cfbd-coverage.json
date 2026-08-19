@@ -1,6 +1,6 @@
 {
   "probedAt": "2026-08-19",
-  "note": "Per-season CFBD auxiliary-feed coverage, 2014-2025. Produced by scripts/probe-cfbd-history.ts (npm run probe:history) and committed as a reviewed fact so scripts/lib/coverage.ts can refuse an under-covered window without spending a CFBD call. Games and lines are deliberately absent — BF-4 verified those from Supabase at zero CFBD cost.",
+  "note": "Per-season CFBD auxiliary-feed coverage, 2014-2025. Produced by scripts/probe-cfbd-history.ts (npm run probe:history) and committed as a reviewed fact so scripts/lib/coverage.ts can refuse an under-covered window without spending a CFBD call. Games and lines are deliberately absent \u2014 BF-4 verified those from Supabase at zero CFBD cost.",
   "rows": [
     {
       "season": 2014,
@@ -469,6 +469,84 @@
       "feed": "rankings@wk1",
       "verdict": "OK",
       "rows": 250
+    },
+    {
+      "season": 2013,
+      "feed": "recruiting/teams",
+      "verdict": "OK",
+      "rows": 210
+    },
+    {
+      "season": 2014,
+      "feed": "recruiting/teams",
+      "verdict": "OK",
+      "rows": 231
+    },
+    {
+      "season": 2015,
+      "feed": "recruiting/teams",
+      "verdict": "OK",
+      "rows": 231
+    },
+    {
+      "season": 2016,
+      "feed": "recruiting/teams",
+      "verdict": "OK",
+      "rows": 238
+    },
+    {
+      "season": 2017,
+      "feed": "recruiting/teams",
+      "verdict": "OK",
+      "rows": 233
+    },
+    {
+      "season": 2018,
+      "feed": "recruiting/teams",
+      "verdict": "OK",
+      "rows": 229
+    },
+    {
+      "season": 2019,
+      "feed": "recruiting/teams",
+      "verdict": "OK",
+      "rows": 223
+    },
+    {
+      "season": 2020,
+      "feed": "recruiting/teams",
+      "verdict": "OK",
+      "rows": 206
+    },
+    {
+      "season": 2021,
+      "feed": "recruiting/teams",
+      "verdict": "OK",
+      "rows": 191
+    },
+    {
+      "season": 2022,
+      "feed": "recruiting/teams",
+      "verdict": "OK",
+      "rows": 184
+    },
+    {
+      "season": 2023,
+      "feed": "recruiting/teams",
+      "verdict": "OK",
+      "rows": 177
+    },
+    {
+      "season": 2024,
+      "feed": "recruiting/teams",
+      "verdict": "OK",
+      "rows": 194
+    },
+    {
+      "season": 2025,
+      "feed": "recruiting/teams",
+      "verdict": "OK",
+      "rows": 232
     }
   ]
 }

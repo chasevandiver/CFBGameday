@@ -139,7 +139,11 @@ describe("the committed manifest", () => {
     // probedAt null is the warn-only state. Shipping it committed would mean
     // every tuner keeps printing numbers over windows nobody has verified.
     expect(m.probedAt).not.toBeNull();
-    expect(m.rows).toHaveLength(78);
+    // 78 original rows + 13 recruiting/teams (2013-2025, run 32278795011).
+    // That re-probe reproduced all 78 pre-existing verdicts and row counts
+    // exactly — the diff was purely additive, which is what made it safe to
+    // commit without re-litigating the earlier rows.
+    expect(m.rows).toHaveLength(91);
   });
 
   it("still has the row the whole 2015 window rests on", () => {

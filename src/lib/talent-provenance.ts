@@ -27,16 +27,28 @@ export interface TalentProvenance {
   source: number | null;
   /** How many teams carry the stale stamp — a partial count is its own signal. */
   teams: number;
+  /**
+   * At least one loaded team was rated off the recruiting-class substitute
+   * (`talent_kind: "recruiting"`, built when the composite is unpublished but
+   * the classes are in — see scripts/lib/recruiting-talent.ts). Current-season
+   * data, so not "stale", but a different construction than the composite the
+   * model was tuned on, and that has to be visible in the product. Affirmative
+   * only, like `stale`: rows without the stamp say nothing.
+   */
+  substitute: boolean;
+  substituteTeams: number;
 }
 
 export function talentProvenance(rows: Array<{ detail: unknown }>): TalentProvenance {
   let teams = 0;
+  let substituteTeams = 0;
   let source: number | null = null;
 
   for (const row of rows) {
     const detail = row.detail;
     if (typeof detail !== "object" || detail === null) continue;
     const d = detail as Record<string, unknown>;
+    if (d.talent_kind === "recruiting") substituteTeams++;
     if (d.talent_stale !== true) continue;
     teams++;
     // First stamped source wins. One build writes one value to every row, so a
@@ -46,5 +58,11 @@ export function talentProvenance(rows: Array<{ detail: unknown }>): TalentProven
     if (source === null && typeof d.talent_source === "number") source = d.talent_source;
   }
 
-  return { stale: teams > 0, source, teams };
+  return {
+    stale: teams > 0,
+    source,
+    teams,
+    substitute: substituteTeams > 0,
+    substituteTeams,
+  };
 }
