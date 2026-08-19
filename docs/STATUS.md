@@ -711,7 +711,7 @@ deliberate deferrals, each recorded below with what it would take.
       either a `jobs → nfl-grade` dispatch or the daily cron's first run; a
       direct `update` was attempted and blocked by the sandbox classifier.
 
-- [ ] **OPS-4 — six `scoreboard-loop` runs are stuck at `running`.** 08-14
+- [x] **OPS-4 — six `scoreboard-loop` runs are stuck at `running`.** 08-14
       20:18, 21:13, 22:09 and 08-15 02:59, 03:50, 04:39 all have `status
       'running'` and a null `finished_at`; the two that completed (23:10, 01:43)
       are the ones that had live games. A run that dies without writing its
@@ -721,6 +721,41 @@ deliberate deferrals, each recorded below with what it would take.
       First suspect is the hourly cron overlapping a `--minutes 63` loop and
       GitHub cancelling the older run, which would leave the row exactly like
       this. Not yet confirmed; the Actions run list will say. · **S**
+      **Fixed 2026-08-19. The suspect was right and it was confirmable from
+      `job_runs` alone** — the Actions list was never needed. A run is stuck
+      exactly when the next one starts before it ends: 03:50 stuck / 04:39 ok,
+      10:17 stuck / 11:15 ok, 20:31 → 21:28 → 22:30 all stuck with 23:28 ok.
+      `jobs.yml` sets `concurrency: cancel-in-progress: true` with the comment
+      "the hourly scoreboard loops overlap by design; the new run replaces the
+      old". So it is a *healthy handoff* writing a row shaped exactly like a job
+      that died — one per hour of live football, growing with the season, and it
+      was **13** by today rather than six.
+      **The stated mechanism was wrong, and it mattered.** The watchdog is not
+      blinded: `watchdogJob`'s `lastOkAgeH` filters `.eq("status", "ok")`, so a
+      stuck `running` row was never counted as a success. It was fine
+      throughout. **`/admin` was the real blind spot** — the freshness card
+      takes the latest run per job and calls anything not `error` healthy, so a
+      cancelled row rendered green *and so would a loop that had genuinely
+      crashed*, in the one place someone would look.
+      Both halves fixed. `recordJobRun` traps SIGINT/SIGTERM and writes
+      `canceled`, so the record is made when it happens rather than swept up
+      later — and a row still reading `running` recovers its meaning: killed
+      hard enough that even the handler did not land. The card shows a
+      `running` row older than three hours as **"never finished"** in amber.
+      **The database caught a bug that would have shipped silently.**
+      `job_runs_status_check` was `IN ('running','ok','error')` and refused
+      `canceled`. `recordJobRun`'s `finish` swallows write errors on purpose —
+      "observability must never break the thing it observes" — so the violation
+      would have been caught and dropped, the row would have stayed `running`,
+      and the fix would have looked shipped while doing nothing. Migration
+      **0073** widens the constraint and settles the 13 rows; **it has to be
+      applied before the deploy**, and it is inert against the running code,
+      which is what makes that safe. Applied live 2026-08-19 and verified:
+      scoreboard-loop now reads 15 `ok` / 13 `canceled` / 0 stuck.
+      `finished_at` is deliberately left null on the settled rows — nobody
+      observed them finish, and a fabricated timestamp is worse than a missing
+      one (the rule `backfillSnapshotRows` already applies to a line with no
+      kickoff).
 
 - [x] **DQ-14 — one book is stored under two provider names.** Game 401873278
       carries `DraftKings` and `Draft Kings` in `line_snapshots`, so

@@ -166,8 +166,10 @@ export async function recordJobRun<T extends Json>(
   } catch {
     /* job_runs unavailable — run the job anyway */
   }
+  let settled = false;
   const finish = async (patch: Record<string, unknown>) => {
-    if (runId === null) return;
+    if (runId === null || settled) return;
+    settled = true;
     try {
       await db
         .from("job_runs")
@@ -177,6 +179,35 @@ export async function recordJobRun<T extends Json>(
       /* same rule */
     }
   };
+
+  /* OPS-4. The hourly scoreboard loops overlap by design and the workflow's
+     concurrency group cancels the old one (jobs.yml, `cancel-in-progress`), so
+     GitHub signals the process and neither branch below ever runs — the row
+     stays `running` with a null `finished_at` forever. Thirteen of those had
+     accumulated by 2026-08-19, one per hour of live football, and a healthy
+     handoff was writing a row shaped exactly like a job that died.
+
+     Recording the cancellation is the fix rather than sweeping stale rows
+     later: it is the truth at the moment it happens, and it leaves a lingering
+     `running` row meaning what it should — killed hard enough not to get a
+     word in, which is worth seeing.
+
+     Installing a listener overrides Node's default exit, so the handler must
+     exit itself. `once` plus the `settled` flag keeps a second signal, or a
+     signal racing a normal finish, from writing twice. */
+  const cancelOn = (signal: "SIGINT" | "SIGTERM") => () =>
+    void finish({ status: "canceled", error: `received ${signal}` }).finally(() => {
+      process.exit(signal === "SIGINT" ? 130 : 143);
+    });
+  const onInt = cancelOn("SIGINT");
+  const onTerm = cancelOn("SIGTERM");
+  process.once("SIGINT", onInt);
+  process.once("SIGTERM", onTerm);
+  const release = () => {
+    process.off("SIGINT", onInt);
+    process.off("SIGTERM", onTerm);
+  };
+
   try {
     const result = await fn();
     await finish({ status: "ok", detail: result });
@@ -184,6 +215,10 @@ export async function recordJobRun<T extends Json>(
   } catch (err) {
     await finish({ status: "error", error: err instanceof Error ? err.message : String(err) });
     throw err;
+  } finally {
+    /* A long-lived process calls this more than once; leaving the listeners
+       attached would leak one pair per call and eventually warn. */
+    release();
   }
 }
 
