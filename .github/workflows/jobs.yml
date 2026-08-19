@@ -54,7 +54,29 @@ on:
           # Also on the Sunday 15:00 UTC cron. Only copy of
           # predictions/picks/bets outside the 7-day PITR window.
           - backup
-          # SECOND, and not because it runs often — it runs once. GitHub's
+          # SECOND, and it is here for reachability, not for topic. Grouping it
+          # next to `cfbd-probe` — which is what it is *about* — put it at
+          # position 22, and this list has now twice proved that its back half
+          # cannot be reached: `backup` at 14 was undiscoverable, and a job at
+          # 34 could not be started by the only person meant to start it. A
+          # dispatch-only job nobody can find is a job that does not exist.
+          # Keep it near the top until the manifest is committed; re-sorting it
+          # tidily by subject re-creates the same problem a third time.
+          #
+          # It also earns the slot under this list's actual rule (safe to run by
+          # mistake): read-only against CFBD and the database alike — it writes
+          # a JSON file in the runner and one api_call_log meter row, nothing
+          # else. A stray tap costs 78 CFBD calls and changes no product data.
+          #
+          # What it answers: for each SEASON, does the feed carry enough rows to
+          # fit anything on? A different question from `cfbd-probe`, which asks
+          # what the KEY grants — access does not vary by year and data does.
+          # Writes scripts/lib/cfbd-coverage.json, which the backtest reads to
+          # refuse a window it cannot cover. The load-bearing row is 2014 SP+:
+          # it is the bootstrap prior for a 2015 start, so if it is empty the
+          # default window has to begin later.
+          - probe-history
+          # THIRD, and not because it runs often — it runs once. GitHub's
           # mobile dispatch form renders about TWELVE options and then stops,
           # so this list's back half is unreachable from a phone. At position
           # 34 this job could not be started by the person who needs to start
@@ -96,14 +118,6 @@ on:
           # Access gate: what the CFBD key's TIER grants, which is a different
           # question from what CFBD has published. Read-only, 11 calls.
           - cfbd-probe
-          # Coverage gate: for each SEASON, does the feed have enough rows to
-          # fit anything on? A different question again from either of the
-          # above — access does not vary by year and data does. Writes
-          # scripts/lib/cfbd-coverage.json, which the backtest reads to refuse
-          # a window it cannot cover. Read-only against CFBD, 78 calls, one
-          # time. The load-bearing row is 2014 SP+: it is the bootstrap prior
-          # for a 2015 start, so if it is empty the default window has to move.
-          - probe-history
           # Liveness gate: does /scoreboard actually MOVE during a game?
           # cfbd-probe answers "reachable", which is a different question, and
           # the endpoint takes no year/week so there is nothing to replay —
