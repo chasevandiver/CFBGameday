@@ -203,6 +203,60 @@ shipping it.
 
 ## Log
 
+### Aug 19 — the coverage manifest lands, and the probe's own count was the bug
+
+`scripts/lib/cfbd-coverage.json` is now a reviewed fact rather than an empty
+placeholder: `probedAt: 2026-08-19`, 78 rows, from run `32208194660`. That flips
+`assertFeedCoverage` from a warning into a gate — a tuner whose feed is thin for
+the old end of the window now refuses to print a number instead of quietly
+scoring fewer seasons than its label claims.
+
+**The load-bearing row: `/ratings/sp` 2014 is OK at 129 rows.** A 2015 season
+seeds its priors from 2014 SP+, so the 2015–2025 default window that shipped on
+Aug 18 now rests on a measurement rather than an assumption.
+
+**Two constraints the probe found, both permanent.**
+
+| Feed | Coverage | What it costs |
+|---|---|---|
+| `ratings/elo@wk1` | thin 2015–2021 (78–96 rows vs. a floor of 100), OK 2022–2025 (131–136) | `--tune-anchors` is confined to the recent end however wide the window gets. It was one of the two near-miss re-tests; that re-test cannot be run on the wide corpus at all. |
+| `stats/game/advanced` | thin 2020 only (70 rows) | Nothing. 2020 is chain-only and unscored, so `--tune-epa` never reads it. |
+
+Checked against the real default window before committing: of the seventeen
+entries in `FEED_REQUIREMENTS`, **sixteen pass and only `--tune-anchors` is
+refused** — with an error that names its own fix (`--seasons=2021-2025`) rather
+than just stopping. `--tune-epa` passing on a window whose 2020 is thin is the
+`scored`/`all` split doing exactly what it was built for.
+
+**The first run's answer was wrong, and the shape of the wrongness is why.**
+Run `32206890515` reported `rankings@wk1` as thin for *all eleven* seasons.
+Uniformity across a decade is the signature of a broken instrument, not a
+broken feed — genuine coverage gaps vary by year. `/rankings` returns an array
+of WEEK objects with the ranked teams nested at `polls[].ranks[]`, so a
+single-week query is length 1 against a floor of 20, in every season, forever.
+The probe was counting weeks and calling them teams.
+
+Fixed by letting a feed declare *how* it is counted rather than special-casing
+this one, so the next nested payload does not repeat it silently. On the re-run
+`rankings@wk1` is OK for all eleven at 125–250 ranked teams, and **every other
+row is unchanged** — which is the check that matters: a fix that had moved other
+rows would have been a second bug.
+
+The manifest from the first run was deliberately not committed. Freezing a wrong
+verdict into the file that gates the tuners is worse than having no file, because
+the wrong file stops warning.
+
+Also: `jobs.yml` now prints the written manifest into the run summary as well as
+uploading it. The step comment already asked for a by-hand review, and an
+artifact you have to download and unzip is a worse review surface than a diff —
+and it expires, while the run's summary does not. `tee -a`, not `>>`: sending a
+group's stdout straight at `$GITHUB_STEP_SUMMARY` writes the file and leaves the
+job log empty.
+
+**No parameter moved.** The count fix and the summary print are PR #94; the manifest itself is committed separately, since it is data the fix produced rather than part of the fix.
+
+---
+
 ### Aug 18 — the backtest window opens to 2015, and the FBS pool turns out to have been frozen
 
 **The question was whether the archive backfill could tune the model. It could

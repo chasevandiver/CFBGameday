@@ -1590,9 +1590,23 @@ rather than absorbed silently.*
       length 1 against a floor of 20, in every season, forever; the ranked teams
       are nested at `polls[].ranks[]`. Fixed by letting a feed declare *how* it
       is counted rather than special-casing this one, so the next nested payload
-      does not repeat it silently. **The manifest is therefore not committed
-      yet** — committing it would have frozen a wrong verdict into the file that
-      gates the tuners. Re-dispatch `probe-history` and commit the result. · dispatch
+      does not repeat it silently. The manifest from that run was deliberately
+      **not** committed: it would have frozen a wrong verdict into the file that
+      gates the tuners.
+      **The re-run confirms it was the count, not the feed** (run `32208194660`,
+      2026-08-19, on the fixed code). `rankings@wk1` is OK for all eleven
+      seasons at 125–250 ranked teams against a floor of 20 — 2020's 125 is the
+      only season below 200, and that is a real COVID effect rather than a
+      measurement one. Everything else is unchanged from the first run, which is
+      the point: a fix that moved other rows would have been a second bug.
+      `scripts/lib/cfbd-coverage.json` is now committed with `probedAt`
+      2026-08-19 and 78 rows, so `assertFeedCoverage` is a gate rather than a
+      warning. Checked against the real window before committing: of the
+      seventeen entries in `FEED_REQUIREMENTS`, sixteen pass and **only
+      `--tune-anchors` is refused**, with the error naming its own fix
+      (`--seasons=2021-2025`). `--tune-epa` passes because 2020 is chain-only
+      and unscored, which is exactly the interaction the `scored`/`all` split
+      exists to get right. · dispatch
 - [x] ~~**BT-1 — dispatch the CFBD history probe.**~~ `npm run probe:history`
       (`scripts/probe-cfbd-history.ts`), 78 calls one time, 0.26% of the monthly
       budget. Per-season row counts for SP+, talent, returning production, PPA,

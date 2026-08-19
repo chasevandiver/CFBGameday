@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
+import { DEFAULT_WINDOW, makeWindow } from "./window";
 import {
   CoverageError,
   FEED_REQUIREMENTS,
   assertFeedCoverage,
   coverageComplaints,
   coverageVerdict,
+  loadCoverageManifest,
   narrowestWorkingWindow,
   type CoverageManifest,
   type CoverageRow,
@@ -117,5 +119,65 @@ describe("assertFeedCoverage", () => {
     expect(() =>
       assertFeedCoverage("report", { scored: [2024, 2025], label: "t" }, m, () => {}),
     ).not.toThrow();
+  });
+});
+
+/**
+ * The tests above exercise the reasoning on synthetic manifests. These pin the
+ * COMMITTED one, because that file is the reviewed fact the gate actually
+ * consults — and a re-probe rewrites it wholesale. Without this, a future
+ * `--write` that silently degraded a feed would flip tuners from "refuses" to
+ * "runs" (or the reverse) with nothing in the diff review to catch it.
+ */
+describe("the committed manifest", () => {
+  const m = loadCoverageManifest();
+  const window = makeWindow(
+    Array.from({ length: DEFAULT_WINDOW.to - DEFAULT_WINDOW.from + 1 }, (_, i) => DEFAULT_WINDOW.from + i),
+  );
+
+  it("has been probed, so the gate is a gate", () => {
+    // probedAt null is the warn-only state. Shipping it committed would mean
+    // every tuner keeps printing numbers over windows nobody has verified.
+    expect(m.probedAt).not.toBeNull();
+    expect(m.rows).toHaveLength(78);
+  });
+
+  it("still has the row the whole 2015 window rests on", () => {
+    // A 2015 season seeds its priors from 2014 SP+. If this ever comes back
+    // THIN or EMPTY the default window is unseedable, and the failure would
+    // otherwise show up as a quietly worse model rather than as an error.
+    const sp2014 = m.rows.find((r) => r.season === 2014 && r.feed === "ratings/sp");
+    expect(sp2014?.verdict).toBe("OK");
+  });
+
+  it("blocks exactly one tuner on the default window, and names its fix", () => {
+    // Reviewed 2026-08-19 against run 32208194660. `ratings/elo@wk1` is thin
+    // 2015-2021, which is a real CFBD gap and confines --tune-anchors to the
+    // recent end. Everything else clears, INCLUDING --tune-epa: advanced stats
+    // are thin for 2020 alone and 2020 is chain-only, so it is never scored.
+    const blocked = Object.keys(FEED_REQUIREMENTS).filter((experiment) => {
+      try {
+        assertFeedCoverage(experiment, window, m, () => {});
+        return false;
+      } catch {
+        return true;
+      }
+    });
+    expect(blocked).toEqual(["tune-anchors"]);
+    expect(() => assertFeedCoverage("tune-anchors", window, m, () => {})).toThrow(
+      /--seasons=2021-2025/,
+    );
+  });
+
+  it("carries no UNPROBED gap for any feed a tuner declares", () => {
+    // A missing row reads as UNPROBED, which only WARNS. A manifest that has
+    // been probed but is missing rows is therefore the one state that looks
+    // covered and is not.
+    for (const experiment of Object.keys(FEED_REQUIREMENTS)) {
+      const unprobed = coverageComplaints(experiment, window.scored, m).filter(
+        (c) => c.verdict === "UNPROBED",
+      );
+      expect(unprobed, `${experiment} has unprobed feeds`).toEqual([]);
+    }
   });
 });
