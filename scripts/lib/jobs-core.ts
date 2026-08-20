@@ -9,6 +9,7 @@
  * bug in it is worse than no tombstone; git has it if it is ever wanted.
  */
 
+import { rmSync, writeFileSync } from "node:fs";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cfbd, type CfbdScoreboardGame } from "../../src/lib/cfbd";
 import {
@@ -146,6 +147,76 @@ export function closingConsensus(
 }
 
 /**
+ * OPS-4b, 2026-08-20. Where a run publishes its `job_runs` id so that a LATER
+ * WORKFLOW STEP can settle the row when the runner cancels this one.
+ *
+ * The signal handler in `recordJobRun` cannot do it, which the fix on 08-19
+ * assumed it could. Run 32329026607's log shows why: cancelling kills the
+ * step's bash shell, and the job is complete 0.26 s later, after the runner
+ * prints `Terminate orphan process` for the whole `npm exec tsx → sh → node →
+ * node` tree. The signal never reaches the grandchild that installed the
+ * handler, and a Supabase round-trip would not finish inside a quarter second
+ * if it had. A step guarded by `if: cancelled()` runs *after* all that — the
+ * same log shows the post-checkout step executing — so it is the one place
+ * with both the time and a live process to write from.
+ *
+ * Unset outside Actions, where the handler is the thing that works: a local
+ * Ctrl-C reaches the process directly and settles its own row.
+ */
+function publishRunId(runId: number | null): void {
+  const path = process.env.JOB_RUN_ID_FILE;
+  if (!path || runId === null) return;
+  try {
+    writeFileSync(path, String(runId));
+  } catch {
+    /* observability must never break the thing it observes */
+  }
+}
+
+/** Drop the pointer once the row has settled itself, so a cancellation
+ *  arriving between two jobs in a chained step has nothing stale to point at.
+ *  The status guard in `settleCanceledRun` is the real protection; this keeps
+ *  the step from doing pointless work. */
+function clearRunId(): void {
+  const path = process.env.JOB_RUN_ID_FILE;
+  if (!path) return;
+  try {
+    rmSync(path, { force: true });
+  } catch {
+    /* same rule */
+  }
+}
+
+/**
+ * Settle a row the runner cancelled (OPS-4b). Called from the workflow's
+ * `if: cancelled()` step via scripts/settle-canceled-run.ts, never from the
+ * job itself.
+ *
+ * `finished_at` IS written here, unlike the thirteen rows 0073 swept: the
+ * cancellation is being recorded as it happens by something that watched it,
+ * so the timestamp is observed rather than fabricated.
+ *
+ * The `status = running` guard is what makes the step safe to run on any
+ * cancellation: a job that finished normally in the seconds before the
+ * cancellation landed keeps its `ok`, and a re-run of the step is a no-op.
+ * A row still reading `running` after all this keeps the meaning OPS-4 gave
+ * it — killed hard enough that nothing got a word in.
+ */
+export async function settleCanceledRun(
+  db: SupabaseClient,
+  runId: number,
+  note: string,
+): Promise<"settled" | "already-finished"> {
+  const { data } = await db
+    .from("job_runs")
+    .update({ status: "canceled", finished_at: new Date().toISOString(), error: note })
+    .eq("id", runId)
+    .eq("status", "running")
+    .select("id");
+  return ((data as unknown[] | null) ?? []).length > 0 ? "settled" : "already-finished";
+}
+
+/**
  * Record one job run in job_runs (migration 0024): started/finished/status
  * plus the job's own summary JSON. The admin freshness card reads it, which
  * is the absence half of alerting — a run that errors is loud on its own; a
@@ -166,6 +237,7 @@ export async function recordJobRun<T extends Json>(
   } catch {
     /* job_runs unavailable — run the job anyway */
   }
+  publishRunId(runId);
   let settled = false;
   const finish = async (patch: Record<string, unknown>) => {
     if (runId === null || settled) return;
@@ -191,6 +263,11 @@ export async function recordJobRun<T extends Json>(
      later: it is the truth at the moment it happens, and it leaves a lingering
      `running` row meaning what it should — killed hard enough not to get a
      word in, which is worth seeing.
+
+     OPS-4b, 2026-08-20: on GitHub this handler never fires, so it is the
+     local-Ctrl-C path and a backstop rather than the fix. The workflow's
+     `if: cancelled()` step is what settles a cancelled run — see
+     `publishRunId` above for the evidence and the mechanism.
 
      Installing a listener overrides Node's default exit, so the handler must
      exit itself. `once` plus the `settled` flag keeps a second signal, or a
@@ -219,6 +296,7 @@ export async function recordJobRun<T extends Json>(
     /* A long-lived process calls this more than once; leaving the listeners
        attached would leak one pair per call and eventually warn. */
     release();
+    clearRunId();
   }
 }
 

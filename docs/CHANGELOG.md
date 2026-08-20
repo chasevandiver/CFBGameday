@@ -215,6 +215,46 @@ shipping it.
 
 ## Log
 
+### Aug 20 — OPS-4b: the cancelled-run fix could never have worked
+
+Found while checking the day's dated watch in `docs/STATUS.md` §2.5, not by
+anything alerting. OPS-4 shipped on 08-19 with a SIGINT/SIGTERM handler in
+`recordJobRun` and **two more stuck rows appeared behind it** — `job_runs`
+**217** (08-19 03:40) and **242** (08-20 03:40), both `scoreboard-loop` runs
+cancelled by the next hourly launch, run 242 checked out at `d9fad2a` with the
+handler in the code it was running.
+
+**The number that settles it:** Actions run `32329026607` cancels at
+04:30:07.64 and completes at **04:30:07.90** — 0.26 s later, after printing
+`Terminate orphan process` for `npm exec tsx`, `sh`, two `node`s and
+`esbuild`. The signal goes to the step's bash shell, not to the grandchild
+that installed the handler; and even delivered, a Supabase round-trip does not
+finish in a quarter second. A signal handler is structurally the wrong
+instrument here — it stays as the local-Ctrl-C path and a backstop, not as the
+fix.
+
+**What replaces it:** the same log shows the post-checkout step running *after*
+the cancellation, so a step guarded by `if: cancelled()` has both time and a
+live process. `recordJobRun` publishes its row id to `JOB_RUN_ID_FILE`;
+`scripts/settle-canceled-run.ts` settles that exact row, guarded on
+`status = 'running'`. Settling **the row it knows** rather than sweeping by job
+name is deliberate: the Sat/Sun seam puts two `scoreboard-loop` runs in
+different concurrency groups and genuinely alive at once for ~3 minutes
+(`jobs.yml:265-268`), and a name-based sweep would file the live one as
+cancelled — the same class of error as calling a cancelled run healthy.
+
+`finished_at` **is** written here, unlike 0073's swept rows: this cancellation
+is recorded by something that watched it happen. A row still reading `running`
+keeps the meaning OPS-4 gave it — killed hard enough that nothing got a word
+in.
+
+`0076_settle_ops4b_stragglers.sql` settles 217 and 242 on 0073's rules
+(3-hour cutoff, null `finished_at`, no DELETE). **Written, not applied** — the
+apply was refused by the authoring session's sandbox; it is data-only and
+ordering-free. Seven tests added (`scripts/lib/jobs-core.test.ts`) covering the
+id publish, the drop on finish, the unset-env path, the observed finish time,
+the `status = 'running'` guard, and the no-op on a run that finished first.
+
 ### Aug 20 — PR #103 opened; 0075 applied and read back
 
 The four rounds went up as one PR (base `main`, everything default-off, the
