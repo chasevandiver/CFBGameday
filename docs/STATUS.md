@@ -2045,6 +2045,52 @@ rather than absorbed silently.*
       5+5 on two, saturating the ±6 clamp for four of the top 40. What was left
       was the name, which is what would have sent the next reader down the same
       path.
+- [ ] **DQ-16 — the model has no availability input, and cannot be audited on
+      the one it does have.** Found 2026-08-19 from an owner observation that a
+      Texas Tech quarterback is not expected to play this season. The roster
+      claim is the owner's and is not verified here; **the finding does not
+      depend on it**, because nothing in the pipeline could act on it either
+      way.
+      **What it would move, if the model could see it.** `qbReturns` is the only
+      quarterback-shaped input there is, and it enters as `+1.0 / −1.0 / 0`
+      (`ratings.ts:361`) inside a churn term that is **additive point-for-point**
+      into the rating (`ratings.ts:307`). A flip is therefore a **2.0-point
+      swing**, and Texas Tech's churn is **−0.06** — far enough from the ±6 clamp
+      that the whole 2.0 would land. On the loaded board that is 27.1 → 25.1,
+      first place to roughly fourth.
+      **Why it does not see it.** `qbReturns` is `percentPassingPPA >= 0.5` from
+      `/player/returning` (`build-preseason.ts:419`): it asks whether last
+      season's passing production came back to the roster, not whether anyone
+      will take a snap. A player on the roster when CFBD computed the feed
+      counts as returning. That is the class **F3** exists for, and F3 is
+      unbuilt.
+      **The part that is new, and is not DQ-6.** DQ-6 says the proxy is the
+      wrong measurement. This says **you cannot tell what the proxy decided**:
+      `preseason_components.detail` persists `talent_kind`, `talent_stale`,
+      `tier_recenter`, `coach` and `proxies`, and **not the qb term**. Read back
+      from production, Texas Tech's stored inputs give
+      `core = (0.53 − 0.6) × 6 × 0.741 ≈ −0.31` against a churn of −0.06, so
+      `qb + netPortalPoints ≈ +0.25` — satisfiable by `qb=+1.0` with a portal
+      loss, by `qb=0`, or by `qb=−1.0` with a portal gain. **The largest discrete
+      term in the adjustment is not recoverable from the database**, which is the
+      same shape as every `emptyIsHealthy` row in this file: absence of a
+      recorded value read as if the value were known.
+      **Not fixed before Week 0, deliberately.** There is no supported path to
+      override one team's input, the model is gated, and building one nine days
+      out is the trade this file keeps refusing. Exposure is also smaller than
+      the ranking implies: Texas Tech has **no Week 0 game**, Week 1 is Abilene
+      Christian (an FCS buy game priced off the −30 bucket, where their rating
+      barely moves the number), and the first real line is **Week 2 at Oregon
+      State, Sep 12** — by which point `ratings-update` owns the numbers and
+      results are already correcting the prior.
+      **What closing it looks like, cheapest first:** persist `qb_returns` and
+      `net_portal_points` in `detail` so the term is auditable — **XS**, changes
+      no number, and would have answered this question in one query instead of
+      three-way arithmetic. Then **04:DQ-6** (roster facts instead of the proxy)
+      and **F3** (availability at all), both post-launch and both larger.
+      **Ask it of the board on Aug 24**, where Texas Tech at #1 is already on the
+      smell-test list — now with a specific question rather than a vibe. · **XS**
+      (audit key) / **M** (the real fix) · after launch
 - [ ] **04:DQ-6** `qbReturns` from roster facts instead of the passing-PPA
       proxy · M
 - [ ] **04:DQ-11** Real `turnoverMargin` for the luck rule · S/M
