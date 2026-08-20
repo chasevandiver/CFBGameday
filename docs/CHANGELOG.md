@@ -215,6 +215,32 @@ shipping it.
 
 ## Log
 
+### Aug 20 — MIG-1/MIG-2 closed: the ledger and the repo agree again
+
+`0077_consensus_excludes_aggregates_per_market.sql` files DQ-15's per-market
+correction, which had been live since 08-19 (`20260819034059`) with no file in
+the repo. The body is copied from `schema_migrations.statements` and **checked
+by hash, not by eye** — 2,609 characters, md5 `046e5473313ea39b694310b99c6e8b24`
+on both sides. Not re-applied: it is already the live definition.
+
+Filed as its own migration rather than folded into 0074, because 0074 ran as
+written and the ledger should keep saying so — and a correction is only legible
+as one if the thing it corrects is still there to read. The number is out of
+order against the apply order, harmlessly: Supabase replays by recorded
+timestamp, a rebuild replays by filename, and both put it after 0074.
+
+**Two findings fell out of doing it.** `src/lib/consensus.test.ts` pinned the
+aggregate-provider list against **0074** — a view definition production no
+longer runs — so the guard was watching the wrong file; it now pins both, plus
+a test that fails if 0077 stops being the per-market one. And the worry worth
+checking: **`make_pick` never needed the correction.** Its `latest` CTE filters
+to the requested market before the books-exist test, so it was per-market by
+construction. Read off the live function definition rather than assumed. The
+view and the pick path agree, which is what that test exists to guarantee.
+
+Migration count is **75 files / 75 recorded rows, in sync** — numbering runs to
+0077 with two gaps, 0004 and 0060.
+
 ### Aug 20 — the migration ledger does not say what §1 said it said (MIG-1, MIG-2)
 
 Turned up while verifying 0076's apply, by counting the directory instead of
