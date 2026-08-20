@@ -31,12 +31,18 @@ carries the number that killed it.
 market-anchored tier recentre in the preseason build (Aug 12, below), which
 removes a measured +9.8-point cross-classification lean from the 2026 openers.
 
-⚠️ **In the code, not yet in production.** As of 2026-08-07 the database serves
-`ratings` at **2026.2.0** — the site is running a model four versions behind
-this table. `team_hfa` rows are derived from `baseHfa` at build time, so the
-`2.3 → 3.0` fix in particular does nothing until `build-preseason.ts` is re-run
-and reloaded — and the tier recentre likewise only reaches production through a
-rebuild.
+✅ **In production since 2026-08-19**, on the recruiting-class substitute rather
+than the stale-talent build the Aug 22 escalation authorised. Dispatched
+`preseason-refresh` (run `32301198359`) loaded 138 week-0 ratings and
+`verify-preseason` read them back: `model_version 2026.5.0`, `team_hfa` at **1**
+distinct `blended_hfa` where production had carried **70** that morning,
+`preseason_components` at **0** `talent_stale`. See `docs/STATUS.md` §1.
+*(Previously, and kept as what was true for twelve days: "⚠️ In the code, not yet
+in production. As of 2026-08-07 the database serves `ratings` at 2026.2.0 — the
+site is running a model four versions behind this table." `team_hfa` rows are
+derived from `baseHfa` at build time, which is why the `2.3 → 3.0` fix did
+nothing until `build-preseason.ts` was re-run and reloaded, and the tier
+recentre likewise only reached production through that rebuild.)*
 
 That reload is now automatic: the `preseason-refresh` job (below) retries every
 morning in August and loads on the first day `--check` reports READY. Nothing to
@@ -207,6 +213,50 @@ shipping it.
 ---
 
 ## Log
+
+### Aug 19 — the slate's rank stops being a footnote
+
+Owner report: *"I don't like the rankings being behind the college football team
+names on the slate. I want them in front and more prominent so they stick out
+more."*
+
+The game card rendered the rank as a 10px `text-dim` `<sup>` **after** the school
+name — which is where a footnote goes. The eye reaches it having already read the
+name, and at that size in a dim room it mostly did not survive the trip. On a
+screen whose whole job is "is this game worth watching", a top-25 rank is one of
+the two or three things that answers the question. The row now reads **"#2
+Georgia"**: pip first, 13px, semibold.
+
+**The fix was to delete markup, not add it.** The card had its own `<sup>` while
+every other surface — group boards, matchup cards, the admin picker — used the
+shared `RankPip`. Routing the card through the same component bought the rule the
+superscript never carried: **accent when a human poll ranked them, dim when it is
+only the model's own rating**. The old `<sup>` titled every rank `"Model rank"`
+unless a poll existed and coloured both identically, so the card was making a
+claim it could not distinguish, on a board where those two claims routinely
+disagree by ten places. It also gains the `sr-only` source string the `<sup>`
+never had. `RankPip` grew one `size` variant (`sm` for the dense rows, `md` for
+the scoreboard row) and forks in nothing else.
+
+Implementation mode per `docs/DESIGN.md`: **no new colour, weight, spacing or
+radius**, and both sizes were already on the scale. `shrink-0` on the pip against
+`min-w-0`/`truncate` on the name means a long school gives up characters before
+the rank gives up existing; `.stat` keeps it tabular, so a rank changing width
+shifts nothing.
+
+Tests pin **DOM order rather than presence** — putting the pip back after the name
+would still render `#4` and still pass a presence check — plus the accent/dim
+split asserted in both directions. 1,697 tests across 118 files, `typecheck` and
+`lint` green.
+
+**Two things not fixed, stated rather than softened.** In light mode `--accent`
+is 3.77:1 on the card face and 13px semibold is not "large text", so a
+poll-ranked pip is now *less* legible than a model-ranked one, which inverts the
+hierarchy the accent exists to express — that is **UX-06b**, whose colour
+`docs/BRAND.md` owns, and this change makes its consequence more visible rather
+than creating it. And **nothing here has been seen rendered**: there is no
+`.env.local` in the build environment, so the numbers above come from the source,
+the suite and the measured contrast ratios. It wants the Aug 21 real-device pass.
 
 ### Aug 19 — "too much 2025 in the number?" — asked properly, and answered no
 
