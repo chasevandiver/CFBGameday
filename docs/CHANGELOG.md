@@ -215,6 +215,17 @@ shipping it.
 
 ## Log
 
+### Aug 20 — PR #103 opened; 0075 applied and read back
+
+The four rounds went up as one PR (base `main`, everything default-off, the
+taste-pass tour in the body). `0075_crowd_signs` applied to
+`mjijyutmbtnwcjspozsx` via the Supabase MCP and **verified by reading the
+catalog back**: 74 files / 74 recorded rows in sync (0004 has never
+existed), `crowd_signs` RLS on with exactly 4 policies — crew-visible
+SELECT, own-row INSERT/UPDATE/DELETE — **0 anon policies, 0 TRUNCATE
+grants**. Apply-vs-deploy order was free as the migration header claims:
+nothing running reads the table until the PR lands.
+
 ### Aug 20 — The Sign-Off (FUN-16): the day gets its closing beat
 
 Owner direction request, answered with a thesis rather than a feature list:
