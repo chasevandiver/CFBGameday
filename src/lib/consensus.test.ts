@@ -74,14 +74,23 @@ describe("the SQL mirrors have the same aggregate list", () => {
   // obligation: when they disagree, a pick is graded against a line the app
   // never showed. This file's own header records that exact bug from a
   // half-point rounding mismatch, so the list gets pinned rather than trusted.
-  const SQL = readFileSync(
-    join(__dirname, "../../supabase/migrations/0074_consensus_excludes_aggregates.sql"),
-    "utf8",
-  );
+  // Two files, because the rule lives in two applies: 0074 wrote both SQL
+  // sites, and 0077 re-created the view per-market (MIG-1 — applied 08-19,
+  // filed 08-20). Pinning only 0074 would pin a definition production no
+  // longer runs. `make_pick` needs no per-market correction: its `latest` CTE
+  // filters to the requested market before the books-exist test, so it was
+  // per-market by construction — verified against the live function, not
+  // assumed.
+  const SQL = [
+    "0074_consensus_excludes_aggregates.sql",
+    "0077_consensus_excludes_aggregates_per_market.sql",
+  ]
+    .map((f) => readFileSync(join(__dirname, "../../supabase/migrations/", f), "utf8"))
+    .join("\n");
 
   it("names every AGGREGATE_PROVIDERS entry in the migration", () => {
     for (const name of AGGREGATE_PROVIDERS) {
-      expect(SQL, `${name} missing from 0074`).toContain(`'${name}'`);
+      expect(SQL, `${name} missing from 0074/0077`).toContain(`'${name}'`);
     }
   });
 
@@ -98,5 +107,19 @@ describe("the SQL mirrors have the same aggregate list", () => {
   it("applies the rule at both SQL sites, not just the view", () => {
     expect(SQL).toContain("create or replace view public.line_consensus");
     expect(SQL).toContain("create or replace function public.make_pick");
+  });
+
+  it("pins the per-market view, which is the definition production actually runs", () => {
+    // The row-level rule dropped the aggregate whenever ANY book was present,
+    // even one quoting the other market — three archive games lost the only
+    // spread they had. The tell that 0077 is in the pin is the per-market
+    // counts; 0074 has none.
+    const perMarket = readFileSync(
+      join(__dirname, "../../supabase/migrations/0077_consensus_excludes_aggregates_per_market.sql"),
+      "utf8",
+    );
+    for (const col of ["books_spread", "books_total", "books_ml_home", "books_ml_away"]) {
+      expect(perMarket, `${col} missing — 0077 is not the per-market view`).toContain(col);
+    }
   });
 });
