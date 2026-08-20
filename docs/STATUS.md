@@ -4414,6 +4414,19 @@ openable on a phone.
       reduced-motion clamp cannot reach the `::view-transition-*` pseudo
       tree, so a sibling rule zeroes those durations under the same media
       query. No `document.startViewTransition` anywhere.
+- [x] **FUN-16** The Sign-Off — the Gameday Arc's closing beat, owner
+      direction 2026-08-20 ("come up with some direction"): the day now has
+      a shape — the Cover opens it, the slate and the Jumbotron carry it,
+      and this closes it. After 9pm local on a gameday, once finals exist
+      and NOTHING is still live (a goodnight over a live game would be wrong
+      twice), the site signs off: "That was Saturday." — tonight's upset (a
+      top-15 team beaten by someone ten spots worse) or the closest call,
+      the finals count, how many the viewer had a piece of. **Action counts,
+      never results** — pick'em grades land with Sunday's job, so a
+      Saturday-night record would be a guess wearing a number, and the copy
+      says the recap tells the whole story. Shares the Cover's toggle (the
+      bookends are one ritual), its once-per-gameday stamp, and its
+      `/api/slate` diet; `?funday=sat&daypart=lights` poses it un-stamped.
 - [ ] **FUN-12** The taste pass. Owner opens the four mockups and `/demo`
       (plus `/slate?funday=sat&daypart=golden` with the master switch on) on
       a real phone and keeps, redirects, or kills each piece — "not corny" is

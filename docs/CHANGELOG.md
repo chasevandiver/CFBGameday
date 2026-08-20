@@ -215,6 +215,21 @@ shipping it.
 
 ## Log
 
+### Aug 20 — The Sign-Off (FUN-16): the day gets its closing beat
+
+Owner direction request, answered with a thesis rather than a feature list:
+the fun side no longer lacks parts, it lacks **composition** — a gameday
+should have the shape of a broadcast (the Cover opens, the slate and the
+Jumbotron carry, and nothing closed). The Sign-Off is the missing bookend:
+after 9pm on a gameday with finals on the board and nothing live, the site
+says "That was Saturday." — the upset or the closest call, the finals
+count, how many the viewer had a piece of, and a pointer at the recap.
+Same toggle, stamp and data diet as the Cover (the bookends are one
+ritual). Deliberately counts **action, not results**: pick grades land
+Sunday, and a Saturday-night record would be a guess wearing a number.
+Preview: `/?funday=sat&daypart=lights`. Tests unchanged (pure logic is
+selection over the slate payload); typecheck/lint/build green.
+
 ### Aug 20 — Round 5: the Jumbotron, the Game Flow river, The Slate Wrapped
 
 Owner request: *"What else should we add? Come up with best-in-class ideas."*

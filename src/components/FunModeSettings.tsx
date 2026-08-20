@@ -11,7 +11,7 @@ import { useFunPrefs, type FunPiece } from "../lib/fun-mode";
  */
 
 const RITUALS: { piece: FunPiece; label: string; hint: string }[] = [
-  { piece: "cover", label: "The Cover", hint: "The site opens with a program cover on gamedays" },
+  { piece: "cover", label: "The Cover & Sign-Off", hint: "A program cover opens a gameday; a sign-off closes it" },
   { piece: "panel", label: "The Panel", hint: "Crew picks for the big game reveal one by one" },
   { piece: "signs", label: "Crowd signs", hint: "The crew's posterboard wall above the Saturday slate" },
   { piece: "rundown", label: "The Rundown", hint: "The Saturday slate loads in like a broadcast rundown" },
