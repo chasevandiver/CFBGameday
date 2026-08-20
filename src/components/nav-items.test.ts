@@ -112,6 +112,14 @@ describe("nav slots", () => {
     expect(DESKTOP_ITEMS.map((i) => i.label)).not.toContain("Edges");
   });
 
+  it("keeps /jumbotron in the More sheet only (R5-A)", () => {
+    // A takeover surface, not a daily destination: the slate's Live view
+    // carries the loud entry while games are on; More keeps it reachable
+    // the rest of the week without spending a tab.
+    expect(NAV_ITEMS.some((i) => i.href === "/jumbotron")).toBe(true);
+    expect(DESKTOP_ITEMS.map((i) => i.label)).not.toContain("Jumbotron");
+  });
+
   it("keeps mobile-only and overflow-only items out of the desktop strip", () => {
     expect(DESKTOP_ITEMS.map((i) => i.label)).toEqual([
       "Slate",

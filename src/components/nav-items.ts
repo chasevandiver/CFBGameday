@@ -1,4 +1,4 @@
-import { BarChart3, Gamepad2, Home, Receipt, TrendingUp, Users } from "lucide-react";
+import { BarChart3, Gamepad2, Home, MonitorPlay, Receipt, TrendingUp, Users } from "lucide-react";
 import type { ComponentType } from "react";
 
 export interface NavItem {
@@ -48,6 +48,10 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Gamepad2,
   },
   { label: "Edges", href: "/edges", overflowOnly: true, icon: TrendingUp },
+  // R5-A: a takeover surface, not a daily destination — the slate's Live
+  // view carries the loud entry when games are on; this keeps it reachable
+  // the rest of the time without spending a tab on it.
+  { label: "Jumbotron", href: "/jumbotron", overflowOnly: true, icon: MonitorPlay },
   { label: "Rankings", href: "/rankings" },
   { label: "Ratings", href: "/ratings" },
   { label: "Standings", href: "/standings" },

@@ -80,11 +80,21 @@ export default async function MePage() {
   // picks don't carry one of their own. Cheap either way; the component
   // renders nothing unless the toggle is on.
   const { seasonId } = await fetchCurrentSeasonWeek(supabase, "cfb");
-  const { data: stubPickRows } = await supabase
-    .from("picks")
-    .select("result, games(week)")
-    .eq("user_id", user.id)
-    .eq("season_id", seasonId);
+  const [{ data: stubPickRows }, { data: postseasonFinal }] = await Promise.all([
+    supabase
+      .from("picks")
+      .select("result, games(week)")
+      .eq("user_id", user.id)
+      .eq("season_id", seasonId),
+    // R5-C: once bowl season is producing finals, the Wrapped teaser shows.
+    supabase
+      .from("games")
+      .select("id")
+      .eq("season_id", seasonId)
+      .eq("season_type", "postseason")
+      .eq("status", "final")
+      .limit(1),
+  ]);
   const stubs = stubsFor(
     ((stubPickRows ?? []) as unknown as { result: StubPickRow["result"]; games: { week: number } | null }[])
       .filter((r) => r.games !== null)
@@ -105,6 +115,21 @@ export default async function MePage() {
         <PushSettings prefs={prefs} defaults={defaults} />
         <FunModeSettings />
         <TicketStubs stubs={stubs} year={seasonYearOf(seasonId)} />
+        {(postseasonFinal ?? []).length > 0 && (
+          <section className="card mt-6 p-4">
+            <h2 className="mb-1 text-sm text-accent">The Slate Wrapped</h2>
+            <p className="text-xs text-dim">
+              Your season, one fact per card — it opens the night the national championship goes
+              final.
+            </p>
+            <Link
+              href="/wrapped"
+              className="mt-3 inline-flex min-h-11 items-center rounded-lg border border-chalk/15 px-3 text-sm font-medium text-chalk hover:border-chalk/30"
+            >
+              See where it stands
+            </Link>
+          </section>
+        )}
         {typeof calendarToken === "string" && <CalendarSettings token={calendarToken} />}
         {isAdmin && (
           <p className="mt-6 text-xs text-dim">

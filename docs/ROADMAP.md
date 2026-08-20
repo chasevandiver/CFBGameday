@@ -325,7 +325,9 @@ don't do, that The Slate is already positioned to do.
   blocking it) — but the data version is buildable today: auto-surface the
   highest-leverage live game right now, from the existing watchability
   score, live win prob, and crew stakes. This sharpens Part I §6 from a
-  sorted list into a single always-current answer.
+  sorted list into a single always-current answer. *(Adopted 2026-08-20 as
+  the Jumbotron's rotation — `/jumbotron`, STATUS R5-A. The ranking recipe
+  here is `jumbotronRank` almost verbatim.)*
 - **Crew splits before lock.** Ticket % vs. units % across the crew, per
   game, shown before kickoff — "you're with the group" or "you're fading
   seven people." The reason people check betting splits isn't prediction,
@@ -350,6 +352,9 @@ numbers on a schedule — what's missing is the *event*.
 - **The record book.** Automated season awards and all-time crew records —
   best week, worst beat, longest streak, sharpest line-guesser — feeding the
   season archive (G13/F18) so every season ends as a document worth keeping.
+  *(Partially adopted 2026-08-20: The Slate Wrapped — `/wrapped`, STATUS
+  R5-C — is the per-viewer season retrospective; the crew-wide book and the
+  archive remain here.)*
 
 ## 14. Supporting builds
 

@@ -328,6 +328,13 @@ export interface SlateData {
    * which is why the view hides the week selector when this is set.
    */
   live?: boolean;
+  /**
+   * The (season, week) buckets the live games span (R5-A). The cross-league
+   * live view's games can sit in several realtime "rooms" at once — an NFL
+   * Sunday over a CFB Saturday night — and a subscriber needs one channel
+   * per bucket; `fetchLiveSlate` computes them anyway, so it says so.
+   */
+  buckets?: { seasonId: number; week: number }[];
 }
 
 export const isLive = (g: GameView) => g.status === "in_progress";

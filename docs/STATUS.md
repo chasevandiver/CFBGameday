@@ -4423,6 +4423,80 @@ openable on a phone.
       Apply **0075** alongside. Record the verdicts in the changelog,
       including anything killed.
 
+**Round 5 — best-in-class surfaces** — owner request 2026-08-20 ("What else
+should we add? Come up with best-in-class ideas"), three picked from an
+offered four (swipe + instant nav declined this round). **Features, not
+costume** — none sits behind a Fun Mode toggle, by decision recorded in the
+changelog: the Jumbotron and Wrapped are destinations you deliberately
+enter, Game Flow is information beside MovementChart. No migrations; the
+model untouched (read-only `liveWinProb`/`fractionRemaining` imports).
+
+- [x] **R5-A** The Jumbotron. `/jumbotron` — the leave-it-running stadium
+      board on `.brand-surface`: featured game at `.scorebug` scale with
+      `LiveSituation` reused whole, the other live games on a ≥44px rail,
+      the empty state a next-kickoffs board. Rotation is the pure reducer in
+      `src/lib/jumbotron.ts` (rank extends the ROADMAP §12 whip-around
+      recipe; ~20s dwell; red zone or a closing one-score game jumps the
+      queue; round-robin in rank order so every game gets air) — 13 tests.
+      Wake lock via `src/lib/use-wake-lock.ts` (navigation is the gesture,
+      first-tap retry, re-acquire on visibilitychange; iPhone has no element
+      fullscreen, so wake lock is the load-bearing half and the installed
+      PWA is already chromeless). Data: the Live view's own 30s heal poll —
+      **and a finding recorded here: the cross-league Live view's realtime
+      subscription has been effectively inert** (placeholder seasonId/week 0
+      from `fetchLiveSlate`; the poll was always the backbone). Fixed
+      honestly for this surface with an additive `SlateData.buckets` field
+      (the per-(season, week) list `fetchLiveSlate` already computes) and
+      one refcounted channel per bucket. Entries: a "Jumbotron" link on the
+      slate's control bar while `liveCount > 0` (plain `<a>`, the SportToggle
+      posture) + a More-sheet row (`overflowOnly`; nav test extended
+      deliberately). `/demo/jumbotron` poses the three sample live games,
+      network dead. SlateView untouched beyond the entry link — its fragile
+      state machine (UX-36b) was not the place to bolt a rotation onto.
+- [x] **R5-B** The Game Flow river. `src/lib/game-flow.ts` (13 tests):
+      `pregameMarginFor` (CFB frozen-model-first, market fallback; **NFL
+      market-only by design** — SPEC §10.5, and the caption says "market
+      prior"), `gameFlowPoints` — the pregame anchor, every clocked scoring
+      play at its stored score-AFTER, synthetic ~2-game-minute samples
+      between plays holding the standing score (computable decay, not
+      invention), OT in a compressed band past x=1 (`fractionRemaining`
+      flattens OT, so order spaces it), the terminal point pinned to the
+      outcome (a final is a fact; an NFL tie pins to 0.5), unclocked plays
+      counted but never drawn — and `flowExtremes` for the caption's flip
+      count (and the recap, later). `GameFlow.tsx` is the MovementChart
+      idiom: server SVG, no client JS, the 50% line the one loud gridline,
+      quarter boundaries, team-color banks above/below the chalk curve,
+      scoring dots in the scorer's color with a ground ring, identity at the
+      poles in text ink. Mounted on `/game/[id]` for finals, above
+      ScoringTimeline (the chart's data table). Renders nothing without
+      clocked plays or a prior. Live-game flow is a noted follow-up, not v1.
+      **Verifiable today**: NFL preseason finals since Aug 14 carry
+      `scoring_plays` and exercise the market-prior branch; CFB verifies
+      Aug 29–30.
+- [x] **R5-C** The Slate Wrapped. `/wrapped` — full-viewport `.brand-surface`
+      story on native scroll-snap (no hijacking), one fact per card in
+      `.scorebug` mono, each card sharing as a 1080×1350 image.
+      `src/lib/wrapped.ts` (11 tests) mints only what the data supports: the
+      record and the ledger (`tally`, League Rules), high water
+      (`cumulativeUnits` peak), best call (biggest dog that cashed, else
+      top-CLV winner), the contrarian (sole side + a played game + a win),
+      the heater (kickoff-ordered win run ≥3; pushes are no action), the
+      worst beat (`cover_flips` joined to the viewer's losing sides,
+      smallest `seconds_left` wins, `last_play` verbatim), the truth serum
+      (avg CLV at n≥10, framed honestly in all four quadrants), and the
+      crew finish (`tallyBy` + `byLeagueRules`, the standings' own rank).
+      **Not derivable today and deliberately absent**: player stats,
+      time-watched, per-quarter splits. Loader (`wrapped-data.ts`) uses the
+      home.ts query shapes — RLS-visible group picks, own bets, one
+      games/teams pass for labels — **no definer functions, no service
+      role**. Gated by `wrappedUnlocked` (CFB schedule empty + a postseason
+      final); `?preview=1` renders **fixtures only**, never partial real
+      data. Share: a `kind: "wrapped"` discriminated branch on
+      `/api/share-card` (the bets payload carries no kind and parses exactly
+      as before — its route test unchanged and green) + a brand-hex satori
+      layout. A teaser card appears on `/me` once bowl finals exist.
+      **Fixture-verified only until January**, stated plainly.
+
 ## 5. Not built, by choice
 
 Additive features, no defect behind any of them. Verified still open 2026-08-12.

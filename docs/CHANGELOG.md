@@ -215,6 +215,54 @@ shipping it.
 
 ## Log
 
+### Aug 20 — Round 5: the Jumbotron, the Game Flow river, The Slate Wrapped
+
+Owner request: *"What else should we add? Come up with best-in-class ideas."*
+Three picked from an offered four (swipe + instant nav declined). **Decisions
+recorded, not implied:** these are features, not costume — none sits behind a
+Fun Mode toggle (the Jumbotron and Wrapped are destinations you enter; Game
+Flow is information, MovementChart's sibling). Game Flow's NFL prior is the
+**market close** — there is no NFL model by design (SPEC §10.5), the market
+is the number the product shows there, and the chart's caption says "market
+prior" rather than dressing it up. Wrapped unlocks at the **CFB national
+championship** and its `?preview=1` renders fixtures only — a half-season
+dressed as a season would be a lie. No migrations; `src/model/` untouched.
+
+- **The Jumbotron** (`/jumbotron`, R5-A): the leave-it-running stadium board —
+  featured game at broadcast scale, rotation by a pure reducer (20s dwell,
+  red-zone/closing games jump the queue, round-robin by rank so every game
+  gets air), wake lock held for the couch, next-kickoffs board when nothing
+  is live, `/demo/jumbotron` for the layout. **A finding worth its own line:
+  the cross-league Live view's realtime subscription has been effectively
+  inert since it shipped** — `fetchLiveSlate` returns a placeholder
+  (seasonId, week 0) and `useGamesRealtime` pointed at it; the 30s healing
+  poll was always what kept the view current. Recorded here, fixed for the
+  new surface with an additive `SlateData.buckets` field and one refcounted
+  channel per bucket; the slate's own view is unchanged (UX-36b's state
+  machine is not where a drive-by fix belongs).
+- **The Game Flow river** (game pages, finals, R5-B): the whole game's win
+  probability reconstructed from stored scoring plays through `liveWinProb`
+  — pregame anchor, score-after at every clocked play, computable decay
+  between plays, OT in a compressed band, the terminal point pinned to the
+  outcome because a final is a fact. Server SVG in the MovementChart idiom;
+  the ScoringTimeline beneath is its data table. Fail-closed: no clocked
+  plays or no prior → no chart. NFL preseason finals verify it today.
+- **The Slate Wrapped** (`/wrapped`, R5-C): the season as scroll-snap story
+  cards from the receipts — record, ledger, high water, best call, the
+  contrarian, the heater, the worst beat (cover flips joined to the viewer's
+  losing sides, `last_play` verbatim), the truth serum (avg CLV framed
+  honestly in all four win/CLV quadrants), the crew finish. Every card skips
+  honestly when its data is empty. Loader is RLS-only (home.ts query shapes;
+  no definer functions). Sharing rides `/api/share-card` as a
+  `kind: "wrapped"` discriminated branch — the bets payload carries no kind
+  and parses exactly as before, its route test untouched and green.
+
+37 new tests (jumbotron 13, game-flow 13, wrapped 11) — **1,767 across 127
+files**, `typecheck`, `lint`, `next build` green in-session. Not yet seen
+rendered on a device: the Jumbotron wants a live NFL preseason evening (wake
+lock ≥30 min, rotation, a real red-zone jump), Game Flow wants any preseason
+final's page, Wrapped is fixture-verified until January by construction.
+
 ### Aug 20 — Fun Mode motion: the pulse, news ripples, view transitions (FUN-13…FUN-15)
 
 Owner follow-up to the pageantry round: *"What sort of animation could we add

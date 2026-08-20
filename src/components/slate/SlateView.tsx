@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, RefreshCw, Search, SearchX, Ticket, Users } from "lucide-react";
+import { ChevronDown, MonitorPlay, RefreshCw, Search, SearchX, Ticket, Users } from "lucide-react";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from "react";
 import type { SeasonType } from "../../lib/season";
 import { NFL_PLAYOFF_ROUNDS } from "../../lib/week-range";
@@ -614,6 +614,18 @@ export function SlateView({
               week, so these are links, not state (the LedgerTabs pattern) —
               and the demo holds one CFB week, so there they'd 404 the point. */}
           {!demo && <SportToggle sport={sport} live={liveView} liveCount={liveCount} />}
+          {/* R5-A: the board's loud entry, only while there is a board to run.
+              A plain <a> like the SportToggle beside it — the Jumbotron is a
+              takeover surface and a full load is the honest transition. */}
+          {!demo && liveCount > 0 && (
+            <a
+              href="/jumbotron"
+              className="flex min-h-11 items-center gap-1.5 text-xs font-semibold text-live transition-colors hover:text-chalk"
+            >
+              <MonitorPlay size={13} aria-hidden />
+              Jumbotron
+            </a>
+          )}
           {/* Neither control means anything across leagues and weeks (UX-36):
               a week number describes one league's calendar, and a day tab on a
               list that is by definition happening right now is a filter with

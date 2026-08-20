@@ -23,6 +23,7 @@ import {
 import { resolveLogos, shareCardFonts } from "../../../lib/share-card-assets";
 import { createClient } from "../../../lib/supabase/server";
 import { CARD_HEIGHT, CARD_WIDTH, ShareCard } from "./card";
+import { WrappedShareCard } from "./wrapped-card";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +65,18 @@ const PayloadSchema = z.object({
   tz: z.string().max(64).optional(),
 });
 
+/* R5-C: the Wrapped story card. A second payload kind on the same route —
+   same auth gate, same fonts, same canvas — discriminated by `kind` so the
+   original bets payload (which carries no kind) parses exactly as before. */
+const WrappedSchema = z.object({
+  kind: z.literal("wrapped"),
+  year: z.number().int().min(2020).max(2100),
+  eyebrow: z.string().min(1).max(40),
+  headline: z.string().min(1).max(48),
+  detail: z.string().max(160).nullable().default(null),
+  sub: z.string().max(120).nullable().default(null),
+});
+
 const fail = (status: number, message: string) =>
   new Response(JSON.stringify({ error: message }), {
     status,
@@ -86,6 +99,25 @@ export async function POST(req: Request): Promise<Response> {
     body = await req.json();
   } catch {
     return fail(400, "Bad request body");
+  }
+
+  // The wrapped branch first: it names its kind; the bets payload never has one.
+  if (typeof body === "object" && body !== null && (body as { kind?: unknown }).kind === "wrapped") {
+    const wrapped = WrappedSchema.safeParse(body);
+    if (!wrapped.success) return fail(400, wrapped.error.issues[0]?.message ?? "Bad payload");
+    let wrappedFonts: Awaited<ReturnType<typeof shareCardFonts>>;
+    try {
+      wrappedFonts = await shareCardFonts();
+    } catch (err) {
+      console.error("share-card assets failed", err);
+      return fail(500, "Could not draw the card");
+    }
+    return new ImageResponse(<WrappedShareCard model={wrapped.data} />, {
+      width: CARD_WIDTH,
+      height: CARD_HEIGHT,
+      fonts: wrappedFonts,
+      headers: { "cache-control": "no-store" },
+    });
   }
 
   const parsed = PayloadSchema.safeParse(body);
