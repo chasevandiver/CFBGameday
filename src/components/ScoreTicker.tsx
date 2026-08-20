@@ -110,13 +110,31 @@ export function ScoreTicker({ demo }: { demo?: TickerData }) {
     };
   }, []);
 
+  /* Fun Mode's ticker wave (FUN-14): remember which chip's score just
+     changed. The diff (detectWave, below the component) runs in the two
+     data-arrival handlers — the fetch callback and the realtime handler —
+     rather than an effect, so state never cascades out of a render. The
+     wave itself is CSS, display-gated on the toggle. */
+  const prevPts = useRef(new Map<number, string>());
+  const [wave, setWave] = useState<{ id: number; key: number } | null>(null);
+  useEffect(() => {
+    if (!wave) return;
+    const t = setTimeout(() => setWave(null), 1600);
+    return () => clearTimeout(t);
+  }, [wave]);
+
   // async subscription to an external system: state updates land in the
   // fetch callback, never synchronously in the effect body
   const load = useCallback(
     () =>
       void fetch("/api/ticker", { cache: "no-store" })
         .then(async (res) => {
-          if (res.ok && mounted.current) setData((await res.json()) as TickerData);
+          if (res.ok && mounted.current) {
+            const next = (await res.json()) as TickerData;
+            const hit = detectWave(prevPts.current, next.games);
+            if (hit !== null) setWave({ id: hit, key: Date.now() });
+            setData(next);
+          }
         })
         .catch(() => {
           /* transient network error — next poll retries */
@@ -138,6 +156,15 @@ export function ScoreTicker({ demo }: { demo?: TickerData }) {
     week: data?.week ?? 0,
     seasonId: data?.seasonId ?? 0,
     onGameUpdate: (row) => {
+      const hit = detectWave(prevPts.current, [
+        {
+          id: row.id,
+          status: row.status,
+          homePoints: row.home_points,
+          awayPoints: row.away_points,
+        },
+      ]);
+      if (hit !== null) setWave({ id: hit, key: Date.now() });
       setData((d) =>
         d === null
           ? d
@@ -162,12 +189,30 @@ export function ScoreTicker({ demo }: { demo?: TickerData }) {
 
   if (!data || data.games.length === 0) return null;
 
+  /* The wave wraps ChipBody in an inner keyed span — never re-keying the
+     Link itself, which would drop focus mid-Tab. Applied in both marquee
+     copies so the loop stays symmetric. */
+  const waveIdx = wave !== null ? data.games.findIndex((g) => g.id === wave.id) : -1;
+  const body = (g: TickerGame, i: number) => {
+    const dist = waveIdx >= 0 ? Math.abs(i - waveIdx) : Infinity;
+    if (dist > 2 || wave === null) return <ChipBody g={g} />;
+    return (
+      <span
+        key={`w-${wave.key}`}
+        className="tk-wave"
+        style={{ "--wv-d": `${dist * 80}ms` } as React.CSSProperties}
+      >
+        <ChipBody g={g} />
+      </span>
+    );
+  };
+
   const chips = (ariaHidden: boolean) => (
     <div className="flex shrink-0 items-center gap-1 px-2" aria-hidden={ariaHidden || undefined}>
-      {data.games.map((g) =>
+      {data.games.map((g, i) =>
         isDemo ? (
           <span key={g.id} className={chipClass(g.mine)}>
-            <ChipBody g={g} />
+            {body(g, i)}
           </span>
         ) : (
           <Link
@@ -179,7 +224,7 @@ export function ScoreTicker({ demo }: { demo?: TickerData }) {
             tabIndex={ariaHidden ? -1 : undefined}
             className={`${chipClass(g.mine)} transition-colors hover:bg-surface hover:text-chalk`}
           >
-            <ChipBody g={g} />
+            {body(g, i)}
           </Link>
         ),
       )}
@@ -219,6 +264,24 @@ export function ScoreTicker({ demo }: { demo?: TickerData }) {
       </div>
     </div>
   );
+}
+
+/**
+ * Which live chip's score just changed, updating the signature map in place
+ * (FUN-14). Called from data-arrival handlers only — never during render.
+ */
+function detectWave(
+  m: Map<number, string>,
+  games: { id: number; status: string; homePoints: number | null; awayPoints: number | null }[],
+): number | null {
+  let hit: number | null = null;
+  for (const g of games) {
+    const sig = `${g.homePoints ?? ""}-${g.awayPoints ?? ""}`;
+    const was = m.get(g.id);
+    if (was !== undefined && was !== sig && g.status === "in_progress") hit = g.id;
+    m.set(g.id, sig);
+  }
+  return hit;
 }
 
 /* The mine underline is a box-shadow, not a border, so a verdict appearing

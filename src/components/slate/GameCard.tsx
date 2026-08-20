@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { voidBet } from "../../app/actions/bets";
 import { inSlip, useBetSlip, type SlipSelection } from "../../lib/bet-slip-store";
 import { betsChanged } from "../../lib/bets-changed";
-import { kickParts, periodLabel } from "../../lib/kick";
+import { kickParts, periodLabel, underTwo } from "../../lib/kick";
 import {
   settledResult,
   statusForBet,
@@ -17,6 +17,8 @@ import {
 import { betPrefix, liveStake, pickPrefix, settledStake } from "../../lib/stake";
 import { watchLabel } from "../../lib/watch-on";
 import { RATING_SCALES, systemMargin } from "../../lib/rating-scales";
+import { isTdDelta, pulseCycle } from "../../lib/fun-mode";
+import { VtName, useVtOn } from "../../lib/react-vt";
 import {
   atsResult,
   fmtMoneyline,
@@ -27,6 +29,7 @@ import {
   isDead,
   isFinal,
   isLive,
+  isRedZone,
   headlinePick,
   liveHomeWinProb,
   modelPicks,
@@ -69,12 +72,6 @@ interface Props {
  */
 const muted = (color: string): string => `color-mix(in srgb, ${color} 55%, var(--surface))`;
 
-function underTwo(period: number | null, clock: string | null): boolean {
-  if ((period !== 2 && period !== 4) || !clock) return false;
-  const m = /^(\d+):\d\d$/.exec(clock);
-  return m !== null && Number(m[1]) < 2;
-}
-
 export function GameCard({
   game,
   tz,
@@ -89,13 +86,18 @@ export function GameCard({
   const live = isLive(game);
   const final = isFinal(game);
   const dead = isDead(game);
+  const vtOn = useVtOn();
 
   // score pop + team-colored flash when a live score ticks
   const prev = useRef<{ h: number | null; a: number | null }>({
     h: game.homePoints,
     a: game.awayPoints,
   });
-  const [flash, setFlash] = useState<{ side: "home" | "away"; key: number } | null>(null);
+  /* `td` rides the same diff for Fun Mode's end-zone flood (FUN-13) — one
+     detector, two treatments. */
+  const [flash, setFlash] = useState<{ side: "home" | "away"; key: number; td: boolean } | null>(
+    null,
+  );
   /* The same tick also swells the aura — see the flare rule in globals.css. Held
      as a timestamp rather than a boolean so a second score inside the window
      restarts the timer instead of dropping the card back to rest mid-drive. */
@@ -104,8 +106,11 @@ export function GameCard({
     const p = prev.current;
     const homeScored = game.homePoints !== p.h && game.homePoints !== null && p.h !== null;
     const awayScored = game.awayPoints !== p.a && game.awayPoints !== null && p.a !== null;
-    if (homeScored) setFlash({ side: "home", key: Date.now() });
-    else if (awayScored) setFlash({ side: "away", key: Date.now() });
+    if (homeScored) {
+      setFlash({ side: "home", key: Date.now(), td: isTdDelta((game.homePoints ?? 0) - (p.h ?? 0)) });
+    } else if (awayScored) {
+      setFlash({ side: "away", key: Date.now(), td: isTdDelta((game.awayPoints ?? 0) - (p.a ?? 0)) });
+    }
     if (homeScored || awayScored) setFlare(Date.now());
     prev.current = { h: game.homePoints, a: game.awayPoints };
   }, [game.homePoints, game.awayPoints]);
@@ -115,6 +120,38 @@ export function GameCard({
     const t = setTimeout(() => setFlare(0), 1600);
     return () => clearTimeout(t);
   }, [flare]);
+
+  /* Fun Mode status beats (FUN-13/14): one prev-status ref detects the two
+     transitions worth theater — a game taking the field and a game exhaling
+     into its final state. JS-detected on the actual flip, not on mount: the
+     status-keyed swap div below also mounts on first load of already-live
+     cards, and a page load is not a kickoff. */
+  const prevStatus = useRef(game.status);
+  const [kickoff, setKickoff] = useState(0);
+  const [exhale, setExhale] = useState(0);
+  useEffect(() => {
+    const was = prevStatus.current;
+    if (was === "scheduled" && game.status === "in_progress") setKickoff(Date.now());
+    if (was === "in_progress" && game.status === "final") setExhale(Date.now());
+    prevStatus.current = game.status;
+  }, [game.status]);
+  useEffect(() => {
+    if (!kickoff) return;
+    const t = setTimeout(() => setKickoff(0), 1000);
+    return () => clearTimeout(t);
+  }, [kickoff]);
+  useEffect(() => {
+    if (!exhale) return;
+    const t = setTimeout(() => setExhale(0), 1900);
+    return () => clearTimeout(t);
+  }, [exhale]);
+
+  // FUN-13: the live card's breathing cadence — quicker as the game tightens.
+  const pulse = pulseCycle({
+    live,
+    redZone: isRedZone(game),
+    underTwo: underTwo(game.period, game.clock),
+  });
 
   const headline = headlinePick(game.myPicks);
   /* The strip, and what it is allowed to say.
@@ -175,12 +212,20 @@ export function GameCard({
       /* Deliberately narrower than .score-pop, which fires on every card: only a
          game you have money on gets the aura reaction, or the money cue leaks. */
       data-flare={position && flare ? "1" : undefined}
+      /* FUN-13: the glow's last breath on in_progress → final. */
+      data-exhale={exhale ? "1" : undefined}
       style={{ "--aura-strength": auraStrength } as React.CSSProperties}
     >
       <div className="glass-aura" aria-hidden>
         <span className="aura-a" style={{ background: auraColors[0] }} />
         <span className="aura-b" style={{ background: auraColors[1] }} />
       </div>
+      {/* FUN-15: the card is the game page header's shared element, so a tap
+          morphs one into the other. Named only when it renders ONCE — a
+          pinned game also sits in the Focus row, and duplicate names make
+          the browser skip the transition. The demo's game ids are invented
+          and never navigate, so they carry no name either. */}
+      <VtName on={vtOn && !demo && !focused} name={`game-hero-${game.id}`}>
       <article
         className={`card card-hover card-in relative overflow-hidden ${live ? "card-live" : ""} ${
           cover?.tier === "push" ? "card-push" : ""
@@ -194,6 +239,7 @@ export function GameCard({
             animationDelay: `${Math.min(index * 30, 150)}ms`,
             "--tc-away": awayColor,
             "--tc-home": homeColor,
+            "--pulse-cycle": pulse !== null ? `${pulse}ms` : undefined,
           } as React.CSSProperties
         }
       >
@@ -251,7 +297,10 @@ export function GameCard({
           </p>
         )}
 
-        <div key={game.status} className="fade-swap flex flex-1 flex-col">
+        <div
+          key={game.status}
+          className={`fade-swap flex flex-1 flex-col ${kickoff ? "fun-kickoff" : ""}`}
+        >
           {!live && !final && !dead && <OddsColumnLabels game={game} />}
           <div className="mt-2 flex flex-col gap-1.5">
             <TeamRow
@@ -272,7 +321,12 @@ export function GameCard({
             />
           </div>
 
-          {live && <LiveSituation game={game} />}
+          {live && (
+            <LiveSituation
+              game={game}
+              flood={flash?.td ? { side: flash.side, key: flash.key } : null}
+            />
+          )}
           {live && <CrewLine game={game} />}
 
           <div className="mt-auto">
@@ -289,6 +343,7 @@ export function GameCard({
             the games the viewer is actually watching. */}
         {(live || focused) && <WeatherGlass weather={game.weather} />}
       </article>
+      </VtName>
     </div>
   );
 }

@@ -1419,6 +1419,232 @@ html[data-fun-rivalry] [data-rivalry] .fun-trophy {
   color: var(--accent);
 }
 
+/* ---- Fun Mode motion (FUN-13/14/15) -----------------------------------
+   The pulse, the ripples, and the view-transition dressing. Same charter as
+   the section above: gated on html[data-fun-*], plain CSS only (the clamp
+   below flattens all of it), transform/opacity almost everywhere, and no
+   fabricated state — every animation here announces something that really
+   happened. */
+
+/* FUN-13 · the breath. A ring painted ONCE on ::after; only its opacity
+   animates, so each breath is a compositor fade — no box-shadow
+   interpolation per frame, no repaint. The 8fps lesson (aura-drift above)
+   was 70 blurred auras moving; this is <15 unblurred rings, scoped by
+   .card-live so only games actually being played breathe. Cadence comes
+   from --pulse-cycle, set inline by GameCard from the game state — the
+   heartbeat quickens in the red zone and under two minutes. */
+@keyframes fun-breathe {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+html[data-fun-pulse] .card-live::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--live) 55%, transparent),
+    inset 0 0 18px -6px color-mix(in srgb, var(--live) 35%, transparent);
+  opacity: 0;
+  animation: fun-breathe var(--pulse-cycle, 5.2s) ease-in-out infinite;
+}
+
+/* FUN-13 · the end zone floods for the touchdown that just landed. The zone
+   already wears the team's color at 0.55; the flood is a full-color surge
+   draining back to rest — opacity only, keyed to restart on a second TD. */
+@keyframes ez-flood {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.55;
+  }
+}
+html[data-fun-pulse] .field-ez[data-flood] {
+  animation: ez-flood 2s ease-out both;
+}
+
+/* FUN-13 · the exhale: in_progress → final gets one last swell of the aura
+   before card-final dims it. Same narrow shape as the flare rule above —
+   discrete, event-driven, opacity on the already-blurred layer. */
+@keyframes fun-exhale {
+  0% {
+    opacity: var(--aura-strength, 0.26);
+  }
+  35% {
+    opacity: calc(var(--aura-strength, 0.26) + 0.22);
+  }
+  100% {
+    opacity: var(--aura-strength, 0.26);
+  }
+}
+html[data-fun-pulse] .glass-wrap[data-exhale] .glass-aura {
+  animation: fun-exhale 1.8s ease-out both;
+}
+
+/* FUN-14 · kickoff: the card takes the field. A transform-only team-color
+   sweep crosses the card (the colors inherit from the article's --tc vars)
+   and the field strip wipes in on the existing bug-wipe. GameCard sets
+   .fun-kickoff only on the actual scheduled → live flip, never on mount. */
+@keyframes take-field {
+  from {
+    transform: translate3d(-100%, 0, 0);
+  }
+  to {
+    transform: translate3d(100%, 0, 0);
+  }
+}
+html[data-fun-ripples] .fun-kickoff {
+  position: relative;
+}
+html[data-fun-ripples] .fun-kickoff::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    color-mix(in srgb, var(--tc-away, var(--push)) 18%, transparent) 45%,
+    color-mix(in srgb, var(--tc-home, var(--push)) 18%, transparent) 55%,
+    transparent 70%
+  );
+  animation: take-field 700ms ease-out both;
+}
+html[data-fun-ripples] .fun-kickoff .field-strip {
+  animation: bug-wipe 600ms 250ms ease-out both;
+}
+
+/* FUN-14 · the ticker wave: the chip whose score just changed flashes and
+   its neighbors echo at small delays — the wave going around the stadium.
+   Reuses the score-flash keyframes; a one-shot on ≤5 small chips. */
+html[data-fun-ripples] .tk-wave {
+  display: inline-block;
+  animation: score-flash 900ms ease-out both;
+  animation-delay: var(--wv-d, 0ms);
+  border-radius: 5px;
+  --flash-color: var(--live);
+}
+
+/* FUN-14 · momentum in the win-prob bar: when the split moves enough to
+   mean something, a shimmer sweeps toward whoever gained. Transform-only;
+   the widths themselves already transition. */
+@keyframes wp-sweep {
+  from {
+    transform: translate3d(-100%, 0, 0);
+  }
+  to {
+    transform: translate3d(100%, 0, 0);
+  }
+}
+@keyframes wp-sweep-back {
+  from {
+    transform: translate3d(100%, 0, 0);
+  }
+  to {
+    transform: translate3d(-100%, 0, 0);
+  }
+}
+.wp-shimmer {
+  display: none;
+}
+html[data-fun-ripples] .wp-shimmer {
+  display: block;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--text) 30%, transparent),
+    transparent
+  );
+  animation: wp-sweep 900ms ease-out both;
+}
+html[data-fun-ripples] .wp-shimmer[data-dir="away"] {
+  animation-name: wp-sweep-back;
+}
+
+/* FUN-14 · the drive trail: the ball's prior spots this drive as fading
+   ghost dots — real observed history, statically placed, no timers. In the
+   DOM either way but drawn only under the toggle. */
+.field-ghost {
+  display: none;
+}
+html[data-fun-ripples] .field-ghost {
+  display: block;
+  position: absolute;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text) 55%, transparent);
+  opacity: var(--gh-o, 0.3);
+}
+
+/* FUN-15 · view transitions. The React <ViewTransition> wrappers only get
+   names while the toggle is on (react-vt.ts), so with it off the browser
+   never starts a transition; these rules are the dressing when it does.
+   A running snapshot must never eat a tap. */
+::view-transition {
+  pointer-events: none;
+}
+html[data-fun-vt] ::view-transition-group(*) {
+  animation-duration: 320ms;
+}
+/* The week slide: old grid out one way, new grid in from the other. The
+   card-in stagger stays the arrival animation for the fetched cards. */
+@keyframes wk-out-l {
+  to {
+    opacity: 0;
+    transform: translate3d(-40px, 0, 0);
+  }
+}
+@keyframes wk-in-r {
+  from {
+    opacity: 0;
+    transform: translate3d(40px, 0, 0);
+  }
+}
+@keyframes wk-out-r {
+  to {
+    opacity: 0;
+    transform: translate3d(40px, 0, 0);
+  }
+}
+@keyframes wk-in-l {
+  from {
+    opacity: 0;
+    transform: translate3d(-40px, 0, 0);
+  }
+}
+html[data-fun-vt] ::view-transition-old(.wk-fwd) {
+  animation: wk-out-l 240ms ease-in both;
+}
+html[data-fun-vt] ::view-transition-new(.wk-fwd) {
+  animation: wk-in-r 280ms ease-out both;
+}
+html[data-fun-vt] ::view-transition-old(.wk-back) {
+  animation: wk-out-r 240ms ease-in both;
+}
+html[data-fun-vt] ::view-transition-new(.wk-back) {
+  animation: wk-in-l 280ms ease-out both;
+}
+/* Theme flips soften instead of snapping. Body only — putting this on .card
+   would transition hundreds of elements and their hover styles. */
+html[data-fun-vt] body {
+  transition: background-color 400ms ease;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -1426,6 +1652,14 @@ html[data-fun-rivalry] [data-rivalry] .fun-trophy {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+  /* The clamp above cannot reach the ::view-transition pseudo tree — its
+     selectors don't match it — so the snapshots get their own zero. */
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
   }
 }
 

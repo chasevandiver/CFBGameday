@@ -118,7 +118,7 @@ const themeInit = `(function(){try{var t=localStorage.getItem("slate-theme");if(
    one, change both. The daypart set here is the no-override reading; the
    FunAtmosphere component takes ownership (and the ?daypart=/?funday=
    previews) from hydration on. */
-const funInit = `(function(){try{var p=JSON.parse(localStorage.getItem("slate-fun")||"null");if(!p||!p.master)return;var d=document.documentElement.dataset;if(p.fallLight!==false){d.funLight="";var n=new Date(),w=n.getDay();if(w===0||w===6){var h=n.getHours();d.daypart=h<11?"dawn":h<15?"noon":h<18?"golden":"lights"}}if(p.broadcast!==false)d.funBroadcast="";if(p.rivalry!==false)d.funRivalry=""}catch(e){}})()`;
+const funInit = `(function(){try{var p=JSON.parse(localStorage.getItem("slate-fun")||"null");if(!p||!p.master)return;var d=document.documentElement.dataset;if(p.fallLight!==false){d.funLight="";var n=new Date(),w=n.getDay();if(w===0||w===6){var h=n.getHours();d.daypart=h<11?"dawn":h<15?"noon":h<18?"golden":"lights"}}if(p.broadcast!==false)d.funBroadcast="";if(p.rivalry!==false)d.funRivalry="";if(p.pulse!==false)d.funPulse="";if(p.ripples!==false)d.funRipples="";if(p.transitions!==false)d.funVt=""}catch(e){}})()`;
 
 /* UX-35's Safari half. `user-scalable=no` in the viewport meta is honoured by
    the installed PWA but ignored by Safari in a browser tab, where pinch is

@@ -4,10 +4,13 @@ import {
   daypartFor,
   funOn,
   gamedayKind,
+  isTdDelta,
   msToNextDaypart,
   normalizeFunPrefs,
   overriddenDaypart,
   overriddenGameday,
+  pulseCycle,
+  weekDirection,
   type FunPiece,
 } from "./fun-mode";
 
@@ -79,6 +82,45 @@ describe("msToNextDaypart", () => {
     const ms = msToNextDaypart(at(6, 23, 30));
     expect(ms).toBe(30 * 60 * 1000);
     expect(msToNextDaypart(at(6, 23, 59, ))).toBeGreaterThan(0);
+  });
+});
+
+describe("pulseCycle", () => {
+  it("no pulse unless the game is live", () => {
+    expect(pulseCycle({ live: false, redZone: true, underTwo: true })).toBeNull();
+  });
+  it("the heartbeat quickens: base, red zone, two-minute", () => {
+    expect(pulseCycle({ live: true, redZone: false, underTwo: false })).toBe(5200);
+    expect(pulseCycle({ live: true, redZone: true, underTwo: false })).toBe(2800);
+    expect(pulseCycle({ live: true, redZone: false, underTwo: true })).toBe(1800);
+  });
+  it("under two beats red zone when both hold", () => {
+    expect(pulseCycle({ live: true, redZone: true, underTwo: true })).toBe(1800);
+  });
+});
+
+describe("isTdDelta", () => {
+  it("6, 7, 8 read as touchdowns", () => {
+    expect(isTdDelta(6)).toBe(true);
+    expect(isTdDelta(7)).toBe(true);
+    expect(isTdDelta(8)).toBe(true);
+  });
+  it("field goals, safeties, and merged double-updates do not", () => {
+    expect(isTdDelta(3)).toBe(false);
+    expect(isTdDelta(2)).toBe(false);
+    expect(isTdDelta(14)).toBe(false);
+  });
+});
+
+describe("weekDirection", () => {
+  const w = (week: number, seasonType = "regular") => ({ week, seasonType });
+  it("within a season type, week number decides", () => {
+    expect(weekDirection(w(3), w(4))).toBe("fwd");
+    expect(weekDirection(w(4), w(3))).toBe("back");
+  });
+  it("season types order preseason < regular < postseason", () => {
+    expect(weekDirection(w(18, "regular"), w(1, "postseason"))).toBe("fwd");
+    expect(weekDirection(w(1, "regular"), w(3, "preseason"))).toBe("back");
   });
 });
 

@@ -1,12 +1,13 @@
 "use client";
 
 import { ChevronDown, RefreshCw, Search, SearchX, Ticket, Users } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from "react";
 import type { SeasonType } from "../../lib/season";
 import { NFL_PLAYOFF_ROUNDS } from "../../lib/week-range";
 import { onBetsChanged } from "../../lib/bets-changed";
 import { useFocusedGames, useStarred, useViewerTz } from "../../lib/client-store";
-import { useRundown } from "../../lib/fun-mode";
+import { useRundown, weekDirection } from "../../lib/fun-mode";
+import { VT, addVtType, useVtOn } from "../../lib/react-vt";
 import type { GameRow } from "../../lib/db-types";
 import { clockTime, dayKey, dayTabLabel, dayTabLabels, kickSlot, nflKickSlot, DEFAULT_TZ, tzLabel } from "../../lib/kick";
 import { liveUrgency } from "../../lib/live-status";
@@ -83,6 +84,9 @@ export function SlateView({
   const tz = useViewerTz(DEFAULT_TZ);
   const [starred, toggleStar] = useStarred();
   const [focusedIds, toggleFocus] = useFocusedGames();
+  // Fun Mode (FUN-15): week changes slide like program pages. Declared up
+  // here because changeWeek and the popstate handler both read it.
+  const vtOn = useVtOn();
   const [day, setDay] = useState<string>("all");
   const [conference, setConference] = useState("all");
   const [network, setNetwork] = useState("all");
@@ -283,11 +287,28 @@ export function SlateView({
           : (sel as number);
     const st = post ? "postseason" : pre ? "preseason" : "regular";
     if (w === week && st === seasonType) return;
-    weekRef.current = w;
-    setData((d) => ({ ...d, week: w, seasonType: st, games: [] }));
-    setDay("all");
-    // the URL-sync effect below rewrites the query string
-    void refresh(w, true, st);
+    /* FUN-15: the sanctioned trigger for a typed view transition is
+       startTransition + addTransitionType — the week selector is client
+       state, not a router navigation, so <Link transitionTypes> can't
+       carry it. The state updates stay inside the callback so the empty
+       grid and the skeleton land in one commit; the fetch's arriving cards
+       keep card-in as their own entrance. */
+    const apply = () => {
+      weekRef.current = w;
+      setData((d) => ({ ...d, week: w, seasonType: st, games: [] }));
+      setDay("all");
+      // the URL-sync effect below rewrites the query string
+      void refresh(w, true, st);
+    };
+    if (vtOn) {
+      const dir = weekDirection({ week, seasonType }, { week: w, seasonType: st });
+      startTransition(() => {
+        addVtType(dir === "fwd" ? "week-fwd" : "week-back");
+        apply();
+      });
+    } else {
+      apply();
+    }
   };
 
   /* UX-31: the week is a navigation, the filters are not.
@@ -407,15 +428,30 @@ export function SlateView({
       const w = raw !== null ? Number(raw) : st === "postseason" ? 1 : currentWeek;
       if (!Number.isFinite(w)) return;
       if (w === weekRef.current && st === seasonType) return;
-      fromPopRef.current = true;
-      weekRef.current = w;
-      setData((d) => ({ ...d, week: w, seasonType: st, games: [] }));
-      setDay("all");
-      void refresh(w, true, st);
+      const apply = () => {
+        fromPopRef.current = true;
+        weekRef.current = w;
+        setData((d) => ({ ...d, week: w, seasonType: st, games: [] }));
+        setDay("all");
+        void refresh(w, true, st);
+      };
+      if (vtOn) {
+        // Back through history slides the same way the selector does (FUN-15).
+        const dir = weekDirection(
+          { week: weekRef.current, seasonType },
+          { week: w, seasonType: st },
+        );
+        startTransition(() => {
+          addVtType(dir === "fwd" ? "week-fwd" : "week-back");
+          apply();
+        });
+      } else {
+        apply();
+      }
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, [demo, currentWeek, seasonType, refresh]);
+  }, [demo, currentWeek, seasonType, refresh, vtOn]);
 
   /* ---- derived --------------------------------------------------------- */
 
@@ -709,6 +745,20 @@ export function SlateView({
       </div>
 
       {/* slate */}
+      {/* FUN-15: keyed by the week in view, so a week change replaces the
+          whole grid — old exits one way, new enters from the other, per the
+          typed classes added in changeWeek. `default="none"` keeps every
+          other update (polls, realtime merges) out of the transition; with
+          the toggle off VT is a passthrough and no types are ever added.
+          The sticky control bar and the ticker sit OUTSIDE this wrapper, so
+          they anchor while the grid slides, and a week change is not a
+          navigation — scroll is untouched by construction. */}
+      <VT
+        key={`${seasonType}-${week}`}
+        enter={{ "week-fwd": "wk-fwd", "week-back": "wk-back", default: "none" }}
+        exit={{ "week-fwd": "wk-fwd", "week-back": "wk-back", default: "none" }}
+        default="none"
+      >
       <div className="mx-auto mt-4 max-w-7xl pb-12">
         {/* Fun Mode: the crowd-sign wall (FUN-10), pennants for your teams
             (FUN-6) and the crew-picks reveal for the big game (FUN-9). All
@@ -818,6 +868,7 @@ export function SlateView({
           />
         )}
       </div>
+      </VT>
 
       <BetSlip seasonId={data.seasonId} week={week} tz={tz} demo={demo} displayName={displayName} />
     </>

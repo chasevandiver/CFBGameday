@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { dayTabLabels, nflKickSlot } from "./kick";
+import { dayTabLabels, nflKickSlot, underTwo } from "./kick";
+
+describe("underTwo", () => {
+  it("true only in Q2/Q4 with the clock under 2:00", () => {
+    expect(underTwo(2, "1:59")).toBe(true);
+    expect(underTwo(4, "0:07")).toBe(true);
+    expect(underTwo(4, "2:00")).toBe(false);
+    expect(underTwo(1, "1:59")).toBe(false);
+    expect(underTwo(3, "0:30")).toBe(false);
+  });
+  it("a missing clock or period is never a warning", () => {
+    expect(underTwo(4, null)).toBe(false);
+    expect(underTwo(null, "1:00")).toBe(false);
+  });
+});
 
 describe("dayTabLabels", () => {
   const CT = "America/Chicago";

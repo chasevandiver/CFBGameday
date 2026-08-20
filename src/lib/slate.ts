@@ -448,6 +448,22 @@ export function liveHomeWinProb(g: GameView): number | null {
   });
 }
 
+/**
+ * Did the win probability swing enough to announce, and toward whom?
+ * (Fun Mode's momentum surge, FUN-14.) Probabilities are home-perspective;
+ * a rise is home momentum. Under the threshold — the ordinary drip of clock
+ * ticks — nothing is announced.
+ */
+export function probSurge(
+  prev: number,
+  next: number,
+  threshold = 0.08,
+): "home" | "away" | null {
+  const d = next - prev;
+  if (Math.abs(d) < threshold) return null;
+  return d > 0 ? "home" : "away";
+}
+
 /* ---- formatting ------------------------------------------------------- */
 
 export function fmtSpread(spread: number | null): string {

@@ -31,7 +31,10 @@ export type FunPiece =
   | "broadcast" // production-truck live treatments
   | "rivalry" // house-divided trophy games
   | "pennants" // favorites as felt pennants
-  | "stubs"; // the ticket-stub shelf
+  | "stubs" // the ticket-stub shelf
+  | "pulse" // live cards breathe with the game state
+  | "ripples" // events travel: kickoff, ticker wave, surge, drive trail
+  | "transitions"; // View Transitions: pages and weeks glide
 
 export type FunPrefs = { master: boolean } & Record<FunPiece, boolean>;
 
@@ -49,6 +52,9 @@ export const FUN_DEFAULTS: FunPrefs = {
   rivalry: true,
   pennants: true,
   stubs: true,
+  pulse: true,
+  ripples: true,
+  transitions: true,
 };
 
 /** A piece is live only under the master switch. */
@@ -94,13 +100,19 @@ function readPrefs(): FunPrefs {
  */
 function syncAttributes(prefs: FunPrefs) {
   const d = document.documentElement.dataset;
-  const gate = (on: boolean, key: "funLight" | "funBroadcast" | "funRivalry") => {
+  const gate = (
+    on: boolean,
+    key: "funLight" | "funBroadcast" | "funRivalry" | "funPulse" | "funRipples" | "funVt",
+  ) => {
     if (on) d[key] = "";
     else delete d[key];
   };
   gate(funOn(prefs, "fallLight"), "funLight");
   gate(funOn(prefs, "broadcast"), "funBroadcast");
   gate(funOn(prefs, "rivalry"), "funRivalry");
+  gate(funOn(prefs, "pulse"), "funPulse");
+  gate(funOn(prefs, "ripples"), "funRipples");
+  gate(funOn(prefs, "transitions"), "funVt");
   // The daypart attribute only means anything under the light engine.
   if (!funOn(prefs, "fallLight")) delete d.daypart;
 }
@@ -170,6 +182,47 @@ export function overriddenDaypart(search: URLSearchParams, d: Date): Daypart {
   const v = search.get("daypart");
   if (v === "dawn" || v === "noon" || v === "golden" || v === "lights") return v;
   return daypartFor(d);
+}
+
+/* ---- the pulse & ripples (FUN-13/14), pure and tested -------------------- */
+
+/**
+ * How fast a live card breathes (FUN-13), in milliseconds per breath — the
+ * heartbeat quickens with the game state. Null when the game isn't live:
+ * pregame and final cards have no pulse at all.
+ */
+export function pulseCycle(opts: {
+  live: boolean;
+  redZone: boolean;
+  underTwo: boolean;
+}): number | null {
+  if (!opts.live) return null;
+  if (opts.underTwo) return 1800;
+  if (opts.redZone) return 2800;
+  return 5200;
+}
+
+/**
+ * Did this score delta read as a touchdown? 6 (TD), 7 (TD+XP), 8 (TD+2).
+ * A 14 is two merged updates and returns false on purpose — flooding an end
+ * zone for a delta we didn't actually watch land would be a guess.
+ */
+export function isTdDelta(delta: number): boolean {
+  return delta >= 6 && delta <= 8;
+}
+
+/**
+ * Which way did the week selector move (FUN-15's slide direction)? Season
+ * types order preseason < regular < postseason; within a type, week number.
+ */
+export function weekDirection(
+  from: { week: number; seasonType: string },
+  to: { week: number; seasonType: string },
+): "fwd" | "back" {
+  const order = (st: string) => (st === "preseason" ? 0 : st === "postseason" ? 2 : 1);
+  const d = order(to.seasonType) - order(from.seasonType);
+  if (d !== 0) return d > 0 ? "fwd" : "back";
+  return to.week >= from.week ? "fwd" : "back";
 }
 
 /**

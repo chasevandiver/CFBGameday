@@ -22,6 +22,7 @@ import {
 } from "../../lib/slate";
 import { sportOfSeasonId } from "../../lib/league";
 import { liveWinProb } from "../../model/live";
+import { VtName, useVtOn } from "../../lib/react-vt";
 import { useGamesRealtime } from "../../lib/use-games-realtime";
 import { isDeadStatus } from "../../lib/void";
 import { LiveBadge, LiveStatusChip } from "../slate/chips";
@@ -82,6 +83,7 @@ export function GameHeader({
   weather = null,
 }: Props) {
   const viewerTz = useViewerTz(DEFAULT_TZ);
+  const vtOn = useVtOn();
   const [g, setG] = useState<GameLiveState>(initial);
   // NFL-20: which feed named these teams, and therefore how long the name is.
   const sport = sportOfSeasonId(seasonId);
@@ -204,6 +206,12 @@ export function GameHeader({
   const awayColor = away.color ?? "var(--push)";
 
   return (
+    /* FUN-15: the slate card's shared element — the score you were watching
+       travels into this header on navigation (reliably on back nav and
+       cached forwards; a cold forward tap suspends into the loading
+       boundary and gets the graceful enter instead, the API's designed
+       degradation). */
+    <VtName on={vtOn} name={`game-hero-${gameId}`}>
     <section className={`card relative overflow-hidden ${live ? "card-live" : ""}`}>
       <div
         aria-hidden
@@ -349,6 +357,7 @@ export function GameHeader({
         )}
       </div>
     </section>
+    </VtName>
   );
 }
 

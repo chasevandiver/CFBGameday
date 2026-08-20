@@ -215,6 +215,55 @@ shipping it.
 
 ## Log
 
+### Aug 20 — Fun Mode motion: the pulse, news ripples, view transitions (FUN-13…FUN-15)
+
+Owner follow-up to the pageantry round: *"What sort of animation could we add
+to make the site alive?"* Three motion systems, chosen from a pitch and placed
+**behind Fun Mode toggles** by owner decision (a new Motion group joins
+Rituals and Atmosphere on `/me`; same master switch, same off-by-default).
+The standing exemption row above covers them; the lines that still bind held:
+**no fabricated state** (nothing tweens a score or ticks a clock — the drive
+trail and momentum surge animate only observed history, which is the exact
+line that disqualified `CountUp`), reduced motion flattened, compositor-only,
+no new deps, migration-free.
+
+- **The pulse (FUN-13).** Live cards breathe, and the tempo *is* the game
+  state: 5.2s on an ordinary drive, 2.8s in the red zone, 1.8s inside two
+  minutes. One opacity-only ring per live card, painted once — scoped by
+  `.card-live`, so the 70-aura/8fps lesson stays learned. A touchdown floods
+  the scoring team's end zone and drains; a game going final exhales the aura
+  once before dimming. TD detection rides the card's existing score diff
+  (`isTdDelta`, 6–8; a 14 is two merged updates and honestly declines).
+- **News ripples (FUN-14).** Kickoff sweeps a team-color band across the card
+  as the field strip wipes in (detected on the actual scheduled→live flip,
+  never on mount); a score sends a wave down the ticker (changed chip +
+  neighbors at 80ms steps — a traveling gradient was rejected in design: it
+  fights the marquee's transform loop); the win-prob bar shimmers toward
+  whoever gained on a ≥8-point swing (`probSurge`); the field strip keeps the
+  drive's last spots as fading ghost dots (`drive-trail.ts`: possession
+  resets, dedupe, cap 5).
+- **View transitions (FUN-15).** The finding worth recording: **Next 16.3.0
+  ships React's `<ViewTransition>` in the App Router with no config flag**
+  (in-package docs + vendored canary verified) — but the installed
+  react@19.2.8, which vitest resolves, does not export it, so all use goes
+  through `src/lib/react-vt.tsx` (real component in the app, passthrough
+  under tests — the shim is why all 1,729 tests stay green with zero test
+  edits). Slate card ⇄ game page share `game-hero-<id>` (morph on back-nav
+  and cached forwards; cold taps suspend into the loading boundary and get
+  the enter — designed degradation, noted in the code). Week changes slide
+  directionally via `startTransition` + `addTransitionType` with the grid
+  keyed by week; scroll and the sticky chrome are untouched by construction.
+  One real gap closed: the global reduced-motion clamp's selectors cannot
+  match the `::view-transition-*` pseudo tree, so those get their own zeroing
+  rule under the same media query.
+
+Pure helpers all tested (`pulseCycle`, `isTdDelta`, `foldTrail`, `probSurge`,
+`weekDirection`, and `underTwo` — hoisted from GameCard into `kick.ts` with
+the tests it never had). **1,729 tests across 122 files**, `typecheck`,
+`lint`, and `next build` green in-session. Still unrendered on a real device —
+FUN-12's taste pass now covers the Motion toggles too; live NFL preseason
+games exercise the pulse and ripples against real updates before Saturday.
+
 ### Aug 20 — Fun Mode: the pageantry layer (FUN-1…FUN-11)
 
 Owner request: *"This needs to be an app that feels like Football Season… I want

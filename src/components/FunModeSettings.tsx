@@ -17,6 +17,12 @@ const RITUALS: { piece: FunPiece; label: string; hint: string }[] = [
   { piece: "rundown", label: "The Rundown", hint: "The Saturday slate loads in like a broadcast rundown" },
 ];
 
+const MOTION: { piece: FunPiece; label: string; hint: string }[] = [
+  { piece: "pulse", label: "The pulse", hint: "Live cards breathe with the game — quicker in the red zone" },
+  { piece: "ripples", label: "News ripples", hint: "Scores ripple across the ticker and the field" },
+  { piece: "transitions", label: "Page transitions", hint: "Pages and weeks glide instead of cutting" },
+];
+
 const ATMOSPHERE: { piece: FunPiece; label: string; hint: string }[] = [
   { piece: "fallLight", label: "Fall light", hint: "The backdrop follows the day — noon glare to under the lights" },
   { piece: "weatherFx", label: "Weather on the glass", hint: "Rain, snow, and wind rendered on cold-game cards" },
@@ -108,6 +114,13 @@ export function FunModeSettings() {
       <ToggleList
         title="Atmosphere"
         items={ATMOSPHERE}
+        prefs={prefs}
+        disabled={!prefs.master}
+        onToggle={(piece, on) => update({ [piece]: on })}
+      />
+      <ToggleList
+        title="Motion"
+        items={MOTION}
         prefs={prefs}
         disabled={!prefs.master}
         onToggle={(piece, on) => update({ [piece]: on })}

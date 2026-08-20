@@ -4370,11 +4370,58 @@ openable on a phone.
       windows arrive as a broadcast rundown — title card slides in, cards
       cascade on their existing stagger — ~1.2s total, once per session
       (`useRundown`, the no-hydration-complaint store shape).
+- [x] **FUN-13** The pulse. Live cards breathe — one ring painted once on
+      `.card-live::after`, opacity-only (`fun-breathe`), cadence from
+      `--pulse-cycle` set inline by GameCard via `pulseCycle()` (5.2s base,
+      2.8s red zone, 1.8s under two; `underTwo` hoisted from GameCard into
+      `kick.ts`). Scoped by `.card-live`, so <15 cards breathe on the
+      busiest slate — the 8fps aura lesson was 70 blurred layers moving;
+      this is unblurred fades. Companions: a touchdown floods the scoring
+      team's end zone (`isTdDelta` rides the card's existing score diff —
+      one detector; `lastScore` was rejected as the key because realtime
+      rows don't carry it and it lags ~30s behind the poll), and
+      in_progress → final exhales the aura once (`data-exhale`, the flare
+      idiom) before `card-final` dims it.
+- [x] **FUN-14** News ripples. (a) A scheduled → live flip "takes the
+      field": one team-color sweep + the field strip wiping in — detected on
+      the actual transition via a prev-status ref, never on mount. (b) The
+      ticker wave: the chip whose score changed flashes and ≤2 neighbors
+      echo at 80ms steps (`detectWave` runs in the data-arrival handlers,
+      not an effect; an inner keyed span, never re-keying the focused Link;
+      a track-space traveling gradient was rejected — it fights the
+      marquee's transform loop). (c) Momentum surge: `probSurge` (≥8-point
+      swing) sweeps a shimmer across `WinProbBar` toward whoever gained —
+      the widths already transition; the shimmer is the announcement.
+      (d) The drive trail: `drive-trail.ts` folds observed ball spots
+      (possession change resets, dedupe, cap 5) into fading ghost dots on
+      the field strip — real history only, statically placed, the
+      adjust-state-during-render pattern so nothing cascades.
+- [x] **FUN-15** View transitions. **Next 16.3.0 needs no config flag** —
+      the App Router ships React canary, which exports `<ViewTransition>`;
+      but the installed react@19.2.8 (what vitest resolves) does not, so
+      everything goes through `src/lib/react-vt.tsx`: the real component in
+      the app, a props-ignoring passthrough under tests. Card → game page
+      morph via shared `game-hero-<id>` names (`default="none"` load-bearing;
+      pinned games carry no name — they render twice and duplicate names
+      make the browser skip; cold forward taps suspend into `loading.tsx`
+      and get the enter instead of the morph, the API's designed
+      degradation — back nav morphs reliably). Week changes slide like
+      program pages: `startTransition` + `addTransitionType` in
+      `changeWeek`/popstate (the selector is client state, not a router
+      nav), grid keyed by `(seasonType, week)`, direction from
+      `weekDirection()`; the sticky bar and ticker sit outside the wrapper
+      so they anchor, and scroll is untouched by construction. The global
+      reduced-motion clamp cannot reach the `::view-transition-*` pseudo
+      tree, so a sibling rule zeroes those durations under the same media
+      query. No `document.startViewTransition` anywhere.
 - [ ] **FUN-12** The taste pass. Owner opens the four mockups and `/demo`
       (plus `/slate?funday=sat&daypart=golden` with the master switch on) on
       a real phone and keeps, redirects, or kills each piece — "not corny" is
-      the bar and the owner is the judge. Apply **0075** alongside. Record
-      the verdicts in the changelog, including anything killed.
+      the bar and the owner is the judge. Now also covers the three Motion
+      toggles (FUN-13…15): the pulse and ripples against a live game (NFL
+      preseason works), the card morph via back-nav, and the week slide.
+      Apply **0075** alongside. Record the verdicts in the changelog,
+      including anything killed.
 
 ## 5. Not built, by choice
 
