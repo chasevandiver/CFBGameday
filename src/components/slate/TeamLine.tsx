@@ -22,22 +22,31 @@ import { TeamMark } from "./TeamMark";
  * accent-coloured when a poll actually ranked them, and the accessible name
  * always names the source. Unranked teams render nothing rather than a dash:
  * this sits inline with the team name, where a placeholder reads as a rank.
+ *
+ * `size` is the only thing that varies between the two places it appears.
+ * `sm` is the dense rows — group boards, matchup cards, the admin picker —
+ * where the rank is context beside an abbreviation. `md` is the scoreboard
+ * row, where it leads the team name and has to survive being read at arm's
+ * length in a dim room. Everything else is deliberately shared: one accent
+ * rule, one source string, one way a rank is said.
  */
-export function RankPip({ team }: { team: TeamView }) {
+export function RankPip({ team, size = "sm" }: { team: TeamView; size?: "sm" | "md" }) {
   const rank = displayRank(team);
   if (rank === null || rank > 25) return null;
   const polled = team.pollRank !== null && team.poll !== null;
   const source = polled ? `${team.poll} rank` : "model rank";
   return (
     <span
-      className={`stat shrink-0 text-[10.5px] font-semibold leading-none ${
-        polled ? "text-accent" : "text-dim"
-      }`}
+      className={`stat shrink-0 font-semibold leading-none ${
+        size === "md" ? "text-[13px]" : "text-[10.5px]"
+      } ${polled ? "text-accent" : "text-dim"}`}
       title={`#${rank} — ${source}`}
     >
-      {/* The hash matters here in a way it doesn't on the slate card, where
-          the rank is a superscript on the name: inline and followed by a
-          record, a bare "2 Georgia 9-0" reads as three numbers in a row. */}
+      {/* The hash carries the whole row: inline and followed by a record, a
+          bare "2 Georgia 9-0" reads as three numbers in a row. It used to be
+          droppable on the slate card, where the rank was a superscript hanging
+          off the name — that card now leads with the pip like everything else,
+          so there is no longer a place where the hash is optional. */}
       <span aria-hidden>#{rank}</span>
       <span className="sr-only">
         number {rank} {source}
@@ -72,11 +81,20 @@ export function TeamRecord({ team }: { team: TeamView }) {
  * A team on its own row with its score, on the team-colour rail.
  *
  * The slate's game card has read this way since the cards were built: the mark
- * grows when there is a score to show, the school name sits on a coloured rail
- * with its rank as a superscript, and the score is a 24px tabular number pinned
- * to the right of the row. The home hub used to stack a 10px "24–21" in the
- * corner instead, which made the most important number on a live row the
- * smallest thing on it.
+ * grows when there is a score to show, the school name sits on a coloured rail,
+ * and the score is a 24px tabular number pinned to the right of the row. The
+ * home hub used to stack a 10px "24–21" in the corner instead, which made the
+ * most important number on a live row the smallest thing on it.
+ *
+ * **The rank leads the name rather than hanging off it (owner call,
+ * 2026-08-19).** It was a 10px `text-dim` superscript *after* the school, which
+ * is where a footnote goes — the eye reaches it having already read the name,
+ * and at that size in a dim room it mostly did not survive the trip. A ranked
+ * team is one of the two or three things that decides whether this game is
+ * worth watching, so it now reads left to right in that order: "#2 Georgia".
+ * It is the shared `RankPip` at `md` rather than markup of its own, which is
+ * what buys the accent rule — accent when a poll ranked them, dim when it is
+ * only the model's own rating — that the superscript never carried.
  *
  * So the construction lives here rather than inside `GameCard`, and both use
  * it. What stays in the card is what only the card has: the star button and the
@@ -119,7 +137,6 @@ export function TeamScoreLine({
   /** This side has the ball. Only meaningful while a game is live (UX-37). */
   hasBall?: boolean;
 }) {
-  const rank = displayRank(team);
   return (
     <div
       className={`trow flex items-center gap-2.5 transition-opacity ${dimmed ? "opacity-45" : ""}`}
@@ -128,18 +145,14 @@ export function TeamScoreLine({
       <span className="trail" aria-hidden />
       <TeamMark team={team} size={showScore ? 44 : 32} glow />
       <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
+        {/* Before the name, and never truncated: `shrink-0` on the pip means a
+            long school name gives up characters before the rank gives up
+            existing. */}
+        <RankPip team={team} size="md" />
         <span
           className={`scorebug truncate leading-tight text-chalk ${showScore ? "text-[16.5px]" : "text-[15px]"}`}
         >
           {team.school}
-          {rank !== null && rank <= 25 && (
-            <sup
-              className="stat ml-0.5 text-[10px] font-medium text-dim"
-              title={team.poll ? `${team.poll} rank` : "Model rank"}
-            >
-              {rank}
-            </sup>
-          )}
         </span>
         {team.record && !showScore && showRecord && (
           <span className="stat shrink-0 text-[10px] leading-none text-dim">{team.record}</span>

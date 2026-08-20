@@ -2584,6 +2584,17 @@ viewer's own bets, not the whole sheet.
       and not this file's. Pinned in `contrast.test.ts` as a finding, asserted in
       both directions so it fails if someone changes the colour without
       revisiting the row. · **decision**
+      **More visible since 2026-08-19, and pointing the wrong way.** The slate's
+      rank pip moved in front of the team name at 13px semibold (owner call,
+      `docs/CHANGELOG.md`), and it is accent when a poll ranked the team and dim
+      when the rank is only the model's. `--dim` clears AA in both themes and
+      `--accent` does not in light, and 13px semibold is not "large text" (that
+      bar is 18.66px bold), so **a poll-ranked team now reads less legibly in
+      daylight than a model-ranked one** — the inverse of the hierarchy the
+      accent exists to express. The change did not create this and swapping one
+      surface off the accent rule would fragment a convention spanning 277
+      className strings; it is recorded here because it raises what the decision
+      costs.
 - [x] **UX-21** Ledger "today" keyed to CT for non-CT bettors. Fixed
       2026-08-14 with UX-25, because they are one concern: the ledger now reads
       the viewer's stored zone. The bug it closes is narrow and real — a bet

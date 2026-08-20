@@ -61,12 +61,39 @@ describe("TeamScoreLine", () => {
     expect(screen.getByText("24").className).toContain("text-chalk");
   });
 
-  /** The rank is a claim about a poll, so it names its source (see RankPip). */
-  it("renders a top-25 rank as a superscript and titles its source", () => {
+  /**
+   * The rank leads the name (owner call, 2026-08-19). It used to trail it as a
+   * 10px superscript, so the assertion is deliberately about DOM order rather
+   * than about the element existing: putting it back after the school would
+   * still render "#4" and would still pass a presence check.
+   */
+  it("leads the team name with the rank", () => {
+    const { container } = render(
+      <TeamScoreLine team={team({ pollRank: 4, poll: "AP", rank: 9 })} score={0} showScore />,
+    );
+    const text = (container.querySelector(".trow") as HTMLElement).textContent ?? "";
+    expect(text.indexOf("#4")).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf("#4")).toBeLessThan(text.indexOf("Memphis"));
+  });
+
+  /** A poll ranked them, so the pip is allowed the accent. */
+  it("accents a poll rank and names the poll", () => {
     render(<TeamScoreLine team={team({ pollRank: 4, poll: "AP", rank: 9 })} score={0} showScore />);
-    const sup = screen.getByText("4");
-    expect(sup.tagName).toBe("SUP");
-    expect(sup.getAttribute("title")).toBe("AP rank");
+    expect(screen.getByTitle("#4 — AP rank").className).toContain("text-accent");
+  });
+
+  /**
+   * "The model has them 9th" is a different claim from "the AP has them 9th",
+   * and the superscript this replaced made no distinction at all — it titled
+   * every rank "Model rank" unless a poll existed, in one colour either way.
+   */
+  it("dims a rank the model produced on its own", () => {
+    render(
+      <TeamScoreLine team={team({ pollRank: null, poll: null, rank: 9 })} score={0} showScore />,
+    );
+    const pip = screen.getByTitle("#9 — model rank");
+    expect(pip.className).toContain("text-dim");
+    expect(pip.className).not.toContain("text-accent");
   });
 
   it("omits a rank outside the top 25", () => {
