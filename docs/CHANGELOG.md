@@ -113,6 +113,7 @@ and must say so. See "The window changed" below.
 | `--tune-talent-source` `2015-2025/warmup1/covid-chain` | **All three pre-registered gates pass** (run 32278795011, 2026-08-19). Gate 0: full FBS coverage every scored season (128–136 of pool) and **median r(recruiting, same-season composite) = 0.942** vs a bar of 0.85 (per-season 0.899–0.979). Arms on the production-shaped chain, pooled over 9 scored seasons: fresh composite MAE 13.221 / NLL 0.4905, **stale composite 13.229 / 0.4907** (today's Aug 22 fallback), **recruiting classes 13.162 / 0.4891**, no-talent 13.292 / 0.4931. Gate 1 vs stale: ΔNLL **−0.0017**, ΔMAE **−0.067**, wks 1–4 ΔMAE **−0.175** (bars were ≤ +0.001/+0.03/+0.05 — it cleared them by improving, not by staying close). Gate 2 (E4 era alone): ΔNLL −0.0013, ΔMAE −0.037. | **Shipped as the fallback.** `TALENT_SOURCE=recruiting` on every preseason build task in `jobs.yml`; the fresh composite stays first choice, the stale file drops to last resort, and the mechanism is inert the day CFBD publishes. **One observation deliberately not acted on:** the recruiting arm also beat the FRESH composite (MAE −0.059, NLL −0.0014 — comparable to shipped changes for scale). That is a different question with a different rule, and this experiment's rule only governs the fallback; replacing the composite outright would need its own pre-registered row. |
 | `--tune-prior` re-fit `2015-2025/warmup1/covid-chain` + `2023-2025/warmup1/covid-chain` (E4) | Owner hypothesis, 2026-08-19: 0.70 scoreboard carryover is too high in the portal era — raised after the SP+ comparison (our board deviates from SP+ 2026 along prior-year rating, corr +0.18, not talent, +0.04; all three stored week-1 market lines sided with SP+'s direction). Grid widened to 0.30 **before** the run so a low optimum could not pin at the old 0.5 floor. Wide window (n=2794 early games): NLL **monotone worse as carryover falls** — 0.30 → 0.4306/14.78, 0.50 → 0.4179/14.35, **0.70 → 0.4117/14.10**, argmin 0.80 → 0.4110 (grid EDGE, Δ vs 0.70 only 0.0007 against a 0.003 bar). E4-only (n=616): interior argmin 0.65 at 0.3798 with 0.70 at 0.3801 — Δ 0.0003, noise. Era-flip: wide argmin 0.80 vs E4 argmin 0.65, three grid steps apart. | **Rejected — 0.70 stands, and the hypothesis is refuted in the direction it was posed.** Lower carryover is worse everywhere, at every step, in both windows; the pooled data mildly wants MORE (but at an edge, under the bar, and era-flipped, so nothing ships). The board's lean toward proven 2025 results over talent is the model earning early-week points, not a bug. The deviations from SP+ remain honest disagreements — graded from week 1 by the frozen receipts and CLV. |
 | `--tune-sp-blend` re-fit `2015-2025/warmup1/covid-chain` + `2023-2025/warmup1/covid-chain` (E4) | α = 0.5 is the argmin at BOTH windows: wide 0.4095 (vs 0.4106 pure SP+, 0.4121 pure replay), E4 0.3793. Interior, eras agree exactly. | **Confirmed — `REPLAY_SHARE` stays 0.5**, now re-earned on eleven seasons instead of carried from three. Notably α=0 (leaning fully on SP+'s opponent-adjusted final) is worse than the 50/50, which is more independent evidence against regressing harder toward SP+-style inputs. |
+| Fun Mode exemptions (owner decision 2026-08-20, not an experiment) | Owner request: "make this feel like Football Season… optional toggles… we can disregard any safeguards from the repo… not corny or cheesy or AI slop." Two standing rules are **exempted for the opt-in Fun Mode surfaces only** (FUN-1…FUN-12): the "motion means money" scope decision — fun-mode pieces may animate games the viewer holds nothing on — and, in exactly one place, the no-new-fonts rule (`Permanent_Marker` for crowd-sign posterboard, used by `.fun-sign-body` and nothing else). | **Granted, scoped, recorded.** The exemption travels with the toggles: everything defaults off, so the default app still obeys both rules verbatim. NOT exempted, and checked in review: the CSS-only reduced-motion clamp (every fun-mode animation is plain CSS), league rules (The Panel flips only RLS-visible picks), brand voice (§16 — collegiate pageantry, no casino), and no-layout-shift for content. Kill switch is the master toggle; the taste verdicts land here under FUN-12. |
 | Opener test (03:M-5) | **Registered, not yet decided.** Surface shipped 2026-08-17: Receipts grades every frozen lean opener → close (`openerClv`), 4+ bucket broken out. Backtest residual it tests: 4+ bucket **51.8%, avg CLV +0.27**, every bucket positive — real drift, all absorbed by the close. | Pending, rule fixed before any 2026 data: strategy conversation only at avg CLV vs opener ≥ **+1.0** over n ≥ 200 leans (~mid-Oct earliest); **abandon** at ≤ +0.3 by n = 200 — that replicates the backtest. Read-side only; no parameter moves on either outcome. CFBD's opener is when-posted, not a bettable price, so even a pass is evidence, not a wager. |
 
 ### Why edges are not bets
@@ -213,6 +214,56 @@ shipping it.
 ---
 
 ## Log
+
+### Aug 20 — Fun Mode: the pageantry layer (FUN-1…FUN-11)
+
+Owner request: *"This needs to be an app that feels like Football Season… I want
+immersion of the pageantry of college football. The feel of fall on a Saturday
+and Sunday morning… optional toggles… I don't want it to be corny or cheesy or
+AI slop at all."* Built as one master switch plus ten per-piece toggles on
+`/me`, **everything off by default** — the default app is pixel-identical to
+yesterday's. The safeguard exemption this required is a row in the decisions
+table above; the rules that still bind (reduced motion, league rules, brand
+voice, no content layout shift) are listed there too.
+
+What shipped, in one pass (`docs/STATUS.md` FUN-1…FUN-11 for the row-level
+detail): the **fall light engine** (the page ground follows the viewer's clock
+through dawn haze → noon → golden hour → under the lights, every wash a
+color-mix of existing tokens); **weather on the glass** (the stored forecast
+rendered as rain/snow/wind/frost on live and pinned cards and the game header —
+pure CSS sweeps, no canvas); the **broadcast package** (status wipes, a field
+ball that travels between snaps, a possession-colored lower third); the
+**rivalry takeover** (trophy games split at a chalk-stitched seam, the trophy
+named in the display face); **pennants** (starred/favorite teams as felt flags
+that pin their game to Focus); **ticket stubs** (a derived stub per fully
+graded week of picks, the trophies idiom); **The Cover** (a gameday program
+cover on first open — Graduate masthead on `.brand-surface`, the marquee
+matchup as the cover story via `pickHero`, once per gameday per device);
+**The Panel** (crew picks for the Game of the Week flip over one chair at a
+time, last chair long — theater over RLS-visible picks only); **crowd signs**
+(migration **0075**, the one schema change: one 80-char posterboard sign per
+member per week, crew-visible, own-row writes, marker face — the one new font,
+see the exemption row); and **The Rundown** (the first gameday slate load
+arrives as a broadcast rundown, once per session).
+
+Infrastructure is the theme's own idiom end to end: localStorage store via
+`useSyncExternalStore` (`src/lib/fun-mode.ts`), a pre-paint script beside
+`themeInit`, CSS gated on `html[data-fun-*]`, and preview overrides
+(`?funday=sat|sun`, `?daypart=…`) so every Saturday-gated piece can be judged
+on a Tuesday. Taste-critical pieces have standalone mockups in
+`public/design/fun-{cover,light,signs,panel}.html`; `/demo` poses live weather
+on the rivalry card. **1,712 tests across 120 files** (15 new: daypart
+boundaries, preview overrides, prefs normalization, stub minting/retraction),
+`typecheck`, `lint` and `next build` all green in-session.
+
+**Not verified, stated plainly:** nothing here has been seen rendered on a real
+phone — that is FUN-12, the owner taste pass, and the reason the mockups exist.
+Migration 0075 is unapplied to production (soft ordering: the slate select
+degrades to "no wall" until it lands). The four rejected-idea precedents this
+walked past on purpose — split-flap board, `CountUp` tweening, ambient motion
+beyond `[data-tint="position"]`, a chat room — were each re-checked against the
+decisions table: none is re-proposed here (the Rundown staggers existing cards
+rather than tweening numbers; signs are one artifact per week, not a thread).
 
 ### Aug 19 — the slate's rank stops being a footnote
 

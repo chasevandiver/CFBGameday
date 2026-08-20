@@ -1,11 +1,12 @@
 "use client";
 
 import { ChevronDown, RefreshCw, Search, SearchX, Ticket, Users } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from "react";
 import type { SeasonType } from "../../lib/season";
 import { NFL_PLAYOFF_ROUNDS } from "../../lib/week-range";
 import { onBetsChanged } from "../../lib/bets-changed";
 import { useFocusedGames, useStarred, useViewerTz } from "../../lib/client-store";
+import { useRundown } from "../../lib/fun-mode";
 import type { GameRow } from "../../lib/db-types";
 import { clockTime, dayKey, dayTabLabel, dayTabLabels, kickSlot, nflKickSlot, DEFAULT_TZ, tzLabel } from "../../lib/kick";
 import { liveUrgency } from "../../lib/live-status";
@@ -23,8 +24,11 @@ import {
   type SlateData,
 } from "../../lib/slate";
 import { BetSlip } from "./BetSlip";
+import { CrowdSigns, type SignView } from "./CrowdSigns";
 import { GameCard } from "./GameCard";
+import { PennantRow } from "./PennantRow";
 import { SkeletonCard } from "./SkeletonCard";
+import { ThePanel } from "./ThePanel";
 
 const SORTS = [
   { key: "kickoff", label: "Kickoff" },
@@ -49,6 +53,8 @@ export function SlateView({
   minWeek = 1,
   favoriteTeamIds = [],
   displayName = "",
+  signs = null,
+  signsWeek = null,
   demo = false,
 }: {
   initial: SlateData;
@@ -59,6 +65,9 @@ export function SlateView({
   favoriteTeamIds?: number[];
   /** Titles the slip's share card: "<display_name> Bets". */
   displayName?: string;
+  /** Fun Mode's crowd signs (FUN-10) for `signsWeek`; null when signed out. */
+  signs?: SignView[] | null;
+  signsWeek?: number | null;
   /**
    * Sample slate, no database behind it (`/demo`).
    *
@@ -502,7 +511,11 @@ export function SlateView({
      was untouched, so choosing a conference either moved the crown to a
      different game or made it disappear, both surprising. Now the same game
      wears it whenever it is on screen, and nothing wears it when it isn't. */
-  const featuredId = useMemo(() => pickHero(games)?.id ?? null, [games]);
+  const hero = useMemo(() => pickHero(games), [games]);
+  const featuredId = hero?.id ?? null;
+
+  // Fun Mode (FUN-11): first slate load of a gameday session gets the rundown.
+  const rundown = useRundown();
 
   // High-powered day structure: live games lead, then pregame by kickoff
   // slot (Noon / Afternoon / Primetime / Late — spec §7), then finals.
@@ -697,6 +710,27 @@ export function SlateView({
 
       {/* slate */}
       <div className="mx-auto mt-4 max-w-7xl pb-12">
+        {/* Fun Mode: the crowd-sign wall (FUN-10), pennants for your teams
+            (FUN-6) and the crew-picks reveal for the big game (FUN-9). All
+            render nothing unless toggled on, so the default slate is
+            untouched. The wall stays on the week its signs were fetched for. */}
+        {!loading && !demo && signs !== null && signsWeek === week && (
+          <CrowdSigns
+            signs={signs}
+            seasonId={data.seasonId}
+            week={week}
+            myName={displayName || null}
+          />
+        )}
+        {!loading && (
+          <PennantRow
+            games={games}
+            starred={starred}
+            favoriteTeamIds={favoriteTeamIds}
+            onFocus={toggleFocus}
+          />
+        )}
+        {!loading && hero && <ThePanel game={hero} displayName={displayName || null} />}
         {focusedGames.length > 0 && !loading && (
           <section aria-label="Focused games" className="mb-7">
             <SectionHeader
@@ -744,8 +778,20 @@ export function SlateView({
             hint="Loosen a filter or clear the search to see the rest of the slate."
           />
         ) : sections ? (
-          sections.map((s) => (
-            <section key={s.key} aria-label={s.title} className="mt-7 first:mt-0">
+          sections.map((s, i) => (
+            <section
+              key={s.key}
+              aria-label={s.title}
+              /* Fun Mode (FUN-11): on the first slate load of a gameday the
+                 sections arrive as a broadcast rundown — title card, then the
+                 window's games. One session, one showing. */
+              className={`mt-7 first:mt-0 ${rundown ? "fun-rundown" : ""}`}
+              style={
+                rundown
+                  ? ({ "--rd-d": `${Math.min(i, 4) * 240}ms` } as CSSProperties)
+                  : undefined
+              }
+            >
               <SectionHeader title={s.title} count={s.games.length} live={s.key === "live"} />
               <CardGrid
                 games={s.games}

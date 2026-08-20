@@ -1,4 +1,5 @@
 import { AppNav } from "../components/AppNav";
+import { GamedayCover } from "../components/home/GamedayCover";
 import { HomeAutoRefresh } from "../components/home/HomeAutoRefresh";
 import { HomeDashboard } from "../components/home/HomeHub";
 import { fetchHomeData, homeRefreshTier } from "../lib/home";
@@ -51,6 +52,8 @@ export default async function HomePage() {
         <HomeDashboard data={data} signedIn={!!user} />
       </main>
       <HomeAutoRefresh live={live} imminent={imminent} />
+      {/* Fun Mode (FUN-8): the gameday program cover, once per gameday. */}
+      <GamedayCover />
     </>
   );
 }

@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { AppNav } from "../../components/AppNav";
+import type { SignView } from "../../components/slate/CrowdSigns";
 import { SlateView } from "../../components/slate/SlateView";
 import { ACTIVE_GROUP_COOKIE, activeOfKind, resolveActiveGroup } from "../../lib/groups";
 import { seasonYearOf } from "../../lib/league";
@@ -103,6 +104,40 @@ export default async function SlatePage({
   // The share card is titled "<display_name> Bets", so the slip needs the name.
   const displayName: string = favRes.data?.display_name ?? "";
 
+  // Fun Mode's crowd signs (FUN-10): the week's wall, names resolved in a
+  // second pass (crowd_signs has no FK into profiles for PostgREST to walk).
+  // Signed-in and week-scoped only — the live view spans weeks and the wall
+  // does not. Missing table (migration not applied yet) degrades to no wall.
+  let signs: SignView[] = [];
+  if (user && !liveView) {
+    const { data: signRows } = await supabase
+      .from("crowd_signs")
+      .select("user_id, body")
+      .eq("season_id", seasonId)
+      .eq("week", week);
+    const rows = (signRows ?? []) as { user_id: string; body: string }[];
+    if (rows.length > 0) {
+      const { data: profRows } = await supabase
+        .from("profiles")
+        .select("id, display_name")
+        .in(
+          "id",
+          rows.map((r) => r.user_id),
+        );
+      const names = new Map(
+        ((profRows ?? []) as { id: string; display_name: string | null }[]).map((p) => [
+          p.id,
+          p.display_name,
+        ]),
+      );
+      signs = rows.map((r) => ({
+        name: names.get(r.user_id) ?? "Crew",
+        body: r.body,
+        mine: r.user_id === user.id,
+      }));
+    }
+  }
+
   return (
     <>
       <AppNav />
@@ -113,6 +148,8 @@ export default async function SlatePage({
           minWeek={minWeek}
           favoriteTeamIds={favoriteTeamIds}
           displayName={displayName}
+          signs={user && !liveView ? signs : null}
+          signsWeek={week}
         />
       </main>
     </>

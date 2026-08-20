@@ -4294,6 +4294,88 @@ could not read it.
       schema with two FKs to the same table that anything embeds — audited, not
       assumed. **No migration.** 3 tests (1310 → 1313).
 
+**Fun Mode — opt-in pageantry (FUN-1…FUN-12)** — owner request 2026-08-20:
+"this needs to be an app that feels like Football Season… immersion of the
+pageantry of college football… optional toggles… not corny or cheesy or AI
+slop." Eight pieces picked from an offered set, all behind per-piece toggles
+under one master switch at `/me`, everything **off by default**. The owner
+explicitly exempted these opt-in surfaces from "motion means money" and, in
+exactly one place, from the no-new-fonts rule — recorded as a decisions-table
+row in the changelog, not silently violated. Still binding everywhere:
+`prefers-reduced-motion` (every fun-mode animation is plain CSS, so the global
+clamp flattens all of it), league rules (The Panel flips only picks RLS
+already shows), brand voice, and no layout shift for content (atmosphere is
+backgrounds and overlays). Taste gate: the four judgement-heavy pieces have
+standalone mockups in `public/design/fun-{cover,light,signs,panel}.html`,
+openable on a phone.
+
+- [x] **FUN-1** Infrastructure. `src/lib/fun-mode.ts` (the `client-store.ts`
+      idiom: localStorage `slate-fun`, `useSyncExternalStore`, defaults
+      master-off/pieces-on so one switch delivers the whole show),
+      `FunModeSettings` on `/me`, and a pre-paint script in `layout.tsx`
+      beside the theme's so the CSS-gated attributes (`data-fun-light`,
+      `data-fun-broadcast`, `data-fun-rivalry`) never flash on. Preview
+      overrides `?funday=sat|sun` and `?daypart=…` pose a gameday on a
+      Tuesday. 15 unit tests (fun-mode + stubs).
+- [x] **FUN-2** Fall light engine. `data-daypart` set by `FunAtmosphere`
+      (timeout-to-boundary, no interval; catches up on `visibilitychange`),
+      one fixed layer behind the page per daypart — dawn haze off `--push`,
+      flat noon off `--text`, the 3:30 golden hour off `--accent`/`--edge-c`,
+      under-the-lights beams off `--text` — every wash a color-mix of
+      existing tokens, no new colors. Light theme keeps only the evening dim.
+- [x] **FUN-3** Weather on the glass. `WeatherGlass` renders the stored
+      forecast on the pane — rain/snow strips (plain CSS sweeps, no canvas,
+      no rAF, index-derived positions so SSR agrees with the client), wind as
+      drift, a still frost rim below 25°. Scoped to the game header and to
+      live/pinned slate cards only; reduced motion gets a static streak
+      texture. Demo poses it on the live rivalry card.
+- [x] **FUN-4** Broadcast package. Under `data-fun-broadcast`: status swaps
+      wipe (`bug-wipe`) instead of dissolving, the field-strip ball *travels*
+      between snaps, scores slide in (`bug-pop`), and the situation line
+      becomes a lower third with the possession team's color as its end cap
+      (`live-sit` + `--tc`, set by `LiveSituation`).
+- [x] **FUN-5** Rivalry takeover. `data-rivalry` + both team-color vars on
+      the card article; under the flag the card splits into the two colors at
+      a chalk-stitched seam and the trophy's name sits above the matchup in
+      the brand display face. No motion — banner craft.
+- [x] **FUN-6** Pennants. Starred + favorite teams hang as felt clip-path
+      pennants over the gameday slate; tapping one pins that team's game to
+      the Focus row, so the decoration is also the fastest Saturday setup.
+- [x] **FUN-7** Ticket stubs. `src/lib/stubs.ts` derives a stub per fully
+      graded week of picks (void-only weeks buy nothing; an ungraded pick
+      holds the week back; a re-grade reprints) — the trophies idiom, nothing
+      stored. Shelf on `/me`.
+- [x] **FUN-8** The Cover. `GamedayCover` on `/`: a gameday program cover —
+      masthead in Graduate on `.brand-surface`, issue line (Vol. year ·
+      No. week), the marquee matchup as the cover story via the slate's own
+      `pickHero` over one `/api/slate` fetch, first kick and game count —
+      once per gameday per device (`slate-cover-seen`; `?funday=` previews
+      never stamp). Escape/tap dismisses; body scroll locked while up.
+- [x] **FUN-9** The Panel. Crew picks for the Game of the Week turn over as
+      staggered 3D flips, last chair gets the long beat; "Run it back"
+      replays; one animated showing per session. Theater over `crewPicks`
+      that RLS already reveals — a hidden-picks group has nothing to flip
+      until kickoff, by construction.
+- [x] **FUN-10** Crowd signs. Migration **0075** (`crowd_signs`: one row per
+      season/week/member, 80 chars, `authenticated` read, own-row writes — a
+      deliberate, bounded free-text surface; the header says why it does not
+      reopen "reactions, not a chat room"), `setCrowdSign` action
+      (upsert-in-place, empty body takes the sign down), and the wall over
+      the slate Friday–Sunday: marker on inverted chalk, tape strip, a degree
+      of lean. The marker face (`Permanent_Marker` via `next/font`) is the
+      one font exemption. ⚠️ **0075 must apply to production before the
+      deploy** only in the soft sense: the slate select degrades to no wall
+      until it lands, and nothing else reads the table.
+- [x] **FUN-11** The Rundown. First slate load of a gameday session: kickoff
+      windows arrive as a broadcast rundown — title card slides in, cards
+      cascade on their existing stagger — ~1.2s total, once per session
+      (`useRundown`, the no-hydration-complaint store shape).
+- [ ] **FUN-12** The taste pass. Owner opens the four mockups and `/demo`
+      (plus `/slate?funday=sat&daypart=golden` with the master switch on) on
+      a real phone and keeps, redirects, or kills each piece — "not corny" is
+      the bar and the owner is the judge. Apply **0075** alongside. Record
+      the verdicts in the changelog, including anything killed.
+
 ## 5. Not built, by choice
 
 Additive features, no defect behind any of them. Verified still open 2026-08-12.

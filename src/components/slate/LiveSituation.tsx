@@ -10,6 +10,7 @@
  * answers depending on which screen you are looking at.
  */
 
+import type { CSSProperties } from "react";
 import {
   fieldPosition,
   isRedZone,
@@ -95,7 +96,12 @@ export function LiveSituation({ game, compact = false }: { game: GameView; compa
       {/* skipped entirely in the dead-ball state, rather than left as an empty
           flex row above the play */}
       {(game.situation || redZone) && (
-        <div className="flex flex-wrap items-center gap-1.5">
+        /* `live-sit` + --tc are Fun Mode's hooks (FUN-4): inert by default,
+           restyled into a broadcast lower third under html[data-fun-broadcast]. */
+        <div
+          className="live-sit flex flex-wrap items-center gap-1.5"
+          style={{ "--tc": posTeam?.color ?? undefined } as CSSProperties}
+        >
           {sit ? (
             <span className="stat text-[12.5px] font-semibold text-chalk">
               {sit.down === 4 ? (

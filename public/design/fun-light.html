@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Fun Mode — Fall light engine (FUN-2)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<style>
+  /* Tokens: the charcoal dark theme, exactly as globals.css defines it. Every
+     wash below is a color-mix of existing tokens — dawn borrows --push (the
+     one cool neutral), golden borrows --accent/--edge, lights borrows --text
+     for the beams. No new colors. */
+  :root {
+    --bg: #100e0b;
+    --surface: #241d16;
+    --text: #f2eee5;
+    --dim: #a89f90;
+    --accent: #f2b63c;
+    --push: #9aa1ad;
+    --edge-c: #ff8a3d;
+    --line: rgba(244, 236, 220, 0.13);
+  }
+  * { margin: 0; box-sizing: border-box; }
+  body {
+    background: #17140f;
+    color: var(--text);
+    font-family: "Archivo", sans-serif;
+    padding: 24px 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    justify-content: center;
+  }
+  .pane {
+    position: relative;
+    width: 330px;
+    height: 420px;
+    border-radius: 22px;
+    border: 1px solid var(--line);
+    overflow: hidden;
+    background: var(--bg);
+    padding: 18px 16px;
+  }
+  .pane::before { content: ""; position: absolute; inset: 0; pointer-events: none; }
+  /* dawn — cool grey-blue haze off --push */
+  .dawn::before {
+    background:
+      radial-gradient(120% 55% at 50% -5%, rgba(154, 161, 173, 0.14), transparent 70%),
+      linear-gradient(180deg, rgba(154, 161, 173, 0.06), transparent 40%);
+  }
+  /* noon — flat bright lift off --text */
+  .noon::before { background: linear-gradient(180deg, rgba(242, 238, 229, 0.06), transparent 45%); }
+  /* golden — the 3:30 window, low warm sun off --accent/--edge */
+  .golden::before {
+    background:
+      radial-gradient(110% 65% at 15% -5%, rgba(242, 182, 60, 0.11), transparent 65%),
+      linear-gradient(215deg, rgba(255, 138, 61, 0.06), transparent 50%);
+  }
+  /* lights — ground drops, two faint beams rake in from the top corners */
+  .lights::before {
+    background:
+      linear-gradient(112deg, transparent 22%, rgba(242, 238, 229, 0.05) 30%, transparent 40%),
+      linear-gradient(248deg, transparent 22%, rgba(242, 238, 229, 0.05) 30%, transparent 40%),
+      linear-gradient(180deg, rgba(0, 0, 0, 0.32), rgba(0, 0, 0, 0.12) 45%, transparent 75%);
+  }
+  .tag {
+    position: relative;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .when { position: relative; font-family: "Barlow Condensed", sans-serif; font-size: 26px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
+  .card {
+    position: relative;
+    margin-top: 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(36, 29, 22, 0.8);
+    box-shadow: inset 0 1px 0 rgba(244, 236, 220, 0.16), 0 10px 28px -12px rgba(0, 0, 0, 0.7);
+    padding: 12px;
+  }
+  .row { display: flex; justify-content: space-between; font-size: 14px; padding: 5px 4px; }
+  .row b { font-weight: 600; }
+  .num { font-family: "IBM Plex Mono", monospace; }
+  .chip { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; padding: 0 4px 6px; }
+  .note {
+    flex-basis: 100%;
+    max-width: 700px;
+    margin: 0 auto;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #a89f90;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="pane dawn">
+    <p class="tag">Saturday · before 11a</p>
+    <p class="when">Dawn</p>
+    <div class="card">
+      <p class="chip">Noon · ABC</p>
+      <div class="row"><b>Penn State</b><span class="num">+3</span></div>
+      <div class="row"><b>Michigan</b><span class="num">−3</span></div>
+    </div>
+  </div>
+  <div class="pane noon">
+    <p class="tag">Saturday · 11a–3p</p>
+    <p class="when">Noon</p>
+    <div class="card">
+      <p class="chip">Live · Q2 6:41</p>
+      <div class="row"><b>Penn State</b><span class="num">10</span></div>
+      <div class="row"><b>Michigan</b><span class="num">14</span></div>
+    </div>
+  </div>
+  <div class="pane golden">
+    <p class="tag">Saturday · 3p–6p</p>
+    <p class="when">Golden</p>
+    <div class="card">
+      <p class="chip">3:30 · CBS</p>
+      <div class="row"><b>LSU</b><span class="num">+6.5</span></div>
+      <div class="row"><b>Alabama</b><span class="num">−6.5</span></div>
+    </div>
+  </div>
+  <div class="pane lights">
+    <p class="tag">Saturday · after 6p</p>
+    <p class="when">Under the lights</p>
+    <div class="card">
+      <p class="chip">Primetime · NBC</p>
+      <div class="row"><b>Oregon</b><span class="num">+1.5</span></div>
+      <div class="row"><b>Ohio State</b><span class="num">−1.5</span></div>
+    </div>
+  </div>
+  <p class="note">FUN-2 · The fall light engine — the page ground follows the viewer's local
+  clock on gamedays: morning haze → flat noon → the 3:30 golden hour → under the lights. One
+  fixed layer behind everything, zero movement, all washes mixed from existing tokens. Preview
+  any hour in the app with <code>?daypart=dawn|noon|golden|lights</code>.</p>
+</body>
+</html>

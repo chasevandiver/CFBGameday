@@ -377,6 +377,11 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
               : null
           }
           myBets={myBets}
+          weather={
+            weather
+              ? { tempF: weather.temp_f, windMph: weather.wind_mph, precipProb: weather.precip_prob }
+              : null
+          }
           initial={{
             status: game.status,
             homePoints: game.home_points,

@@ -42,6 +42,7 @@ import { ConsensusChip, EdgeChip, LiveBadge, LiveStatusChip, MoveIndicator, Pick
 import { CoverStrip } from "./CoverStrip";
 import { LiveSituation } from "./LiveSituation";
 import { SheetLine } from "./SheetLine";
+import { WeatherGlass } from "./WeatherGlass";
 import { TeamScoreLine } from "./TeamLine";
 import { WinProbBar } from "./WinProbBar";
 
@@ -184,7 +185,17 @@ export function GameCard({
         className={`card card-hover card-in relative overflow-hidden ${live ? "card-live" : ""} ${
           cover?.tier === "push" ? "card-push" : ""
         } ${final && !featured ? "card-final" : ""} ${featured ? "ring-1 ring-accent/40" : ""}`}
-        style={{ animationDelay: `${Math.min(index * 30, 150)}ms` }}
+        /* data-rivalry + the two team-color vars exist for Fun Mode's rivalry
+           takeover (FUN-5, globals.css) — inert unless html[data-fun-rivalry]
+           is set, so the default card renders exactly as before. */
+        data-rivalry={game.rivalry ? "" : undefined}
+        style={
+          {
+            animationDelay: `${Math.min(index * 30, 150)}ms`,
+            "--tc-away": awayColor,
+            "--tc-home": homeColor,
+          } as React.CSSProperties
+        }
       >
       {cover ? (
         <CoverStrip cover={cover} tail={stake?.label ?? ""} />
@@ -221,6 +232,15 @@ export function GameCard({
           focused={focused}
           onFocus={onFocus}
         />
+
+        {/* Fun Mode only (FUN-5): what the game is played FOR, across the seam.
+            The header chip already carries name + trophy for everyone; this is
+            the takeover's banner, so it is decorative to assistive tech. */}
+        {game.rivalry?.trophy && (
+          <div className="fun-trophy" aria-hidden>
+            {game.rivalry.trophy}
+          </div>
+        )}
 
         {/* score changes on games you have action on are announced to screen
             readers; this region persists across score re-renders */}
@@ -264,6 +284,10 @@ export function GameCard({
           </div>
         </div>
         </div>
+        {/* Fun Mode (FUN-3): live and pinned cards only — the slate can hold
+            sixty cards and the pane is an animated overlay, so it is scoped to
+            the games the viewer is actually watching. */}
+        {(live || focused) && <WeatherGlass weather={game.weather} />}
       </article>
     </div>
   );

@@ -27,6 +27,7 @@ import { isDeadStatus } from "../../lib/void";
 import { LiveBadge, LiveStatusChip } from "../slate/chips";
 import { Sparkline } from "../slate/Sparkline";
 import { TeamMark } from "../slate/TeamMark";
+import { WeatherGlass } from "../slate/WeatherGlass";
 import { WinProbBar } from "../slate/WinProbBar";
 
 export interface GameLiveState {
@@ -54,6 +55,8 @@ interface Props {
   myPick: { market: PickMarket; side: string; line: number | null } | null;
   myBets: MyBetView[];
   initial: GameLiveState;
+  /** Forecast for Fun Mode's weather pane (FUN-3); null renders nothing. */
+  weather?: { tempF: number | null; windMph: number | null; precipProb: number | null } | null;
 }
 
 /**
@@ -76,6 +79,7 @@ export function GameHeader({
   myPick,
   myBets,
   initial,
+  weather = null,
 }: Props) {
   const viewerTz = useViewerTz(DEFAULT_TZ);
   const [g, setG] = useState<GameLiveState>(initial);
@@ -212,6 +216,10 @@ export function GameHeader({
         <span className="flex-1" style={{ background: awayColor }} />
         <span className="flex-1" style={{ background: homeColor }} />
       </div>
+
+      {/* Fun Mode (FUN-3): the header is the one pane that always gets the
+          forecast — this is the page you open to see the game. */}
+      <WeatherGlass weather={weather} />
 
       <div className="relative px-4 py-4 sm:px-6">
         <div className="flex items-center justify-between gap-2 text-xs text-dim">

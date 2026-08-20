@@ -2,12 +2,17 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AppNav } from "../../components/AppNav";
 import { CalendarSettings } from "../../components/CalendarSettings";
+import { FunModeSettings } from "../../components/FunModeSettings";
 import { ProfileSettings, type FavTeam } from "../../components/ProfileSettings";
 import { PushSettings } from "../../components/PushSettings";
+import { TicketStubs } from "../../components/TicketStubs";
 import type { TeamRow } from "../../lib/db-types";
 import { createClient } from "../../lib/supabase/server";
 import { isCurrentUserAdmin } from "../../lib/admin";
 import { tzOf } from "../../lib/kick";
+import { seasonYearOf } from "../../lib/league";
+import { fetchCurrentSeasonWeek } from "../../lib/queries";
+import { stubsFor, type StubPickRow } from "../../lib/stubs";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +75,22 @@ export default async function MePage() {
     logo: t.logo_url,
   }));
 
+  // Fun Mode's ticket stubs (FUN-7): the viewer's picks this season, folded
+  // into per-week stubs on read (lib/stubs.ts). Week rides in on the game —
+  // picks don't carry one of their own. Cheap either way; the component
+  // renders nothing unless the toggle is on.
+  const { seasonId } = await fetchCurrentSeasonWeek(supabase, "cfb");
+  const { data: stubPickRows } = await supabase
+    .from("picks")
+    .select("result, games(week)")
+    .eq("user_id", user.id)
+    .eq("season_id", seasonId);
+  const stubs = stubsFor(
+    ((stubPickRows ?? []) as unknown as { result: StubPickRow["result"]; games: { week: number } | null }[])
+      .filter((r) => r.games !== null)
+      .map((r) => ({ week: r.games!.week, result: r.result })),
+  );
+
   return (
     <>
       <AppNav />
@@ -82,6 +103,8 @@ export default async function MePage() {
           timezone={tzOf(profile?.timezone)}
         />
         <PushSettings prefs={prefs} defaults={defaults} />
+        <FunModeSettings />
+        <TicketStubs stubs={stubs} year={seasonYearOf(seasonId)} />
         {typeof calendarToken === "string" && <CalendarSettings token={calendarToken} />}
         {isAdmin && (
           <p className="mt-6 text-xs text-dim">
