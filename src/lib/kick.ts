@@ -211,3 +211,14 @@ export function periodLabel(period: number | null): string {
   if (period <= 4) return `Q${period}`;
   return period === 5 ? "OT" : `${period - 4}OT`;
 }
+
+/**
+ * Inside the two-minute warning window: Q2 or Q4 with the clock under 2:00.
+ * Hoisted from GameCard (which renders it as the `u2m` treatment) so Fun
+ * Mode's pulse cadence can read the same fact instead of re-parsing.
+ */
+export function underTwo(period: number | null, clock: string | null): boolean {
+  if ((period !== 2 && period !== 4) || !clock) return false;
+  const m = /^(\d+):\d\d$/.exec(clock);
+  return m !== null && Number(m[1]) < 2;
+}

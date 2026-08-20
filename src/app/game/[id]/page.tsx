@@ -5,10 +5,13 @@ import { notFound } from "next/navigation";
 import { AppNav } from "../../../components/AppNav";
 import { BoxScore } from "../../../components/game/BoxScore";
 import { GameHeader } from "../../../components/game/GameHeader";
+import { GameFlow } from "../../../components/game/GameFlow";
 import { MovementChart } from "../../../components/game/MovementChart";
 import { ConsensusChip, EdgeChip } from "../../../components/slate/chips";
 import { DeleteWagerButton } from "../../../components/DeleteWagerButton";
 import { ScoringTimeline } from "../../../components/game/ScoringTimeline";
+import { pregameMarginFor } from "../../../lib/game-flow";
+import { sportOfSeasonId } from "../../../lib/league";
 import type { ScoringPlayRow } from "../../../lib/scoring";
 import { VoidBetButton } from "../../../components/VoidBetButton";
 import { Sparkline } from "../../../components/slate/Sparkline";
@@ -377,6 +380,11 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
               : null
           }
           myBets={myBets}
+          weather={
+            weather
+              ? { tempF: weather.temp_f, windMph: weather.wind_mph, precipProb: weather.precip_prob }
+              : null
+          }
           initial={{
             status: game.status,
             homePoints: game.home_points,
@@ -695,6 +703,23 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
               : null
           }
         />
+        {/* The game's whole story in one curve (R5-B) — finals only; renders
+            nothing without clocked plays or a pregame number. The timeline
+            below is its data table. */}
+        {game.status === "final" && (
+          <GameFlow
+            plays={scoringPlays}
+            home={{ id: home.id, abbr: home.abbr, color: home.color }}
+            away={{ id: away.id, abbr: away.abbr, color: away.color }}
+            pregame={pregameMarginFor({
+              frozenSpread: prediction ? Number(prediction.spread) : null,
+              marketClose: consensus.spread === null ? null : Number(consensus.spread),
+              sport: sportOfSeasonId(game.season_id),
+            })}
+            finalHome={game.home_points}
+            finalAway={game.away_points}
+          />
+        )}
         <ScoringTimeline plays={scoringPlays} home={home} away={away} />
 
         {/* Odds table */}

@@ -1,11 +1,13 @@
 "use client";
 
-import { ChevronDown, RefreshCw, Search, SearchX, Ticket, Users } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { ChevronDown, MonitorPlay, RefreshCw, Search, SearchX, Ticket, Users } from "lucide-react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from "react";
 import type { SeasonType } from "../../lib/season";
 import { NFL_PLAYOFF_ROUNDS } from "../../lib/week-range";
 import { onBetsChanged } from "../../lib/bets-changed";
 import { useFocusedGames, useStarred, useViewerTz } from "../../lib/client-store";
+import { useRundown, weekDirection } from "../../lib/fun-mode";
+import { VT, addVtType, useVtOn } from "../../lib/react-vt";
 import type { GameRow } from "../../lib/db-types";
 import { clockTime, dayKey, dayTabLabel, dayTabLabels, kickSlot, nflKickSlot, DEFAULT_TZ, tzLabel } from "../../lib/kick";
 import { liveUrgency } from "../../lib/live-status";
@@ -23,8 +25,11 @@ import {
   type SlateData,
 } from "../../lib/slate";
 import { BetSlip } from "./BetSlip";
+import { CrowdSigns, type SignView } from "./CrowdSigns";
 import { GameCard } from "./GameCard";
+import { PennantRow } from "./PennantRow";
 import { SkeletonCard } from "./SkeletonCard";
+import { ThePanel } from "./ThePanel";
 
 const SORTS = [
   { key: "kickoff", label: "Kickoff" },
@@ -49,6 +54,8 @@ export function SlateView({
   minWeek = 1,
   favoriteTeamIds = [],
   displayName = "",
+  signs = null,
+  signsWeek = null,
   demo = false,
 }: {
   initial: SlateData;
@@ -59,6 +66,9 @@ export function SlateView({
   favoriteTeamIds?: number[];
   /** Titles the slip's share card: "<display_name> Bets". */
   displayName?: string;
+  /** Fun Mode's crowd signs (FUN-10) for `signsWeek`; null when signed out. */
+  signs?: SignView[] | null;
+  signsWeek?: number | null;
   /**
    * Sample slate, no database behind it (`/demo`).
    *
@@ -74,6 +84,9 @@ export function SlateView({
   const tz = useViewerTz(DEFAULT_TZ);
   const [starred, toggleStar] = useStarred();
   const [focusedIds, toggleFocus] = useFocusedGames();
+  // Fun Mode (FUN-15): week changes slide like program pages. Declared up
+  // here because changeWeek and the popstate handler both read it.
+  const vtOn = useVtOn();
   const [day, setDay] = useState<string>("all");
   const [conference, setConference] = useState("all");
   const [network, setNetwork] = useState("all");
@@ -274,11 +287,28 @@ export function SlateView({
           : (sel as number);
     const st = post ? "postseason" : pre ? "preseason" : "regular";
     if (w === week && st === seasonType) return;
-    weekRef.current = w;
-    setData((d) => ({ ...d, week: w, seasonType: st, games: [] }));
-    setDay("all");
-    // the URL-sync effect below rewrites the query string
-    void refresh(w, true, st);
+    /* FUN-15: the sanctioned trigger for a typed view transition is
+       startTransition + addTransitionType — the week selector is client
+       state, not a router navigation, so <Link transitionTypes> can't
+       carry it. The state updates stay inside the callback so the empty
+       grid and the skeleton land in one commit; the fetch's arriving cards
+       keep card-in as their own entrance. */
+    const apply = () => {
+      weekRef.current = w;
+      setData((d) => ({ ...d, week: w, seasonType: st, games: [] }));
+      setDay("all");
+      // the URL-sync effect below rewrites the query string
+      void refresh(w, true, st);
+    };
+    if (vtOn) {
+      const dir = weekDirection({ week, seasonType }, { week: w, seasonType: st });
+      startTransition(() => {
+        addVtType(dir === "fwd" ? "week-fwd" : "week-back");
+        apply();
+      });
+    } else {
+      apply();
+    }
   };
 
   /* UX-31: the week is a navigation, the filters are not.
@@ -398,15 +428,30 @@ export function SlateView({
       const w = raw !== null ? Number(raw) : st === "postseason" ? 1 : currentWeek;
       if (!Number.isFinite(w)) return;
       if (w === weekRef.current && st === seasonType) return;
-      fromPopRef.current = true;
-      weekRef.current = w;
-      setData((d) => ({ ...d, week: w, seasonType: st, games: [] }));
-      setDay("all");
-      void refresh(w, true, st);
+      const apply = () => {
+        fromPopRef.current = true;
+        weekRef.current = w;
+        setData((d) => ({ ...d, week: w, seasonType: st, games: [] }));
+        setDay("all");
+        void refresh(w, true, st);
+      };
+      if (vtOn) {
+        // Back through history slides the same way the selector does (FUN-15).
+        const dir = weekDirection(
+          { week: weekRef.current, seasonType },
+          { week: w, seasonType: st },
+        );
+        startTransition(() => {
+          addVtType(dir === "fwd" ? "week-fwd" : "week-back");
+          apply();
+        });
+      } else {
+        apply();
+      }
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, [demo, currentWeek, seasonType, refresh]);
+  }, [demo, currentWeek, seasonType, refresh, vtOn]);
 
   /* ---- derived --------------------------------------------------------- */
 
@@ -502,7 +547,11 @@ export function SlateView({
      was untouched, so choosing a conference either moved the crown to a
      different game or made it disappear, both surprising. Now the same game
      wears it whenever it is on screen, and nothing wears it when it isn't. */
-  const featuredId = useMemo(() => pickHero(games)?.id ?? null, [games]);
+  const hero = useMemo(() => pickHero(games), [games]);
+  const featuredId = hero?.id ?? null;
+
+  // Fun Mode (FUN-11): first slate load of a gameday session gets the rundown.
+  const rundown = useRundown();
 
   // High-powered day structure: live games lead, then pregame by kickoff
   // slot (Noon / Afternoon / Primetime / Late — spec §7), then finals.
@@ -565,6 +614,18 @@ export function SlateView({
               week, so these are links, not state (the LedgerTabs pattern) —
               and the demo holds one CFB week, so there they'd 404 the point. */}
           {!demo && <SportToggle sport={sport} live={liveView} liveCount={liveCount} />}
+          {/* R5-A: the board's loud entry, only while there is a board to run.
+              A plain <a> like the SportToggle beside it — the Jumbotron is a
+              takeover surface and a full load is the honest transition. */}
+          {!demo && liveCount > 0 && (
+            <a
+              href="/jumbotron"
+              className="flex min-h-11 items-center gap-1.5 text-xs font-semibold text-live transition-colors hover:text-chalk"
+            >
+              <MonitorPlay size={13} aria-hidden />
+              Jumbotron
+            </a>
+          )}
           {/* Neither control means anything across leagues and weeks (UX-36):
               a week number describes one league's calendar, and a day tab on a
               list that is by definition happening right now is a filter with
@@ -696,7 +757,42 @@ export function SlateView({
       </div>
 
       {/* slate */}
+      {/* FUN-15: keyed by the week in view, so a week change replaces the
+          whole grid — old exits one way, new enters from the other, per the
+          typed classes added in changeWeek. `default="none"` keeps every
+          other update (polls, realtime merges) out of the transition; with
+          the toggle off VT is a passthrough and no types are ever added.
+          The sticky control bar and the ticker sit OUTSIDE this wrapper, so
+          they anchor while the grid slides, and a week change is not a
+          navigation — scroll is untouched by construction. */}
+      <VT
+        key={`${seasonType}-${week}`}
+        enter={{ "week-fwd": "wk-fwd", "week-back": "wk-back", default: "none" }}
+        exit={{ "week-fwd": "wk-fwd", "week-back": "wk-back", default: "none" }}
+        default="none"
+      >
       <div className="mx-auto mt-4 max-w-7xl pb-12">
+        {/* Fun Mode: the crowd-sign wall (FUN-10), pennants for your teams
+            (FUN-6) and the crew-picks reveal for the big game (FUN-9). All
+            render nothing unless toggled on, so the default slate is
+            untouched. The wall stays on the week its signs were fetched for. */}
+        {!loading && !demo && signs !== null && signsWeek === week && (
+          <CrowdSigns
+            signs={signs}
+            seasonId={data.seasonId}
+            week={week}
+            myName={displayName || null}
+          />
+        )}
+        {!loading && (
+          <PennantRow
+            games={games}
+            starred={starred}
+            favoriteTeamIds={favoriteTeamIds}
+            onFocus={toggleFocus}
+          />
+        )}
+        {!loading && hero && <ThePanel game={hero} displayName={displayName || null} />}
         {focusedGames.length > 0 && !loading && (
           <section aria-label="Focused games" className="mb-7">
             <SectionHeader
@@ -744,8 +840,20 @@ export function SlateView({
             hint="Loosen a filter or clear the search to see the rest of the slate."
           />
         ) : sections ? (
-          sections.map((s) => (
-            <section key={s.key} aria-label={s.title} className="mt-7 first:mt-0">
+          sections.map((s, i) => (
+            <section
+              key={s.key}
+              aria-label={s.title}
+              /* Fun Mode (FUN-11): on the first slate load of a gameday the
+                 sections arrive as a broadcast rundown — title card, then the
+                 window's games. One session, one showing. */
+              className={`mt-7 first:mt-0 ${rundown ? "fun-rundown" : ""}`}
+              style={
+                rundown
+                  ? ({ "--rd-d": `${Math.min(i, 4) * 240}ms` } as CSSProperties)
+                  : undefined
+              }
+            >
               <SectionHeader title={s.title} count={s.games.length} live={s.key === "live"} />
               <CardGrid
                 games={s.games}
@@ -772,6 +880,7 @@ export function SlateView({
           />
         )}
       </div>
+      </VT>
 
       <BetSlip seasonId={data.seasonId} week={week} tz={tz} demo={demo} displayName={displayName} />
     </>

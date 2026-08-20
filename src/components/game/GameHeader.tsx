@@ -22,11 +22,13 @@ import {
 } from "../../lib/slate";
 import { sportOfSeasonId } from "../../lib/league";
 import { liveWinProb } from "../../model/live";
+import { VtName, useVtOn } from "../../lib/react-vt";
 import { useGamesRealtime } from "../../lib/use-games-realtime";
 import { isDeadStatus } from "../../lib/void";
 import { LiveBadge, LiveStatusChip } from "../slate/chips";
 import { Sparkline } from "../slate/Sparkline";
 import { TeamMark } from "../slate/TeamMark";
+import { WeatherGlass } from "../slate/WeatherGlass";
 import { WinProbBar } from "../slate/WinProbBar";
 
 export interface GameLiveState {
@@ -54,6 +56,8 @@ interface Props {
   myPick: { market: PickMarket; side: string; line: number | null } | null;
   myBets: MyBetView[];
   initial: GameLiveState;
+  /** Forecast for Fun Mode's weather pane (FUN-3); null renders nothing. */
+  weather?: { tempF: number | null; windMph: number | null; precipProb: number | null } | null;
 }
 
 /**
@@ -76,8 +80,10 @@ export function GameHeader({
   myPick,
   myBets,
   initial,
+  weather = null,
 }: Props) {
   const viewerTz = useViewerTz(DEFAULT_TZ);
+  const vtOn = useVtOn();
   const [g, setG] = useState<GameLiveState>(initial);
   // NFL-20: which feed named these teams, and therefore how long the name is.
   const sport = sportOfSeasonId(seasonId);
@@ -200,6 +206,12 @@ export function GameHeader({
   const awayColor = away.color ?? "var(--push)";
 
   return (
+    /* FUN-15: the slate card's shared element — the score you were watching
+       travels into this header on navigation (reliably on back nav and
+       cached forwards; a cold forward tap suspends into the loading
+       boundary and gets the graceful enter instead, the API's designed
+       degradation). */
+    <VtName on={vtOn} name={`game-hero-${gameId}`}>
     <section className={`card relative overflow-hidden ${live ? "card-live" : ""}`}>
       <div
         aria-hidden
@@ -212,6 +224,10 @@ export function GameHeader({
         <span className="flex-1" style={{ background: awayColor }} />
         <span className="flex-1" style={{ background: homeColor }} />
       </div>
+
+      {/* Fun Mode (FUN-3): the header is the one pane that always gets the
+          forecast — this is the page you open to see the game. */}
+      <WeatherGlass weather={weather} />
 
       <div className="relative px-4 py-4 sm:px-6">
         <div className="flex items-center justify-between gap-2 text-xs text-dim">
@@ -341,6 +357,7 @@ export function GameHeader({
         )}
       </div>
     </section>
+    </VtName>
   );
 }
 

@@ -736,7 +736,14 @@ export async function fetchLiveSlate(
     }
   }
 
-  return { ...empty, linesAsOf, games };
+  return {
+    ...empty,
+    linesAsOf,
+    games,
+    // R5-A: the realtime rooms these games actually live in, so a subscriber
+    // (the Jumbotron) can hold one channel per bucket instead of guessing.
+    buckets: [...buckets.values()].map((b) => ({ seasonId: b.seasonId, week: b.week })),
+  };
 }
 
 export interface TeamAtsSummary {

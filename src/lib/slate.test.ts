@@ -12,6 +12,7 @@ import {
   ouRecord,
   parseSituation,
   pickHero,
+  probSurge,
   spreadMove,
   spreadMoveRead,
   modelSideOf,
@@ -27,6 +28,25 @@ import {
   type GameView,
   type TeamView,
 } from "./slate";
+
+describe("probSurge", () => {
+  it("announces nothing under the threshold — the ordinary clock drip", () => {
+    expect(probSurge(0.5, 0.579)).toBeNull();
+    expect(probSurge(0.5, 0.421)).toBeNull();
+  });
+  it("fires exactly at the threshold, toward whoever gained", () => {
+    // 0/0.08 keeps the delta float-exact; 0.5±0.08 lands at 0.0799…
+    expect(probSurge(0, 0.08)).toBe("home");
+    expect(probSurge(0.08, 0)).toBe("away");
+    expect(probSurge(0.5, 0.6)).toBe("home");
+    expect(probSurge(0.5, 0.4)).toBe("away");
+  });
+  it("is symmetric and honors a custom threshold", () => {
+    expect(probSurge(0.3, 0.5, 0.2)).toBe("home");
+    expect(probSurge(0.5, 0.3, 0.2)).toBe("away");
+    expect(probSurge(0.5, 0.6, 0.2)).toBeNull();
+  });
+});
 
 const team = (id: number, rank: number | null = null): TeamView => ({
   id,

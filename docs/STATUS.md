@@ -66,7 +66,7 @@ rows were decided by reading code, not by reading commit messages.
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
 | **Model in code** | `2026.5.0` — tilt carry, `baseHfa` 3.0, centered team-HFA, portal fix, market-anchored tier recentre |
-| **Database** | **69 migration files, 69 recorded rows, in sync** — verified live 2026-08-18 after **0071** (PRAC-1's three practice pools) was applied to `mjijyutmbtnwcjspozsx`. Ordering was free: new tables nothing in the running code reads. Verified after applying: all three present with RLS on, **0 policies** each — the same deny-all shape the answer-key tables use, and for the same reason, since each payload *is* an answer key — and **0 write grants** to `anon` or `authenticated`. Previously: **68 migration files, 68 recorded rows, in sync** — verified live 2026-08-18 after **0067, 0068, 0069 and 0070** were applied to `mjijyutmbtnwcjspozsx` in that order, ahead of the deploy carrying the three replacement games. **The order was load-bearing this time**, unlike the last pass: 0067 adds `games.home_conference`, and `sync-games` in the new build writes it — its `sink.upsert` throws on a PostgREST error, so deploying first would have failed the daily games sync on every run with *column games.home_conference does not exist*. All four are inert against the code that was running (two nullable columns, eight season rows nothing reads at runtime, and ten tables no old path touches), which is what made applying them first safe. Verified after applying: **12 CFB seasons** (2015–2026) with **exactly one `is_current`** — the invariant a ninth `true` row would break, taking `fetchCurrentSeasonWeek` and the whole slate down; both new columns present and **0 rows backfilled** into them, which is deliberate (filling them from `teams.conference` would destroy the distinction they exist for, unrecoverably); all **12 new tables** present with RLS on; the four answer-key tables (`tape_questions`, `chains_cards`, `dc_puzzle_groups`, `dc_facts`/`dc_fact_teams`) carrying **0 policies** — RLS on with no policy denies every row, which is the design rather than an omission; **0 write grants** to `anon` or `authenticated` across all twelve; and `tape_leaderboard`, `chains_leaderboard`, `dc_leaderboard` all executable by `authenticated` and **not** by `anon`. Security advisors show **8 new rows and both patterns are pre-existing**: five `rls_enabled_no_policy` INFOs on the answer-key tables — which is the design, the same deny-all shape `api_call_log` and `deleted_wagers` already carry — and three `authenticated_security_definer_function_executable` WARNs on the new boards, the definer-RPC pattern there are now 40 of, `gtg_leaderboard` among them. **Nothing new is anon-executable**: the nine anon findings are all the pre-existing `*_revealed` gates and none of the three new boards is in that list. No new advisor CATEGORY appeared. Locally, all 68 apply to a throwaway cluster with **381 pgTAP assertions passing, 0 failed**. **The three backfill jobs then ran green** (BF-4): games 3,968 → **10,378**, 2015–22 all carrying kickoff-time conferences, line coverage 95–100% per season, polls 15–16 weeks a season — and The Tape's eligible deck measured at **8,902 games** against the ~400 floor that would have forced a redesign. 2023–25 still show `home_conference` null, exactly as predicted, because the workflow passes no `--force`; tracked in DC-3. Previously: **64 migration files, 64 recorded rows, in sync** — verified live 2026-08-18 after 0064, 0065 and 0066 were applied to `mjijyutmbtnwcjspozsx` in that order, ahead of the deploy carrying GRP-1/GRP-2. The order was load-bearing between 0065 and 0066 only (Postgres refuses to use a new enum value in the transaction that adds it); all three are inert against the running code, which is why they went first rather than after. Verified after applying: all 3 new functions present, `add_group_member_by_name` executable by `authenticated` and **not** by `anon`, `search_group_candidates` likewise, `added_to_group` on the `notification_kind` enum, and its `notification_settings` row seeded enabled + default_enabled with `lead_minutes` 0 and the copy carrying `{{group}}` and `{{admin}}`. Security advisors show 3 new rows and they are all the pre-existing definer-RPC pattern (37 of them now); nothing anon-executable was added. Previously: **52 migration files, 52 recorded rows, in sync** — verified live 2026-08-15 after `0053_survivor_pools` was applied as `20260815044806`. Its ordering did not matter, unlike 0047's and 0052's: no old code reads `survivor_pools`/`survivor_picks` and no new code path runs before it, so it went in ahead of the deploy. Verified after applying: `groups_kind_check` accepts `'survivor'`, **0** TRUNCATE grants to `anon`/`authenticated` on either new table, `survivor_picks` grants only `SELECT`, 5 policies and 4 functions present, `create_survivor_group` executable by `authenticated` and not by `anon`, and **0** survivor groups created — the probe stopped on the sign-in guard rather than writing a row. Previously **51 migration files, 51 recorded rows, in sync** — verified live 2026-08-15 after PR #76 merged. 0049/0050/0051 were applied **before** the merge and 0052 **after the deploy was confirmed live**, which is the whole reason 0050 was split: 0050 only adds `is_current_user_admin()` and is inert against the old code, while 0052's revoke would have denied the running code's `select("is_admin")` and broken every admin gate. Deploy confirmed by `/ledger/stats` answering 200 in production — a route that exists only in the new build — not by a status badge. Verified after applying: **0 public tables grant TRUNCATE** to `anon` or `authenticated` (was 32), `is_current_user_admin` executable by `authenticated` and not by `anon`, `group_game_pick_counts` executable, `profiles.is_admin` no longer readable by `authenticated` while `display_name` and `timezone` still are, and twelve production routes serving 200 with `/admin` still returning its 404 body to an anonymous caller. Previously: **47 migration files, 47 recorded rows, in sync** — verified live 2026-08-14 after 0046/0047/0048 were applied to `mjijyutmbtnwcjspozsx` in that order, which was load-bearing: **0047 had to land before the code that stops sending `reason_tag` deployed**, or every bet insert would have failed the NOT NULL. Verified after applying: `deleted_wagers` and `scoring_plays` exist, `admin_remove_pick` is present, `bets.reason_tag` is nullable, `deleted_wagers` has no grant to either API role, and `scoring_plays` grants SELECT only. *(File count is 47 against numbers running to 0048 because **0004 does not exist** — a pre-existing gap, confirmed by counting the directory rather than trusting a number in this file.)* One thing that verification turned up and did not fix: **TRUNCATE is granted to `anon` and `authenticated` on every public table**, project-wide and pre-existing — see §6. Previously: **40 migration files, 40 recorded rows, in sync** — verified live 2026-08-13 after PR #58 merged and deployed. 0038–0041 were applied in order once the production build carried the code they depend on, which was the whole reason they waited: 0039 makes `join_group` return null on a bad code (the old action read that as success), 0040 revokes `is_admin` from anon while the old `fetchProfiles` still did `select("*")`, and 0041 renames a column the old `build-preseason` still wrote — which would have failed `preseason-refresh`, the job the Aug 26 checkpoint waits on. Verified after applying: join codes mint at 10 Crockford characters, `normalize_join_code('il o-1')` → `1101`, `group_join_attempts` exists deny-all, and anon can read neither `groups.join_code` nor `profiles.is_admin`. Before this pass it was 36/36, and 0034–0037 **are applied** — an earlier version of this row said 0034 and 0035 were "not yet applied to the live project" and gave the count as 32/32, and both were stale by the time they were written. It matters because two ticked rows depend on them: P1-1's re-pick fix *is* 0034 (`make_pick` confirmed carrying it live), and OPS-2's watchdog push needs 0036's enum value and 0037's `notification_settings` row — `notifyWatchdog` returns `{notified: 0, errors: 0}` when that row is missing (`notify-jobs.ts:375`), so it would have been a silent no-op. Both confirmed live, along with 2 admin push subscriptions for it to reach. The `0017` ledger gap (DB-3) was repaired 08-12. 0031–0033 add the push tables. `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
+| **Database** | **74 migration files, 74 recorded rows, in sync** — verified live 2026-08-20 after **0075** (`crowd_signs`, FUN-10) was applied ahead of PR #103's deploy; ordering free (new table, nothing running reads it). Read back after applying: RLS on, 4 policies, 0 anon policies, 0 TRUNCATE grants to `anon`/`authenticated`. Previously: **69 migration files, 69 recorded rows, in sync** — verified live 2026-08-18 after **0071** (PRAC-1's three practice pools) was applied to `mjijyutmbtnwcjspozsx`. Ordering was free: new tables nothing in the running code reads. Verified after applying: all three present with RLS on, **0 policies** each — the same deny-all shape the answer-key tables use, and for the same reason, since each payload *is* an answer key — and **0 write grants** to `anon` or `authenticated`. Previously: **68 migration files, 68 recorded rows, in sync** — verified live 2026-08-18 after **0067, 0068, 0069 and 0070** were applied to `mjijyutmbtnwcjspozsx` in that order, ahead of the deploy carrying the three replacement games. **The order was load-bearing this time**, unlike the last pass: 0067 adds `games.home_conference`, and `sync-games` in the new build writes it — its `sink.upsert` throws on a PostgREST error, so deploying first would have failed the daily games sync on every run with *column games.home_conference does not exist*. All four are inert against the code that was running (two nullable columns, eight season rows nothing reads at runtime, and ten tables no old path touches), which is what made applying them first safe. Verified after applying: **12 CFB seasons** (2015–2026) with **exactly one `is_current`** — the invariant a ninth `true` row would break, taking `fetchCurrentSeasonWeek` and the whole slate down; both new columns present and **0 rows backfilled** into them, which is deliberate (filling them from `teams.conference` would destroy the distinction they exist for, unrecoverably); all **12 new tables** present with RLS on; the four answer-key tables (`tape_questions`, `chains_cards`, `dc_puzzle_groups`, `dc_facts`/`dc_fact_teams`) carrying **0 policies** — RLS on with no policy denies every row, which is the design rather than an omission; **0 write grants** to `anon` or `authenticated` across all twelve; and `tape_leaderboard`, `chains_leaderboard`, `dc_leaderboard` all executable by `authenticated` and **not** by `anon`. Security advisors show **8 new rows and both patterns are pre-existing**: five `rls_enabled_no_policy` INFOs on the answer-key tables — which is the design, the same deny-all shape `api_call_log` and `deleted_wagers` already carry — and three `authenticated_security_definer_function_executable` WARNs on the new boards, the definer-RPC pattern there are now 40 of, `gtg_leaderboard` among them. **Nothing new is anon-executable**: the nine anon findings are all the pre-existing `*_revealed` gates and none of the three new boards is in that list. No new advisor CATEGORY appeared. Locally, all 68 apply to a throwaway cluster with **381 pgTAP assertions passing, 0 failed**. **The three backfill jobs then ran green** (BF-4): games 3,968 → **10,378**, 2015–22 all carrying kickoff-time conferences, line coverage 95–100% per season, polls 15–16 weeks a season — and The Tape's eligible deck measured at **8,902 games** against the ~400 floor that would have forced a redesign. 2023–25 still show `home_conference` null, exactly as predicted, because the workflow passes no `--force`; tracked in DC-3. Previously: **64 migration files, 64 recorded rows, in sync** — verified live 2026-08-18 after 0064, 0065 and 0066 were applied to `mjijyutmbtnwcjspozsx` in that order, ahead of the deploy carrying GRP-1/GRP-2. The order was load-bearing between 0065 and 0066 only (Postgres refuses to use a new enum value in the transaction that adds it); all three are inert against the running code, which is why they went first rather than after. Verified after applying: all 3 new functions present, `add_group_member_by_name` executable by `authenticated` and **not** by `anon`, `search_group_candidates` likewise, `added_to_group` on the `notification_kind` enum, and its `notification_settings` row seeded enabled + default_enabled with `lead_minutes` 0 and the copy carrying `{{group}}` and `{{admin}}`. Security advisors show 3 new rows and they are all the pre-existing definer-RPC pattern (37 of them now); nothing anon-executable was added. Previously: **52 migration files, 52 recorded rows, in sync** — verified live 2026-08-15 after `0053_survivor_pools` was applied as `20260815044806`. Its ordering did not matter, unlike 0047's and 0052's: no old code reads `survivor_pools`/`survivor_picks` and no new code path runs before it, so it went in ahead of the deploy. Verified after applying: `groups_kind_check` accepts `'survivor'`, **0** TRUNCATE grants to `anon`/`authenticated` on either new table, `survivor_picks` grants only `SELECT`, 5 policies and 4 functions present, `create_survivor_group` executable by `authenticated` and not by `anon`, and **0** survivor groups created — the probe stopped on the sign-in guard rather than writing a row. Previously **51 migration files, 51 recorded rows, in sync** — verified live 2026-08-15 after PR #76 merged. 0049/0050/0051 were applied **before** the merge and 0052 **after the deploy was confirmed live**, which is the whole reason 0050 was split: 0050 only adds `is_current_user_admin()` and is inert against the old code, while 0052's revoke would have denied the running code's `select("is_admin")` and broken every admin gate. Deploy confirmed by `/ledger/stats` answering 200 in production — a route that exists only in the new build — not by a status badge. Verified after applying: **0 public tables grant TRUNCATE** to `anon` or `authenticated` (was 32), `is_current_user_admin` executable by `authenticated` and not by `anon`, `group_game_pick_counts` executable, `profiles.is_admin` no longer readable by `authenticated` while `display_name` and `timezone` still are, and twelve production routes serving 200 with `/admin` still returning its 404 body to an anonymous caller. Previously: **47 migration files, 47 recorded rows, in sync** — verified live 2026-08-14 after 0046/0047/0048 were applied to `mjijyutmbtnwcjspozsx` in that order, which was load-bearing: **0047 had to land before the code that stops sending `reason_tag` deployed**, or every bet insert would have failed the NOT NULL. Verified after applying: `deleted_wagers` and `scoring_plays` exist, `admin_remove_pick` is present, `bets.reason_tag` is nullable, `deleted_wagers` has no grant to either API role, and `scoring_plays` grants SELECT only. *(File count is 47 against numbers running to 0048 because **0004 does not exist** — a pre-existing gap, confirmed by counting the directory rather than trusting a number in this file.)* One thing that verification turned up and did not fix: **TRUNCATE is granted to `anon` and `authenticated` on every public table**, project-wide and pre-existing — see §6. Previously: **40 migration files, 40 recorded rows, in sync** — verified live 2026-08-13 after PR #58 merged and deployed. 0038–0041 were applied in order once the production build carried the code they depend on, which was the whole reason they waited: 0039 makes `join_group` return null on a bad code (the old action read that as success), 0040 revokes `is_admin` from anon while the old `fetchProfiles` still did `select("*")`, and 0041 renames a column the old `build-preseason` still wrote — which would have failed `preseason-refresh`, the job the Aug 26 checkpoint waits on. Verified after applying: join codes mint at 10 Crockford characters, `normalize_join_code('il o-1')` → `1101`, `group_join_attempts` exists deny-all, and anon can read neither `groups.join_code` nor `profiles.is_admin`. Before this pass it was 36/36, and 0034–0037 **are applied** — an earlier version of this row said 0034 and 0035 were "not yet applied to the live project" and gave the count as 32/32, and both were stale by the time they were written. It matters because two ticked rows depend on them: P1-1's re-pick fix *is* 0034 (`make_pick` confirmed carrying it live), and OPS-2's watchdog push needs 0036's enum value and 0037's `notification_settings` row — `notifyWatchdog` returns `{notified: 0, errors: 0}` when that row is missing (`notify-jobs.ts:375`), so it would have been a silent no-op. Both confirmed live, along with 2 admin push subscriptions for it to reach. The `0017` ledger gap (DB-3) was repaired 08-12. 0031–0033 add the push tables. `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
 | **Model in production** | ✅ **`2026.5.0`, loaded 2026-08-19** — and not the stale-talent build Q1 authorised. Dispatched `preseason-refresh` (run **32301198359**, #285, 20:56 UTC, on `5bdfe1f`) and `verify-preseason` read the write back rather than trusting the exit code: **138** week-0 ratings, `model_version 2026.5.0` against code 2026.5.0, `team_hfa` **138 rows at 1 distinct `blended_hfa`**, `preseason_components` **138 with 0 `talent_stale`**, halves mismatched **0**, games already final **0**, `Done: 2421 rows loaded`. **The `blended_hfa` count is the tell that could not be faked** — production carried **70** distinct values that morning, which only an older build produces, so this is a fresh build rather than an old board relabelled. **`0 talent_stale` while the same run's probe still shows `/talent?year=2026` empty is CFBD-4/5 working as designed**: the composite is unpublished, the substitute is healthy, and a healthy substitute is READY rather than degraded — the season opens with the incoming class in the number instead of 2025's. Confirmed on the surfaces the same day: `/model` serves 2026.5.0 and renders the substitute note affirmatively, `/ratings` renders Off/Def. **One invariant is unevaluable and says so**: this project has never written a prior-season board, so the chain check has nothing to compare 2026 against — reported as a notice, not counted as a pass. **What it retires:** the Aug 22 force need never fire, and the Aug 26 checkpoint drops from emergency to re-verification. *(Kept below as what was believed until the load, not deleted — the row was accurate every day it was written and the escalation it describes is why the load was possible at all.)* Previously: ⚠️ `2026.2.0`. **Four versions behind**, pricing every cross-classification opener ~10 points toward the G5. Waiting on CFBD to publish 2026 talent; `preseason-refresh` retries daily and loads itself the first morning `--check` is green. **Talent is the only red gate** — confirmed against the Aug 17 11:15 UTC run, which prints one line per failing input and printed exactly one; returning production, portal, coaches, week-1 lines and the tier recentre all passed, and the build reached a full 138-team board on the 2025 file before refusing to load it. Since 2026-08-18 `cfbd-probe` prints the row count per input, so this row's claim stops being an inference. **Ends Aug 22 either way** — Q1 was answered yes that day and the escalation is in `jobs.yml`: from the 22nd the daily refresh loads the best build available rather than declining, so production stops being four versions behind whether or not CFBD has published. **Superseded 2026-08-19 by CFBD-5, in the better direction:** `--tune-talent-source` adopted the recruiting-class substitute on evidence, so once that merges the first daily refresh builds READY on the current classes — incoming freshmen included — and loads 2026.5.0 without waiting for the composite or the 22nd. The Aug 22 force remains as a backstop that should now never fire. |
 | **The edge verdict** | b₁ = 0.035 (t = 0.84) for the model vs 0.987 (t = 22.81) for the market, n = 2611; flagged edges 49.2% ATS vs the close. Edges are **information, not bets** — and no model-accuracy work belongs in the next 17 days. |
 
@@ -4293,6 +4293,225 @@ could not read it.
       pre-fix source. `group_members → profiles` is the **only** pair in the
       schema with two FKs to the same table that anything embeds — audited, not
       assumed. **No migration.** 3 tests (1310 → 1313).
+
+**Fun Mode — opt-in pageantry (FUN-1…FUN-12)** — owner request 2026-08-20:
+"this needs to be an app that feels like Football Season… immersion of the
+pageantry of college football… optional toggles… not corny or cheesy or AI
+slop." Eight pieces picked from an offered set, all behind per-piece toggles
+under one master switch at `/me`, everything **off by default**. The owner
+explicitly exempted these opt-in surfaces from "motion means money" and, in
+exactly one place, from the no-new-fonts rule — recorded as a decisions-table
+row in the changelog, not silently violated. Still binding everywhere:
+`prefers-reduced-motion` (every fun-mode animation is plain CSS, so the global
+clamp flattens all of it), league rules (The Panel flips only picks RLS
+already shows), brand voice, and no layout shift for content (atmosphere is
+backgrounds and overlays). Taste gate: the four judgement-heavy pieces have
+standalone mockups in `public/design/fun-{cover,light,signs,panel}.html`,
+openable on a phone.
+
+- [x] **FUN-1** Infrastructure. `src/lib/fun-mode.ts` (the `client-store.ts`
+      idiom: localStorage `slate-fun`, `useSyncExternalStore`, defaults
+      master-off/pieces-on so one switch delivers the whole show),
+      `FunModeSettings` on `/me`, and a pre-paint script in `layout.tsx`
+      beside the theme's so the CSS-gated attributes (`data-fun-light`,
+      `data-fun-broadcast`, `data-fun-rivalry`) never flash on. Preview
+      overrides `?funday=sat|sun` and `?daypart=…` pose a gameday on a
+      Tuesday. 15 unit tests (fun-mode + stubs).
+- [x] **FUN-2** Fall light engine. `data-daypart` set by `FunAtmosphere`
+      (timeout-to-boundary, no interval; catches up on `visibilitychange`),
+      one fixed layer behind the page per daypart — dawn haze off `--push`,
+      flat noon off `--text`, the 3:30 golden hour off `--accent`/`--edge-c`,
+      under-the-lights beams off `--text` — every wash a color-mix of
+      existing tokens, no new colors. Light theme keeps only the evening dim.
+- [x] **FUN-3** Weather on the glass. `WeatherGlass` renders the stored
+      forecast on the pane — rain/snow strips (plain CSS sweeps, no canvas,
+      no rAF, index-derived positions so SSR agrees with the client), wind as
+      drift, a still frost rim below 25°. Scoped to the game header and to
+      live/pinned slate cards only; reduced motion gets a static streak
+      texture. Demo poses it on the live rivalry card.
+- [x] **FUN-4** Broadcast package. Under `data-fun-broadcast`: status swaps
+      wipe (`bug-wipe`) instead of dissolving, the field-strip ball *travels*
+      between snaps, scores slide in (`bug-pop`), and the situation line
+      becomes a lower third with the possession team's color as its end cap
+      (`live-sit` + `--tc`, set by `LiveSituation`).
+- [x] **FUN-5** Rivalry takeover. `data-rivalry` + both team-color vars on
+      the card article; under the flag the card splits into the two colors at
+      a chalk-stitched seam and the trophy's name sits above the matchup in
+      the brand display face. No motion — banner craft.
+- [x] **FUN-6** Pennants. Starred + favorite teams hang as felt clip-path
+      pennants over the gameday slate; tapping one pins that team's game to
+      the Focus row, so the decoration is also the fastest Saturday setup.
+- [x] **FUN-7** Ticket stubs. `src/lib/stubs.ts` derives a stub per fully
+      graded week of picks (void-only weeks buy nothing; an ungraded pick
+      holds the week back; a re-grade reprints) — the trophies idiom, nothing
+      stored. Shelf on `/me`.
+- [x] **FUN-8** The Cover. `GamedayCover` on `/`: a gameday program cover —
+      masthead in Graduate on `.brand-surface`, issue line (Vol. year ·
+      No. week), the marquee matchup as the cover story via the slate's own
+      `pickHero` over one `/api/slate` fetch, first kick and game count —
+      once per gameday per device (`slate-cover-seen`; `?funday=` previews
+      never stamp). Escape/tap dismisses; body scroll locked while up.
+- [x] **FUN-9** The Panel. Crew picks for the Game of the Week turn over as
+      staggered 3D flips, last chair gets the long beat; "Run it back"
+      replays; one animated showing per session. Theater over `crewPicks`
+      that RLS already reveals — a hidden-picks group has nothing to flip
+      until kickoff, by construction.
+- [x] **FUN-10** Crowd signs. Migration **0075** (`crowd_signs`: one row per
+      season/week/member, 80 chars, `authenticated` read, own-row writes — a
+      deliberate, bounded free-text surface; the header says why it does not
+      reopen "reactions, not a chat room"), `setCrowdSign` action
+      (upsert-in-place, empty body takes the sign down), and the wall over
+      the slate Friday–Sunday: marker on inverted chalk, tape strip, a degree
+      of lean. The marker face (`Permanent_Marker` via `next/font`) is the
+      one font exemption. ✅ **0075 applied to production 2026-08-20** via
+      the Supabase MCP alongside PR #103, and read back rather than trusted:
+      74 files / 74 recorded rows in sync, RLS enabled, exactly 4 policies
+      (crew-visible SELECT, own-row INSERT/UPDATE/DELETE), **0 anon
+      policies, 0 TRUNCATE grants** to either API role. Ordering was free as
+      designed — nothing running reads the table until the PR deploys.
+- [x] **FUN-11** The Rundown. First slate load of a gameday session: kickoff
+      windows arrive as a broadcast rundown — title card slides in, cards
+      cascade on their existing stagger — ~1.2s total, once per session
+      (`useRundown`, the no-hydration-complaint store shape).
+- [x] **FUN-13** The pulse. Live cards breathe — one ring painted once on
+      `.card-live::after`, opacity-only (`fun-breathe`), cadence from
+      `--pulse-cycle` set inline by GameCard via `pulseCycle()` (5.2s base,
+      2.8s red zone, 1.8s under two; `underTwo` hoisted from GameCard into
+      `kick.ts`). Scoped by `.card-live`, so <15 cards breathe on the
+      busiest slate — the 8fps aura lesson was 70 blurred layers moving;
+      this is unblurred fades. Companions: a touchdown floods the scoring
+      team's end zone (`isTdDelta` rides the card's existing score diff —
+      one detector; `lastScore` was rejected as the key because realtime
+      rows don't carry it and it lags ~30s behind the poll), and
+      in_progress → final exhales the aura once (`data-exhale`, the flare
+      idiom) before `card-final` dims it.
+- [x] **FUN-14** News ripples. (a) A scheduled → live flip "takes the
+      field": one team-color sweep + the field strip wiping in — detected on
+      the actual transition via a prev-status ref, never on mount. (b) The
+      ticker wave: the chip whose score changed flashes and ≤2 neighbors
+      echo at 80ms steps (`detectWave` runs in the data-arrival handlers,
+      not an effect; an inner keyed span, never re-keying the focused Link;
+      a track-space traveling gradient was rejected — it fights the
+      marquee's transform loop). (c) Momentum surge: `probSurge` (≥8-point
+      swing) sweeps a shimmer across `WinProbBar` toward whoever gained —
+      the widths already transition; the shimmer is the announcement.
+      (d) The drive trail: `drive-trail.ts` folds observed ball spots
+      (possession change resets, dedupe, cap 5) into fading ghost dots on
+      the field strip — real history only, statically placed, the
+      adjust-state-during-render pattern so nothing cascades.
+- [x] **FUN-15** View transitions. **Next 16.3.0 needs no config flag** —
+      the App Router ships React canary, which exports `<ViewTransition>`;
+      but the installed react@19.2.8 (what vitest resolves) does not, so
+      everything goes through `src/lib/react-vt.tsx`: the real component in
+      the app, a props-ignoring passthrough under tests. Card → game page
+      morph via shared `game-hero-<id>` names (`default="none"` load-bearing;
+      pinned games carry no name — they render twice and duplicate names
+      make the browser skip; cold forward taps suspend into `loading.tsx`
+      and get the enter instead of the morph, the API's designed
+      degradation — back nav morphs reliably). Week changes slide like
+      program pages: `startTransition` + `addTransitionType` in
+      `changeWeek`/popstate (the selector is client state, not a router
+      nav), grid keyed by `(seasonType, week)`, direction from
+      `weekDirection()`; the sticky bar and ticker sit outside the wrapper
+      so they anchor, and scroll is untouched by construction. The global
+      reduced-motion clamp cannot reach the `::view-transition-*` pseudo
+      tree, so a sibling rule zeroes those durations under the same media
+      query. No `document.startViewTransition` anywhere.
+- [x] **FUN-16** The Sign-Off — the Gameday Arc's closing beat, owner
+      direction 2026-08-20 ("come up with some direction"): the day now has
+      a shape — the Cover opens it, the slate and the Jumbotron carry it,
+      and this closes it. After 9pm local on a gameday, once finals exist
+      and NOTHING is still live (a goodnight over a live game would be wrong
+      twice), the site signs off: "That was Saturday." — tonight's upset (a
+      top-15 team beaten by someone ten spots worse) or the closest call,
+      the finals count, how many the viewer had a piece of. **Action counts,
+      never results** — pick'em grades land with Sunday's job, so a
+      Saturday-night record would be a guess wearing a number, and the copy
+      says the recap tells the whole story. Shares the Cover's toggle (the
+      bookends are one ritual), its once-per-gameday stamp, and its
+      `/api/slate` diet; `?funday=sat&daypart=lights` poses it un-stamped.
+- [ ] **FUN-12** The taste pass. Owner opens the four mockups and `/demo`
+      (plus `/slate?funday=sat&daypart=golden` with the master switch on) on
+      a real phone and keeps, redirects, or kills each piece — "not corny" is
+      the bar and the owner is the judge. Now also covers the three Motion
+      toggles (FUN-13…15): the pulse and ripples against a live game (NFL
+      preseason works), the card morph via back-nav, and the week slide.
+      (**0075 is applied** — see FUN-10.) Record the verdicts in the
+      changelog, including anything killed.
+
+**Round 5 — best-in-class surfaces** — owner request 2026-08-20 ("What else
+should we add? Come up with best-in-class ideas"), three picked from an
+offered four (swipe + instant nav declined this round). **Features, not
+costume** — none sits behind a Fun Mode toggle, by decision recorded in the
+changelog: the Jumbotron and Wrapped are destinations you deliberately
+enter, Game Flow is information beside MovementChart. No migrations; the
+model untouched (read-only `liveWinProb`/`fractionRemaining` imports).
+
+- [x] **R5-A** The Jumbotron. `/jumbotron` — the leave-it-running stadium
+      board on `.brand-surface`: featured game at `.scorebug` scale with
+      `LiveSituation` reused whole, the other live games on a ≥44px rail,
+      the empty state a next-kickoffs board. Rotation is the pure reducer in
+      `src/lib/jumbotron.ts` (rank extends the ROADMAP §12 whip-around
+      recipe; ~20s dwell; red zone or a closing one-score game jumps the
+      queue; round-robin in rank order so every game gets air) — 13 tests.
+      Wake lock via `src/lib/use-wake-lock.ts` (navigation is the gesture,
+      first-tap retry, re-acquire on visibilitychange; iPhone has no element
+      fullscreen, so wake lock is the load-bearing half and the installed
+      PWA is already chromeless). Data: the Live view's own 30s heal poll —
+      **and a finding recorded here: the cross-league Live view's realtime
+      subscription has been effectively inert** (placeholder seasonId/week 0
+      from `fetchLiveSlate`; the poll was always the backbone). Fixed
+      honestly for this surface with an additive `SlateData.buckets` field
+      (the per-(season, week) list `fetchLiveSlate` already computes) and
+      one refcounted channel per bucket. Entries: a "Jumbotron" link on the
+      slate's control bar while `liveCount > 0` (plain `<a>`, the SportToggle
+      posture) + a More-sheet row (`overflowOnly`; nav test extended
+      deliberately). `/demo/jumbotron` poses the three sample live games,
+      network dead. SlateView untouched beyond the entry link — its fragile
+      state machine (UX-36b) was not the place to bolt a rotation onto.
+- [x] **R5-B** The Game Flow river. `src/lib/game-flow.ts` (13 tests):
+      `pregameMarginFor` (CFB frozen-model-first, market fallback; **NFL
+      market-only by design** — SPEC §10.5, and the caption says "market
+      prior"), `gameFlowPoints` — the pregame anchor, every clocked scoring
+      play at its stored score-AFTER, synthetic ~2-game-minute samples
+      between plays holding the standing score (computable decay, not
+      invention), OT in a compressed band past x=1 (`fractionRemaining`
+      flattens OT, so order spaces it), the terminal point pinned to the
+      outcome (a final is a fact; an NFL tie pins to 0.5), unclocked plays
+      counted but never drawn — and `flowExtremes` for the caption's flip
+      count (and the recap, later). `GameFlow.tsx` is the MovementChart
+      idiom: server SVG, no client JS, the 50% line the one loud gridline,
+      quarter boundaries, team-color banks above/below the chalk curve,
+      scoring dots in the scorer's color with a ground ring, identity at the
+      poles in text ink. Mounted on `/game/[id]` for finals, above
+      ScoringTimeline (the chart's data table). Renders nothing without
+      clocked plays or a prior. Live-game flow is a noted follow-up, not v1.
+      **Verifiable today**: NFL preseason finals since Aug 14 carry
+      `scoring_plays` and exercise the market-prior branch; CFB verifies
+      Aug 29–30.
+- [x] **R5-C** The Slate Wrapped. `/wrapped` — full-viewport `.brand-surface`
+      story on native scroll-snap (no hijacking), one fact per card in
+      `.scorebug` mono, each card sharing as a 1080×1350 image.
+      `src/lib/wrapped.ts` (11 tests) mints only what the data supports: the
+      record and the ledger (`tally`, League Rules), high water
+      (`cumulativeUnits` peak), best call (biggest dog that cashed, else
+      top-CLV winner), the contrarian (sole side + a played game + a win),
+      the heater (kickoff-ordered win run ≥3; pushes are no action), the
+      worst beat (`cover_flips` joined to the viewer's losing sides,
+      smallest `seconds_left` wins, `last_play` verbatim), the truth serum
+      (avg CLV at n≥10, framed honestly in all four quadrants), and the
+      crew finish (`tallyBy` + `byLeagueRules`, the standings' own rank).
+      **Not derivable today and deliberately absent**: player stats,
+      time-watched, per-quarter splits. Loader (`wrapped-data.ts`) uses the
+      home.ts query shapes — RLS-visible group picks, own bets, one
+      games/teams pass for labels — **no definer functions, no service
+      role**. Gated by `wrappedUnlocked` (CFB schedule empty + a postseason
+      final); `?preview=1` renders **fixtures only**, never partial real
+      data. Share: a `kind: "wrapped"` discriminated branch on
+      `/api/share-card` (the bets payload carries no kind and parses exactly
+      as before — its route test unchanged and green) + a brand-hex satori
+      layout. A teaser card appears on `/me` once bowl finals exist.
+      **Fixture-verified only until January**, stated plainly.
 
 ## 5. Not built, by choice
 

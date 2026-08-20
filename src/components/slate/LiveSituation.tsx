@@ -10,6 +10,10 @@
  * answers depending on which screen you are looking at.
  */
 
+"use client";
+
+import { useState, type CSSProperties } from "react";
+import { EMPTY_TRAIL, foldTrail, type TrailState } from "../../lib/drive-trail";
 import {
   fieldPosition,
   isRedZone,
@@ -17,6 +21,15 @@ import {
   type FieldPosition,
   type GameView,
 } from "../../lib/slate";
+
+/** A TD flood order from the card's score detector (FUN-13). */
+export interface EzFlood {
+  side: "home" | "away";
+  key: number;
+}
+
+/* Ghost-dot opacity by age, newest first — the drive fades behind the ball. */
+const GHOST_O = [0.45, 0.32, 0.22, 0.14];
 
 const DOWN = ["", "1st", "2nd", "3rd", "4th"];
 
@@ -46,16 +59,44 @@ function FieldStrip({
   game,
   pos,
   redZone,
+  flood,
+  trail,
 }: {
   game: GameView;
   pos: FieldPosition;
   redZone: boolean;
+  /** Fun Mode (FUN-13): flood this side's end zone for the TD just scored. */
+  flood: EzFlood | null;
+  /** Fun Mode (FUN-14): prior observed ball spots this drive, oldest first. */
+  trail: number[];
 }) {
   return (
     <div className="field-strip" aria-hidden>
-      <span className="field-ez field-ez-l" style={{ background: game.away.color ?? "var(--push)" }} />
-      <span className="field-ez field-ez-r" style={{ background: game.home.color ?? "var(--push)" }} />
+      <span
+        key={flood?.side === "away" ? flood.key : "ez-l"}
+        data-flood={flood?.side === "away" ? "" : undefined}
+        className="field-ez field-ez-l"
+        style={{ background: game.away.color ?? "var(--push)" }}
+      />
+      <span
+        key={flood?.side === "home" ? flood.key : "ez-r"}
+        data-flood={flood?.side === "home" ? "" : undefined}
+        className="field-ez field-ez-r"
+        style={{ background: game.home.color ?? "var(--push)" }}
+      />
       {redZone && <span className={`field-rz ${pos.dir === "right" ? "field-rz-r" : "field-rz-l"}`} />}
+      {trail.map((x, i) => (
+        <span
+          key={`gh-${x}-${i}`}
+          className="field-ghost"
+          style={
+            {
+              left: `${x}%`,
+              "--gh-o": GHOST_O[Math.min(trail.length - 1 - i, GHOST_O.length - 1)],
+            } as CSSProperties
+          }
+        />
+      ))}
       <span className="field-ball" style={{ left: `${pos.x}%` }}>
         {pos.dir === "left" && <span className="field-dir">◂</span>}
         <Football />
@@ -74,12 +115,33 @@ function FieldStrip({
  * are a list, not a set of cards, and a 12px playing field in every row reads
  * as decoration; the slate is where the game gets the space to be a game.
  */
-export function LiveSituation({ game, compact = false }: { game: GameView; compact?: boolean }) {
+export function LiveSituation({
+  game,
+  compact = false,
+  flood = null,
+}: {
+  game: GameView;
+  compact?: boolean;
+  /** Fun Mode (FUN-13): forwarded from GameCard's score detector. */
+  flood?: EzFlood | null;
+}) {
   const sit = parseSituation(game.situation);
   const pos = fieldPosition(game);
   const redZone = isRedZone(game);
   const posTeam =
     game.possession === "home" ? game.home : game.possession === "away" ? game.away : null;
+
+  /* Drive trail (FUN-14): fold each observed spot into per-instance history,
+     using the adjust-state-during-render pattern — foldTrail returns the
+     SAME object when nothing moved, so this settles in one extra render
+     exactly when the ball does move and never loops. */
+  const [trailState, setTrailState] = useState<TrailState>(EMPTY_TRAIL);
+  const px = pos?.x ?? null;
+  const folded = px !== null ? foldTrail(trailState, px, game.possession) : trailState;
+  if (folded !== trailState) setTrailState(folded);
+  // History excluding the ball's current spot (the last fold entry).
+  const xs = folded.xs;
+  const trail = xs.length > 0 && xs[xs.length - 1] === px ? xs.slice(0, -1) : xs;
   /* The last play counts as a situation on its own.
      ESPN publishes a down and distance only when there is a snap pending, so
      it goes null for the whole dead-ball stretch after a touchdown — through
@@ -95,7 +157,12 @@ export function LiveSituation({ game, compact = false }: { game: GameView; compa
       {/* skipped entirely in the dead-ball state, rather than left as an empty
           flex row above the play */}
       {(game.situation || redZone) && (
-        <div className="flex flex-wrap items-center gap-1.5">
+        /* `live-sit` + --tc are Fun Mode's hooks (FUN-4): inert by default,
+           restyled into a broadcast lower third under html[data-fun-broadcast]. */
+        <div
+          className="live-sit flex flex-wrap items-center gap-1.5"
+          style={{ "--tc": posTeam?.color ?? undefined } as CSSProperties}
+        >
           {sit ? (
             <span className="stat text-[12.5px] font-semibold text-chalk">
               {sit.down === 4 ? (
@@ -122,7 +189,9 @@ export function LiveSituation({ game, compact = false }: { game: GameView; compa
           {redZone && <span className="chip bg-loss/15 text-loss">Red zone</span>}
         </div>
       )}
-      {pos && !compact && <FieldStrip game={game} pos={pos} redZone={redZone} />}
+      {pos && !compact && (
+        <FieldStrip game={game} pos={pos} redZone={redZone} flood={flood} trail={trail} />
+      )}
       {/* NFL-18. Once a game has scored, this line shows the SCORE and keeps
           showing it; before that it shows the last play.
           `lastPlay` is whatever ESPN published a moment ago, and after a

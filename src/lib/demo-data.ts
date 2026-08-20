@@ -346,6 +346,10 @@ export function demoGames(now: number): GameView[] {
       home: MICHIGAN,
       away: OHIO_STATE,
       rivalry: { name: "The Game", trophy: null },
+      // Late-November Ann Arbor, so Fun Mode's weather pane (FUN-3) has a
+      // live card to rain on — invisible without a fixture until a real
+      // cold Saturday, same reasoning as lastScore above.
+      weather: { tempF: 37, windMph: 16, precipProb: 75 },
       lines: { spread: 3.5, spreadOpen: 2.5, total: 44.5, totalOpen: 45.5, mlHome: 150, mlAway: -175 },
       prediction: prediction(2.8, 46, 21.5, 24.3, 0.41, 3.5),
       systems: systems(19.8, 23.4),

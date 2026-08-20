@@ -1,4 +1,6 @@
 import { AppNav } from "../components/AppNav";
+import { GamedayCover } from "../components/home/GamedayCover";
+import { SignOff } from "../components/home/SignOff";
 import { HomeAutoRefresh } from "../components/home/HomeAutoRefresh";
 import { HomeDashboard } from "../components/home/HomeHub";
 import { fetchHomeData, homeRefreshTier } from "../lib/home";
@@ -51,6 +53,10 @@ export default async function HomePage() {
         <HomeDashboard data={data} signedIn={!!user} />
       </main>
       <HomeAutoRefresh live={live} imminent={imminent} />
+      {/* Fun Mode (FUN-8/FUN-16): the day's bookends — the Cover opens a
+          gameday morning, the Sign-Off closes it after the last final. */}
+      <GamedayCover />
+      <SignOff />
     </>
   );
 }

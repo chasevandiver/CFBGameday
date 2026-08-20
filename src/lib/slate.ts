@@ -328,6 +328,13 @@ export interface SlateData {
    * which is why the view hides the week selector when this is set.
    */
   live?: boolean;
+  /**
+   * The (season, week) buckets the live games span (R5-A). The cross-league
+   * live view's games can sit in several realtime "rooms" at once — an NFL
+   * Sunday over a CFB Saturday night — and a subscriber needs one channel
+   * per bucket; `fetchLiveSlate` computes them anyway, so it says so.
+   */
+  buckets?: { seasonId: number; week: number }[];
 }
 
 export const isLive = (g: GameView) => g.status === "in_progress";
@@ -446,6 +453,22 @@ export function liveHomeWinProb(g: GameView): number | null {
     period: g.period,
     clock: g.clock,
   });
+}
+
+/**
+ * Did the win probability swing enough to announce, and toward whom?
+ * (Fun Mode's momentum surge, FUN-14.) Probabilities are home-perspective;
+ * a rise is home momentum. Under the threshold — the ordinary drip of clock
+ * ticks — nothing is announced.
+ */
+export function probSurge(
+  prev: number,
+  next: number,
+  threshold = 0.08,
+): "home" | "away" | null {
+  const d = next - prev;
+  if (Math.abs(d) < threshold) return null;
+  return d > 0 ? "home" : "away";
 }
 
 /* ---- formatting ------------------------------------------------------- */

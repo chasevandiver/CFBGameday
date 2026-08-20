@@ -113,6 +113,7 @@ and must say so. See "The window changed" below.
 | `--tune-talent-source` `2015-2025/warmup1/covid-chain` | **All three pre-registered gates pass** (run 32278795011, 2026-08-19). Gate 0: full FBS coverage every scored season (128–136 of pool) and **median r(recruiting, same-season composite) = 0.942** vs a bar of 0.85 (per-season 0.899–0.979). Arms on the production-shaped chain, pooled over 9 scored seasons: fresh composite MAE 13.221 / NLL 0.4905, **stale composite 13.229 / 0.4907** (today's Aug 22 fallback), **recruiting classes 13.162 / 0.4891**, no-talent 13.292 / 0.4931. Gate 1 vs stale: ΔNLL **−0.0017**, ΔMAE **−0.067**, wks 1–4 ΔMAE **−0.175** (bars were ≤ +0.001/+0.03/+0.05 — it cleared them by improving, not by staying close). Gate 2 (E4 era alone): ΔNLL −0.0013, ΔMAE −0.037. | **Shipped as the fallback.** `TALENT_SOURCE=recruiting` on every preseason build task in `jobs.yml`; the fresh composite stays first choice, the stale file drops to last resort, and the mechanism is inert the day CFBD publishes. **One observation deliberately not acted on:** the recruiting arm also beat the FRESH composite (MAE −0.059, NLL −0.0014 — comparable to shipped changes for scale). That is a different question with a different rule, and this experiment's rule only governs the fallback; replacing the composite outright would need its own pre-registered row. |
 | `--tune-prior` re-fit `2015-2025/warmup1/covid-chain` + `2023-2025/warmup1/covid-chain` (E4) | Owner hypothesis, 2026-08-19: 0.70 scoreboard carryover is too high in the portal era — raised after the SP+ comparison (our board deviates from SP+ 2026 along prior-year rating, corr +0.18, not talent, +0.04; all three stored week-1 market lines sided with SP+'s direction). Grid widened to 0.30 **before** the run so a low optimum could not pin at the old 0.5 floor. Wide window (n=2794 early games): NLL **monotone worse as carryover falls** — 0.30 → 0.4306/14.78, 0.50 → 0.4179/14.35, **0.70 → 0.4117/14.10**, argmin 0.80 → 0.4110 (grid EDGE, Δ vs 0.70 only 0.0007 against a 0.003 bar). E4-only (n=616): interior argmin 0.65 at 0.3798 with 0.70 at 0.3801 — Δ 0.0003, noise. Era-flip: wide argmin 0.80 vs E4 argmin 0.65, three grid steps apart. | **Rejected — 0.70 stands, and the hypothesis is refuted in the direction it was posed.** Lower carryover is worse everywhere, at every step, in both windows; the pooled data mildly wants MORE (but at an edge, under the bar, and era-flipped, so nothing ships). The board's lean toward proven 2025 results over talent is the model earning early-week points, not a bug. The deviations from SP+ remain honest disagreements — graded from week 1 by the frozen receipts and CLV. |
 | `--tune-sp-blend` re-fit `2015-2025/warmup1/covid-chain` + `2023-2025/warmup1/covid-chain` (E4) | α = 0.5 is the argmin at BOTH windows: wide 0.4095 (vs 0.4106 pure SP+, 0.4121 pure replay), E4 0.3793. Interior, eras agree exactly. | **Confirmed — `REPLAY_SHARE` stays 0.5**, now re-earned on eleven seasons instead of carried from three. Notably α=0 (leaning fully on SP+'s opponent-adjusted final) is worse than the 50/50, which is more independent evidence against regressing harder toward SP+-style inputs. |
+| Fun Mode exemptions (owner decision 2026-08-20, not an experiment) | Owner request: "make this feel like Football Season… optional toggles… we can disregard any safeguards from the repo… not corny or cheesy or AI slop." Two standing rules are **exempted for the opt-in Fun Mode surfaces only** (FUN-1…FUN-12): the "motion means money" scope decision — fun-mode pieces may animate games the viewer holds nothing on — and, in exactly one place, the no-new-fonts rule (`Permanent_Marker` for crowd-sign posterboard, used by `.fun-sign-body` and nothing else). | **Granted, scoped, recorded.** The exemption travels with the toggles: everything defaults off, so the default app still obeys both rules verbatim. NOT exempted, and checked in review: the CSS-only reduced-motion clamp (every fun-mode animation is plain CSS), league rules (The Panel flips only RLS-visible picks), brand voice (§16 — collegiate pageantry, no casino), and no-layout-shift for content. Kill switch is the master toggle; the taste verdicts land here under FUN-12. |
 | Opener test (03:M-5) | **Registered, not yet decided.** Surface shipped 2026-08-17: Receipts grades every frozen lean opener → close (`openerClv`), 4+ bucket broken out. Backtest residual it tests: 4+ bucket **51.8%, avg CLV +0.27**, every bucket positive — real drift, all absorbed by the close. | Pending, rule fixed before any 2026 data: strategy conversation only at avg CLV vs opener ≥ **+1.0** over n ≥ 200 leans (~mid-Oct earliest); **abandon** at ≤ +0.3 by n = 200 — that replicates the backtest. Read-side only; no parameter moves on either outcome. CFBD's opener is when-posted, not a bettable price, so even a pass is evidence, not a wager. |
 
 ### Why edges are not bets
@@ -213,6 +214,179 @@ shipping it.
 ---
 
 ## Log
+
+### Aug 20 — PR #103 opened; 0075 applied and read back
+
+The four rounds went up as one PR (base `main`, everything default-off, the
+taste-pass tour in the body). `0075_crowd_signs` applied to
+`mjijyutmbtnwcjspozsx` via the Supabase MCP and **verified by reading the
+catalog back**: 74 files / 74 recorded rows in sync (0004 has never
+existed), `crowd_signs` RLS on with exactly 4 policies — crew-visible
+SELECT, own-row INSERT/UPDATE/DELETE — **0 anon policies, 0 TRUNCATE
+grants**. Apply-vs-deploy order was free as the migration header claims:
+nothing running reads the table until the PR lands.
+
+### Aug 20 — The Sign-Off (FUN-16): the day gets its closing beat
+
+Owner direction request, answered with a thesis rather than a feature list:
+the fun side no longer lacks parts, it lacks **composition** — a gameday
+should have the shape of a broadcast (the Cover opens, the slate and the
+Jumbotron carry, and nothing closed). The Sign-Off is the missing bookend:
+after 9pm on a gameday with finals on the board and nothing live, the site
+says "That was Saturday." — the upset or the closest call, the finals
+count, how many the viewer had a piece of, and a pointer at the recap.
+Same toggle, stamp and data diet as the Cover (the bookends are one
+ritual). Deliberately counts **action, not results**: pick grades land
+Sunday, and a Saturday-night record would be a guess wearing a number.
+Preview: `/?funday=sat&daypart=lights`. Tests unchanged (pure logic is
+selection over the slate payload); typecheck/lint/build green.
+
+### Aug 20 — Round 5: the Jumbotron, the Game Flow river, The Slate Wrapped
+
+Owner request: *"What else should we add? Come up with best-in-class ideas."*
+Three picked from an offered four (swipe + instant nav declined). **Decisions
+recorded, not implied:** these are features, not costume — none sits behind a
+Fun Mode toggle (the Jumbotron and Wrapped are destinations you enter; Game
+Flow is information, MovementChart's sibling). Game Flow's NFL prior is the
+**market close** — there is no NFL model by design (SPEC §10.5), the market
+is the number the product shows there, and the chart's caption says "market
+prior" rather than dressing it up. Wrapped unlocks at the **CFB national
+championship** and its `?preview=1` renders fixtures only — a half-season
+dressed as a season would be a lie. No migrations; `src/model/` untouched.
+
+- **The Jumbotron** (`/jumbotron`, R5-A): the leave-it-running stadium board —
+  featured game at broadcast scale, rotation by a pure reducer (20s dwell,
+  red-zone/closing games jump the queue, round-robin by rank so every game
+  gets air), wake lock held for the couch, next-kickoffs board when nothing
+  is live, `/demo/jumbotron` for the layout. **A finding worth its own line:
+  the cross-league Live view's realtime subscription has been effectively
+  inert since it shipped** — `fetchLiveSlate` returns a placeholder
+  (seasonId, week 0) and `useGamesRealtime` pointed at it; the 30s healing
+  poll was always what kept the view current. Recorded here, fixed for the
+  new surface with an additive `SlateData.buckets` field and one refcounted
+  channel per bucket; the slate's own view is unchanged (UX-36b's state
+  machine is not where a drive-by fix belongs).
+- **The Game Flow river** (game pages, finals, R5-B): the whole game's win
+  probability reconstructed from stored scoring plays through `liveWinProb`
+  — pregame anchor, score-after at every clocked play, computable decay
+  between plays, OT in a compressed band, the terminal point pinned to the
+  outcome because a final is a fact. Server SVG in the MovementChart idiom;
+  the ScoringTimeline beneath is its data table. Fail-closed: no clocked
+  plays or no prior → no chart. NFL preseason finals verify it today.
+- **The Slate Wrapped** (`/wrapped`, R5-C): the season as scroll-snap story
+  cards from the receipts — record, ledger, high water, best call, the
+  contrarian, the heater, the worst beat (cover flips joined to the viewer's
+  losing sides, `last_play` verbatim), the truth serum (avg CLV framed
+  honestly in all four win/CLV quadrants), the crew finish. Every card skips
+  honestly when its data is empty. Loader is RLS-only (home.ts query shapes;
+  no definer functions). Sharing rides `/api/share-card` as a
+  `kind: "wrapped"` discriminated branch — the bets payload carries no kind
+  and parses exactly as before, its route test untouched and green.
+
+37 new tests (jumbotron 13, game-flow 13, wrapped 11) — **1,767 across 127
+files**, `typecheck`, `lint`, `next build` green in-session. Not yet seen
+rendered on a device: the Jumbotron wants a live NFL preseason evening (wake
+lock ≥30 min, rotation, a real red-zone jump), Game Flow wants any preseason
+final's page, Wrapped is fixture-verified until January by construction.
+
+### Aug 20 — Fun Mode motion: the pulse, news ripples, view transitions (FUN-13…FUN-15)
+
+Owner follow-up to the pageantry round: *"What sort of animation could we add
+to make the site alive?"* Three motion systems, chosen from a pitch and placed
+**behind Fun Mode toggles** by owner decision (a new Motion group joins
+Rituals and Atmosphere on `/me`; same master switch, same off-by-default).
+The standing exemption row above covers them; the lines that still bind held:
+**no fabricated state** (nothing tweens a score or ticks a clock — the drive
+trail and momentum surge animate only observed history, which is the exact
+line that disqualified `CountUp`), reduced motion flattened, compositor-only,
+no new deps, migration-free.
+
+- **The pulse (FUN-13).** Live cards breathe, and the tempo *is* the game
+  state: 5.2s on an ordinary drive, 2.8s in the red zone, 1.8s inside two
+  minutes. One opacity-only ring per live card, painted once — scoped by
+  `.card-live`, so the 70-aura/8fps lesson stays learned. A touchdown floods
+  the scoring team's end zone and drains; a game going final exhales the aura
+  once before dimming. TD detection rides the card's existing score diff
+  (`isTdDelta`, 6–8; a 14 is two merged updates and honestly declines).
+- **News ripples (FUN-14).** Kickoff sweeps a team-color band across the card
+  as the field strip wipes in (detected on the actual scheduled→live flip,
+  never on mount); a score sends a wave down the ticker (changed chip +
+  neighbors at 80ms steps — a traveling gradient was rejected in design: it
+  fights the marquee's transform loop); the win-prob bar shimmers toward
+  whoever gained on a ≥8-point swing (`probSurge`); the field strip keeps the
+  drive's last spots as fading ghost dots (`drive-trail.ts`: possession
+  resets, dedupe, cap 5).
+- **View transitions (FUN-15).** The finding worth recording: **Next 16.3.0
+  ships React's `<ViewTransition>` in the App Router with no config flag**
+  (in-package docs + vendored canary verified) — but the installed
+  react@19.2.8, which vitest resolves, does not export it, so all use goes
+  through `src/lib/react-vt.tsx` (real component in the app, passthrough
+  under tests — the shim is why all 1,729 tests stay green with zero test
+  edits). Slate card ⇄ game page share `game-hero-<id>` (morph on back-nav
+  and cached forwards; cold taps suspend into the loading boundary and get
+  the enter — designed degradation, noted in the code). Week changes slide
+  directionally via `startTransition` + `addTransitionType` with the grid
+  keyed by week; scroll and the sticky chrome are untouched by construction.
+  One real gap closed: the global reduced-motion clamp's selectors cannot
+  match the `::view-transition-*` pseudo tree, so those get their own zeroing
+  rule under the same media query.
+
+Pure helpers all tested (`pulseCycle`, `isTdDelta`, `foldTrail`, `probSurge`,
+`weekDirection`, and `underTwo` — hoisted from GameCard into `kick.ts` with
+the tests it never had). **1,729 tests across 122 files**, `typecheck`,
+`lint`, and `next build` green in-session. Still unrendered on a real device —
+FUN-12's taste pass now covers the Motion toggles too; live NFL preseason
+games exercise the pulse and ripples against real updates before Saturday.
+
+### Aug 20 — Fun Mode: the pageantry layer (FUN-1…FUN-11)
+
+Owner request: *"This needs to be an app that feels like Football Season… I want
+immersion of the pageantry of college football. The feel of fall on a Saturday
+and Sunday morning… optional toggles… I don't want it to be corny or cheesy or
+AI slop at all."* Built as one master switch plus ten per-piece toggles on
+`/me`, **everything off by default** — the default app is pixel-identical to
+yesterday's. The safeguard exemption this required is a row in the decisions
+table above; the rules that still bind (reduced motion, league rules, brand
+voice, no content layout shift) are listed there too.
+
+What shipped, in one pass (`docs/STATUS.md` FUN-1…FUN-11 for the row-level
+detail): the **fall light engine** (the page ground follows the viewer's clock
+through dawn haze → noon → golden hour → under the lights, every wash a
+color-mix of existing tokens); **weather on the glass** (the stored forecast
+rendered as rain/snow/wind/frost on live and pinned cards and the game header —
+pure CSS sweeps, no canvas); the **broadcast package** (status wipes, a field
+ball that travels between snaps, a possession-colored lower third); the
+**rivalry takeover** (trophy games split at a chalk-stitched seam, the trophy
+named in the display face); **pennants** (starred/favorite teams as felt flags
+that pin their game to Focus); **ticket stubs** (a derived stub per fully
+graded week of picks, the trophies idiom); **The Cover** (a gameday program
+cover on first open — Graduate masthead on `.brand-surface`, the marquee
+matchup as the cover story via `pickHero`, once per gameday per device);
+**The Panel** (crew picks for the Game of the Week flip over one chair at a
+time, last chair long — theater over RLS-visible picks only); **crowd signs**
+(migration **0075**, the one schema change: one 80-char posterboard sign per
+member per week, crew-visible, own-row writes, marker face — the one new font,
+see the exemption row); and **The Rundown** (the first gameday slate load
+arrives as a broadcast rundown, once per session).
+
+Infrastructure is the theme's own idiom end to end: localStorage store via
+`useSyncExternalStore` (`src/lib/fun-mode.ts`), a pre-paint script beside
+`themeInit`, CSS gated on `html[data-fun-*]`, and preview overrides
+(`?funday=sat|sun`, `?daypart=…`) so every Saturday-gated piece can be judged
+on a Tuesday. Taste-critical pieces have standalone mockups in
+`public/design/fun-{cover,light,signs,panel}.html`; `/demo` poses live weather
+on the rivalry card. **1,712 tests across 120 files** (15 new: daypart
+boundaries, preview overrides, prefs normalization, stub minting/retraction),
+`typecheck`, `lint` and `next build` all green in-session.
+
+**Not verified, stated plainly:** nothing here has been seen rendered on a real
+phone — that is FUN-12, the owner taste pass, and the reason the mockups exist.
+Migration 0075 is unapplied to production (soft ordering: the slate select
+degrades to "no wall" until it lands). The four rejected-idea precedents this
+walked past on purpose — split-flap board, `CountUp` tweening, ambient motion
+beyond `[data-tint="position"]`, a chat room — were each re-checked against the
+decisions table: none is re-proposed here (the Rundown staggers existing cards
+rather than tweening numbers; signs are one artifact per week, not a thread).
 
 ### Aug 19 — the slate's rank stops being a footnote
 

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Fun Mode — The Cover (FUN-8)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Graduate&family=Archivo:wght@400;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  /* Tokens: the Field palette (docs/BRAND.md §5), exactly as globals.css
+     carries it — this is what .brand-surface resolves to in the app. */
+  :root {
+    --bg: #020a08;
+    --surface: #0b2e23;
+    --text: #f4efe2;
+    --dim: #8fa79b;
+    --accent: #e8b93d;
+    --line: rgba(244, 239, 226, 0.13);
+  }
+  * { margin: 0; box-sizing: border-box; }
+  body {
+    background: #17140f;
+    color: var(--text);
+    font-family: "Archivo", sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 24px 12px;
+  }
+  .phone {
+    width: 390px;
+    min-height: 780px;
+    background: var(--bg);
+    border-radius: 28px;
+    border: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    padding: 40px 28px 24px;
+    text-align: center;
+  }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  h1 {
+    font-family: "Graduate", serif;
+    font-weight: 400;
+    font-size: 52px;
+    line-height: 1;
+    margin-top: 14px;
+    text-transform: uppercase;
+  }
+  .rule { border-top: 2px solid rgba(232, 185, 61, 0.8); margin-top: 20px; }
+  .rule2 { border-top: 1px solid rgba(244, 239, 226, 0.2); margin-top: 3px; }
+  .story { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 40px 0; }
+  .story .eyebrow { color: var(--accent); }
+  .team {
+    font-family: "Graduate", serif;
+    font-weight: 400;
+    font-size: 40px;
+    line-height: 1.05;
+    text-transform: uppercase;
+    margin-top: 6px;
+  }
+  .team .rank {
+    font-size: 20px;
+    color: var(--accent);
+    vertical-align: top;
+    margin-right: 8px;
+  }
+  .at {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 13px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin: 8px 0 2px;
+  }
+  .line {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 14px;
+    margin-top: 20px;
+  }
+  .wx {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    color: var(--dim);
+    margin-top: 6px;
+  }
+  .foot { border-top: 1px solid rgba(244, 239, 226, 0.2); padding-top: 16px; }
+  .foot .day {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .open {
+    margin-top: 16px;
+    width: 100%;
+    min-height: 44px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--accent);
+    color: var(--bg);
+    font-family: "Archivo", sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .note {
+    max-width: 390px;
+    margin: 18px auto 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #a89f90;
+  }
+</style>
+</head>
+<body>
+<div>
+  <div class="phone" role="img" aria-label="Gameday program cover mockup">
+    <p class="eyebrow">Saturday program · Vol. 2026 · No. 1</p>
+    <h1>The Slate</h1>
+    <div class="rule"></div>
+    <div class="rule2"></div>
+    <div class="story">
+      <p class="eyebrow">Cover story</p>
+      <p class="team"><span class="rank">1</span>Ohio State</p>
+      <p class="at">at</p>
+      <p class="team"><span class="rank">7</span>Texas</p>
+      <p class="line">TEX −2.5 · Sat 11:00 AM · FOX</p>
+      <p class="wx">91° · 8 mph wind</p>
+    </div>
+    <div class="foot">
+      <p class="day">First kick 11:00 AM · 64 games on the slate</p>
+      <button class="open">Open the slate</button>
+    </div>
+  </div>
+  <p class="note">FUN-8 · The Cover — shows once per gameday on first open, tap anywhere to
+  dismiss. Field palette + Graduate masthead (the app's own <code>.brand-surface</code> tokens);
+  the typography is the show, the only motion is a fade. Sunday gets an NFL edition.</p>
+</div>
+</body>
+</html>

@@ -1,6 +1,17 @@
-import type { TeamView } from "../../lib/slate";
+"use client";
 
-/** Horizontal win-probability split in team colors, away on the left. */
+import { useEffect, useRef, useState } from "react";
+import { probSurge, type TeamView } from "../../lib/slate";
+
+/**
+ * Horizontal win-probability split in team colors, away on the left.
+ *
+ * The widths transition (700ms), so ordinary movement is already smooth;
+ * Fun Mode's momentum surge (FUN-14) is the announcement on top — when the
+ * split moves ≥8 points between updates, a shimmer sweeps toward whoever
+ * gained. The shimmer element is display-gated in CSS, so with the toggle
+ * off this renders exactly as before.
+ */
 export function WinProbBar({
   home,
   away,
@@ -19,6 +30,19 @@ export function WinProbBar({
   const homeColor = home.color ?? "var(--push)";
   const awayColor = away.color ?? "var(--push)";
 
+  const prev = useRef(homeWinProb);
+  const [surge, setSurge] = useState<{ dir: "home" | "away"; key: number } | null>(null);
+  useEffect(() => {
+    const dir = probSurge(prev.current, homeWinProb);
+    prev.current = homeWinProb;
+    if (dir) setSurge({ dir, key: Date.now() });
+  }, [homeWinProb]);
+  useEffect(() => {
+    if (!surge) return;
+    const t = setTimeout(() => setSurge(null), 1000);
+    return () => clearTimeout(t);
+  }, [surge]);
+
   return (
     <div aria-label={`Win probability: ${away.abbr} ${awayPct}%, ${home.abbr} ${homePct}%`}>
       {showLabels && (
@@ -32,7 +56,7 @@ export function WinProbBar({
         </div>
       )}
       <div
-        className="flex w-full overflow-hidden rounded-full"
+        className="relative flex w-full overflow-hidden rounded-full"
         style={{ height, background: "var(--line)" }}
       >
         <div
@@ -44,6 +68,7 @@ export function WinProbBar({
           className="h-full flex-1 transition-[width] duration-700 ease-out"
           style={{ background: homeColor }}
         />
+        {surge && <span key={surge.key} className="wp-shimmer" data-dir={surge.dir} aria-hidden />}
       </div>
     </div>
   );

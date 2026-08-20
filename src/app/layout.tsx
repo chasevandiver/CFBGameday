@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Archivo, Barlow_Condensed, Graduate, IBM_Plex_Mono } from "next/font/google";
+import { Archivo, Barlow_Condensed, Graduate, IBM_Plex_Mono, Permanent_Marker } from "next/font/google";
 import { APPLE_STARTUP_IMAGES } from "../lib/apple-startup-images";
+import { FunAtmosphere } from "../components/FunAtmosphere";
 import "./globals.css";
 
 const archivo = Archivo({
@@ -26,6 +27,16 @@ const graduate = Graduate({
 const plexMono = IBM_Plex_Mono({
   variable: "--font-numeric",
   weight: ["400", "500", "600"],
+  subsets: ["latin"],
+});
+
+/* Fun Mode's one font exemption (FUN-10, owner-approved 2026-08-20): crowd
+   signs are handwriting on posterboard, and none of the four product faces
+   can fake a hand. Used by `.fun-sign-body` and nothing else; the file only
+   downloads on pages that render a sign. */
+const marker = Permanent_Marker({
+  variable: "--font-marker",
+  weight: "400",
   subsets: ["latin"],
 });
 
@@ -100,6 +111,15 @@ export const viewport: Viewport = {
 /* Runs before paint so a saved theme never flashes the default one first. */
 const themeInit = `(function(){try{var t=localStorage.getItem("slate-theme");if(t==="light"||t==="field")document.documentElement.dataset.theme=t}catch(e){}})()`;
 
+/* Fun Mode's CSS-gated pieces (FUN-1), same pre-paint reasoning as the theme:
+   the fall light and the broadcast/rivalry treatments are stylesheet rules
+   keyed on html[data-fun-*], and settling them after hydration would flash the
+   plain app first. Mirrors syncAttributes() in src/lib/fun-mode.ts — change
+   one, change both. The daypart set here is the no-override reading; the
+   FunAtmosphere component takes ownership (and the ?daypart=/?funday=
+   previews) from hydration on. */
+const funInit = `(function(){try{var p=JSON.parse(localStorage.getItem("slate-fun")||"null");if(!p||!p.master)return;var d=document.documentElement.dataset;if(p.fallLight!==false){d.funLight="";var n=new Date(),w=n.getDay();if(w===0||w===6){var h=n.getHours();d.daypart=h<11?"dawn":h<15?"noon":h<18?"golden":"lights"}}if(p.broadcast!==false)d.funBroadcast="";if(p.rivalry!==false)d.funRivalry="";if(p.pulse!==false)d.funPulse="";if(p.ripples!==false)d.funRipples="";if(p.transitions!==false)d.funVt=""}catch(e){}})()`;
+
 /* UX-35's Safari half. `user-scalable=no` in the viewport meta is honoured by
    the installed PWA but ignored by Safari in a browser tab, where pinch is
    delivered as the non-standard `gesture*` events — so refusing those is the
@@ -117,7 +137,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${archivo.variable} ${barlow.variable} ${graduate.variable} ${plexMono.variable} h-full antialiased`}
+      className={`${archivo.variable} ${barlow.variable} ${graduate.variable} ${plexMono.variable} ${marker.variable} h-full antialiased`}
     >
       <head>
         {/* Next emits the standardised `mobile-web-app-capable`; iOS before
@@ -133,7 +153,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="min-h-full flex flex-col">
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
+        <script dangerouslySetInnerHTML={{ __html: funInit }} />
         <script dangerouslySetInnerHTML={{ __html: zoomOff }} />
+        <FunAtmosphere />
         {children}
         {/* pb clears the fixed bottom nav on mobile */}
         <footer className="mx-auto w-full max-w-7xl px-4 pb-20 pt-6 text-center text-[11px] leading-relaxed text-chalk/40 sm:pb-6">
