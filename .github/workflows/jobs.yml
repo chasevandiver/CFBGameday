@@ -447,6 +447,11 @@ jobs:
             *) echo "task=unknown" >> "$GITHUB_OUTPUT" ;;
           esac
       - name: Run job
+        # OPS-4b: where recordJobRun publishes the job_runs id it is writing,
+        # so the cancellation step below can settle that exact row rather than
+        # guessing which of a chained step's jobs was the one running.
+        env:
+          JOB_RUN_ID_FILE: ${{ runner.temp }}/job-run-id
         run: |
           case "${{ steps.task.outputs.task }}" in
             # Group weeks freeze at their first kickoff. Chained onto the lines
@@ -649,6 +654,19 @@ jobs:
               fi ;;
             *) echo "no task matched schedule '${{ github.event.schedule }}'" && exit 1 ;;
           esac
+      # OPS-4b, 2026-08-20. The scoreboard loops overlap by design and the
+      # concurrency group cancels the old one; recordJobRun's SIGTERM handler
+      # was supposed to record that and does not, because the runner kills the
+      # `npx tsx` tree ~0.3s after cancelling and the signal never reaches the
+      # process holding the row. This step does reach it — a cancelled job
+      # still runs its `if: cancelled()` steps — and it is the only thing here
+      # that runs on a cancellation, so it costs nothing on a normal run.
+      - name: Record the cancellation
+        if: cancelled()
+        env:
+          JOB_RUN_ID_FILE: ${{ runner.temp }}/job-run-id
+        run: npx tsx scripts/settle-canceled-run.ts
+
       # What the CFBD key's TIER grants — a different question from what CFBD
       # has published, and the one `build-preseason.ts --check` cannot answer,
       # because the tier-gated endpoints are exactly the ones the preseason

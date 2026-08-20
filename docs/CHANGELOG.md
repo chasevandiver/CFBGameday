@@ -215,6 +215,75 @@ shipping it.
 
 ## Log
 
+### Aug 20 — the migration ledger does not say what §1 said it said (MIG-1, MIG-2)
+
+Turned up while verifying 0076's apply, by counting the directory instead of
+trusting the number this repo has been carrying. Two things, neither of them
+new today:
+
+**One migration is live and not in the repo.**
+`consensus_excludes_aggregates_per_market` (`20260819034059`) was applied one
+minute after 0074 and never committed. It is DQ-15's per-market correction —
+0074 filtered the aggregate row-level, which cost three archive games the only
+spread they had. Production's `line_consensus` carries the corrected rule and
+**`supabase/migrations` does not**, so any rebuild from the repo silently
+restores a fixed defect with every test still passing. The statement is
+recoverable from `schema_migrations.statements`.
+
+**The numbering has two gaps, not one.** 74 files running to 0076, missing
+**0004 and 0060**. Only 0004 has ever been written down. Nothing breaks —
+Supabase orders by its recorded timestamp — but counts derived from the
+highest filename have been off by one since.
+
+Net: **74 files, 75 recorded rows**. The "74 files, 74 recorded rows, in sync"
+in `docs/STATUS.md` §1 was wrong in both halves and netted out, which is the
+kind of agreement worth distrusting. Both tracked in §2.1h; neither fixed here,
+because filing a migration after the fact is a decision about the ledger and
+not a cleanup.
+
+### Aug 20 — OPS-4b: the cancelled-run fix could never have worked
+
+Found while checking the day's dated watch in `docs/STATUS.md` §2.5, not by
+anything alerting. OPS-4 shipped on 08-19 with a SIGINT/SIGTERM handler in
+`recordJobRun` and **two more stuck rows appeared behind it** — `job_runs`
+**217** (08-19 03:40) and **242** (08-20 03:40), both `scoreboard-loop` runs
+cancelled by the next hourly launch, run 242 checked out at `d9fad2a` with the
+handler in the code it was running.
+
+**The number that settles it:** Actions run `32329026607` cancels at
+04:30:07.64 and completes at **04:30:07.90** — 0.26 s later, after printing
+`Terminate orphan process` for `npm exec tsx`, `sh`, two `node`s and
+`esbuild`. The signal goes to the step's bash shell, not to the grandchild
+that installed the handler; and even delivered, a Supabase round-trip does not
+finish in a quarter second. A signal handler is structurally the wrong
+instrument here — it stays as the local-Ctrl-C path and a backstop, not as the
+fix.
+
+**What replaces it:** the same log shows the post-checkout step running *after*
+the cancellation, so a step guarded by `if: cancelled()` has both time and a
+live process. `recordJobRun` publishes its row id to `JOB_RUN_ID_FILE`;
+`scripts/settle-canceled-run.ts` settles that exact row, guarded on
+`status = 'running'`. Settling **the row it knows** rather than sweeping by job
+name is deliberate: the Sat/Sun seam puts two `scoreboard-loop` runs in
+different concurrency groups and genuinely alive at once for ~3 minutes
+(`jobs.yml:265-268`), and a name-based sweep would file the live one as
+cancelled — the same class of error as calling a cancelled run healthy.
+
+`finished_at` **is** written here, unlike 0073's swept rows: this cancellation
+is recorded by something that watched it happen. A row still reading `running`
+keeps the meaning OPS-4 gave it — killed hard enough that nothing got a word
+in.
+
+`0076_settle_ops4b_stragglers.sql` settles 217 and 242 on 0073's rules
+(3-hour cutoff, null `finished_at`, no DELETE). **Applied to
+`mjijyutmbtnwcjspozsx` as `20260820195625`** and read back: both rows
+`canceled`, `finished_at` still null, **0 rows left at `running`**,
+`scoreboard-loop` at **19 `ok` / 15 `canceled` / 0 stuck**. State was checked
+before applying — the only two `running` rows were 16 h and 40 h old, so the
+3-hour cutoff had nothing live to catch. Seven tests added (`scripts/lib/jobs-core.test.ts`) covering the
+id publish, the drop on finish, the unset-env path, the observed finish time,
+the `status = 'running'` guard, and the no-op on a run that finished first.
+
 ### Aug 20 — PR #103 opened; 0075 applied and read back
 
 The four rounds went up as one PR (base `main`, everything default-off, the

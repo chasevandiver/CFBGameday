@@ -1,7 +1,10 @@
+import { mkdtempSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { CfbdScoreboardGame } from "../../src/lib/cfbd";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
-import { closingConsensus, detectCoverFlips, freezableGames, recordJobRun, SNAPSHOT_COLS, SCOREBOARD_COLS, scoreboardPatch, watchdogVerdict, type ScoreboardRow } from "./jobs-core";
+import { closingConsensus, detectCoverFlips, freezableGames, recordJobRun, settleCanceledRun, SNAPSHOT_COLS, SCOREBOARD_COLS, scoreboardPatch, watchdogVerdict, type ScoreboardRow } from "./jobs-core";
 
 describe("SNAPSHOT_COLS", () => {
   it("selects spread_open, which the opener silently falls back without", () => {
@@ -493,5 +496,113 @@ describe("recordJobRun and the cancelled-run hole (OPS-4)", () => {
     } finally {
       exit.mockRestore();
     }
+  });
+});
+
+
+describe("settling a run the runner cancelled (OPS-4b)", () => {
+  /**
+   * The 08-19 fix installed a SIGTERM handler and two more rows piled up
+   * anyway — 08-19 03:40 and 08-20 03:40, both loops cancelled by the next
+   * hourly launch. The signal goes to the step's shell and the runner
+   * terminates the `npx tsx` tree 0.26 s later, so the handler is never
+   * reached. What can reach it is a workflow step that runs after the
+   * process is gone, and these are the two halves that makes possible:
+   * the run publishing its id, and the step settling that exact row.
+   */
+  const tmpFile = () => join(mkdtempSync(join(tmpdir(), "jobrun-")), "job-run-id");
+
+  const publishingDb = () =>
+    ({
+      from: () => ({
+        insert: () => ({ select: () => ({ single: async () => ({ data: { id: 4242 } }) }) }),
+        update: () => ({ eq: async () => {} }),
+      }),
+    }) as unknown as Parameters<typeof recordJobRun>[0];
+
+  it("publishes the run id where the cancellation step will look for it", async () => {
+    const path = tmpFile();
+    process.env.JOB_RUN_ID_FILE = path;
+    let seen: string | null = null;
+    try {
+      await recordJobRun(publishingDb(), "scoreboard-loop", async () => {
+        // Mid-run is the only moment that matters: a cancellation lands here,
+        // never before the insert or after the update.
+        seen = readFileSync(path, "utf8");
+        return {};
+      });
+    } finally {
+      delete process.env.JOB_RUN_ID_FILE;
+      rmSync(path, { force: true });
+    }
+    expect(seen).toBe("4242");
+  });
+
+  it("drops the pointer once the row settles itself, so a later cancellation has nothing stale to point at", async () => {
+    const path = tmpFile();
+    process.env.JOB_RUN_ID_FILE = path;
+    try {
+      await recordJobRun(publishingDb(), "refresh-lines", async () => ({}));
+      expect(existsSync(path)).toBe(false);
+    } finally {
+      delete process.env.JOB_RUN_ID_FILE;
+      rmSync(path, { force: true });
+    }
+  });
+
+  it("writes nothing at all when the file is not configured — the local path is unchanged", async () => {
+    delete process.env.JOB_RUN_ID_FILE;
+    // The assertion is that this does not throw: publishRunId returns early
+    // rather than writing to some default path outside Actions.
+    await expect(recordJobRun(publishingDb(), "j", async () => ({}))).resolves.toEqual({});
+  });
+
+  const settlingDb = () => {
+    const calls: { patch: Record<string, unknown>; filters: [string, unknown][] }[] = [];
+    let rows: unknown[] = [{ id: 4242 }];
+    const db = {
+      from: () => ({
+        update: (patch: Record<string, unknown>) => {
+          const filters: [string, unknown][] = [];
+          const chain = {
+            eq: (col: string, val: unknown) => {
+              filters.push([col, val]);
+              return chain;
+            },
+            select: async () => {
+              calls.push({ patch, filters });
+              return { data: rows };
+            },
+          };
+          return chain;
+        },
+      }),
+    } as unknown as Parameters<typeof settleCanceledRun>[0];
+    return { db, calls, matchNothing: () => (rows = []) };
+  };
+
+  it("records the cancellation with an observed finish time", async () => {
+    const { db, calls } = settlingDb();
+    expect(await settleCanceledRun(db, 4242, "canceled by the runner")).toBe("settled");
+    expect(calls[0].patch.status).toBe("canceled");
+    // Unlike 0073's swept rows, something watched this one end, so the
+    // timestamp is observed rather than fabricated.
+    expect(calls[0].patch.finished_at).toBeTruthy();
+    expect(calls[0].patch.error).toContain("canceled by the runner");
+  });
+
+  it("only ever touches a row still reading `running`", async () => {
+    const { db, calls } = settlingDb();
+    await settleCanceledRun(db, 4242, "note");
+    expect(calls[0].filters).toEqual([
+      ["id", 4242],
+      ["status", "running"],
+    ]);
+  });
+
+  it("is a no-op on a run that finished in the seconds before the cancellation landed", async () => {
+    const { db, matchNothing } = settlingDb();
+    matchNothing();
+    expect(await settleCanceledRun(db, 4242, "note")).toBe("already-finished");
   });
 });
