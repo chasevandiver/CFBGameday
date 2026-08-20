@@ -67,7 +67,7 @@ rows were decided by reading code, not by reading commit messages.
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
 | **Model in code** | `2026.5.0` — tilt carry, `baseHfa` 3.0, centered team-HFA, portal fix, market-anchored tier recentre |
 | **Database** | **69 migration files, 69 recorded rows, in sync** — verified live 2026-08-18 after **0071** (PRAC-1's three practice pools) was applied to `mjijyutmbtnwcjspozsx`. Ordering was free: new tables nothing in the running code reads. Verified after applying: all three present with RLS on, **0 policies** each — the same deny-all shape the answer-key tables use, and for the same reason, since each payload *is* an answer key — and **0 write grants** to `anon` or `authenticated`. Previously: **68 migration files, 68 recorded rows, in sync** — verified live 2026-08-18 after **0067, 0068, 0069 and 0070** were applied to `mjijyutmbtnwcjspozsx` in that order, ahead of the deploy carrying the three replacement games. **The order was load-bearing this time**, unlike the last pass: 0067 adds `games.home_conference`, and `sync-games` in the new build writes it — its `sink.upsert` throws on a PostgREST error, so deploying first would have failed the daily games sync on every run with *column games.home_conference does not exist*. All four are inert against the code that was running (two nullable columns, eight season rows nothing reads at runtime, and ten tables no old path touches), which is what made applying them first safe. Verified after applying: **12 CFB seasons** (2015–2026) with **exactly one `is_current`** — the invariant a ninth `true` row would break, taking `fetchCurrentSeasonWeek` and the whole slate down; both new columns present and **0 rows backfilled** into them, which is deliberate (filling them from `teams.conference` would destroy the distinction they exist for, unrecoverably); all **12 new tables** present with RLS on; the four answer-key tables (`tape_questions`, `chains_cards`, `dc_puzzle_groups`, `dc_facts`/`dc_fact_teams`) carrying **0 policies** — RLS on with no policy denies every row, which is the design rather than an omission; **0 write grants** to `anon` or `authenticated` across all twelve; and `tape_leaderboard`, `chains_leaderboard`, `dc_leaderboard` all executable by `authenticated` and **not** by `anon`. Security advisors show **8 new rows and both patterns are pre-existing**: five `rls_enabled_no_policy` INFOs on the answer-key tables — which is the design, the same deny-all shape `api_call_log` and `deleted_wagers` already carry — and three `authenticated_security_definer_function_executable` WARNs on the new boards, the definer-RPC pattern there are now 40 of, `gtg_leaderboard` among them. **Nothing new is anon-executable**: the nine anon findings are all the pre-existing `*_revealed` gates and none of the three new boards is in that list. No new advisor CATEGORY appeared. Locally, all 68 apply to a throwaway cluster with **381 pgTAP assertions passing, 0 failed**. **The three backfill jobs then ran green** (BF-4): games 3,968 → **10,378**, 2015–22 all carrying kickoff-time conferences, line coverage 95–100% per season, polls 15–16 weeks a season — and The Tape's eligible deck measured at **8,902 games** against the ~400 floor that would have forced a redesign. 2023–25 still show `home_conference` null, exactly as predicted, because the workflow passes no `--force`; tracked in DC-3. Previously: **64 migration files, 64 recorded rows, in sync** — verified live 2026-08-18 after 0064, 0065 and 0066 were applied to `mjijyutmbtnwcjspozsx` in that order, ahead of the deploy carrying GRP-1/GRP-2. The order was load-bearing between 0065 and 0066 only (Postgres refuses to use a new enum value in the transaction that adds it); all three are inert against the running code, which is why they went first rather than after. Verified after applying: all 3 new functions present, `add_group_member_by_name` executable by `authenticated` and **not** by `anon`, `search_group_candidates` likewise, `added_to_group` on the `notification_kind` enum, and its `notification_settings` row seeded enabled + default_enabled with `lead_minutes` 0 and the copy carrying `{{group}}` and `{{admin}}`. Security advisors show 3 new rows and they are all the pre-existing definer-RPC pattern (37 of them now); nothing anon-executable was added. Previously: **52 migration files, 52 recorded rows, in sync** — verified live 2026-08-15 after `0053_survivor_pools` was applied as `20260815044806`. Its ordering did not matter, unlike 0047's and 0052's: no old code reads `survivor_pools`/`survivor_picks` and no new code path runs before it, so it went in ahead of the deploy. Verified after applying: `groups_kind_check` accepts `'survivor'`, **0** TRUNCATE grants to `anon`/`authenticated` on either new table, `survivor_picks` grants only `SELECT`, 5 policies and 4 functions present, `create_survivor_group` executable by `authenticated` and not by `anon`, and **0** survivor groups created — the probe stopped on the sign-in guard rather than writing a row. Previously **51 migration files, 51 recorded rows, in sync** — verified live 2026-08-15 after PR #76 merged. 0049/0050/0051 were applied **before** the merge and 0052 **after the deploy was confirmed live**, which is the whole reason 0050 was split: 0050 only adds `is_current_user_admin()` and is inert against the old code, while 0052's revoke would have denied the running code's `select("is_admin")` and broken every admin gate. Deploy confirmed by `/ledger/stats` answering 200 in production — a route that exists only in the new build — not by a status badge. Verified after applying: **0 public tables grant TRUNCATE** to `anon` or `authenticated` (was 32), `is_current_user_admin` executable by `authenticated` and not by `anon`, `group_game_pick_counts` executable, `profiles.is_admin` no longer readable by `authenticated` while `display_name` and `timezone` still are, and twelve production routes serving 200 with `/admin` still returning its 404 body to an anonymous caller. Previously: **47 migration files, 47 recorded rows, in sync** — verified live 2026-08-14 after 0046/0047/0048 were applied to `mjijyutmbtnwcjspozsx` in that order, which was load-bearing: **0047 had to land before the code that stops sending `reason_tag` deployed**, or every bet insert would have failed the NOT NULL. Verified after applying: `deleted_wagers` and `scoring_plays` exist, `admin_remove_pick` is present, `bets.reason_tag` is nullable, `deleted_wagers` has no grant to either API role, and `scoring_plays` grants SELECT only. *(File count is 47 against numbers running to 0048 because **0004 does not exist** — a pre-existing gap, confirmed by counting the directory rather than trusting a number in this file.)* One thing that verification turned up and did not fix: **TRUNCATE is granted to `anon` and `authenticated` on every public table**, project-wide and pre-existing — see §6. Previously: **40 migration files, 40 recorded rows, in sync** — verified live 2026-08-13 after PR #58 merged and deployed. 0038–0041 were applied in order once the production build carried the code they depend on, which was the whole reason they waited: 0039 makes `join_group` return null on a bad code (the old action read that as success), 0040 revokes `is_admin` from anon while the old `fetchProfiles` still did `select("*")`, and 0041 renames a column the old `build-preseason` still wrote — which would have failed `preseason-refresh`, the job the Aug 26 checkpoint waits on. Verified after applying: join codes mint at 10 Crockford characters, `normalize_join_code('il o-1')` → `1101`, `group_join_attempts` exists deny-all, and anon can read neither `groups.join_code` nor `profiles.is_admin`. Before this pass it was 36/36, and 0034–0037 **are applied** — an earlier version of this row said 0034 and 0035 were "not yet applied to the live project" and gave the count as 32/32, and both were stale by the time they were written. It matters because two ticked rows depend on them: P1-1's re-pick fix *is* 0034 (`make_pick` confirmed carrying it live), and OPS-2's watchdog push needs 0036's enum value and 0037's `notification_settings` row — `notifyWatchdog` returns `{notified: 0, errors: 0}` when that row is missing (`notify-jobs.ts:375`), so it would have been a silent no-op. Both confirmed live, along with 2 admin push subscriptions for it to reach. The `0017` ledger gap (DB-3) was repaired 08-12. 0031–0033 add the push tables. `ratings` 138 @ wk0, `team_hfa` 138, `games` 888 (**wk0 = 8 Aug 29–30, wk1 = 91 Sep 3–7**), `rivalries` 29, `predictions` 0 and every week-0/1 game freezable, jobs running today. Advisors clean — the four findings are the intentional deny-all tables and the by-design definer functions. |
-| **Model in production** | ⚠️ `2026.2.0`. **Four versions behind**, pricing every cross-classification opener ~10 points toward the G5. Waiting on CFBD to publish 2026 talent; `preseason-refresh` retries daily and loads itself the first morning `--check` is green. **Talent is the only red gate** — confirmed against the Aug 17 11:15 UTC run, which prints one line per failing input and printed exactly one; returning production, portal, coaches, week-1 lines and the tier recentre all passed, and the build reached a full 138-team board on the 2025 file before refusing to load it. Since 2026-08-18 `cfbd-probe` prints the row count per input, so this row's claim stops being an inference. **Ends Aug 22 either way** — Q1 was answered yes that day and the escalation is in `jobs.yml`: from the 22nd the daily refresh loads the best build available rather than declining, so production stops being four versions behind whether or not CFBD has published. **Superseded 2026-08-19 by CFBD-5, in the better direction:** `--tune-talent-source` adopted the recruiting-class substitute on evidence, so once that merges the first daily refresh builds READY on the current classes — incoming freshmen included — and loads 2026.5.0 without waiting for the composite or the 22nd. The Aug 22 force remains as a backstop that should now never fire. |
+| **Model in production** | ✅ **`2026.5.0`, loaded 2026-08-19** — and not the stale-talent build Q1 authorised. Dispatched `preseason-refresh` (run **32301198359**, #285, 20:56 UTC, on `5bdfe1f`) and `verify-preseason` read the write back rather than trusting the exit code: **138** week-0 ratings, `model_version 2026.5.0` against code 2026.5.0, `team_hfa` **138 rows at 1 distinct `blended_hfa`**, `preseason_components` **138 with 0 `talent_stale`**, halves mismatched **0**, games already final **0**, `Done: 2421 rows loaded`. **The `blended_hfa` count is the tell that could not be faked** — production carried **70** distinct values that morning, which only an older build produces, so this is a fresh build rather than an old board relabelled. **`0 talent_stale` while the same run's probe still shows `/talent?year=2026` empty is CFBD-4/5 working as designed**: the composite is unpublished, the substitute is healthy, and a healthy substitute is READY rather than degraded — the season opens with the incoming class in the number instead of 2025's. Confirmed on the surfaces the same day: `/model` serves 2026.5.0 and renders the substitute note affirmatively, `/ratings` renders Off/Def. **One invariant is unevaluable and says so**: this project has never written a prior-season board, so the chain check has nothing to compare 2026 against — reported as a notice, not counted as a pass. **What it retires:** the Aug 22 force need never fire, and the Aug 26 checkpoint drops from emergency to re-verification. *(Kept below as what was believed until the load, not deleted — the row was accurate every day it was written and the escalation it describes is why the load was possible at all.)* Previously: ⚠️ `2026.2.0`. **Four versions behind**, pricing every cross-classification opener ~10 points toward the G5. Waiting on CFBD to publish 2026 talent; `preseason-refresh` retries daily and loads itself the first morning `--check` is green. **Talent is the only red gate** — confirmed against the Aug 17 11:15 UTC run, which prints one line per failing input and printed exactly one; returning production, portal, coaches, week-1 lines and the tier recentre all passed, and the build reached a full 138-team board on the 2025 file before refusing to load it. Since 2026-08-18 `cfbd-probe` prints the row count per input, so this row's claim stops being an inference. **Ends Aug 22 either way** — Q1 was answered yes that day and the escalation is in `jobs.yml`: from the 22nd the daily refresh loads the best build available rather than declining, so production stops being four versions behind whether or not CFBD has published. **Superseded 2026-08-19 by CFBD-5, in the better direction:** `--tune-talent-source` adopted the recruiting-class substitute on evidence, so once that merges the first daily refresh builds READY on the current classes — incoming freshmen included — and loads 2026.5.0 without waiting for the composite or the 22nd. The Aug 22 force remains as a backstop that should now never fire. |
 | **The edge verdict** | b₁ = 0.035 (t = 0.84) for the model vs 0.987 (t = 22.81) for the market, n = 2611; flagged edges 49.2% ATS vs the close. Edges are **information, not bets** — and no model-accuracy work belongs in the next 17 days. |
 
 **What's built:** slate, game page (live), pick'em with O/U + weekly grid +
@@ -793,7 +793,7 @@ deliberate deferrals, each recorded below with what it would take.
       providers 12 → 11, and total rows 33,470 → 31,891 — **exactly the 1,579
       the dry count predicted**, which is the check that the delete hit what it
       was aimed at and nothing else.
-- [ ] **DQ-15 — CFBD's `consensus` is stored as if it were a book.** Found
+- [x] **DQ-15 — CFBD's `consensus` is stored as if it were a book.** Found
       2026-08-19 while fixing DQ-14, by reading the provider table instead of
       the one game. `/lines` returns a synthetic `consensus` provider alongside
       the individual books and `backfillSnapshotRows` stores it like any other,
@@ -1279,6 +1279,10 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       Q1 is answered and the same job self-executes on the 22nd. Also:
       `refresh-lines` leaves its idle guard ~Aug 22 (`LINES_IDLE_DAYS` 7) —
       first snapshots since spring.
+      **Should now go green, 2026-08-19.** The decline this row anticipates was
+      the talent gate, and CFBD-4/5 cleared it — production is already at
+      2026.5.0 (§1). A red run on the 20th is therefore new information rather
+      than the expected notice, and worth reading rather than nodding at.
 - [ ] **Aug 21** — Quality floor: real-device pass at 375 px, light-mode phone
       pass over the slate (contrast changes are computed, never eyeballed),
       reduced-motion + focus-ring check, `UX-06` residue.
@@ -1334,6 +1338,13 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       first time the build → load path has ever completed for 2026, which is
       the other reason the date is here rather than on the 26th: a first run
       wants slack, not a deadline.
+      **Retired in advance, 2026-08-19.** The load this date exists to force
+      already happened and was read back (§1, run #285), so the escalation now
+      fires against a season already at 2026.5.0 — and `--force` is inert on a
+      build the gate calls READY. What to check on the 22nd is that it green
+      no-ops. A red run here now means something regressed after the 19th,
+      which is a different and more interesting question than the one this row
+      was written to ask.
 - [ ] **Aug 22–23** — **Full dress rehearsal.** Dispatch `refresh-lines`,
       `sync-games`, `scoreboard-loop`, `freeze --force` against a scratch week.
       Watch `job_runs` and `api_call_log` fill. This is the only end-to-end test
@@ -1348,6 +1359,13 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       freezable. If nothing loaded, the escalation itself failed — four days
       before the freeze — and that is the emergency this checkpoint now exists
       to catch. **Do not let this get decided by silence.**
+      **Answered early, 2026-08-19 — four days of slack recovered.** The load
+      happened, supervised, and `verify-preseason` read it back (§1). What is
+      left on the 26th is the re-verification this row already describes:
+      dispatch `verify-preseason`, confirm 138 rows still at 2026.5.0 and
+      `predictions` still freezable. The emergency it was written to catch —
+      "the escalation itself failed" — cannot happen now, because the load did
+      not wait for the escalation.
 - [ ] **Aug 27** — Last refresh cron day. Verify `ratings` shows 2026.5.0 and
       `/ratings` renders the Off/Def columns (the `splitInformative` tell).
       Create Week 0 group weeks, invite the crew, confirm each person signs in.
@@ -1932,6 +1950,36 @@ rather than absorbed silently.*
       Note for whoever runs it: `replaySeason` priced at a flat `baseHfa` until
       today, which is exactly why 03:M-1's ~+1.9 inflation was invisible to
       every calibration report — `hfaByTeam` closes that gap.
+- [ ] **CFBD-6 — recruiting classes also beat the FRESH composite, and that is
+      a different question from the one CFBD-5 answered.** Recorded 2026-08-19,
+      the same day the substitute shipped, from the same dispatch
+      (run `32278795011`, `2015-2025/warmup1/covid-chain`). Pooled over 9
+      scored seasons on the production-shaped chain: **recruiting classes MAE
+      13.162 / NLL 0.4891** against **fresh composite 13.221 / 0.4905** — ΔMAE
+      −0.059, ΔNLL −0.0014, comparable to shipped changes for scale.
+      **Deliberately not acted on**, and the reason is the point rather than
+      caution: `--tune-talent-source`'s pre-registered rule governs only what
+      stands in *while `/talent` is unpublished*. It asked whether the
+      substitute is non-inferior to the stale file, and every gate was written
+      against that arm. Beating the fresh composite is a claim the experiment
+      was not built to test and its gates cannot license — adopting it here
+      would be reading a number the rule never covered, which is the failure
+      mode `docs/CHANGELOG.md`'s decisions table exists to prevent.
+      **What it would need:** its own row and its own pre-registered rule,
+      dispatched with a window label — a bar stated before the run, a control
+      for the composite being a *derived* file (the classes are its raw
+      material, so the two are not independent), and an era split, since one
+      pooled number over nine seasons can hide a sign flip. One run, one
+      observation, not adversarially verified.
+      **Nearly moot for 2026, with one live exception.** `/talent?year=2026` is
+      empty, so the composite is not first choice in practice — the build takes
+      the recruiting path either way. The exception is CFBD publishing between
+      now and the **Aug 27** refresh (`load-preseason` refuses a season with
+      completed games, so that is the last automatic load): the current rule
+      would then silently swap in the arm that measured slightly worse. Ship it
+      as designed if that happens — re-deciding a model parameter inside launch
+      week is the worse trade, and §1's verdict stands that no model-accuracy
+      work belongs before Aug 29. · **S** · decision · after launch
 - [ ] **02:M-13 / 03:M-4** Real per-team tempo + `--tune-tempo` · M
 - [ ] **03:M-6/M-7/M-8b/M-9a** Decay-knot grid, heteroscedastic σ, smooth cap,
       rest/travel tuner · S each
@@ -1997,6 +2045,52 @@ rather than absorbed silently.*
       5+5 on two, saturating the ±6 clamp for four of the top 40. What was left
       was the name, which is what would have sent the next reader down the same
       path.
+- [ ] **DQ-16 — the model has no availability input, and cannot be audited on
+      the one it does have.** Found 2026-08-19 from an owner observation that a
+      Texas Tech quarterback is not expected to play this season. The roster
+      claim is the owner's and is not verified here; **the finding does not
+      depend on it**, because nothing in the pipeline could act on it either
+      way.
+      **What it would move, if the model could see it.** `qbReturns` is the only
+      quarterback-shaped input there is, and it enters as `+1.0 / −1.0 / 0`
+      (`ratings.ts:361`) inside a churn term that is **additive point-for-point**
+      into the rating (`ratings.ts:307`). A flip is therefore a **2.0-point
+      swing**, and Texas Tech's churn is **−0.06** — far enough from the ±6 clamp
+      that the whole 2.0 would land. On the loaded board that is 27.1 → 25.1,
+      first place to roughly fourth.
+      **Why it does not see it.** `qbReturns` is `percentPassingPPA >= 0.5` from
+      `/player/returning` (`build-preseason.ts:419`): it asks whether last
+      season's passing production came back to the roster, not whether anyone
+      will take a snap. A player on the roster when CFBD computed the feed
+      counts as returning. That is the class **F3** exists for, and F3 is
+      unbuilt.
+      **The part that is new, and is not DQ-6.** DQ-6 says the proxy is the
+      wrong measurement. This says **you cannot tell what the proxy decided**:
+      `preseason_components.detail` persists `talent_kind`, `talent_stale`,
+      `tier_recenter`, `coach` and `proxies`, and **not the qb term**. Read back
+      from production, Texas Tech's stored inputs give
+      `core = (0.53 − 0.6) × 6 × 0.741 ≈ −0.31` against a churn of −0.06, so
+      `qb + netPortalPoints ≈ +0.25` — satisfiable by `qb=+1.0` with a portal
+      loss, by `qb=0`, or by `qb=−1.0` with a portal gain. **The largest discrete
+      term in the adjustment is not recoverable from the database**, which is the
+      same shape as every `emptyIsHealthy` row in this file: absence of a
+      recorded value read as if the value were known.
+      **Not fixed before Week 0, deliberately.** There is no supported path to
+      override one team's input, the model is gated, and building one nine days
+      out is the trade this file keeps refusing. Exposure is also smaller than
+      the ranking implies: Texas Tech has **no Week 0 game**, Week 1 is Abilene
+      Christian (an FCS buy game priced off the −30 bucket, where their rating
+      barely moves the number), and the first real line is **Week 2 at Oregon
+      State, Sep 12** — by which point `ratings-update` owns the numbers and
+      results are already correcting the prior.
+      **What closing it looks like, cheapest first:** persist `qb_returns` and
+      `net_portal_points` in `detail` so the term is auditable — **XS**, changes
+      no number, and would have answered this question in one query instead of
+      three-way arithmetic. Then **04:DQ-6** (roster facts instead of the proxy)
+      and **F3** (availability at all), both post-launch and both larger.
+      **Ask it of the board on Aug 24**, where Texas Tech at #1 is already on the
+      smell-test list — now with a specific question rather than a vibe. · **XS**
+      (audit key) / **M** (the real fix) · after launch
 - [ ] **04:DQ-6** `qbReturns` from roster facts instead of the passing-PPA
       proxy · M
 - [ ] **04:DQ-11** Real `turnoverMargin` for the luck rule · S/M
