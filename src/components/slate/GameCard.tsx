@@ -56,7 +56,9 @@ interface Props {
   onStar: (teamId: number) => void;
   /** stagger index for the load-in animation */
   index?: number;
-  /** Game of the Week — accent ring + chip, otherwise a normal card */
+  /** Game of the Week — an accent ring, and nothing else. The chip it used to
+   *  carry was removed 2026-08-21 (owner call): on a 375px phone it crowded the
+   *  live clock into two lines, and a ring already says "this is the one". */
   featured?: boolean;
   /** Multi-game focus mode: pinned to the Focus row at the top of the slate */
   focused?: boolean;
@@ -274,7 +276,6 @@ export function GameCard({
           live={live}
           final={final}
           dead={dead}
-          featured={featured}
           focused={focused}
           onFocus={onFocus}
         />
@@ -356,7 +357,6 @@ function CardHeader({
   live,
   final,
   dead,
-  featured,
   focused,
   onFocus,
 }: {
@@ -365,7 +365,6 @@ function CardHeader({
   live: boolean;
   final: boolean;
   dead: boolean;
-  featured: boolean;
   focused: boolean;
   onFocus?: (gameId: number) => void;
 }) {
@@ -374,7 +373,6 @@ function CardHeader({
   return (
     <div className="flex min-h-5 items-center justify-between gap-2">
       <div className="flex min-w-0 items-center gap-2">
-        {featured && <span className="chip bg-accent/15 text-accent">Game of the Week</span>}
         {game.rivalry && (
           <span
             className="chip shrink-0 bg-chalk/10 text-chalk"
@@ -390,7 +388,16 @@ function CardHeader({
         {live ? (
           <>
             <LiveBadge />
-            <span className={`stat text-xs font-semibold ${u2m ? "u2m" : "text-chalk"}`}>
+            {/* `shrink-0 whitespace-nowrap`, 2026-08-21. This row is a flex
+                fight between the clock and the TV string, and the clock was
+                losing: "Q1 · 1:13" wrapped onto two lines on a 375px phone
+                (owner screenshot) because the network list next to it refused
+                to shrink. The time left in a live game is the most glanceable
+                thing on the card — DESIGN.md's first rule — so it is the one
+                element here that neither wraps nor compresses. */}
+            <span
+              className={`stat shrink-0 whitespace-nowrap text-xs font-semibold ${u2m ? "u2m" : "text-chalk"}`}
+            >
               {/* A break replaces the clock rather than joining it: "HALFTIME"
                   already says everything "Q2 · 0:00" does, in the language of
                   the broadcast. */}
@@ -425,10 +432,16 @@ function CardHeader({
           // renders on the game page where there is room.
           <span
             title={watchLabel(game.tv) ?? undefined}
-            className="stat flex shrink-0 items-center gap-1 text-[11px] font-medium text-dim"
+            /* `min-w-0` + a truncating label rather than `shrink-0`: something
+               in this row has to give when a game carries four networks
+               ("ESPN/KTRK (ABC)/Fox 5 Vegas"), and it should be the least
+               glanceable thing on the card rather than the game clock. The
+               full string is still one tap away on the game page, and the
+               `title` above carries it here. */
+            className="stat flex min-w-0 items-center gap-1 text-[11px] font-medium text-dim"
           >
-            <Tv size={12} aria-hidden />
-            {game.tv}
+            <Tv size={12} className="shrink-0" aria-hidden />
+            <span className="truncate">{game.tv}</span>
           </span>
         )}
         {onFocus && !final && !dead && (

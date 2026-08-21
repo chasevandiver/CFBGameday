@@ -1258,6 +1258,26 @@ deliberate deferrals, each recorded below with what it would take.
       diff, which is how these 27 changed PNGs are known to carry this change and
       nothing else.)*
 
+- [x] **SLATE-1 — the Game of the Week chip broke the live clock onto two
+      lines.** Owner screenshot from the 375px pass, 2026-08-21: *"the game of
+      the week tag smushes the time left in the game and I'm good getting rid of
+      that tag entirely."* Chip removed by owner call; the accent ring stays and
+      is now the whole treatment, which is enough to say "this is the one"
+      without spending 130px of a 375px row on saying it.
+      **The chip was the trigger, not the cause.** The header row is a flex
+      fight between the live clock and the network list, and the clock was
+      losing: the TV span carried `shrink-0` while the left group carried
+      `min-w-0`, so a four-network game — `ESPN/KTRK (ABC)/Fox 5 Vegas` in the
+      screenshot — took the width it wanted and `Q1 · 1:13` wrapped. Removing
+      the chip buys room today and leaves the same fight to be lost again on the
+      next long TV string, a rivalry chip, or an upset alert.
+      So the priority is now stated in the markup: **the clock is `shrink-0
+      whitespace-nowrap`** — the time left in a live game is DESIGN.md's first
+      rule, the thing you glance at — and **the network list truncates**
+      instead, since it is the least glanceable thing in the row and the full
+      string is already in its `title` and on the game page.
+      Verified by mutation: restore either class and the matching test goes red.
+
 ### 2.2 This week (Aug 14–18)
 
 - [x] **P1-1** Shipped 2026-08-13. A **Game status** section on `/admin`
