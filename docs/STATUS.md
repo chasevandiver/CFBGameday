@@ -61,7 +61,7 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **1,773 tests across 124 files**, all green in-session 2026-08-20 along with `npm run typecheck`, lint and `next build` — run after OPS-4b (§2.1h); seven of them are new and cover the cancelled-run path. The kill was also reproduced outside vitest, since that is the half a unit test cannot reach: a real `npx tsx` process under `bash -c`, SIGTERM to the shell and SIGKILL to the tree, and the id file still readable afterwards — which is exactly what the `if: cancelled()` step depends on. Previously: **1,316 tests across 98 files**, all green in-session 2026-08-18 along with `tsc` and lint, and `next build` compiles clean — run after the SURV-1…SURV-4 batch in §2.1g. The DB suite was **not** re-run for that batch and did not need to be: it changes no migration, no RPC and no policy, and `supabase/tests/survivor.sql`'s 27 assertions cover rules the UI now merely reports. *(**Superseded 2026-08-19.** This said the one `tsc` complaint, `LayoutProps` in `src/app/layout.tsx`, was Next's generated route types being absent until a build has run. True, and it made a bare `tsc --noEmit` look permanently dirty — so a REAL type error hid in the noise and reached a Vercel deploy on 08-19 after `npm test` and `npm run lint` both passed. `npx next typegen` generates those types in about a second without a build, and the check is now **`npm run typecheck`** (`next typegen && tsc --noEmit`), which is clean. Run it before pushing; CI has always run both steps and would have caught it, but not before a red deploy.)* Previously: **975 tests across 71 files**, all green in-session 2026-08-15 along with `tsc`, lint and `next build`, after the owner-report batch in §2.1e and the AUTH-2 proxy change. **257 DB assertions** against a real Postgres 16 cluster, 0 failed — 27 of them new in `supabase/tests/survivor.sql`, and three of those were rewritten after they passed for the wrong reason (the `raises` helper accepts any error, and the seed was refusing the pick on start-week rather than on the rule under test). Previously: **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
+| **Build** | **1,862 tests across 126 files**, all green in-session 2026-08-21 along with `npm run typecheck` and lint — run after WEEK0-1 (§2.1j); eight of them are new and the source scan among them was checked failing against the pre-fix file. `next build` was NOT re-run for that batch and did not need to be: it changes one `scripts/` emit and one test, no route, no component, no migration. Previously: **1,773 tests across 124 files**, all green in-session 2026-08-20 along with `npm run typecheck`, lint and `next build` — run after OPS-4b (§2.1h); seven of them are new and cover the cancelled-run path. The kill was also reproduced outside vitest, since that is the half a unit test cannot reach: a real `npx tsx` process under `bash -c`, SIGTERM to the shell and SIGKILL to the tree, and the id file still readable afterwards — which is exactly what the `if: cancelled()` step depends on. Previously: **1,316 tests across 98 files**, all green in-session 2026-08-18 along with `tsc` and lint, and `next build` compiles clean — run after the SURV-1…SURV-4 batch in §2.1g. The DB suite was **not** re-run for that batch and did not need to be: it changes no migration, no RPC and no policy, and `supabase/tests/survivor.sql`'s 27 assertions cover rules the UI now merely reports. *(**Superseded 2026-08-19.** This said the one `tsc` complaint, `LayoutProps` in `src/app/layout.tsx`, was Next's generated route types being absent until a build has run. True, and it made a bare `tsc --noEmit` look permanently dirty — so a REAL type error hid in the noise and reached a Vercel deploy on 08-19 after `npm test` and `npm run lint` both passed. `npx next typegen` generates those types in about a second without a build, and the check is now **`npm run typecheck`** (`next typegen && tsc --noEmit`), which is clean. Run it before pushing; CI has always run both steps and would have caught it, but not before a red deploy.)* Previously: **975 tests across 71 files**, all green in-session 2026-08-15 along with `tsc`, lint and `next build`, after the owner-report batch in §2.1e and the AUTH-2 proxy change. **257 DB assertions** against a real Postgres 16 cluster, 0 failed — 27 of them new in `supabase/tests/survivor.sql`, and three of those were rewritten after they passed for the wrong reason (the `raises` helper accepts any error, and the seed was refusing the pick on start-week rather than on the rule under test). Previously: **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
 | **Scheduler** | 111 completed runs. Reds to date: one watchdog firing correctly on a cold `job_runs` table, and runs #107–109 — the backup verification sequence, each a real defect, all closed. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
@@ -1311,6 +1311,102 @@ deliberate deferrals, each recorded below with what it would take.
       instead, since it is the least glanceable thing in the row and the full
       string is already in its `title` and on the game page.
       Verified by mutation: restore either class and the matching test goes red.
+
+### 2.1j Found in the live database, 2026-08-21
+
+- [x] **WEEK0-1 — Week 0 was being created every morning and destroyed two hours
+      later, by two green jobs.** Owner report: *"Week 0 still isn't on the site
+      as week 0 as they are all combined into week 1 for the slate and groups."*
+      It is, and `scripts/lib/weeks.ts` — the module written to prevent exactly
+      this — was working. **A second writer undid it.**
+      `sync-games` and `backfill-games` both route the week through
+      `resolvedWeek`. **`build-preseason.ts` emitted `week: g.week` straight
+      from CFBD**, and `load-preseason` writes that file over `games` on every
+      `preseason-refresh`. Measured rather than inferred:
+
+      | time (UTC) | job | week 0 |
+      |---|---|---|
+      | 09:35:23 | `sync-games` logs `week 0 split out of CFBD's week 1: 8 games` | 8 |
+      | 09:35:32 | `sync-systems` reads the slate pointer → `{"week":0}` | 8 |
+      | 11:15 | `preseason-refresh` reloads the schedule | **0** |
+
+      **It shipped itself the day it got healthy.** `job_runs` has `freeze`
+      reporting `{"week":0,"scheduled":8}` on **Aug 14** and
+      `{"week":1,"scheduled":99}` on **Aug 21**; the only thing that changed is
+      that CFBD-4/5 cleared the talent gate on the 19th and `preseason-refresh`
+      **stopped declining and started loading on the 20th**. For as long as that
+      job was correctly refusing to run, this defect was invisible.
+      **What it was four days from costing:** the freeze's per-game 8-day
+      horizon means the **Aug 28** run against a merged week freezes the 8
+      openers **plus the 19 Sep 3–4 games** — receipts stamped six days early on
+      preseason ratings and stale lines, and graded for CLV against them. The
+      horizon is what keeps the other 72 out; it was never meant to be the only
+      thing standing there.
+      **Fixed** by applying the same two functions in `build-preseason.ts`.
+      **The guard is a source scan, not a unit test**, because no unit test could
+      have caught this: `weekZeroIds` had seven passing tests and was right the
+      whole time. `weeks.test.ts` now scans `scripts/` for anything that writes
+      rows into `games` and requires it to call `resolvedWeek`, with two
+      exemptions carrying their reason (`nfl-sync-games` — ESPN's calendar, no
+      week 0; `seed-fixtures` — invented games) and a guard test that fails if
+      the scan stops finding the three writers, since a source scan matching
+      nothing is green for the worst possible reason. Verified by mutation:
+      reverting the fix turns it red on `build-preseason.ts` by name.
+      **Recorded, not fixed:** `build-preseason` §9 prices every game CFBD calls
+      week 1 — all 99 — into frozen `predictions`. Unreachable today
+      (`predictions` is `APPEND_ONLY`, skipped on refresh; only `--bootstrap`
+      loads it, and the table has 0 rows), but a bootstrap against 2026 would
+      pre-empt the Thursday freeze for the whole opening slate.
+      **Production is still merged** until this reaches `main` and a
+      `sync-games` runs — next scheduled 09:35 UTC. Merging alone changes
+      nothing in the database.
+
+- [ ] **FREEZE-1 — a midweek game never gets a receipt.** Found 2026-08-21 while
+      measuring what WEEK0-1 was about to cost, and it is the same seam from the
+      other side. `jobs.yml` has exactly **one** freeze cron — `0 3 * * 5`,
+      Friday 03:00 UTC = **10 pm CT Thursday** — and `freezeJob` only takes games
+      still `status = 'scheduled'`. A game that kicks before that has already
+      started, so it is filtered out, and the next freeze is seven days later
+      when it is long final. There is no run it can be caught by.
+      Counted against the 2026 schedule as it stands, excluding TBD placeholders
+      (see SLATE-2, which inflates the raw day counts): **34 Thursday, 17
+      Tuesday, 7 Wednesday — 58 games, ~7% of the season.** Friday nights are
+      fine: they kick *after* the Thursday-night freeze. Confirmed against the
+      pointer, not just the cron — on the Friday before a Tuesday game the slate
+      pointer is still on the previous week, so the earlier run cannot reach it
+      either.
+      **WEEK0-1 changed this week's version of the problem rather than removing
+      it, and the swap is worth stating.** Merged, the Aug 28 freeze caught the
+      19 Sep 3–4 games six days early on preseason ratings and stale lines. Split,
+      they fall in the gap above and get **no receipt at all**. The second is more
+      honest — a receipt priced six days early is a worse artifact than no
+      receipt — but it is a hole either way, and it is now the *stated* behaviour
+      rather than an accident of a merged week.
+      **Not fixed, and deliberately not eight days from Week 0.** The shapes are
+      a second cron (Monday, say) or a per-game "freeze N hours before kickoff",
+      which is the same per-game thinking `FREEZE_HORIZON_DAYS` already carries
+      and would retire the weekly cron entirely. Both change when receipts are
+      priced for every game in the season, which is not a change to make on the
+      week the first ones are written. · **decision** · S/M
+- [ ] **SLATE-2 — 391 games sit on the wrong day tab, and the card knows better
+      than the tab does.** Found 2026-08-21. CFBD gives an unscheduled game a
+      placeholder kickoff of **04:00 UTC** — midnight Eastern on game day — which
+      is **11 pm the previous day in Central**. So a Saturday game with no
+      announced time renders on the **Friday** tab, and under a `Fri · Late`
+      slot header. Measured live: 391 of 888 rows carry `start_time_tbd = true`,
+      and every one of them lands on Friday CT.
+      `SlateView` groups tabs and slot headers off `startTs` alone
+      (`SlateView.tsx:488`, `:578`); its "Kickoff TBD" branch fires only when
+      `startTs` is **null**, which is a different and rarer case. The card is
+      already right — `GameCard.tsx:430` renders `TBD` — so the row and the
+      heading above it disagree about the same game.
+      **It does not touch launch weekend**: week 1 has **zero** TBD kickoffs, and
+      the effect self-heals as CFBD publishes times about two weeks out. What is
+      visible today is browsing October in August — week 4 shows 41 Saturday
+      games under Friday.
+      **The fix is small and is not a date fix**: a TBD game should not be placed
+      on a day tab at all, the way a null one already isn't. Sized after Week 0
+      because the surface it changes is the one being watched on the 29th. · S
 
 ### 2.1i The pool lane — owner report, 2026-08-21
 
@@ -3677,6 +3773,24 @@ are `src/lib/league.ts`'s offset scheme doing its job.
       CFBD route is metered (Tier 2, 30,000/month), where a 10s pull over a
       14-hour Saturday is ~5,000 calls a Saturday and would eat the budget the
       rest of the ingest chain runs on. · owner decision + build
+      **2026-08-21 — the first blocker is probably not real, and that changes
+      what this costs.** Read from the live table rather than assumed: CFB game
+      ids run **401856634–401871103** and NFL game ids, which come straight from
+      ESPN, run **401872656–401874394** — one contiguous, non-overlapping ESPN
+      event-id space, CFB allocated just below NFL. CFBD appears to be passing
+      ESPN's event ids through, so **the join key this row says has to be built
+      already exists**, and an ESPN college board is free and unmetered, which
+      takes the second blocker with it.
+      **Not confirmed, and the confirmation is one command**: this container's
+      network policy refuses `site.api.espn.com` (502 from the proxy), so the
+      ids were never checked against a real ESPN response. `curl` ESPN's
+      college-football scoreboard for a date with games and compare event ids to
+      `games.id`. If they match, this row is a mapping-free build rather than a
+      mapping project — and it is the only lever that gets CFB the 10-second
+      path the NFL already has. Owner report the same day: *"the whole point of
+      this app is getting the equivalent or better than ESPN on scoreboard
+      timing."* At a 30s poll the ceiling is 30s + whatever CFBD's own lag is,
+      and CFBD's lag has never been measured on a live college game.
 - [x] **NFL-11** The touchdown was the one play guaranteed not to render.
       Owner report 2026-08-14 ("on the last play on the slate cards, it
       doesn't show what the touchdown play was"). `LiveSituation` opened with

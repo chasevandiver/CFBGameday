@@ -215,6 +215,81 @@ shipping it.
 
 ## Log
 
+### Aug 21 — WEEK0-1: two jobs disagreed about Week 0, and the later one won every morning
+
+Owner report: Week 0 still shows as Week 1 on the slate and in the groups. It
+does, and the cause is not the code that was written to prevent it — that code
+works. It is that a second writer undid it, daily, with both jobs green.
+
+`scripts/lib/weeks.ts` splits Week 0 out of CFBD's merged 2026 week 1 (99 games,
+Aug 29 → Sep 7, one bucket). `sync-games` applies it. `backfill-games` applies
+it. **`build-preseason.ts` did not** — it emitted `week: g.week` straight from
+the feed — and `load-preseason` writes that file over `games` on every
+`preseason-refresh`. So:
+
+| time (UTC) | job | week 0 |
+|---|---|---|
+| 09:35 | `sync-games` — logs `week 0 split out of CFBD's week 1: 8 games` | 8 games |
+| 09:35:32 | `sync-systems` reads the pointer → `{"week":0}` | 8 games |
+| 11:15 | `preseason-refresh` reloads the schedule | **0 games** |
+
+Both green, every day. Confirmed in `job_runs`: `freeze` on **Aug 14** reported
+`{"week":0,"scheduled":8}`; the same job on **Aug 21** reported
+`{"week":1,"scheduled":99}`. Nothing changed in between except that
+CFBD-4/5 cleared the talent gate on the 19th and `preseason-refresh` **started
+actually loading on the 20th instead of declining**. The bug was latent for as
+long as the job was refusing to run, and shipped itself the day it got healthy.
+
+What it was about to cost: the freeze carries a per-game 8-day horizon
+(`FREEZE_HORIZON_DAYS`), so the **Aug 28** run against a merged week would have
+frozen 8 openers **plus 19 Sep 3–4 games** — receipts stamped six days early on
+preseason ratings and stale lines, graded for CLV against them. That is the
+exact failure `weeks.ts` was written to prevent, arriving through the one door
+it had left open.
+
+**Fixed** by applying the same two functions in `build-preseason.ts`. One rule,
+three writers, no third derivation of "what week is this".
+
+**The test is the point, and it is not a unit test.** `weekZeroIds` had seven
+passing tests and was right the whole time; nothing about the function could
+have caught a caller that never called it. `weeks.test.ts` now scans `scripts/`
+for anything that writes rows into `games` and asserts it routes through
+`resolvedWeek` — with two exemptions carrying their reason (`nfl-sync-games`,
+whose weeks come from ESPN's calendar and which has no week 0; `seed-fixtures`,
+invented games) and a guard test that fails if the scan stops finding the three
+writers it exists to police, since a source scan that matches nothing is green
+for the worst possible reason. Verified by mutation: reverting the
+`build-preseason` change turns it red on that file by name.
+
+1,862 tests across 126 files green, plus `npm run typecheck` and lint.
+
+**Recorded, not fixed:** `build-preseason` §9 prices every game CFBD calls week
+1 — all 99 — into frozen `predictions`. It is unreachable today (`predictions`
+is `APPEND_ONLY`, so a refresh skips it; only `--bootstrap` loads it, and the
+table has 0 rows), but a bootstrap against 2026 would pre-empt the Thursday
+freeze for the whole opening slate.
+
+**The database is still merged** until the fix reaches `main` and a
+`sync-games` runs — the next scheduled one is 09:35 UTC. Nothing in production
+changes by merging alone.
+
+**Two things the same pass turned up, both logged in `docs/STATUS.md` §2.1j and
+neither fixed** — sized after Week 0 on purpose, since both change surfaces that
+are about to be watched:
+
+- **FREEZE-1.** One freeze cron, Fridays 03:00 UTC = 10 pm CT Thursday, and the
+  job only takes games still `scheduled`. A midweek game has already kicked, so
+  it is filtered out, and the next run is seven days later. 58 games this
+  season (34 Thu, 17 Tue, 7 Wed, excluding TBD placeholders). This fix changes
+  week 1's version of it rather than removing it: the Sep 3–4 games go from
+  "frozen six days early on preseason numbers" to "no receipt at all".
+- **SLATE-2.** CFBD's placeholder kickoff for an unscheduled game is 04:00 UTC —
+  midnight Eastern, which is 11 pm the previous day Central — so 391 of 888 rows
+  render on the Friday tab. `SlateView` groups on `startTs` and only says
+  "Kickoff TBD" for a *null* one; the card already renders TBD correctly, so the
+  row and its own heading disagree. Week 1 has zero TBD kickoffs, so launch
+  weekend is unaffected.
+
 ### Aug 21 — SPLASH-1 un-ticked: iPadOS ignores landscape startup images
 
 The 08-20 fix does not work, and the box it checked has been un-checked. A
