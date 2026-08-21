@@ -61,7 +61,7 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **1,773 tests across 124 files**, all green in-session 2026-08-20 along with `npm run typecheck`, lint and `next build` — run after OPS-4b (§2.1h); seven of them are new and cover the cancelled-run path. The kill was also reproduced outside vitest, since that is the half a unit test cannot reach: a real `npx tsx` process under `bash -c`, SIGTERM to the shell and SIGKILL to the tree, and the id file still readable afterwards — which is exactly what the `if: cancelled()` step depends on. Previously: **1,316 tests across 98 files**, all green in-session 2026-08-18 along with `tsc` and lint, and `next build` compiles clean — run after the SURV-1…SURV-4 batch in §2.1g. The DB suite was **not** re-run for that batch and did not need to be: it changes no migration, no RPC and no policy, and `supabase/tests/survivor.sql`'s 27 assertions cover rules the UI now merely reports. *(**Superseded 2026-08-19.** This said the one `tsc` complaint, `LayoutProps` in `src/app/layout.tsx`, was Next's generated route types being absent until a build has run. True, and it made a bare `tsc --noEmit` look permanently dirty — so a REAL type error hid in the noise and reached a Vercel deploy on 08-19 after `npm test` and `npm run lint` both passed. `npx next typegen` generates those types in about a second without a build, and the check is now **`npm run typecheck`** (`next typegen && tsc --noEmit`), which is clean. Run it before pushing; CI has always run both steps and would have caught it, but not before a red deploy.)* Previously: **975 tests across 71 files**, all green in-session 2026-08-15 along with `tsc`, lint and `next build`, after the owner-report batch in §2.1e and the AUTH-2 proxy change. **257 DB assertions** against a real Postgres 16 cluster, 0 failed — 27 of them new in `supabase/tests/survivor.sql`, and three of those were rewritten after they passed for the wrong reason (the `raises` helper accepts any error, and the seed was refusing the pick on start-week rather than on the rule under test). Previously: **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
+| **Build** | **1,862 tests across 126 files**, all green in-session 2026-08-21 along with `npm run typecheck` and lint — run after WEEK0-1 (§2.1j); eight of them are new and the source scan among them was checked failing against the pre-fix file. `next build` was NOT re-run for that batch and did not need to be: it changes one `scripts/` emit and one test, no route, no component, no migration. Previously: **1,773 tests across 124 files**, all green in-session 2026-08-20 along with `npm run typecheck`, lint and `next build` — run after OPS-4b (§2.1h); seven of them are new and cover the cancelled-run path. The kill was also reproduced outside vitest, since that is the half a unit test cannot reach: a real `npx tsx` process under `bash -c`, SIGTERM to the shell and SIGKILL to the tree, and the id file still readable afterwards — which is exactly what the `if: cancelled()` step depends on. Previously: **1,316 tests across 98 files**, all green in-session 2026-08-18 along with `tsc` and lint, and `next build` compiles clean — run after the SURV-1…SURV-4 batch in §2.1g. The DB suite was **not** re-run for that batch and did not need to be: it changes no migration, no RPC and no policy, and `supabase/tests/survivor.sql`'s 27 assertions cover rules the UI now merely reports. *(**Superseded 2026-08-19.** This said the one `tsc` complaint, `LayoutProps` in `src/app/layout.tsx`, was Next's generated route types being absent until a build has run. True, and it made a bare `tsc --noEmit` look permanently dirty — so a REAL type error hid in the noise and reached a Vercel deploy on 08-19 after `npm test` and `npm run lint` both passed. `npx next typegen` generates those types in about a second without a build, and the check is now **`npm run typecheck`** (`next typegen && tsc --noEmit`), which is clean. Run it before pushing; CI has always run both steps and would have caught it, but not before a red deploy.)* Previously: **975 tests across 71 files**, all green in-session 2026-08-15 along with `tsc`, lint and `next build`, after the owner-report batch in §2.1e and the AUTH-2 proxy change. **257 DB assertions** against a real Postgres 16 cluster, 0 failed — 27 of them new in `supabase/tests/survivor.sql`, and three of those were rewritten after they passed for the wrong reason (the `raises` helper accepts any error, and the seed was refusing the pick on start-week rather than on the rule under test). Previously: **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
 | **Scheduler** | 111 completed runs. Reds to date: one watchdog firing correctly on a cold `job_runs` table, and runs #107–109 — the backup verification sequence, each a real defect, all closed. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
@@ -1311,6 +1311,55 @@ deliberate deferrals, each recorded below with what it would take.
       instead, since it is the least glanceable thing in the row and the full
       string is already in its `title` and on the game page.
       Verified by mutation: restore either class and the matching test goes red.
+
+### 2.1j Found in the live database, 2026-08-21
+
+- [x] **WEEK0-1 — Week 0 was being created every morning and destroyed two hours
+      later, by two green jobs.** Owner report: *"Week 0 still isn't on the site
+      as week 0 as they are all combined into week 1 for the slate and groups."*
+      It is, and `scripts/lib/weeks.ts` — the module written to prevent exactly
+      this — was working. **A second writer undid it.**
+      `sync-games` and `backfill-games` both route the week through
+      `resolvedWeek`. **`build-preseason.ts` emitted `week: g.week` straight
+      from CFBD**, and `load-preseason` writes that file over `games` on every
+      `preseason-refresh`. Measured rather than inferred:
+
+      | time (UTC) | job | week 0 |
+      |---|---|---|
+      | 09:35:23 | `sync-games` logs `week 0 split out of CFBD's week 1: 8 games` | 8 |
+      | 09:35:32 | `sync-systems` reads the slate pointer → `{"week":0}` | 8 |
+      | 11:15 | `preseason-refresh` reloads the schedule | **0** |
+
+      **It shipped itself the day it got healthy.** `job_runs` has `freeze`
+      reporting `{"week":0,"scheduled":8}` on **Aug 14** and
+      `{"week":1,"scheduled":99}` on **Aug 21**; the only thing that changed is
+      that CFBD-4/5 cleared the talent gate on the 19th and `preseason-refresh`
+      **stopped declining and started loading on the 20th**. For as long as that
+      job was correctly refusing to run, this defect was invisible.
+      **What it was four days from costing:** the freeze's per-game 8-day
+      horizon means the **Aug 28** run against a merged week freezes the 8
+      openers **plus the 19 Sep 3–4 games** — receipts stamped six days early on
+      preseason ratings and stale lines, and graded for CLV against them. The
+      horizon is what keeps the other 72 out; it was never meant to be the only
+      thing standing there.
+      **Fixed** by applying the same two functions in `build-preseason.ts`.
+      **The guard is a source scan, not a unit test**, because no unit test could
+      have caught this: `weekZeroIds` had seven passing tests and was right the
+      whole time. `weeks.test.ts` now scans `scripts/` for anything that writes
+      rows into `games` and requires it to call `resolvedWeek`, with two
+      exemptions carrying their reason (`nfl-sync-games` — ESPN's calendar, no
+      week 0; `seed-fixtures` — invented games) and a guard test that fails if
+      the scan stops finding the three writers, since a source scan matching
+      nothing is green for the worst possible reason. Verified by mutation:
+      reverting the fix turns it red on `build-preseason.ts` by name.
+      **Recorded, not fixed:** `build-preseason` §9 prices every game CFBD calls
+      week 1 — all 99 — into frozen `predictions`. Unreachable today
+      (`predictions` is `APPEND_ONLY`, skipped on refresh; only `--bootstrap`
+      loads it, and the table has 0 rows), but a bootstrap against 2026 would
+      pre-empt the Thursday freeze for the whole opening slate.
+      **Production is still merged** until this reaches `main` and a
+      `sync-games` runs — next scheduled 09:35 UTC. Merging alone changes
+      nothing in the database.
 
 ### 2.1i The pool lane — owner report, 2026-08-21
 

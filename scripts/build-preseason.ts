@@ -68,6 +68,7 @@ import { logCfbdCalls } from "./lib/jobs-core";
 import { envNum } from "./lib/env-num";
 import { fcsMarginsVsFbs, fcsRatingOf, fcsTopIds } from "../src/model/fcs";
 import { portalPoints, portalScale } from "./lib/portal";
+import { resolvedWeek, weekZeroIds } from "./lib/weeks";
 import {
   ROSTER_CLASSES,
   classPointsByTeam,
@@ -775,12 +776,19 @@ async function main() {
   );
 
   const venueIds = new Set(venues.map((v) => v.id));
+  // Week 0 out of CFBD's merged week 1, by the same rule `sync-games` and
+  // `backfill-games` use — this file was the one games writer that did not,
+  // and a preseason refresh therefore UNDID the split every morning at 11:15
+  // (see scripts/lib/weeks.ts and the test that now pins all three writers).
+  const weekZero = weekZeroIds(games2026 as CfbdGame[]);
+  if (weekZero.size > 0)
+    console.log(`  week 0 split out of CFBD's week 1: ${weekZero.size} games`);
   await emit(
     "games",
     games2026.map((g) => ({
       id: g.id,
       season_id: SEASON,
-      week: g.week,
+      week: resolvedWeek(g, weekZero),
       season_type: g.seasonType,
       start_ts: g.startDate,
       start_time_tbd: g.startTimeTBD,

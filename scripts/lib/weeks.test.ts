@@ -1,3 +1,5 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolvedWeek, weekZeroIds, type SchedulableGame } from "./weeks";
 
@@ -105,4 +107,56 @@ describe("resolvedWeek", () => {
     const game = g(1, "2026-09-12T18:00:00Z", 2);
     expect(resolvedWeek(game, new Set())).toBe(2);
   });
+});
+
+/**
+ * The split is only worth anything if EVERY writer of `games.week` applies it.
+ * It did not: `build-preseason.ts` emitted `week: g.week` straight from CFBD,
+ * and `preseason-refresh` reloads that file over the games table daily — so
+ * `sync-games` split Week 0 out at 09:35 UTC and the 11:15 preseason load put
+ * it back, every morning, both jobs green. It only became visible on 2026-08-20,
+ * the first day the preseason gate stopped declining and the load actually ran.
+ *
+ * A unit test on `weekZeroIds` could never have caught that; the function was
+ * right the whole time. So this scans for the shape instead: any file that
+ * writes rows into `games` must route the week through `resolvedWeek`.
+ */
+describe("every games writer applies the split", () => {
+  const SCRIPTS = join(__dirname, "..");
+
+  /** Writers whose weeks do not come from CFBD's merged feed, and why. */
+  const EXEMPT: Record<string, string> = {
+    "nfl-sync-games.ts": "NFL weeks come from ESPN's own calendar; the NFL has no week 0",
+    "seed-fixtures.ts": "dev fixtures — invented games, invented weeks",
+  };
+
+  const files = [
+    ...readdirSync(SCRIPTS).map((f) => ({ name: f, path: join(SCRIPTS, f) })),
+    ...readdirSync(join(SCRIPTS, "lib")).map((f) => ({ name: f, path: join(SCRIPTS, "lib", f) })),
+  ].filter((f) => f.name.endsWith(".ts") && !f.name.endsWith(".test.ts"));
+
+  // `emit("games"` / `upsert("games"` / `from("games").upsert` — the three
+  // shapes that put a row into that table today, matched across newlines
+  // because the build's emit wraps its arguments.
+  const WRITES_GAMES = /(?:emit|upsert)\(\s*"games"|from\("games"\)\s*\.upsert/;
+
+  const writers = files.filter(({ path }) => WRITES_GAMES.test(readFileSync(path, "utf8")));
+
+  it("finds the writers it is meant to be guarding", () => {
+    // If this drops to nothing the regex has rotted and the suite below is
+    // vacuously green — the failure mode a source scan is most prone to.
+    const names = writers.map((w) => w.name);
+    expect(names).toContain("sync-games.ts");
+    expect(names).toContain("build-preseason.ts");
+    expect(names).toContain("backfill.ts");
+  });
+
+  for (const { name, path } of writers) {
+    const why = EXEMPT[name];
+    it(why ? `${name} is exempt — ${why}` : `${name} routes week through resolvedWeek`, () => {
+      const src = readFileSync(path, "utf8");
+      if (why) return;
+      expect(src, `${name} writes games but never calls resolvedWeek`).toMatch(/resolvedWeek\(/);
+    });
+  }
 });
