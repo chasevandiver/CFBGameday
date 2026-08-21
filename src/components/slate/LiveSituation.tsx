@@ -12,8 +12,9 @@
 
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { EMPTY_TRAIL, foldTrail, type TrailState } from "../../lib/drive-trail";
+import { playAge } from "../../lib/slate";
 import {
   fieldPosition,
   isRedZone,
@@ -127,6 +128,29 @@ export function LiveSituation({
 }) {
   const sit = parseSituation(game.situation);
   const pos = fieldPosition(game);
+  /* LIVE-4. Client-only and on its own clock, for two reasons: the server's
+     `now` and the browser's would disagree at hydration, and — the reason it
+     matters — the card only re-renders when data arrives. An age computed at
+     render would freeze at the very moment it becomes worth reading, which is
+     precisely when nothing is arriving. `playAge` returns the same string for
+     most ticks, and setting identical state is a no-op in React, so the
+     30-second interval costs a Date.parse. */
+  const [ageState, setAgeState] = useState<string | null>(null);
+  const playAt = game.lastPlayAt ?? null;
+  useEffect(() => {
+    if (!playAt) return;
+    // The clock is the external system being subscribed to; the zero-delay
+    // first tick keeps the effect body free of a synchronous setState while
+    // still filling the age on the render after mount rather than 30s later.
+    const tick = () => setAgeState(playAge(playAt));
+    const first = setTimeout(tick, 0);
+    const id = setInterval(tick, 30_000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(id);
+    };
+  }, [playAt]);
+  const age = playAt ? ageState : null;
   const redZone = isRedZone(game);
   const posTeam =
     game.possession === "home" ? game.home : game.possession === "away" ? game.away : null;
@@ -210,6 +234,17 @@ export function LiveSituation({
             {game.lastScore ? (game.lastScore.abbr ?? "Score") : "Last"}
           </span>
           {game.lastScore ? game.lastScore.text : game.lastPlay}
+          {/* LIVE-4. Only when the play is old enough that its age is news —
+              see playAge. It rides inside the same paragraph so it cannot add
+              a line, and `tabular-nums` keeps 9m and 10m the same width, so a
+              minute ticking over moves nothing (DESIGN.md: no layout shift on
+              updates). Absent for a score line: that one is meant to persist,
+              and an age on it would read as staleness rather than memory. */}
+          {!game.lastScore && age && (
+            <span className="stat ml-1 text-[9px] tabular-nums text-chalk/45" title="Time since this play arrived">
+              {age}
+            </span>
+          )}
         </p>
       )}
     </div>

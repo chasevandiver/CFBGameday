@@ -38,6 +38,9 @@ export interface GameRow {
   current_clock: string | null;
   current_situation: string | null;
   last_play: string | null;
+  /** LIVE-4. When `last_play` last changed to a new play; null when we never
+   *  watched it arrive. Nullable and unbackfilled — see migration 0078. */
+  last_play_at?: string | null;
   possession: "home" | "away" | null;
   tv: string | null;
 }

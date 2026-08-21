@@ -222,9 +222,21 @@ describe("watchdogVerdict (audit 07/OPS-1c)", () => {
     expect(watchdogVerdict({ ...fresh, syncGames: 31 }, false)[0]).toMatch(/sync-games/);
   });
   it("flags a stale scoreboard ONLY while a game is live", () => {
-    const stale = { ...fresh, scoreboard: 3 };
+    /* The horizon moved from 1.5h to 5h on 2026-08-20, and the question moved
+       with it (LIVE-3). It used to ask whether a launch had SUCCEEDED, which
+       LIVE-2's four-hour runs made meaningless: hourly launches cancel each
+       other, so a healthy game day produces `canceled` rows for hours and no
+       `ok` at all. At 1.5h this test's own scenario — 3 hours since the last
+       successful launch, game live — is now the NORMAL Saturday shape, and
+       paging for it would have taught everyone to ignore the one alarm that
+       covers the live layer.
+       Freshness is the beat's job now (the block below); this one only still
+       catches the scheduler going silent altogether. */
+    const stale = { ...fresh, scoreboard: 6 };
     expect(watchdogVerdict(stale, false)).toEqual([]); // nobody playing, no debt
     expect(watchdogVerdict(stale, true)[0]).toMatch(/scoreboard-loop/);
+    // And the shape that used to trip it is now correctly silent.
+    expect(watchdogVerdict({ ...fresh, scoreboard: 3 }, true)).toEqual([]);
   });
   it("a never-run job (Infinity) trips its threshold", () => {
     expect(watchdogVerdict({ ...fresh, refreshLines: Infinity }, false)[0]).toMatch(/refresh-lines/);
@@ -604,5 +616,123 @@ describe("settling a run the runner cancelled (OPS-4b)", () => {
     const { db, matchNothing } = settlingDb();
     matchNothing();
     expect(await settleCanceledRun(db, 4242, "note")).toBe("already-finished");
+  });
+});
+
+
+describe("the live-freshness watchdog rule (LIVE-3)", () => {
+  /**
+   * The old rule read `no scoreboard-loop launch succeeded in 1.5h` off a
+   * `status = 'ok'` row, and LIVE-2 broke it the day it shipped: four-hour
+   * runs that cancel each other write `canceled`, so `ok` rows stop appearing
+   * on exactly the days football is played. It would have paged every
+   * Saturday with nothing wrong.
+   */
+  const ages = (over: Partial<Parameters<typeof watchdogVerdict>[0]> = {}) => ({
+    refreshLines: 1,
+    syncGames: 1,
+    scoreboard: 0.2,
+    ...over,
+  });
+
+  it("says nothing when a poller is beating, however old the last launch is", () => {
+    // The healthy game-day shape after LIVE-2: launches keep being cancelled
+    // by their successors, so nothing has "succeeded" for hours, and the
+    // scores are perfectly fresh the whole time.
+    expect(watchdogVerdict(ages({ scoreboard: 3.9 }), true, false, 0.4)).toEqual([]);
+  });
+
+  it("pages when a game is live and nothing has polled it", () => {
+    const problems = watchdogVerdict(ages(), true, false, 12);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("live scores");
+    expect(problems[0]).toContain("12m");
+  });
+
+  it("says so plainly when neither poller has ever beaten", () => {
+    const problems = watchdogVerdict(ages(), true, false, Infinity);
+    // "Infinitym" is what a naive template would print here.
+    expect(problems[0]).toContain("any recorded run");
+    expect(problems[0]).not.toContain("Infinity");
+  });
+
+  it("owes nothing while no game is live", () => {
+    expect(watchdogVerdict(ages({ scoreboard: 99 }), false, false, Infinity)).toEqual([]);
+  });
+
+  it("still catches the scheduler dying, at a horizon a game day cannot trip", () => {
+    // Launches every hour; 5h of silence is the scheduler, not a handoff.
+    const problems = watchdogVerdict(ages({ scoreboard: 6 }), true, false, 0.5);
+    expect(problems.some((p) => p.includes("no loop has launched"))).toBe(true);
+  });
+
+  it("is not checked at all by a caller that omits the beat", () => {
+    // Same posture as the NFL lane: an older caller cannot be broken by a new
+    // argument it does not know about.
+    expect(watchdogVerdict(ages(), true, false)).toEqual([]);
+  });
+});
+
+describe("scoreboardPatch stamps when the play arrived (LIVE-4)", () => {
+  const NOW = "2026-08-21T01:00:00.000Z";
+  const game = (over: Record<string, unknown> = {}) =>
+    ({
+      id: 1,
+      status: "in_progress",
+      period: 2,
+      clock: "7:00",
+      situation: "1st & 10 at HOU 25",
+      lastPlay: "Rush for 3 yards",
+      lastPlayType: "Rush",
+      possession: "home",
+      homeTeam: { id: 1, name: "H", points: 7 },
+      awayTeam: { id: 2, name: "A", points: 3 },
+      tv: null,
+      ...over,
+    }) as unknown as Parameters<typeof scoreboardPatch>[0];
+
+  const stored = (over: Partial<ScoreboardRow> = {}): ScoreboardRow =>
+    ({
+      id: 1,
+      status: "in_progress",
+      home_points: 7,
+      away_points: 3,
+      current_period: 2,
+      current_clock: "7:00",
+      current_situation: "1st & 10 at HOU 25",
+      last_play: "Rush for 3 yards",
+      possession: "home",
+      tv: null,
+      ...over,
+    }) as ScoreboardRow;
+
+  it("stamps a play that is new", () => {
+    const patch = scoreboardPatch(game(), stored({ last_play: "Pass for 8 yards" }), NOW);
+    expect(patch?.last_play).toBe("Rush for 3 yards");
+    expect(patch?.last_play_at).toBe(NOW);
+  });
+
+  it("does not stamp a play kept through a timeout", () => {
+    // The incoming "play" is a TV timeout, so keepLastPlay holds the stored
+    // one — which arrived earlier and must keep the time it arrived.
+    const patch = scoreboardPatch(
+      game({ lastPlay: "Official Timeout at 11:36.", lastPlayType: "Official Timeout", clock: "6:30" }),
+      stored(),
+      NOW,
+    );
+    expect(patch?.last_play).toBe("Rush for 3 yards");
+    expect(patch?.last_play_at).toBeUndefined();
+  });
+
+  it("never turns an otherwise-identical tick into a write", () => {
+    // The stamp is applied after the diff decides. If it were part of the
+    // diff, every tick would write and every write fans out over realtime.
+    expect(scoreboardPatch(game(), stored(), NOW)).toBeNull();
+  });
+
+  it("leaves the stamp alone when a game goes final", () => {
+    const patch = scoreboardPatch(game({ status: "completed" }), stored(), NOW);
+    expect(patch?.last_play).toBeNull();
+    expect(patch?.last_play_at).toBeUndefined();
   });
 });

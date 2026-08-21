@@ -337,6 +337,10 @@ export function watchdogVerdict(
   gameLive: boolean,
   /** Any scheduled game inside the next week. Gates the weekly notify jobs. */
   gamesThisWeek = false,
+  /** LIVE-3. Minutes since either poller last pulled successfully; Infinity
+   *  when neither ever has. Omitted by a caller = not checked, like the NFL
+   *  lane above, so an older caller cannot be broken by this argument. */
+  liveBeatMin?: number,
 ): string[] {
   const problems: string[] = [];
   if (agesH.refreshLines > 26)
@@ -365,10 +369,33 @@ export function watchdogVerdict(
     agesH.dailyPuzzles > 30
   )
     problems.push(`daily-puzzles: no successful run in ${Math.round(agesH.dailyPuzzles)}h`);
-  // Scoreboard only owes freshness while something is actually on.
-  if (gameLive && agesH.scoreboard > 1.5)
+  /* Scoreboard only owes freshness while something is actually on.
+     LIVE-3, 2026-08-20: this used to read `agesH.scoreboard > 1.5` off a
+     `status = 'ok'` run, and LIVE-2 broke that rule the day it shipped. Runs
+     are four hours now and hourly launches cancel each other, so a cancelled
+     run writes `canceled` and an `ok` row appears only when a loop survives
+     its whole deadline — which on a game day it never does. The old rule would
+     have paged every Saturday afternoon with nothing wrong, which is worse
+     than not checking: an alarm that cries wolf gets muted, and this is the
+     alarm for the live layer.
+     What it asks now is whether anything actually POLLED, which is the
+     question it always meant. Both pollers stamp `live_heartbeat`, so this is
+     true whichever one is doing the work — and a game with no snaps for three
+     minutes no longer looks like a dead pipeline. */
+  if (gameLive && liveBeatMin !== undefined && liveBeatMin > 5)
     problems.push(
-      `scoreboard-loop: a game is LIVE and no launch succeeded in ${agesH.scoreboard.toFixed(1)}h`,
+      `live scores: a game is LIVE and nothing has polled it in ${
+        Number.isFinite(liveBeatMin) ? `${Math.round(liveBeatMin)}m` : "any recorded run"
+      }`,
+    );
+  /* The launches themselves, at a horizon a healthy game day cannot trip.
+     Distinct from the beat above: launches stopping means the scheduler is
+     failing (LIVE-2's actual fault), while beats stopping means the feed is.
+     Counting a cancelled or running launch is the point — those ARE launches,
+     and after LIVE-2 they are the usual shape. */
+  if (gameLive && agesH.scoreboard > 5)
+    problems.push(
+      `scoreboard-loop: a game is LIVE and no loop has launched in ${agesH.scoreboard.toFixed(1)}h`,
     );
 
   // The notify jobs are weekly AND seasonal, which is why they cannot use an
@@ -422,6 +449,22 @@ export function watchdogVerdict(
 
 export async function watchdogJob(db: SupabaseClient): Promise<Json> {
   const now = Date.now();
+  /* LIVE-3. Any launch, whatever became of it — `ok`, `canceled` or still
+     `running`. The scoreboard rule needs "did the scheduler fire", and since
+     LIVE-2 the healthy shape of a game-day launch is `canceled` (the next
+     hourly launch replaced it) or `running` (it still is). Only the scoreboard
+     check uses this; every other job below is genuinely asking whether a run
+     SUCCEEDED, and keeps `lastOkAgeH`. */
+  const lastLaunchAgeH = async (job: string): Promise<number> => {
+    const { data } = await db
+      .from("job_runs")
+      .select("started_at")
+      .eq("job", job)
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return data ? (now - Date.parse((data as { started_at: string }).started_at)) / 3600_000 : Infinity;
+  };
   const lastOkAgeH = async (job: string): Promise<number> => {
     const { data } = await db
       .from("job_runs")
@@ -461,7 +504,7 @@ export async function watchdogJob(db: SupabaseClient): Promise<Json> {
     {
       refreshLines: await lastOkAgeH("refresh-lines"),
       syncGames: await lastOkAgeH("sync-games"),
-      scoreboard: await lastOkAgeH("scoreboard-loop"),
+      scoreboard: await lastLaunchAgeH("scoreboard-loop"),
       picksDue: await lastOkAgeH("notify-picks-due"),
       logBets: await lastOkAgeH("notify-log-bets"),
       nflSyncGames: await lastOkAgeH("nfl-sync-games"),
@@ -474,6 +517,12 @@ export async function watchdogJob(db: SupabaseClient): Promise<Json> {
     },
     (live ?? []).length > 0,
     (upcoming ?? []).length > 0,
+    /* Whichever poller pulled most recently. Either one keeps the card fresh,
+       so the alarm is about both being silent, not about which is working. */
+    Math.min(
+      await beatAgeMin(db, HEARTBEAT_SOURCES.loop),
+      await beatAgeMin(db, HEARTBEAT_SOURCES.edge),
+    ),
   );
   if (problems.length > 0) {
     // Buzz a phone before going red (OPS-2). The throw below is still what
@@ -529,6 +578,55 @@ export async function logCfbdCalls(
   return logApiCalls(db, job, calls, "cfbd");
 }
 
+/**
+ * LIVE-3. Stamp "this poller just pulled successfully", whether or not the
+ * pull changed anything.
+ *
+ * `job_runs` cannot answer that any more. Since LIVE-2 a loop runs four hours
+ * and hourly launches cancel each other, so a `status = 'ok'` row appears only
+ * when a run survives its whole deadline — which on a game day it never does.
+ * And the games table cannot answer it either: a game with no snaps for three
+ * minutes looks exactly like a pipeline that died three minutes ago.
+ *
+ * Never throws. Observability must not cost the thing it observes — the same
+ * posture `recordJobRun` and `logApiCalls` take.
+ */
+export const HEARTBEAT_SOURCES = {
+  /** The Actions loop, one beat per successful poll tick. */
+  loop: "actions-loop",
+  /** The 10-second pg_cron → edge function path (0044). */
+  edge: "edge-10s",
+} as const;
+
+export async function beat(
+  db: SupabaseClient,
+  source: string,
+  detail?: Json,
+): Promise<void> {
+  try {
+    const { error } = await db
+      .from("live_heartbeat")
+      .upsert(
+        { source, beat_at: new Date().toISOString(), detail: detail ?? null },
+        { onConflict: "source" },
+      );
+    if (error) console.error(`live_heartbeat upsert failed: ${error.message}`);
+  } catch (err) {
+    console.error(`live_heartbeat upsert threw: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+/** Minutes since a source last beat; Infinity when it never has. */
+export async function beatAgeMin(db: SupabaseClient, source: string): Promise<number> {
+  const { data } = await db
+    .from("live_heartbeat")
+    .select("beat_at")
+    .eq("source", source)
+    .maybeSingle();
+  if (!data) return Infinity;
+  return (Date.now() - Date.parse((data as { beat_at: string }).beat_at)) / 60_000;
+}
+
 /** ESPN is free and unauthenticated, but an unmetered loop is invisible in
  *  /admin — so its calls land in api_call_log like every other feed's. */
 export async function logEspnCalls(
@@ -545,6 +643,8 @@ export async function logEspnCalls(
 export interface ScoreboardRow {
   id: number;
   status: string;
+  /** LIVE-4. Not in SCOREBOARD_COLS — see the note there. */
+  last_play_at?: string | null;
   home_points: number | null;
   away_points: number | null;
   current_period: number | null;
@@ -563,6 +663,12 @@ export interface ScoreboardRow {
 // to the diff and only ride along for the flip rows.
 export const SCOREBOARD_COLS =
   "id, status, home_points, away_points, current_period, current_clock, current_situation, last_play, possession, tv, season_id, week";
+/* `last_play_at` is deliberately NOT selected here. The diff below compares
+   every key of the patch against the stored row, and the patch carries a
+   stamp only on the ticks where the play already changed — so the write is
+   decided before the stamp exists and reading the old value would buy
+   nothing. Selecting it would also invite the opposite bug: a stamp in the
+   comparison makes every tick look different, and every tick would write. */
 
 /**
  * The UPDATE a scoreboard game implies, or null when the stored row already
@@ -574,6 +680,8 @@ export const SCOREBOARD_COLS =
 export function scoreboardPatch(
   g: CfbdScoreboardGame,
   stored: ScoreboardRow | undefined,
+  /** LIVE-4's clock, injected so the stamp is testable. */
+  now: string = new Date().toISOString(),
 ): Partial<ScoreboardRow> | null {
   const status =
     g.status === "in_progress" ? "in_progress" : g.status === "completed" ? "final" : "scheduled";
@@ -601,6 +709,15 @@ export function scoreboardPatch(
   };
   if (stored && (Object.keys(patch) as Array<keyof typeof patch>).every((k) => stored[k] === patch[k]))
     return null;
+  /* LIVE-4. Stamped AFTER the diff decision, never as part of it: the age of a
+     play must not be able to cause a write, or every tick would write one and
+     realtime would fan out a "change" that is only a clock.
+     Set only when the play is new, so a kept play (the timeout rule above)
+     keeps the time it actually arrived. Null stays null — a play we never
+     watched arrive has no honest timestamp, and the card shows no age rather
+     than inventing one. */
+  if (patch.last_play && patch.last_play !== stored?.last_play)
+    (patch as Partial<ScoreboardRow>).last_play_at = now;
   return patch;
 }
 

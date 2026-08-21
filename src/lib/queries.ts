@@ -544,6 +544,7 @@ export async function fetchSlateView(
         clock: game.current_clock,
         situation: game.current_situation,
         lastPlay: game.last_play,
+        lastPlayAt: game.last_play_at ?? null,
         lastScore: (() => {
           const sc = lastScoreByGame.get(game.id);
           if (!sc) return null;

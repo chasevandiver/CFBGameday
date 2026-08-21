@@ -90,9 +90,11 @@ Deno.serve(async () => {
      Texans/Raiders preseason opener, which was this path's first live game.
      The whole 10-second refresh had never once succeeded.
 
-     If 403s continue with this header, the cause is the origin rather than the
-     request — ESPN refusing Supabase's egress — and the fix is to move the
-     pull somewhere with different egress rather than to keep adding headers. */
+     The header alone was NOT enough — that was the first attempt and it still
+     403'd, which is how the UA below came to be tested. Both are kept: Accept
+     because it mirrors the working client, the UA because it is what actually
+     changed the answer. Origin was the other hypothesis and it is ruled out —
+     Supabase's egress is fine, ESPN just refuses `Deno/x.y.z`. */
   const res = await fetch(
     "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard",
     {
@@ -117,6 +119,15 @@ Deno.serve(async () => {
      502 = we are the gateway and the upstream refused us. */
   if (!res.ok) return new Response(`espn ${res.status}`, { status: 502 });
   const board = await res.json();
+
+  /* LIVE-3. This path pulled successfully — stamped whether or not anything
+     below changes, because "nothing changed" and "nothing ran" are the two
+     states this whole row exists to tell apart. The Actions loop reads this
+     during live games and pages when it goes quiet, which is the alarm that
+     was missing while this function spent a whole game returning 403. */
+  await db
+    .from("live_heartbeat")
+    .upsert({ source: "edge-10s", beat_at: new Date().toISOString() }, { onConflict: "source" });
 
   const patches = new Map<number, Patch>();
   // the raw play + its ESPN type, kept aside so the stored row can win below
@@ -193,9 +204,16 @@ Deno.serve(async () => {
       (k) => (row as any)[k] === p[k],
     );
     if (same) continue;
+    /* LIVE-4, mirroring scoreboardPatch: stamped after the diff decides, never
+       as part of it, and only when the play is genuinely new — a play kept
+       through a timeout keeps the time it actually arrived. */
+    const write: Patch & { last_play_at?: string } = { ...p };
+    if (p.last_play && p.last_play !== row.last_play) {
+      write.last_play_at = new Date().toISOString();
+    }
     const { error } = await db
       .from("games")
-      .update(p)
+      .update(write)
       .eq("id", row.id)
       .eq("sport", "nfl");
     if (!error) {

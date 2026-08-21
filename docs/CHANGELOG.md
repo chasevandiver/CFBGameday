@@ -215,6 +215,46 @@ shipping it.
 
 ## Log
 
+### Aug 20 — closing the night's open items: LIVE-3, LIVE-4, and one the fix found
+
+Owner asked for the rest the same night, and wiring the first one turned up a
+third bug that would have been much worse in November.
+
+**LIVE-3 — the two live paths now watch each other.** Neither can watch itself,
+so each stamps `live_heartbeat` (0078, deny-all) on every successful pull, and
+the Actions loop pages via `notifyWatchdog` when an NFL game is live and the
+10-second path has gone quiet for 3 minutes. That is exactly tonight's LIVE-1 —
+an outage that ran a whole game with every dashboard green.
+
+Doing it exposed a bug **LIVE-2 had shipped hours earlier**. The watchdog's rule
+was "no `scoreboard-loop` launch succeeded in 1.5h", read off `status = 'ok'`.
+Four-hour runs cancel each other, so a healthy game day writes `canceled` rows
+for hours and no `ok` at all: the rule would have paged every Saturday
+afternoon with nothing wrong. It now asks whether anything actually **polled**,
+which is what it always meant; the launch check survives at 5h reading *any*
+launch, because "the scheduler stopped firing" is a real and different fault.
+
+**LIVE-4 — the card can say how old the play is.** `games.last_play_at`,
+stamped by both writers after the diff decides and only when the play is new —
+inside the diff it would make every tick a write, and stamping a kept play
+would date a field goal to the timeout that followed it. Shown only past 90
+seconds (below that the play simply *is* the current play), minutes only,
+`60m+` past an hour, nothing at all for a null stamp or a backwards clock. It
+ticks on its own clock client-side, because an age computed at render freezes
+at the moment it becomes worth reading.
+
+**LIVE-5 — the CFBD budget was counting free ESPN calls.** Found by reading
+`api_call_log` before adding to it. `callsThisMonth` counted every row against
+CFBD's 30,000, and ESPN lands in the same table by design: **1,719 ESPN against
+714 CFBD** this month, so the gate ran on a number three times real usage. The
+loop halves CFB polling at 80% and switches it **off** at 95% — on a CFB
+Saturday, with ESPN calls by the thousand, that could have killed live college
+scores with tens of thousands of CFBD calls unspent. One `.eq("source",
+"cfbd")`.
+
+Verified live: `edge-10s` beating every 10 seconds, `live_heartbeat` RLS on with
+0 policies and 0 API grants, 1,798 tests across 124 files green.
+
 ### Aug 20 — the 10-second refresh had never worked, and the loop's margin was 3 minutes
 
 The NFL preseason rehearsal did in one night what four audits could not: it put
