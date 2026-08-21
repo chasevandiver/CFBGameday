@@ -354,7 +354,9 @@ const DEVICES: ReadonlyArray<{
 interface SplashTarget {
   id: string;
   href: string;
-  media: string;
+  /** Every media rule that should resolve to this image. iPad landscape needs
+   *  two — see the note in splashTargets. */
+  medias: string[];
   pxW: number;
   pxH: number;
   note: string;
@@ -368,10 +370,37 @@ function splashTargets(): SplashTarget[] {
       : ["portrait"];
     for (const orientation of orientations) {
       const landscape = orientation === "landscape";
+      const id = landscape ? `${d.id}-landscape` : d.id;
+      /* Owner report, 2026-08-21: the iPad landscape splash opens "very
+         stretched out" — the signature of a PORTRAIT image scaled to fill a
+         landscape screen, i.e. no landscape rule matched and iOS fell back.
+         The files themselves are correct (ipad-pro-129-landscape.png really is
+         2732×2048), so the miss is in the query.
+         The convention every generator emits is portrait `device-width` /
+         `device-height` plus `orientation: landscape`, on the assumption that
+         those two features report the physical screen and never rotate. That
+         holds on iPhone. On iPad it evidently does not, which is exactly the
+         class of thing no amount of reading the markup would have found and a
+         tap on a real device found in a second.
+         So each landscape target emits BOTH orders. Whichever way the device
+         reports its dimensions, one rule matches, and both name the same file —
+         a device that matches both gets the same image twice, which is a
+         no-op rather than a conflict. */
+      const dims = landscape
+        ? [
+            { w: d.w, h: d.h },
+            { w: d.h, h: d.w },
+          ]
+        : [{ w: d.w, h: d.h }];
       out.push({
-        id: landscape ? `${d.id}-landscape` : d.id,
-        href: `/splash/${landscape ? `${d.id}-landscape` : d.id}.png`,
-        media: `(device-width: ${d.w}px) and (device-height: ${d.h}px) and (-webkit-device-pixel-ratio: ${d.dpr}) and (orientation: ${orientation})`,
+        id,
+        href: `/splash/${id}.png`,
+        // One image, one or two rules — the image is rendered once and the
+        // link table lists every rule that should resolve to it.
+        medias: dims.map(
+          (dim) =>
+            `(device-width: ${dim.w}px) and (device-height: ${dim.h}px) and (-webkit-device-pixel-ratio: ${d.dpr}) and (orientation: ${orientation})`,
+        ),
         pxW: (landscape ? d.h : d.w) * d.dpr,
         pxH: (landscape ? d.w : d.h) * d.dpr,
         note: `${d.note}${landscape ? " (landscape)" : ""}`,
@@ -392,7 +421,7 @@ function buildSplash(
   w: number,
   h: number,
   wordmark: { d: string; width: number; capTop: number },
-  tagline: { d: string; width: number },
+  tagline: { d: string; width: number; capTop: number },
 ): string {
   const short = Math.min(w, h);
   const markH = Math.round(short * 0.34);
@@ -402,11 +431,28 @@ function buildSplash(
 
   const wordW = short * 0.58;
   const wordScale = wordW / wordmark.width;
+  // `wordY` is where the wordmark's CAP TOP lands: the group below compensates
+  // for capTop, so the ink runs from here down by its rendered cap height.
   const wordY = markY + markH + short * 0.1;
+  const wordCapH = Math.abs(wordmark.capTop) * wordScale;
 
   const tagW = short * 0.6;
   const tagScale = tagW / tagline.width;
-  const tagY = wordY + short * 0.09;
+  const tagCapH = Math.abs(tagline.capTop) * tagScale;
+  /* Owner report, 2026-08-21: "the text under The Slate is right below it so it
+     looks pretty smushed together."
+     The gap used to be `wordY + short * 0.09` — a distance from the wordmark's
+     cap top to the tagline's BASELINE, which is not a gap between anything a
+     reader can see. Two rendered heights were hiding inside it (the wordmark's
+     caps, ~6.2% of the short side, and the tagline's, ~1.5%), so what was left
+     between the two blocks of ink was about 1.3% — and it shrank further on any
+     device where the wordmark set wider.
+     Now it is what it says: the wordmark's baseline, a deliberate gap, then the
+     tagline's cap top. Both terms are measured from the outlined glyphs rather
+     than assumed, so a font change moves the type instead of quietly closing
+     the gap. */
+  const SPLASH_GAP = 0.055;
+  const tagY = wordY + wordCapH + short * SPLASH_GAP + tagCapH;
 
   // A disc around the mark, not a wash over the screen — §15 wants the aura
   // localized, and a full-canvas gradient costs 20× the bytes in a PNG that is
@@ -640,6 +686,9 @@ export const SLATE_MARK_ASPECT = ${(markAspect).toFixed(4)};
   const word = setLine(graduate, "THE SLATE", 100, 9);
   const capTop = -(graduate.tables.os2.sCapHeight ?? 700) * (100 / graduate.unitsPerEm);
   const tag = setLine(plex, "RATINGS · PREDICTIONS · PICKS · BET TRACKING", 100, 4);
+  // The tagline is drawn from its baseline, so the splash needs its cap height
+  // to leave a real gap above it rather than one measured to nothing.
+  const tagCapTop = -(plex.tables.os2.sCapHeight ?? 700) * (100 / plex.unitsPerEm);
   const markUri = `data:image/png;base64,${keyed.toString("base64")}`;
 
   const targets = splashTargets();
@@ -651,7 +700,7 @@ export const SLATE_MARK_ASPECT = ${(markAspect).toFixed(4)};
       t.pxW,
       t.pxH,
       { d: word.d, width: word.width, capTop },
-      tag,
+      { ...tag, capTop: tagCapTop },
     );
     // Palette-quantised: a splash is one dark ground, one aura and two colours
     // of type. 256 entries hold all of it, and it keeps the set under a couple
@@ -662,7 +711,10 @@ export const SLATE_MARK_ASPECT = ${(markAspect).toFixed(4)};
     writeFileSync(out(`public/splash/${t.id}.png`), data);
     bytes += data.length;
   }
-  console.log(`  ${targets.length} files, ${(bytes / 1024).toFixed(0)} KB total`);
+  console.log(
+    `  ${targets.length} files, ${(bytes / 1024).toFixed(0)} KB total, ` +
+      `${targets.reduce((n, t) => n + t.medias.length, 0)} media rules`,
+  );
 
   writeFileSync(
     out("src/lib/apple-startup-images.ts"),
@@ -677,7 +729,11 @@ export const SLATE_MARK_ASPECT = ${(markAspect).toFixed(4)};
  */
 export const APPLE_STARTUP_IMAGES: ReadonlyArray<{ href: string; media: string }> = [
 ${targets
-  .map((t) => `  // ${t.note}\n  {\n    href: "${t.href}",\n    media:\n      "${t.media}",\n  },`)
+  .flatMap((t) =>
+    t.medias.map(
+      (media) => `  // ${t.note}\n  {\n    href: "${t.href}",\n    media:\n      "${media}",\n  },`,
+    ),
+  )
   .join("\n")}
 ];
 `,
@@ -689,7 +745,9 @@ ${targets
   // inferred: open /brand/splash-check.html on the device in question.
   writeFileSync(
     out("public/brand/splash-check.html"),
-    buildSplashCheck(targets.map((t) => ({ href: t.href, media: t.media, note: t.note }))),
+    buildSplashCheck(
+      targets.flatMap((t) => t.medias.map((media) => ({ href: t.href, media, note: t.note }))),
+    ),
   );
   console.log("  public/brand/splash-check.html");
 

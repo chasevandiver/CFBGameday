@@ -215,6 +215,45 @@ shipping it.
 
 ## Log
 
+### Aug 21 — the 375px pass found two things no stylesheet could show
+
+The app passed on device: no sideways scroll, no clipping, tap targets fine, the
+live card held still through score changes. **UX-28 closed as not a defect** —
+nobody could make a team name truncate, which is what the measurements had said
+and what that row explicitly asked for.
+
+Both findings were in the iOS launch surface instead.
+
+**SPLASH-1 — the iPad landscape splash was a portrait image stretched to fit.**
+The files were never wrong: `ipad-pro-129-landscape.png` really is 2732×2048.
+The media query was. Landscape rules are emitted everywhere as portrait
+`device-width`/`device-height` plus `orientation: landscape`, on the assumption
+that those features describe the physical screen and never rotate — true on
+iPhone, evidently not on iPad. No rule matched, iOS fell back to a portrait
+image and scaled it. Each landscape target now emits **both** dimension orders
+at the same file: 27 images, 36 rules. `/brand/splash-check.html` on the device
+says which rule matches.
+
+**SPLASH-2 — the wordmark and tagline were six pixels apart.** Measured on the
+rendered PNGs, not reasoned about: **6px on an iPhone 14 Pro, 9px on the 12.9"
+iPad in landscape** — 0.51% and 0.44% of the short side.
+
+The cause was a gap that was never a gap. `tagY = wordY + short * 0.09` measured
+from the wordmark's cap TOP to the tagline's BASELINE, with two rendered heights
+hiding inside the span — the wordmark's caps (~6.2% of the short side) and the
+tagline's (~1.5%). The visible remainder was ~1.3% in theory, 0.5% in practice,
+and it shrank on any device where the wordmark set wider. The layout now says
+what it means: baseline, a deliberate 5.5% gap, cap top, both heights read off
+the outlined glyphs. Re-measured after the rebuild: **66px and 114px, 5.6% on
+both** — which is the point of deriving it rather than picking it.
+
+Worth stating plainly: neither of these was reachable from the source. The
+markup is correct, the files are correct, and every automated check passes. It
+took a tap on a real iPad — the argument for the Aug 21 row existing at all.
+
+`npm run brand` is byte-stable (an unmodified run produces no diff), which is
+how the 27 changed PNGs are known to carry this change and nothing else.
+
 ### Aug 21 — LIVE-7: the score line gives the card back
 
 Owner: "scoring plays are still getting stuck on the slate cards and not the

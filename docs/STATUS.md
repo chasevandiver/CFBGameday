@@ -1217,6 +1217,47 @@ deliberate deferrals, each recorded below with what it would take.
       Verified by mutation: stubbing the hand-back turns four tests red across
       the pure rule and the rendered card.
 
+- [x] **SPLASH-1 — the iPad landscape splash was a portrait image stretched to
+      fit.** Owner report from the 375px pass, 2026-08-21: *"the landscape splash
+      screen on an iPad when opening up… it's just very stretched out."*
+      The files were never the problem — `ipad-pro-129-landscape.png` really is
+      2732×2048 and always was. **The media query was.** Every generator emits
+      landscape rules as portrait `device-width`/`device-height` plus
+      `orientation: landscape`, on the assumption that those two features
+      describe the physical screen and never rotate. That holds on iPhone. On
+      iPad it evidently does not: no landscape rule matched, so iOS fell back to
+      a portrait image and scaled it to fill — which is exactly what "stretched"
+      looks like.
+      Each landscape target now emits **both** dimension orders, pointing at the
+      same file. Whichever way the device reports itself, one rule matches; a
+      device that matches both gets the same image twice, which is a no-op
+      rather than a conflict. 27 images, 36 rules.
+      **This was unreachable from the source.** Nothing in the markup is wrong,
+      the files are correct, and every check a machine can run passes. It took a
+      tap on a real iPad, which is the argument for the Aug 21 row existing at
+      all.
+      **How to confirm it on the device**: open `/brand/splash-check.html` on the
+      iPad in landscape — the page lists every rule and says which one matches.
+- [x] **SPLASH-2 — the wordmark and the tagline were 6 pixels apart.** Same
+      report: *"the text under The Slate is right below it so it looks pretty
+      smushed together."* Measured on the rendered PNGs rather than reasoned
+      about: **iPhone 14 Pro 6px, iPad Pro 12.9" landscape 9px** — 0.5% and 0.44%
+      of the short side. Touching, in other words.
+      **The cause is a gap that was never a gap.** `tagY = wordY + short * 0.09`
+      measured from the wordmark's cap TOP to the tagline's BASELINE, and two
+      rendered heights were hiding inside that span — the wordmark's caps (~6.2%
+      of the short side) and the tagline's (~1.5%). What was left between the two
+      blocks of ink was the remainder, ~1.3% in theory and 0.5% in practice, and
+      it shrank further on any device where the wordmark set wider.
+      Now the layout says what it means: wordmark baseline, a deliberate 5.5%
+      gap, then the tagline's cap top — both heights measured from the outlined
+      glyphs, so a font change moves the type instead of quietly closing the gap.
+      Re-measured after the rebuild: **66px on the iPhone, 114px on the iPad,
+      5.6% on both** — the point of deriving it rather than picking it.
+      *(The generator is byte-stable: an unmodified `npm run brand` produces no
+      diff, which is how these 27 changed PNGs are known to carry this change and
+      nothing else.)*
+
 ### 2.2 This week (Aug 14–18)
 
 - [x] **P1-1** Shipped 2026-08-13. A **Game status** section on `/admin`
@@ -1626,6 +1667,13 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       **Still needs a human:** the real-device pass at 375px. Nothing here was
       seen rendered — it is all computed from the stylesheet and the source, and
       that is the half a machine can do.
+      **Run 2026-08-21 by the owner, on device.** The app itself passed: no
+      sideways scroll, no clipping, tap targets fine, and the live card held
+      still through score changes. **UX-28 is closed by it** — nobody could make
+      a team name truncate. What the pass did find was not in the app at all but
+      in the iOS launch surface, and neither half was reachable from the
+      stylesheet: **SPLASH-1** (iPad landscape) and **SPLASH-2** (the wordmark
+      and tagline touching), both below.
 - [x] **OPS-19 — `verify-preseason`: read back what the load actually wrote.**
       Built 2026-08-19. `load-preseason.ts` upserts rows and prints
       `Done: N rows loaded`; it never reads the database back, so a run is green
@@ -2975,7 +3023,7 @@ viewer's own bets, not the whole sheet.
       Reading the installed docs rather than the remembered API is what
       `AGENTS.md` asks for, and it was the difference between a fix and a
       regression.
-- [ ] **UX-28 — reopened 2026-08-13: the symptom does not reproduce.** The
+- [x] **UX-28 — reopened 2026-08-13, closed 2026-08-21 as not a defect.** The
       change shipped (`min-w-0` on the team cell's flex parent, plus a `title`)
       and it is correct defensively, but **it fixes nothing measurable today**,
       so the box goes back. Measured against the live database: no school name
@@ -2993,6 +3041,9 @@ viewer's own bets, not the whole sheet.
       **What would settle it:** the Aug 21 real-device pass. If nobody can make
       a name truncate on a real phone, close it as "not a defect" rather than
       as done. · S
+      **Settled 2026-08-21 — not a defect.** The pass ran on device and nothing
+      truncated, which is what the measurements already said. Closed on the
+      evidence rather than ticked as fixed, exactly as this row asked.
 - [x] **UX-31 / §23 #19** Week changes via `pushState` so Back traverses weeks.
       Done 2026-08-14. The old blanket `replaceState` was sound about filters —
       a query typed character by character would fill the history stack with
