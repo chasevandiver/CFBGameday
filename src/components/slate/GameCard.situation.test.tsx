@@ -292,3 +292,55 @@ describe("the bottom line hands back from score to play (LIVE-7)", () => {
     expect(await screen.findByText("HOU")).toBeTruthy();
   });
 });
+
+
+describe("the header row keeps the clock whole (2026-08-21)", () => {
+  /**
+   * Owner screenshot from the 375px pass: "the game of the week tag smushes
+   * the time left in the game." The row is a flex fight between the clock and
+   * the network list, and the clock was losing — "Q1 · 1:13" broke onto two
+   * lines because the TV string was `shrink-0` and a four-network game
+   * ("ESPN/KTRK (ABC)/Fox 5 Vegas") took the width it wanted.
+   *
+   * The tag is gone by owner call, and the clock no longer yields to anything.
+   */
+  it("no longer renders the Game of the Week chip", () => {
+    render(
+      <GameCard
+        game={live({ period: 1, clock: "1:13" })}
+        tz="America/Chicago"
+        starred={[]}
+        onStar={() => {}}
+        featured
+      />,
+    );
+    expect(screen.queryByText(/game of the week/i)).toBeNull();
+  });
+
+  it("keeps the featured ring, which is what marks the game now", () => {
+    const { container } = render(
+      <GameCard
+        game={live()}
+        tz="America/Chicago"
+        starred={[]}
+        onStar={() => {}}
+        featured
+      />,
+    );
+    expect(container.querySelector(".ring-accent\\/40")).toBeTruthy();
+  });
+
+  it("never lets the live clock wrap or shrink", () => {
+    renderCard(live({ period: 1, clock: "1:13", tv: "ESPN/KTRK (ABC)/Fox 5 Vegas" }));
+    const clock = screen.getByText(/Q1/);
+    expect(clock.className).toContain("whitespace-nowrap");
+    expect(clock.className).toContain("shrink-0");
+  });
+
+  it("makes the network list the thing that gives instead", () => {
+    renderCard(live({ tv: "ESPN/KTRK (ABC)/Fox 5 Vegas" }));
+    const tv = screen.getByText("ESPN/KTRK (ABC)/Fox 5 Vegas");
+    // truncates with an ellipsis rather than pushing the clock around
+    expect(tv.className).toContain("truncate");
+  });
+});

@@ -215,6 +215,28 @@ shipping it.
 
 ## Log
 
+### Aug 21 — SLATE-1: the clock stops losing its own row
+
+Owner, from the 375px pass: "the game of the week tag smushes the time left in
+the game and I'm good getting rid of that tag entirely." Chip removed; the
+accent ring is the whole Game of the Week treatment now.
+
+The chip was the trigger, not the cause. The header row is a flex fight between
+the live clock and the network list, and the clock was losing — the TV span was
+`shrink-0` while the left group was `min-w-0`, so a four-network game
+(`ESPN/KTRK (ABC)/Fox 5 Vegas`) took what it wanted and `Q1 · 1:13` wrapped onto
+two lines. Deleting the chip buys room today and loses the same fight next time
+to a rivalry chip, an upset alert, or a longer broadcast string.
+
+The priority is now in the markup instead of implied by ordering: the clock is
+`shrink-0 whitespace-nowrap`, because the time left in a live game is what
+DESIGN.md's first rule is about; the network list truncates, because it is the
+least glanceable thing in the row and its full text is already in the `title`
+and on the game page.
+
+Verified by mutation: restore either class and the matching test goes red.
+1,824 tests green.
+
 ### Aug 21 — the 375px pass found two things no stylesheet could show
 
 The app passed on device: no sideways scroll, no clipping, tap targets fine, the
