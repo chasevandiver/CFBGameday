@@ -361,14 +361,45 @@ on:
     - cron: "0 11 1-27 8 *"
 
 concurrency:
-  group: jobs-${{ github.event.schedule || inputs.task }}
-  # the hourly scoreboard loops overlap by design; the new run replaces the old
+  # LIVE-2, 2026-08-20. Every scoreboard-loop launch shares ONE group, whatever
+  # cron started it. The group used to be the cron string itself, so the eight
+  # schedules below were eight groups: two loops from different windows ran
+  # side by side instead of handing off — the Sat/Sun seam this file already
+  # described — and at 63 minutes that was ~3 minutes of double-polling.
+  #
+  # It stops being tolerable now that a run lasts four hours (see
+  # `timeout-minutes`), because the overlap would too: two loops means two sets
+  # of CFBD calls against a 30,000/month budget. One group means the newest
+  # launch always replaces whatever is running, from any window, and exactly
+  # one loop exists at a time. A manual dispatch lands in the same group via
+  # `inputs.task`, so it hands off the same way. (`task_override` does not —
+  # a typed override runs beside a loop rather than replacing it, which is the
+  # right call for a deliberate one-off.)
+  #
+  # THE LIST IS DUPLICATED in `timeout-minutes` and pinned to the resolve case
+  # by scripts/lib/jobs-yml.test.ts, which fails if the three ever disagree.
+  group: >-
+    jobs-${{ contains(fromJSON('["0 15-23 * * 6","0 0-5 * * 0","0 0-4 * * 5,6","0 16-23 * * 0,1","0 0-5 * * 1,2","0 0-4 * * 3,4","0 10-14 * * 6","0 20-23 * * 4,5"]'), github.event.schedule)
+    && 'scoreboard-loop'
+    || (github.event.schedule || inputs.task) }}
+  # the scoreboard loops overlap by design; the new run replaces the old
   cancel-in-progress: true
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    # LIVE-2. The live loop outlives the gap between launches instead of barely
+    # overlapping it: 63-minute runs on an hourly cron left 3 minutes of slack,
+    # so a cron that ran late — Actions routinely delivers 13-15 minutes late,
+    # and on 2026-08-20 dropped one entirely — ended coverage until the next
+    # one arrived. 27 minutes of a live NFL game went unpolled that night.
+    # A four-hour run makes a missed launch cost nothing: the loop already
+    # running keeps polling, and the next launch replaces it via the group
+    # above. Runner minutes are unchanged — one loop at a time either way, and
+    # the loop now exits after 20 idle minutes (LIVE-2, scripts/lib/idle.ts)
+    # rather than holding a runner to a deadline with no football left.
+    # Everything else keeps the old 75-minute ceiling.
+    timeout-minutes: ${{ contains(fromJSON('["0 15-23 * * 6","0 0-5 * * 0","0 0-4 * * 5,6","0 16-23 * * 0,1","0 0-5 * * 1,2","0 0-4 * * 3,4","0 10-14 * * 6","0 20-23 * * 4,5"]'), github.event.schedule) && 245 || 75 }}
     env:
       CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -470,7 +501,7 @@ jobs:
             nfl-sync-reference) npx tsx scripts/nfl-sync-reference.ts ;;
             nfl-sync-games) npx tsx scripts/nfl-sync-games.ts ;;
             nfl-refresh-lines) npx tsx scripts/nfl-refresh-lines.ts ;;
-            scoreboard-loop) npx tsx scripts/scoreboard-loop.ts --minutes 63 ;;
+            scoreboard-loop) npx tsx scripts/scoreboard-loop.ts --minutes 240 ;;
             sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze|freeze-groups|watchdog|notify-picks-due|notify-log-bets|nfl-grade|nfl-scoring|cfb-scoring|guess-lines|streak|six-pack|daily-puzzles|backfill-games|backfill-lines|backfill-rankings) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
             # Keep-alive: touch nothing, just make the run green so GitHub's
             # 60-day inactivity timer resets. No DB, no CFBD.

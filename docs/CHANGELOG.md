@@ -215,6 +215,63 @@ shipping it.
 
 ## Log
 
+### Aug 20 — the 10-second refresh had never worked, and the loop's margin was 3 minutes
+
+The NFL preseason rehearsal did in one night what four audits could not: it put
+a live game in front of the two live paths and both failed, in different ways,
+neither visibly.
+
+**LIVE-1 — `espn 403`, 408 times out of 408.** The pg_cron → pg_net → edge
+function path fires every 10 seconds and is gated correctly; the function is
+deployed; ESPN refused every call. It had never once succeeded — this was its
+first live game. It reported that failure as **HTTP 200** with the text in the
+body, so `cron.job_run_details` said `succeeded` and `net._http_response` said
+`200`. Third time this shape has bitten the project (OPS-4, OPS-19).
+
+The cause was the **User-Agent**, and the first fix was wrong, which is the
+part worth keeping: `Accept: application/json` alone — copied from
+`src/lib/espn.ts:53`, the client that has never been refused — **still 403'd**.
+Replacing Deno's default `Deno/x.y.z` with an identifiable client string
+answered on the next tick. The cutover is in the response log: 502 at
+01:00:04, 200 at 01:00:14, body `updated 0/1` (zero because the Actions loop
+had already written the same values and the function diffs before writing).
+Failures now answer 502 for an upstream refusal and 500 for our own read
+failing; the two healthy no-ops stay 200.
+
+**LIVE-2 — 27 minutes of live football, unpolled.** The 23:00 launch landed at
+23:13, ran its 63 minutes, exited at 00:16:50, and the 00:00 launch never came.
+63-minute runs on an hourly cron is three minutes of slack against a scheduler
+that drifted 13–15 minutes all evening. Now `--minutes 240` with a matching
+245-minute timeout for those eight crons: a missed launch costs nothing,
+because the loop already running keeps polling until the next replaces it.
+
+That required unifying the concurrency group first. It was keyed on the cron
+*string*, so eight schedules were eight groups and two loops from different
+windows ran side by side rather than handing off — ~3 minutes of double-polling
+at 63 minutes, but *hours* of doubled CFBD calls at four. One group now.
+
+And the run exits after 20 idle minutes rather than holding a runner to a
+four-hour deadline with no football left, which keeps runner cost where it was.
+Leaving early is free: the next launch re-enters within the hour and the
+end-of-run grading sweep still runs on the way out.
+
+Three places name the same eight crons — resolve case, group expression,
+timeout expression — and `jobs-yml.test.ts` fails if any two disagree. Both
+guards verified by mutation rather than by assertion: drop a cron from either
+list and the matching test goes red. (One of the two tests passed for the wrong
+reason when first written — it re-parsed the group's list instead of the
+timeout's — and the comment in it now says so.)
+
+**What tonight also proved:** OPS-4b works. `job_runs` 265, the loop cancelled
+at 23:13, settled itself as `canceled` with an observed `finished_at` and the
+Actions run id. The two rows still reading `running` launched before that fix
+reached `main`.
+
+**Left open, deliberately:** LIVE-3 (nothing alerts on a dark loop in real
+time — the watchdog runs three times a day) and LIVE-4 (a kept `last_play`
+carries no age, so a correct decision renders as a frozen card; needs a column,
+two writer changes and a UI change, which is not a 1am job).
+
 ### Aug 20 — MIG-1/MIG-2 closed: the ledger and the repo agree again
 
 `0077_consensus_excludes_aggregates_per_market.sql` files DQ-15's per-market

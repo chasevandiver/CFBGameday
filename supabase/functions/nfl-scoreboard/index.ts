@@ -84,11 +84,38 @@ Deno.serve(async () => {
     return new Response("idle", { status: 200 });
   }
 
+  /* LIVE-1, 2026-08-20. `Accept: application/json` mirrors src/lib/espn.ts:53,
+     which is the client that has always worked. This one sent no headers at
+     all and ESPN answered 403 to every single call — 408 of them during the
+     Texans/Raiders preseason opener, which was this path's first live game.
+     The whole 10-second refresh had never once succeeded.
+
+     If 403s continue with this header, the cause is the origin rather than the
+     request — ESPN refusing Supabase's egress — and the fix is to move the
+     pull somewhere with different egress rather than to keep adding headers. */
   const res = await fetch(
     "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard",
-    { signal: AbortSignal.timeout(10_000) },
+    {
+      headers: {
+        Accept: "application/json",
+        // Deno's default UA is `Deno/x.y.z`. The Actions loop, which has
+        // never been refused, runs on Node's global fetch and sends its own
+        // plain UA — so an identifiable client string is the remaining
+        // difference between the two callers worth testing. If this is still
+        // 403 the request is not the problem and the origin is.
+        "User-Agent":
+          "Mozilla/5.0 (compatible; TheSlate/1.0; +https://github.com/chasevandiver/CFBGameday)",
+      },
+      signal: AbortSignal.timeout(10_000),
+    },
   );
-  if (!res.ok) return new Response(`espn ${res.status}`, { status: 200 });
+  /* Non-200, deliberately. This used to answer 200 with the failure in the
+     body, so `cron.job_run_details` read `succeeded`, `net._http_response`
+     read `200`, and a path that was doing nothing at all looked healthy
+     everywhere anyone would check. Same shape as OPS-4 and OPS-19: a green
+     run that did the wrong thing is indistinguishable from one that worked.
+     502 = we are the gateway and the upstream refused us. */
+  if (!res.ok) return new Response(`espn ${res.status}`, { status: 502 });
   const board = await res.json();
 
   const patches = new Map<number, Patch>();
@@ -135,6 +162,9 @@ Deno.serve(async () => {
       type: inP ? (sit.lastPlay?.type?.text ?? null) : null,
     });
   }
+  // 200: healthy. Our gate says a game is live or imminent and ESPN has not
+  // put it on the board yet — normal in the minutes before kickoff, and not a
+  // failure to page anyone about.
   if (patches.size === 0) return new Response("no active espn games", { status: 200 });
 
   // One read of what's stored, so unchanged games cost zero writes.
@@ -146,7 +176,8 @@ Deno.serve(async () => {
     )
     .in("id", ids)
     .eq("sport", "nfl");
-  if (readErr) return new Response(`read failed: ${readErr.message}`, { status: 200 });
+  // Our own database refusing a read is a fault on this side, not upstream.
+  if (readErr) return new Response(`read failed: ${readErr.message}`, { status: 500 });
 
   const lines: string[] = [];
   let updated = 0;

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { DAY_MS, envDays, idleOverridden, idleSkip, msUntilNextGame } from "./idle";
+import { DAY_MS, envDays, idleExhausted, IDLE_EXIT_MS, idleOverridden, idleSkip, msUntilNextGame } from "./idle";
 
 /**
  * Minimal PostgREST-shaped stub. Filters chain; `.limit()` is both awaitable
@@ -144,5 +144,40 @@ describe("overrides and thresholds", () => {
     process.env.LINES_IDLE_DAYS = "-1";
     expect(envDays("LINES_IDLE_DAYS", 7)).toBe(7);
     delete process.env.LINES_IDLE_DAYS;
+  });
+});
+
+
+describe("idleExhausted — when a long run gives up (LIVE-2)", () => {
+  /**
+   * The loop now runs four hours so a dropped cron costs no coverage. The
+   * price, unguarded, is a runner held for hours after the last whistle, so
+   * the run ends once both leagues have been quiet for a while. Leaving is
+   * free: the next launch re-enters within the hour and the end-of-run
+   * grading sweep still runs on the way out.
+   */
+  const t0 = 1_700_000_000_000;
+
+  it("never exits while something is live or imminent", () => {
+    // null is the "not idle" signal, and no elapsed time makes it true.
+    expect(idleExhausted(null, t0 + 10 * 3600_000)).toBe(false);
+  });
+
+  it("waits out a halftime rather than quitting on the first quiet tick", () => {
+    expect(idleExhausted(t0, t0)).toBe(false);
+    expect(idleExhausted(t0, t0 + 60_000)).toBe(false);
+    expect(idleExhausted(t0, t0 + 15 * 60_000)).toBe(false);
+  });
+
+  it("exits once the quiet has run past the limit", () => {
+    expect(idleExhausted(t0, t0 + IDLE_EXIT_MS)).toBe(true);
+    expect(idleExhausted(t0, t0 + IDLE_EXIT_MS + 1)).toBe(true);
+  });
+
+  it("sits through a stoppage longer than the old whole run was", () => {
+    // The limit has to clear halftime and a weather delay's pause; anything
+    // near the old 63-minute run length would end a run mid-game.
+    expect(IDLE_EXIT_MS).toBeGreaterThanOrEqual(15 * 60_000);
+    expect(IDLE_EXIT_MS).toBeLessThan(63 * 60_000);
   });
 });
