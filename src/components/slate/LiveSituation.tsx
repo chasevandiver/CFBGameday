@@ -15,6 +15,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { EMPTY_TRAIL, foldTrail, type TrailState } from "../../lib/drive-trail";
 import { playAge } from "../../lib/slate";
+import { breakLabel } from "../../lib/kick";
 import {
   fieldPosition,
   isRedZone,
@@ -150,7 +151,12 @@ export function LiveSituation({
       clearInterval(id);
     };
   }, [playAt]);
-  const age = playAt ? ageState : null;
+  /* No age during a break. At halftime the last play IS twelve minutes old and
+     that is the game, not a fault — and the card is already saying HALFTIME
+     beside it, so the badge would be answering a question nobody asked with a
+     number that looks like an alarm. Same between quarters. */
+  const atBreak = breakLabel(game.period, game.clock) !== null;
+  const age = playAt && !atBreak ? ageState : null;
   const redZone = isRedZone(game);
   const posTeam =
     game.possession === "home" ? game.home : game.possession === "away" ? game.away : null;

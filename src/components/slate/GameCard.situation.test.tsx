@@ -178,3 +178,58 @@ describe("the last score outlives the plays after it", () => {
     expect(screen.getByText(/Rivera 8 yd pass/)).toBeTruthy();
   });
 });
+
+
+describe("the break between periods (2026-08-21)", () => {
+  /**
+   * Owner question the night of the preseason rehearsal: "is there anything
+   * stating halftime when a game goes to half?" There was not. ESPN sends
+   * STATUS_HALFTIME, the parser keeps only `type.state`, and the card rendered
+   * the ordinary live treatment — `Q2 · 0:00`, in the two-minute-warning
+   * styling, with a last-play age climbing past ten minutes. Three separate
+   * signals all saying "something urgent is happening" through the quietest
+   * stretch of the game.
+   */
+  it("says HALFTIME instead of Q2 · 0:00", () => {
+    renderCard(live({ period: 2, clock: "0:00", lastPlay: "Kickoff returned to the 22." }));
+    expect(screen.getByText("HALFTIME")).toBeTruthy();
+    expect(screen.queryByText(/Q2 · 0:00/)).toBeNull();
+  });
+
+  it("names the gap between quarters too", () => {
+    renderCard(live({ period: 1, clock: "0:00" }));
+    expect(screen.getByText("END Q1")).toBeTruthy();
+  });
+
+  it("drops the two-minute-warning treatment at halftime", () => {
+    const { container } = renderCard(live({ period: 2, clock: "0:00" }));
+    expect(container.querySelector(".u2m")).toBeNull();
+  });
+
+  it("keeps the warning treatment with a second still on the clock", () => {
+    const { container } = renderCard(live({ period: 2, clock: "0:01" }));
+    expect(container.querySelector(".u2m")).toBeTruthy();
+  });
+
+  it("still shows the period and clock while the game is being played", () => {
+    renderCard(live({ period: 3, clock: "8:42" }));
+    expect(screen.getByText(/Q3/)).toBeTruthy();
+    expect(screen.queryByText(/HALFTIME|END Q/)).toBeNull();
+  });
+
+  it("hides the last-play age during the break, where old is normal", () => {
+    // LIVE-4's badge means "this card may be stale". At halftime the play IS
+    // twelve minutes old and nothing is wrong, so the number would be an
+    // alarm about the game working correctly.
+    renderCard(
+      live({
+        period: 2,
+        clock: "0:00",
+        lastPlay: "Kickoff returned to the 22.",
+        lastPlayAt: new Date(Date.now() - 12 * 60_000).toISOString(),
+      }),
+    );
+    expect(screen.getByText("HALFTIME")).toBeTruthy();
+    expect(screen.queryByText(/^\d+m$/)).toBeNull();
+  });
+});

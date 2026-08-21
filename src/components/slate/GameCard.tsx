@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { voidBet } from "../../app/actions/bets";
 import { inSlip, useBetSlip, type SlipSelection } from "../../lib/bet-slip-store";
 import { betsChanged } from "../../lib/bets-changed";
-import { kickParts, periodLabel, underTwo } from "../../lib/kick";
+import { breakLabel, kickParts, periodLabel, underTwo } from "../../lib/kick";
 import {
   settledResult,
   statusForBet,
@@ -293,7 +293,7 @@ export function GameCard({
         {live && headline && (
           <p className="sr-only" aria-live="polite">
             {game.away.abbr} {game.awayPoints ?? 0}, {game.home.abbr} {game.homePoints ?? 0},{" "}
-            {periodLabel(game.period)}
+            {breakLabel(game.period, game.clock) ?? periodLabel(game.period)}
           </p>
         )}
 
@@ -370,6 +370,7 @@ function CardHeader({
   onFocus?: (gameId: number) => void;
 }) {
   const u2m = live && underTwo(game.period, game.clock);
+  const liveBreak = live ? breakLabel(game.period, game.clock) : null;
   return (
     <div className="flex min-h-5 items-center justify-between gap-2">
       <div className="flex min-w-0 items-center gap-2">
@@ -390,8 +391,15 @@ function CardHeader({
           <>
             <LiveBadge />
             <span className={`stat text-xs font-semibold ${u2m ? "u2m" : "text-chalk"}`}>
-              {periodLabel(game.period)}
-              {game.clock ? ` · ${game.clock}` : ""}
+              {/* A break replaces the clock rather than joining it: "HALFTIME"
+                  already says everything "Q2 · 0:00" does, in the language of
+                  the broadcast. */}
+              {liveBreak ?? (
+                <>
+                  {periodLabel(game.period)}
+                  {game.clock ? ` · ${game.clock}` : ""}
+                </>
+              )}
             </span>
             {upsetAlert(game) && (
               <span className="chip live-dot bg-loss/15 text-loss">Upset alert</span>

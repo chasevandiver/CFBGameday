@@ -215,6 +215,34 @@ shipping it.
 
 ## Log
 
+### Aug 21 — LIVE-6: the card never said "halftime"
+
+Owner question an hour after the rehearsal, and the answer was no. ESPN sends
+`STATUS_HALFTIME`; the parser keeps only `type.state` (`"in"`), so halftime
+arrived as an ordinary live tick and the card read `Q2 · 0:00`.
+
+Two things compounded it. `underTwo` counts a Q2/Q4 clock under 2:00 as the
+two-minute warning and `0:00` qualifies, so the card wore its tensest treatment
+through the quietest twelve minutes of the game. And LIVE-4's age badge —
+shipped an hour earlier — would have climbed past `12m` during halftime, which
+is precisely the "this card is stale" signal, at the one moment being old is
+correct.
+
+`breakLabel(period, clock)` derives it: period 2 with an expired clock is
+`HALFTIME`, everything else is `END Q1` / `END Q3` / `END OT`. Derived rather
+than captured on purpose — ESPN's status string would cost a column and both
+writers and still leave CFB uncovered, where CFBD sends no equivalent, while
+period-plus-expired-clock means halftime in both leagues.
+
+Wired at all seven live surfaces, including both screen-reader lines: a game
+that reads HALFTIME on the slate and `Q2 · 0:00` in the ticker is the same
+defect `LiveSituation` was extracted to end. `underTwo` now excludes an expired
+clock and the age badge hides during a break.
+
+Verified by mutation: stubbing `breakLabel` to null turns three card tests red,
+and the `0:00`/`0:01` pair pins the warning treatment from both sides. 1,810
+tests across 124 files green.
+
 ### Aug 20 — closing the night's open items: LIVE-3, LIVE-4, and one the fix found
 
 Owner asked for the rest the same night, and wiring the first one turned up a

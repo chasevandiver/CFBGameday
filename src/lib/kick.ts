@@ -213,12 +213,51 @@ export function periodLabel(period: number | null): string {
 }
 
 /**
- * Inside the two-minute warning window: Q2 or Q4 with the clock under 2:00.
- * Hoisted from GameCard (which renders it as the `u2m` treatment) so Fun
- * Mode's pulse cadence can read the same fact instead of re-parsing.
+ * Inside the two-minute warning window: Q2 or Q4 with the clock under 2:00 —
+ * and still running. Hoisted from GameCard (which renders it as the `u2m`
+ * treatment) so Fun Mode's pulse cadence can read the same fact instead of
+ * re-parsing.
+ *
+ * `0:00` is excluded, added 2026-08-21. It is arithmetically under two minutes
+ * and it is the opposite of the thing this marks: at Q2 0:00 the half is OVER,
+ * and the card was wearing the tensest treatment it owns through the calmest
+ * twelve minutes of the game. The urgency is about time REMAINING, and there
+ * is none.
  */
 export function underTwo(period: number | null, clock: string | null): boolean {
   if ((period !== 2 && period !== 4) || !clock) return false;
-  const m = /^(\d+):\d\d$/.exec(clock);
+  if (isZeroClock(clock)) return false;
+  const m = /^(\d+):\d\d$/.exec(clock.trim());
   return m !== null && Number(m[1]) < 2;
+}
+
+/** A clock that has run out — `0:00`, or `00:00` from a feed that pads. */
+function isZeroClock(clock: string): boolean {
+  return /^0+:00$/.test(clock.trim());
+}
+
+/**
+ * The break a game is sitting in, or null when it is being played.
+ *
+ * Owner question, 2026-08-21: "is there anything stating halftime when a game
+ * goes to half?" There was not. ESPN sends `STATUS_HALFTIME`, but the parser
+ * reads only `type.state` ("in"), so halftime arrived as an ordinary live tick
+ * and the card said `Q2 · 0:00` — true, and not the word anyone was looking
+ * for. The same silence covered the gaps between quarters.
+ *
+ * Derived from the stored period and clock rather than captured from the feed,
+ * deliberately. Capturing ESPN's status string would mean a column and a
+ * change in both writers, and it would do nothing for CFB, where CFBD sends no
+ * equivalent — while period 2 with an expired clock means halftime in both
+ * leagues and in every feed that will ever back them.
+ *
+ * Callers render this INSTEAD of the period and clock: "HALFTIME" already says
+ * everything `Q2 · 0:00` does, and says it in the language of the broadcast.
+ */
+export function breakLabel(period: number | null, clock: string | null): string | null {
+  if (period === null || period < 1 || !clock || !isZeroClock(clock)) return null;
+  // Q4 at 0:00 is a game going to overtime — it reads as END Q4 rather than
+  // anything cleverer, because "the fourth quarter is over" is what happened
+  // and the OT period appears on the next tick anyway.
+  return period === 2 ? "HALFTIME" : `END ${periodLabel(period)}`;
 }

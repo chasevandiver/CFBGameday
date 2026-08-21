@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useViewerTz } from "../../lib/client-store";
 import type { GameRow } from "../../lib/db-types";
 import type { PickMarket } from "../../lib/grade";
-import { DEFAULT_TZ, kickDateLong, kickParts, periodLabel, tzLabel } from "../../lib/kick";
+import { breakLabel, DEFAULT_TZ, kickDateLong, kickParts, periodLabel, tzLabel } from "../../lib/kick";
 import { statusForBet, statusForPick } from "../../lib/live-status";
 import { watchLabel } from "../../lib/watch-on";
 import {
@@ -236,8 +236,12 @@ export function GameHeader({
               <span className="flex items-center gap-2">
                 <LiveBadge />
                 <span className="font-semibold text-chalk">
-                  {periodLabel(g.period)}
-                  {g.clock ? ` · ${g.clock}` : ""}
+                  {breakLabel(g.period, g.clock) ?? (
+                    <>
+                      {periodLabel(g.period)}
+                      {g.clock ? ` · ${g.clock}` : ""}
+                    </>
+                  )}
                 </span>
               </span>
             ) : final ? (
@@ -266,7 +270,7 @@ export function GameHeader({
         {/* score changes announced without re-reading the whole page */}
         <p className="sr-only" aria-live="polite">
           {live
-            ? `${away.abbr} ${aPts}, ${home.abbr} ${hPts}, ${periodLabel(g.period)}`
+            ? `${away.abbr} ${aPts}, ${home.abbr} ${hPts}, ${breakLabel(g.period, g.clock) ?? periodLabel(g.period)}`
             : final
               ? `Final: ${away.abbr} ${aPts}, ${home.abbr} ${hPts}`
               : ""}

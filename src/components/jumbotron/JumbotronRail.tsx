@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { isRedZone, type GameView } from "../../lib/slate";
-import { periodLabel } from "../../lib/kick";
+import { breakLabel, periodLabel } from "../../lib/kick";
 
 /**
  * The rest of the board (R5-A): every other live game as a big-type row —
@@ -27,8 +27,12 @@ export function JumbotronRail({ games, demo = false }: { games: GameView[]; demo
               {isRedZone(g) && (
                 <span aria-label="Red zone" className="live-dot inline-block h-2 w-2 rounded-full bg-loss" />
               )}
-              {periodLabel(g.period)}
-              {g.clock ? ` ${g.clock}` : ""}
+              {breakLabel(g.period, g.clock) ?? (
+                <>
+                  {periodLabel(g.period)}
+                  {g.clock ? ` ${g.clock}` : ""}
+                </>
+              )}
             </span>
           </span>
         );
