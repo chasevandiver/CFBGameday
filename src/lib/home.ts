@@ -15,6 +15,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fetchOpenPickCount } from "./picks-due";
 import { fetchBettingSheet, byUnits } from "./betting-groups";
 import { spreadClv, totalClv } from "./clv";
 import type { GroupWeekConfigRow, PickMarket } from "./db-types";
@@ -97,6 +98,10 @@ export interface HomeData {
   openBetUnits: number;
   /** Picks made on this week's board, across every pool. */
   weekPickCount: number;
+  /** Picks still owed across every pool — the hub's Groups card says so
+   *  (owner call, 2026-08-21: this was a "9+" on a nav icon and read as
+   *  noise, because a badge cannot say what it is counting). */
+  picksDue: number;
   groups: GroupStanding[];
   progress: WeekProgress[];
   /** The money ledger, this season. */
@@ -406,6 +411,8 @@ export async function fetchHomeData(
     openBetCount: 0,
     openBetUnits: 0,
     weekPickCount: 0,
+    // Nothing is owed when nobody is signed in.
+    picksDue: 0,
     groups: [],
     progress: [],
     bets: EMPTY_TALLY,
@@ -638,12 +645,18 @@ export async function fetchHomeData(
       .filter((ts): ts is string => ts !== null && Date.parse(ts) > nowMs)
       .sort()[0] ?? null;
 
+  /* One call, one rule (`fetchOpenPickCount`), shared with /api/picks-due.
+     Cheap: three narrow reads keyed on this viewer's group memberships, and it
+     short-circuits to 0 before any of them for someone in no groups. */
+  const picksDue = await fetchOpenPickCount(supabase, userId);
+
   return {
     ...empty,
     positions,
     openBetCount,
     openBetUnits,
     weekPickCount: myWeekPicks.length,
+    picksDue,
     groups,
     progress,
     bets: betsTally,

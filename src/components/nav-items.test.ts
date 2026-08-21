@@ -106,12 +106,13 @@ describe("nav slots", () => {
     ]);
   });
 
-  it("badges Groups and nothing else", () => {
-    // A pick is the only thing in this app that expires. A badge that can
-    // appear for anything else is one people stop seeing, which costs exactly
-    // the Saturday it was built for.
-    expect(NAV_ITEMS.filter((i) => i.badge).map((i) => i.label)).toEqual(["Groups"]);
-    expect(NAV_ITEMS.find((i) => i.label === "Groups")?.badge).toBe("picks-due");
+  it("badges nothing at all", () => {
+    /* The Groups tab carried a picks-due count for a few hours on 2026-08-21
+       and the owner's read of it was "there's a 9+ notification on the groups
+       tab which is confusing." They were right: a number floating over an icon
+       cannot say what it is counting, and the hub's Groups card can say the
+       whole sentence. The count moved there; nothing here is badged. */
+    expect(NAV_ITEMS.every((i) => !("badge" in i))).toBe(true);
   });
 
   it("puts everything else behind More", () => {
