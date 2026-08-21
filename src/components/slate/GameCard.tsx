@@ -37,12 +37,11 @@ import {
   spreadMoveRead,
   upsetAlert,
   watchability,
-  type CrewPickView,
   type GameView,
   type MyBetView,
   type TeamView,
 } from "../../lib/slate";
-import { ConsensusChip, EdgeChip, LiveBadge, LiveStatusChip, MoveIndicator, PickedChip, ResultChip } from "./chips";
+import { ConsensusChip, EdgeChip, LiveBadge, LiveStatusChip, MoveIndicator, ResultChip } from "./chips";
 import { CoverStrip } from "./CoverStrip";
 import { LiveSituation } from "./LiveSituation";
 import { SheetLine } from "./SheetLine";
@@ -64,6 +63,10 @@ interface Props {
   /** Multi-game focus mode: pinned to the Focus row at the top of the slate */
   focused?: boolean;
   onFocus?: (gameId: number) => void;
+  /** The pick'em group this slate is scoped to, for the pool layer's header.
+   *  Null when the viewer is in no pool, which is when that layer is empty
+   *  anyway. */
+  poolName?: string | null;
   /** Sample data: the game id is invented, so the card does not link out. */
   demo?: boolean;
 }
@@ -84,6 +87,7 @@ export function GameCard({
   featured = false,
   focused = false,
   onFocus,
+  poolName = null,
   demo = false,
 }: Props) {
   const live = isLive(game);
@@ -335,7 +339,7 @@ export function GameCard({
             {dead ? null : final ? (
               <FinalFooter game={game} />
             ) : (
-              <PregameFooter game={game} live={live} />
+              <PregameFooter game={game} live={live} poolName={poolName} />
             )}
           </div>
         </div>
@@ -595,122 +599,75 @@ function sideLabel(g: GameView, side: string): string {
   return side === "over" ? "Over" : "Under";
 }
 
-const initials = (name: string) =>
-  name
-    .split(/\s+/)
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
-/** The team colour a side belongs to; null for over/under, which belong to
- *  neither team and take the neutral push colour. */
-function sideColor(game: GameView, side: string): string | null {
-  if (side === "home") return game.home.color ?? null;
-  if (side === "away") return game.away.color ?? null;
-  return null;
-}
-
 /**
- * The overlapping initials cluster. One implementation, so the branch that
- * names the crew and the branch that names your tail render the same object —
- * they were the same picture drawn twice, and the second copy is how two
- * treatments of one idea start to drift.
+ * The pool layer: your pick'em picks on this game, and everyone else's.
+ *
+ * Owner request, 2026-08-21, with a screenshot: *"get rid of the tags for the
+ * group pickem picks and list them like we have the bet groups. So it should
+ * say (group name) 'You USC -37 & Over' then list if anyone else is on the
+ * same side or what the other pickems are in that group."*
+ *
+ * It reads like `SheetLine` on purpose — group, then "You", then the room —
+ * because a pool pick and a bet are the same shape of fact and the card was
+ * telling them two different ways: chips in the tag row for yours, a count for
+ * everyone else's. The chips are gone; this is the whole pool layer now.
+ *
+ * Your own picks collapse into ONE row joined by `&`, because "USC -37" and
+ * "Over 59.5" are one decision about one game rather than two rows of a list.
+ *
+ * Nothing is revealed that RLS did not already hand over: another member's
+ * pick arrives only through `picks_revealed` (0023), so a group that hides
+ * picks until kickoff shows you your own row and nothing else until then.
  */
-function CrewPips({ members, color }: { members: CrewPickView[]; color: string | null }) {
-  return (
-    <span className="flex shrink-0" aria-hidden>
-      {members.map((c) => (
-        <span
-          key={c.name}
-          title={c.record ? `${c.name} ${c.record}` : c.name}
-          className="stat -ml-1 flex h-[18px] w-[18px] items-center justify-center rounded-full border text-[8px] font-bold text-chalk first:ml-0"
-          style={{
-            background: `color-mix(in srgb, ${color ?? "var(--push)"} 32%, var(--elev))`,
-            borderColor: `color-mix(in srgb, ${color ?? "var(--push)"} 60%, transparent)`,
-          }}
-        >
-          {initials(c.name)}
-        </span>
-      ))}
-    </span>
-  );
-}
-
-/**
- * Who else is riding this game, and how their week is going. With a pick of
- * your own, the line splits into "with you" and the fade; without one it
- * shows the crew's split.
- */
-function CrewLine({ game }: { game: GameView }) {
+function CrewLine({ game, poolName }: { game: GameView; poolName?: string | null }) {
   const crew = game.crewPicks;
-  if (crew.length === 0) return null;
-  const my = headlinePick(game.myPicks);
+  const mine = game.myPicks;
+  if (crew.length === 0 && mine.length === 0) return null;
 
-  if (!my) {
-    /* POOL-3, owner request 2026-08-21: "on the game cards it just says a
-       number on how many people picked what team — can we do the same thing
-       like tail/fade, list who picked what."
-       The tail/fade shape below already named people; only this branch — the
-       one a reader sees before they have picked — counted them. "3 HOU" is
-       the least interesting true thing the card knows: WHO is on it is the
-       part you argue about.
-       Nothing is revealed that was not already: RLS returns another member's
-       pick only through `picks_revealed` (0023), so a group that hides picks
-       until kickoff hands this component an empty list until kickoff. The
-       reveal rule is the database's, and this is presentation. */
-    const bySide = new Map<string, CrewPickView[]>();
-    for (const c of crew) bySide.set(c.side, [...(bySide.get(c.side) ?? []), c]);
-    return (
-      <div className="mt-2 flex flex-col gap-1 border-t border-chalk/8 pt-2 text-[11px] text-dim">
-        <PoolLabel />
-        {[...bySide.entries()].map(([side, members]) => (
-          <div key={side} className="flex items-center gap-1.5">
-            <CrewPips members={members} color={sideColor(game, side)} />
-            <span className="stat shrink-0 font-semibold text-chalk/70">
-              {sideLabel(game, side)}
-            </span>
-            <span className="truncate">{members.map((c) => c.name).join(" · ")}</span>
-          </div>
-        ))}
-      </div>
-    );
-  }
+  const myLine = mine.map((mp) => pickPrefix(game, mp)).join(" & ");
+  const mySides = new Set(mine.map((mp) => mp.side));
+  const withMe = crew.filter((c) => mySides.has(c.side));
+  const against = crew.filter((c) => !mySides.has(c.side));
 
-  const pickTeam = my.side === "home" ? game.home : my.side === "away" ? game.away : null;
-  const withMe = crew.filter((c) => c.side === my.side);
-  const against = crew.filter((c) => c.side !== my.side);
   return (
-    <div className="mt-2 border-t border-chalk/8 pt-2 text-[11px] text-dim">
-      <PoolLabel />
-      <div className="flex items-center gap-1.5">
-      {withMe.length > 0 && (
-        <CrewPips members={withMe} color={pickTeam?.color ?? null} />
-      )}
-      <span className="truncate">
-        {withMe.length === 0
-          ? "Only you on this side"
-          : `${withMe.map((c) => `${c.name}${c.record ? ` ${c.record}` : ""}`).join(" · ")} with you`}
-      </span>
-      {against.length > 0 && (
-        <span className="ml-auto shrink-0 truncate text-chalk/55">
-          {against.map((c) => `${c.name} ${sideLabel(game, c.side)}`).join(", ")}
+    <div className="mt-2 border-t border-chalk/8 pt-2 text-[11px]">
+      <div className="mb-1 flex items-center gap-1.5">
+        <Users size={10} aria-hidden className="shrink-0 text-chalk/45" />
+        <span className="stat text-[10px] font-semibold uppercase tracking-wider text-chalk/45">
+          Pool
         </span>
-      )}
+        {poolName && (
+          <span className="stat truncate text-[10px] text-chalk/35">{poolName}</span>
+        )}
       </div>
-    </div>
-  );
-}
 
-/** Mirrors SheetLine's header, because POOL and SHEET are the card's two
- *  layers and should announce themselves the same way. */
-function PoolLabel() {
-  return (
-    <div className="mb-1 flex items-center gap-1.5">
-      <Users size={10} aria-hidden className="shrink-0 text-chalk/45" />
-      <span className="stat text-[10px] font-semibold uppercase tracking-wider text-chalk/45">
-        Pool
-      </span>
+      <ul className="flex flex-col gap-0.5">
+        {myLine && (
+          <li className="flex items-baseline gap-1.5">
+            <span className="stat shrink-0 font-semibold text-accent">You</span>
+            <span className="stat truncate text-chalk">{myLine}</span>
+            {withMe.length > 0 && (
+              <span className="stat ml-auto shrink-0 text-[10px] text-chalk/45">
+                {withMe.length} with you
+              </span>
+            )}
+          </li>
+        )}
+        {/* Theirs, with you first: the question a reader has is "who else is on
+            my side", and the fade is the answer to the second question. */}
+        {[...withMe, ...against].map((c) => (
+          <li key={`${c.name}-${c.side}`} className="flex items-baseline gap-1.5">
+            <span className="stat shrink-0 truncate text-chalk/70">{c.name}</span>
+            <span className="stat truncate text-dim">{sideLabel(game, c.side)}</span>
+            {c.record && (
+              <span className="stat ml-auto shrink-0 text-[10px] text-chalk/35">{c.record}</span>
+            )}
+          </li>
+        ))}
+        {myLine && crew.length === 0 && (
+          <li className="stat text-[10px] text-chalk/35">Nobody else in yet</li>
+        )}
+      </ul>
     </div>
   );
 }
@@ -967,7 +924,15 @@ function BetChip({ bet, label }: { bet: MyBetView; label: string }) {
   );
 }
 
-function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
+function PregameFooter({
+  game,
+  live,
+  poolName,
+}: {
+  game: GameView;
+  live: boolean;
+  poolName?: string | null;
+}) {
   const final = isFinal(game);
   const p = game.prediction;
   const picks = modelPicks(game);
@@ -1001,10 +966,10 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           {/* Your side leads the row: it is the one thing on a pregame card
               that is about you rather than about the game. */}
-          {!live &&
-            game.myPicks.map((mp) => (
-              <PickedChip key={mp.market} label={pickPrefix(game, mp)} />
-            ))}
+          {/* The pool chips that used to live here — one per pick — are gone
+              (owner call, 2026-08-21). They said the same thing the POOL layer
+              at the bottom now says, in a worse place: a tag row is for facts
+              about the GAME, and "you took USC -37" is a fact about you. */}
           {!settled &&
             betStatuses
               .filter(({ bet }) => !bet.result)
@@ -1027,7 +992,7 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
           It now sits here, at the bottom, above the money layer and in the same
           shape: a labelled layer, POOL then SHEET, so the two read as a pair
           rather than as one feature and one leftover. */}
-      <CrewLine game={game} />
+      <CrewLine game={game} poolName={poolName} />
 
       {/* The money layer, under the pool layer and visibly separate from it:
           who in the betting group is on this game and who put it up first.

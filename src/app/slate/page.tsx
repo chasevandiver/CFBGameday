@@ -150,6 +150,7 @@ export default async function SlatePage({
           displayName={displayName}
           signs={user && !liveView ? signs : null}
           signsWeek={week}
+          poolName={pickemGroup?.name ?? null}
         />
       </main>
     </>

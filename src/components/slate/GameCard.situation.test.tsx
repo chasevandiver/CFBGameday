@@ -346,59 +346,93 @@ describe("the header row keeps the clock whole (2026-08-21)", () => {
 });
 
 
-describe("the crew line names people (POOL-3)", () => {
+describe("the pool layer reads like the sheet (POOL-3c)", () => {
   /**
-   * Owner request, 2026-08-21: "on the game cards it just says a number on how
-   * many people picked what team — can we do the same thing like tail/fade,
-   * list who picked what."
+   * Owner request, 2026-08-21, with a screenshot: "get rid of the tags for the
+   * group pickem picks and list them like we have the bet groups. So it should
+   * say (group name) 'You USC -37 & Over' then list if anyone else is on the
+   * same side or what the other pickems are in that group."
    *
-   * The tail/fade branch (viewer has a pick) already named people. The branch a
-   * reader sees BEFORE picking counted them: "Crew: 3 HOU · 2 LV". Who is on it
-   * is the part you argue about.
-   *
-   * Nothing new is revealed: RLS hands this component another member's pick
-   * only through `picks_revealed` (0023), so a group that hides picks until
-   * kickoff passes an empty list until kickoff. The reveal rule is the
-   * database's; this is presentation.
+   * A pool pick and a bet are the same shape of fact, and the card was telling
+   * them two different ways — chips in the tag row for yours, a count for
+   * everyone else's. These tests moved with the block: they previously pinned
+   * an intermediate shape (names joined under a side label), which answered
+   * the letter of "list who picked what" without the form the owner meant.
    */
-  const withCrew = (crew: Array<{ name: string; side: string; record: string | null }>) =>
-    live({ crewPicks: crew } as Partial<GameView>);
+  const pooled = (over: Partial<GameView> = {}) =>
+    live({ situation: null, possession: null, lastPlay: null, ...over } as Partial<GameView>);
 
-  it("lists who took each side instead of counting them", () => {
-    renderCard(
-      withCrew([
-        { name: "Dave", side: "home", record: "12-8" },
-        { name: "Ann", side: "home", record: null },
-        { name: "Bob", side: "away", record: "9-11" },
-      ]),
+  const renderPool = (game: GameView) =>
+    render(
+      <GameCard
+        game={game}
+        tz="America/Chicago"
+        starred={[]}
+        onStar={() => {}}
+        poolName="Test Group"
+      />,
     );
-    expect(screen.getByText(/Dave · Ann/)).toBeTruthy();
-    expect(screen.getByText("Bob")).toBeTruthy();
-    // The count line is gone.
-    expect(screen.queryByText(/Crew: 2/)).toBeNull();
+
+  it("names the pool, the way the sheet names a betting group", () => {
+    renderPool(
+      pooled({ crewPicks: [{ name: "Dave", side: "home", record: null }] } as Partial<GameView>),
+    );
+    expect(screen.getByText("Test Group")).toBeTruthy();
   });
 
-  it("groups the names under the side they took", () => {
-    renderCard(
-      withCrew([
-        { name: "Dave", side: "home", record: null },
-        { name: "Bob", side: "away", record: null },
-      ]),
+  it("collapses your own picks into one You row joined by &", () => {
+    // "USC -37" and "Over" are one decision about one game, not two rows.
+    renderPool(
+      pooled({
+        myPicks: [
+          { market: "spread", side: "home", line: -7 },
+          { market: "total", side: "over", line: 51.5 },
+        ],
+      } as Partial<GameView>),
     );
-    /* The abbreviation appears in the team rows too, so scope to the crew
-       line: each side's label sits immediately before its names, in the same
-       row. Asserting on the pairing is the point — a label and a list that
-       drifted apart would still pass a bare getAllByText. */
-    const home = screen.getByText("Dave").previousElementSibling;
-    const away = screen.getByText("Bob").previousElementSibling;
-    expect(home?.textContent).toBe("CIN");
-    expect(away?.textContent).toBe("DET");
+    expect(screen.getByText("You")).toBeTruthy();
+    expect(screen.getByText(/&/)).toBeTruthy();
   });
 
-  it("says nothing at all when the blind is hiding the crew", () => {
-    // An empty list is what a hidden group looks like from here, and the line
-    // should not appear as an empty shell.
-    const { container } = renderCard(withCrew([]));
-    expect(container.textContent).not.toContain("·  ");
+  it("lists every other picker with the side they took", () => {
+    renderPool(
+      pooled({
+        crewPicks: [
+          { name: "Dave", side: "home", record: "12-8" },
+          { name: "Ann", side: "away", record: null },
+        ],
+      } as Partial<GameView>),
+    );
+    expect(screen.getByText("Dave")).toBeTruthy();
+    expect(screen.getByText("Ann")).toBeTruthy();
+    // Their record rides along, like the sheet's does.
+    expect(screen.getByText("12-8")).toBeTruthy();
+  });
+
+  it("counts who is with you when you have a pick", () => {
+    renderPool(
+      pooled({
+        myPicks: [{ market: "spread", side: "home", line: -7 }],
+        crewPicks: [
+          { name: "Dave", side: "home", record: null },
+          { name: "Ann", side: "away", record: null },
+        ],
+      } as Partial<GameView>),
+    );
+    expect(screen.getByText("1 with you")).toBeTruthy();
+  });
+
+  it("says so when you are first in", () => {
+    renderPool(
+      pooled({ myPicks: [{ market: "spread", side: "home", line: -7 }] } as Partial<GameView>),
+    );
+    expect(screen.getByText("Nobody else in yet")).toBeTruthy();
+  });
+
+  it("renders nothing when the pool has nothing on this game", () => {
+    // Also the shape of a hide-until-kickoff group before kickoff: RLS hands
+    // over no crew picks and the viewer has none of their own.
+    const { container } = renderPool(pooled({ myPicks: [], crewPicks: [] } as Partial<GameView>));
+    expect(container.textContent).not.toContain("Pool");
   });
 });
