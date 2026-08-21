@@ -87,17 +87,31 @@ describe("nav slots", () => {
    * take an edit here that says what changed and why.
    */
   it("gives the bottom bar five primary items, Home first", () => {
-    // Five, deliberately (R3-E1). Games is the fifth slot and Edges paid for
-    // it by giving up its desktop tab (UX-33, answered 2026-08-17). Six cells
-    // including More is ~62px each at 375px and ~53px at 320px, both inside
-    // DESIGN.md's 44px rule against a 64px bar.
+    // Five, deliberately (R3-E1). Edges paid for the fifth slot by giving up
+    // its desktop tab (UX-33, answered 2026-08-17). Six cells including More
+    // is ~62px each at 375px and ~53px at 320px, both inside DESIGN.md's 44px
+    // rule against a 64px bar.
+    //
+    // GROUPS AND GAMES SWAPPED 2026-08-21, owner call. The pool is what people
+    // open the app to do on a Saturday — picks, the crew, the board — and it
+    // was sitting one slot from the More sheet while the arcade held the
+    // middle of the thumb zone. Nothing about the count or the widths changes;
+    // this is which of the two is easier to reach with a thumb.
     expect(PRIMARY_ITEMS.map((i) => i.label)).toEqual([
       "Home",
       "Slate",
-      "Games",
-      "Ledger",
       "Groups",
+      "Ledger",
+      "Games",
     ]);
+  });
+
+  it("badges Groups and nothing else", () => {
+    // A pick is the only thing in this app that expires. A badge that can
+    // appear for anything else is one people stop seeing, which costs exactly
+    // the Saturday it was built for.
+    expect(NAV_ITEMS.filter((i) => i.badge).map((i) => i.label)).toEqual(["Groups"]);
+    expect(NAV_ITEMS.find((i) => i.label === "Groups")?.badge).toBe("picks-due");
   });
 
   it("puts everything else behind More", () => {
@@ -121,15 +135,18 @@ describe("nav slots", () => {
   });
 
   it("keeps mobile-only and overflow-only items out of the desktop strip", () => {
+    // Same swap as the bottom bar, and for the reason the module header
+    // gives: one list drives both navs, and keeping a second order for
+    // desktop is how the two drift apart.
     expect(DESKTOP_ITEMS.map((i) => i.label)).toEqual([
       "Slate",
-      "Games",
+      "Groups",
       "Rankings",
       "Ratings",
       "Standings",
       "Teams",
       "Ledger",
-      "Groups",
+      "Games",
       "Receipts",
     ]);
   });

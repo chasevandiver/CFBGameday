@@ -26,6 +26,12 @@ export interface NavItem {
    */
   overflowOnly?: true;
   icon?: ComponentType<{ size?: number | string; "aria-hidden"?: boolean }>;
+  /**
+   * Marks the tab that carries a live count. Only `picks-due` exists: a pick
+   * is the one thing in this app with a deadline, and a badge that appears for
+   * anything else teaches people to ignore it.
+   */
+  badge?: "picks-due";
 }
 
 /**
@@ -37,15 +43,20 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { label: "Home", href: "/", primary: true, mobileOnly: true, icon: Home },
   { label: "Slate", href: "/slate", also: ["/game"], primary: true, icon: BarChart3 },
-  // The game layer, one tab (R3-E1). `also` covers every game route so
-  // playing one keeps the tab lit; `/games` cannot collide with Slate's
-  // `/game` because isNavItemActive matches exact-or-slash, never bare prefix.
+  /* Owner call, 2026-08-21: Groups takes the third slot and Games takes the
+     fifth. The pool is what people open the app to do on a Saturday — picks,
+     the crew, the board — and it was sitting one slot from the More sheet
+     while the arcade held the middle of the thumb zone. Order in this array is
+     the order in both navs, which is the point of one list. */
   {
-    label: "Games",
-    href: "/games",
-    also: ["/guess-lines", "/streak", "/guess-game", "/six-pack", "/tape", "/chains", "/depth-chart"],
+    label: "Groups",
+    href: "/groups",
+    also: ["/crew", "/rules"],
     primary: true,
-    icon: Gamepad2,
+    icon: Users,
+    /** The only badged tab: unmade picks are the one thing in this app that
+     *  expires. See PicksDueBadge. */
+    badge: "picks-due",
   },
   { label: "Edges", href: "/edges", overflowOnly: true, icon: TrendingUp },
   // R5-A: a takeover surface, not a daily destination — the slate's Live
@@ -57,7 +68,16 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Standings", href: "/standings" },
   { label: "Teams", href: "/teams", also: ["/team"] },
   { label: "Ledger", href: "/ledger", primary: true, icon: Receipt },
-  { label: "Groups", href: "/groups", also: ["/crew", "/rules"], primary: true, icon: Users },
+  // The game layer, one tab (R3-E1). `also` covers every game route so
+  // playing one keeps the tab lit; `/games` cannot collide with Slate's
+  // `/game` because isNavItemActive matches exact-or-slash, never bare prefix.
+  {
+    label: "Games",
+    href: "/games",
+    also: ["/guess-lines", "/streak", "/guess-game", "/six-pack", "/tape", "/chains", "/depth-chart"],
+    primary: true,
+    icon: Gamepad2,
+  },
   { label: "Receipts", href: "/receipts", also: ["/recap"] },
 ];
 

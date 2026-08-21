@@ -215,6 +215,23 @@ shipping it.
 
 ## Log
 
+### Aug 21 — POOL-1/POOL-2: Groups takes the thumb zone, the builder starts empty
+
+Owner report from a night of using the app. Groups and Games swap slots in
+`NAV_ITEMS` — one list drives both navs — and Groups carries a count of picks
+still owed.
+
+`openPickCount` is one rule shared by the badge and mirroring the push job, so
+the tab and the notification cannot disagree: any pick on a game counts it
+handled, locked games are not owed. Writing that comment caught a bug in the
+first cut — TBD kickoffs were fetched exactly backwards, and an un-pickable
+game would have kept the badge lit forever.
+
+The week builder: Spreads was pre-ticked and is not any more (the games list
+already started empty), and each row now shows the consensus spread and total
+beside the kick time, so an admin can see which games are competitive without
+leaving the page.
+
 ### Aug 21 — SLATE-1: the clock stops losing its own row
 
 Owner, from the 375px pass: "the game of the week tag smushes the time left in
