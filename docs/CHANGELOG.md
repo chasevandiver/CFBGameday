@@ -215,6 +215,37 @@ shipping it.
 
 ## Log
 
+### Aug 21 — SPLASH-1 un-ticked: iPadOS ignores landscape startup images
+
+The 08-20 fix does not work, and the box it checked has been un-checked. A
+checked box in `docs/STATUS.md` means the thing is fixed; this one meant "a
+plausible fix shipped", which is the failure mode that file exists to prevent.
+
+Every link measured on an iPad Air 10.9", not reasoned about:
+
+- the landscape rule **matches** on the device (`splash-check.html`: MATCH on
+  `820×1180, dpr 2, orientation: landscape`)
+- both dimension orders are served
+- `ipad-109-landscape.png` is reachable, 2360×1640, artwork undistorted
+  (tagline 41.4% of width; ink box identical to the portrait file's)
+- the device shows the **portrait** file stretched: tagline ≈60% of width, ink
+  ≈1.7× too wide
+- reinstalled twice, the second time in landscape, in case iOS binds one image
+  at install
+
+Query matches, file exists, file is correct, iOS uses a different one. The
+conclusion is that iPadOS does not honour `orientation: landscape` on
+`apple-touch-startup-image` — which is also why every asset generator emits
+landscape entries that quietly do nothing.
+
+Three hypotheses were wrong before this one was right: the files, then the
+dimension order, then the install-time cache. Each was killed by a
+measurement, which is the only reason the conclusion is worth anything.
+
+Dead weight recorded, not yet deleted: 9 files, 960 KB, 18 of 36 media rules.
+Deleting them is only correct if the behaviour holds on every iPad, and one
+device is not every.
+
 ### Aug 21 — POOL-3d: the card was dropping a mate's second pick
 
 Owner question straight after POOL-3c: "is it going to have all of the picks
