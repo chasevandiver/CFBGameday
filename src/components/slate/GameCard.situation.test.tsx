@@ -375,7 +375,7 @@ describe("the pool layer reads like the sheet (POOL-3c)", () => {
 
   it("names the pool, the way the sheet names a betting group", () => {
     renderPool(
-      pooled({ crewPicks: [{ name: "Dave", side: "home", record: null }] } as Partial<GameView>),
+      pooled({ crewPicks: [{ name: "Dave", side: "home", record: null, picks: [{ market: "spread", side: "home" }] }] } as Partial<GameView>),
     );
     expect(screen.getByText("Test Group")).toBeTruthy();
   });
@@ -394,12 +394,67 @@ describe("the pool layer reads like the sheet (POOL-3c)", () => {
     expect(screen.getByText(/&/)).toBeTruthy();
   });
 
+  it("lists all of a member's picks, joined — Dave USC & Over", () => {
+    /* Owner question, 2026-08-21: "is it going to have all of the picks listed
+       so it would say Dave USC & Over and Ann SJSU & Under?" It was not: the
+       loader kept one row per mate per game and dropped the rest, so Dave's
+       total vanished and the card disagreed with the board about what he had
+       picked. */
+    renderPool(
+      pooled({
+        crewPicks: [
+          {
+            name: "Dave",
+            side: "home",
+            record: null,
+            picks: [
+              { market: "spread", side: "home" },
+              { market: "total", side: "over" },
+            ],
+          },
+          {
+            name: "Ann",
+            side: "away",
+            record: null,
+            picks: [
+              { market: "spread", side: "away" },
+              { market: "total", side: "under" },
+            ],
+          },
+        ],
+      } as Partial<GameView>),
+    );
+    expect(screen.getByText("CIN & Over")).toBeTruthy();
+    expect(screen.getByText("DET & Under")).toBeTruthy();
+  });
+
+  it("counts a member as with you when ANY of their picks matches", () => {
+    // Same team, other total: with you on the thing you are both watching.
+    renderPool(
+      pooled({
+        myPicks: [{ market: "spread", side: "home", line: -7 }],
+        crewPicks: [
+          {
+            name: "Dave",
+            side: "home",
+            record: null,
+            picks: [
+              { market: "spread", side: "home" },
+              { market: "total", side: "under" },
+            ],
+          },
+        ],
+      } as Partial<GameView>),
+    );
+    expect(screen.getByText("1 with you")).toBeTruthy();
+  });
+
   it("lists every other picker with the side they took", () => {
     renderPool(
       pooled({
         crewPicks: [
-          { name: "Dave", side: "home", record: "12-8" },
-          { name: "Ann", side: "away", record: null },
+          { name: "Dave", side: "home", record: "12-8", picks: [{ market: "spread", side: "home" }] },
+          { name: "Ann", side: "away", record: null, picks: [{ market: "spread", side: "away" }] },
         ],
       } as Partial<GameView>),
     );
@@ -414,8 +469,8 @@ describe("the pool layer reads like the sheet (POOL-3c)", () => {
       pooled({
         myPicks: [{ market: "spread", side: "home", line: -7 }],
         crewPicks: [
-          { name: "Dave", side: "home", record: null },
-          { name: "Ann", side: "away", record: null },
+          { name: "Dave", side: "home", record: null, picks: [{ market: "spread", side: "home" }] },
+          { name: "Ann", side: "away", record: null, picks: [{ market: "spread", side: "away" }] },
         ],
       } as Partial<GameView>),
     );

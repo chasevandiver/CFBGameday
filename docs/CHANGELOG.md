@@ -215,6 +215,26 @@ shipping it.
 
 ## Log
 
+### Aug 21 — POOL-3d: the card was dropping a mate's second pick
+
+Owner question straight after POOL-3c: "is it going to have all of the picks
+listed so it would say Dave USC & Over and Ann SJSU & Under?" No — and the
+reason was worse than a display gap.
+
+`fetchSlateView` kept one pick per mate per game and discarded the rest, on a
+comment that was correct when written: "a crew line reading 'Dave home, Dave
+over, Dave home' is three renderings of one opinion." True for a one-line
+summary, false the moment the card listed picks. A member who took the spread
+and the total showed as their spread alone, so the card disagreed with the
+board about what they had picked.
+
+`CrewPickView.picks` now carries every market, grouped one entry per person —
+The Panel still seats one person in one chair, and the card says "Dave USC &
+Over". Market and side only, not the line: the crew query never reads
+`line_at_pick`, and printing a number there would claim a price nobody fetched.
+
+"With you" now means sharing any side, since a member can hold two.
+
 ### Aug 21 — POOL-3c/1d: the pool layer reads like the sheet, the hub leads with standings
 
 **The card.** It was telling one shape of fact two ways — chips in the tag row

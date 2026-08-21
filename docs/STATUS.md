@@ -1305,6 +1305,27 @@ first because neither needed a decision.
       lit forever. Now `start_ts.is.null,start_ts.lte.now`.
       Its own route (`/api/picks-due`) rather than page data: `AppNav` renders
       on every page and this would otherwise be a query every route pays for.
+- [x] **POOL-3d — a crew member's second pick was being thrown away.** Owner
+      question, straight after POOL-3c shipped: *"is it going to have all of the
+      picks listed so it would say Dave USC & Over and Ann SJSU & Under?"* It
+      was not — and the reason was worse than a display gap. `fetchSlateView`
+      kept **one pick per mate per game** and discarded the rest, on a comment
+      that was right when it was written: *"a crew line reading 'Dave home,
+      Dave over, Dave home' is three renderings of one opinion."* True for a
+      one-line summary; false the moment the card listed picks. A member who
+      took the spread and the total showed as their spread alone, so **the card
+      disagreed with the board about what they had picked.**
+      `CrewPickView.picks` now carries every market, grouped one entry per
+      person — which keeps The Panel seating one person in one chair while the
+      card can say "Dave USC & Over".
+      **Market and side only, deliberately not the line.** The crew query never
+      reads `line_at_pick`, so a crew row printing "USC −37" would be claiming
+      the price *they* got from a column nobody fetched. Their side is the fact;
+      the number belongs beside your own pick.
+      **"With you" now means sharing ANY side**, since a member can hold two:
+      the person on your team and the other total is with you on the thing you
+      are both watching, and calling them a fade would be the card picking an
+      argument.
 - [x] **POOL-3c — the pool layer reads like the sheet.** Owner request with a
       screenshot: *"get rid of the tags for the group pickem picks and list them
       like we have the bet groups. So it should say (group name) 'You USC -37 &
