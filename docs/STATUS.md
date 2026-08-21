@@ -1217,8 +1217,10 @@ deliberate deferrals, each recorded below with what it would take.
       Verified by mutation: stubbing the hand-back turns four tests red across
       the pure rule and the rendered card.
 
-- [x] **SPLASH-1 — the iPad landscape splash was a portrait image stretched to
-      fit.** Owner report from the 375px pass, 2026-08-21: *"the landscape splash
+- [ ] **SPLASH-1 — the iPad landscape splash is a portrait image stretched to
+      fit, and iPadOS will not let us fix it.** ⚠️ **Un-ticked 2026-08-21** — it
+      was checked on 08-20 on the strength of a fix that does not work, and a
+      checked box in this file means the thing is fixed.** Owner report from the 375px pass, 2026-08-21: *"the landscape splash
       screen on an iPad when opening up… it's just very stretched out."*
       The files were never the problem — `ipad-pro-129-landscape.png` really is
       2732×2048 and always was. **The media query was.** Every generator emits
@@ -1238,6 +1240,38 @@ deliberate deferrals, each recorded below with what it would take.
       all.
       **How to confirm it on the device**: open `/brand/splash-check.html` on the
       iPad in landscape — the page lists every rule and says which one matches.
+
+      **2026-08-21: the fix does not work, and here is every link in the chain
+      measured rather than reasoned about.** Owner tested on an iPad Air 10.9".
+
+      | Link | Evidence |
+      |---|---|
+      | Landscape rule matches the device | `splash-check.html` reports **MATCH** on `(device-width: 820px) and (device-height: 1180px) and (dpr: 2) and (orientation: landscape)` |
+      | Both dimension orders served | live HTML carries the pair for every iPad |
+      | `ipad-109-landscape.png` reachable | 200, 96 KB |
+      | That file is genuinely landscape | 2360×1640 |
+      | Its artwork is undistorted | tagline 41.4% of width; ink box 934×827, ratio 1.13 — identical to the portrait file's |
+      | What the device actually shows | tagline ≈60% of width, ink ≈1.7× too wide — **the PORTRAIT file, stretched** |
+      | Reinstalled, twice | second time with the iPad held in landscape, in case iOS binds one image at install |
+
+      So the query matches, the file exists, the file is right, and iOS uses a
+      different one anyway. **The conclusion is that iPadOS does not honour
+      `orientation: landscape` on `apple-touch-startup-image`** — which also
+      explains why every asset generator emits landscape entries that quietly
+      do nothing. Markup cannot fix this.
+      **Cost of the dead code: 9 files, 960 KB, and 18 of the 36 media rules**,
+      all provably unused on the one device anyone has tested. Kept for now
+      rather than deleted, because deleting them is only right if the behaviour
+      holds on every iPad and one device is not "every".
+      **What is left is a choice, not a fix:** live with a stretched splash on
+      iPad landscape (it shows for about a second, on a surface DESIGN.md calls
+      secondary — the product is a mobile companion), or change the artwork so
+      a stretch is less legible. The wordmark is what gives it away; familiar
+      letterforms make distortion obvious in a way a mark alone does not.
+      *(Three attempts, each on a hypothesis that turned out wrong: the files
+      were suspected first, then the dimension order, then the install-time
+      cache. Each was ruled out by measurement, which is the only reason the
+      answer is trustworthy now.)*
 - [x] **SPLASH-2 — the wordmark and the tagline were 6 pixels apart.** Same
       report: *"the text under The Slate is right below it so it looks pretty
       smushed together."* Measured on the rendered PNGs rather than reasoned
