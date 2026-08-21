@@ -5,7 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 import { setGroupWeekConfig } from "../../app/actions/groups";
 import type { PickMarket, SelectionMode } from "../../lib/db-types";
 import type { SeasonType } from "../../lib/season";
-import type { TeamView } from "../../lib/slate";
+import { fmtSpread, type TeamView } from "../../lib/slate";
 import { TeamLine } from "../slate/TeamLine";
 
 export interface ConfigGame {
@@ -19,6 +19,13 @@ export interface ConfigGame {
   conferences: string[];
   /** Picks already made on this game, in this group. */
   pickCount: number;
+  /** Consensus spread from the home side, and the total — the same numbers the
+   *  slate shows. Owner request 2026-08-21: an admin building a board is
+   *  choosing which games are worth picking, and "-1.5, 44" answers that in a
+   *  glance where two logos and a kick time do not. Null before any book has
+   *  posted, which is most of the week for a late-season game. */
+  spread: number | null;
+  total: number | null;
 }
 
 const MARKETS: Array<{ key: PickMarket; label: string; hint: string }> = [
@@ -75,7 +82,12 @@ export function WeekConfigForm({
   const [conference, setConference] = useState<string>(
     initial?.conference ?? conferences[0] ?? "",
   );
-  const [markets, setMarkets] = useState<PickMarket[]>(initial?.markets ?? ["spread"]);
+  /* Owner call, 2026-08-21: "default to everything unchecked." The games list
+     already started empty; Spreads did not, and a pre-ticked market is the one
+     box on this form that got saved without anyone deciding it. Save stays
+     disabled until a market is chosen, which is the form asking rather than
+     assuming. */
+  const [markets, setMarkets] = useState<PickMarket[]>(initial?.markets ?? []);
   const [gameIds, setGameIds] = useState<number[]>(initial?.gameIds ?? []);
   const [minPicks, setMinPicks] = useState<number>(initial?.minPicks ?? 0);
 
@@ -211,6 +223,16 @@ export function WeekConfigForm({
                     </span>
                     <span className="stat shrink-0 text-right text-[11px] leading-tight text-dim">
                       {g.kick}
+                      {/* The line, so a board can be built around the games
+                          worth picking. `tabular-nums` because these sit in a
+                          scrolling column and a ragged one is harder to scan
+                          than no column at all. */}
+                      {(g.spread !== null || g.total !== null) && (
+                        <span className="block tabular-nums text-chalk/70">
+                          {g.spread !== null ? fmtSpread(g.spread) : "—"}
+                          {g.total !== null ? ` · o${g.total}` : ""}
+                        </span>
+                      )}
                       {g.pickCount > 0 && (
                         <span className="block text-accent">{g.pickCount} picked</span>
                       )}

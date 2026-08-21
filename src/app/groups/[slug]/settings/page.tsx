@@ -108,6 +108,11 @@ async function loadBoard(
       kick: kick ? `${kick.day} ${kick.time} ${tzLabel(DEFAULT_TZ)}` : "TBD",
       conferences: [g.home.conference, g.away.conference].filter((c): c is string => !!c),
       pickCount: pickCounts.get(g.id) ?? 0,
+      // The consensus the slate renders, not a book's own number — same source,
+      // so the admin's view of "is this competitive" matches what the members
+      // will see on the board.
+      spread: g.lines.spread,
+      total: g.lines.total,
     };
   });
 

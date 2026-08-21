@@ -1278,6 +1278,43 @@ deliberate deferrals, each recorded below with what it would take.
       string is already in its `title` and on the game page.
       Verified by mutation: restore either class and the matching test goes red.
 
+### 2.1i The pool lane — owner report, 2026-08-21
+
+Six requests from a night of using the app against live football, in the order
+they were given. POOL-3…POOL-6 are queued below; POOL-1 and POOL-2 shipped
+first because neither needed a decision.
+
+- [x] **POOL-1 — Groups takes the thumb-zone slot, and carries the badge.**
+      Groups and Games swap places in `NAV_ITEMS` (both navs, one list — the
+      module header is explicit that splitting it is how they drift). The pool
+      is what people open the app to do on a Saturday; the arcade was holding
+      the middle of the bottom bar.
+      **The badge is the half that needed building.** A pick is the only thing
+      in this app that expires, and the only thing that said so was a push —
+      which needs a group week to exist, permission granted, and the phone
+      nearby. `openPickCount` (`src/lib/picks-due.ts`) is one rule, shared by
+      the badge and mirroring `notifyPicksDueJob`, so the tab and the
+      notification cannot disagree about what "done" means: any pick on a game
+      counts it handled (a board can ask for two markets on one game, and
+      badging someone who did everything it asked is how a badge gets ignored),
+      and locked games are not owed.
+      **A bug caught by writing the comment rather than by running the code:**
+      the first cut fetched locked games as `not start_ts is null AND lte now`,
+      which had TBD kickoffs exactly backwards — SEC-13 keeps those un-pickable,
+      so an un-pickable game would have been the one thing keeping the badge
+      lit forever. Now `start_ts.is.null,start_ts.lte.now`.
+      Its own route (`/api/picks-due`) rather than page data: `AppNav` renders
+      on every page and this would otherwise be a query every route pays for.
+- [x] **POOL-2 — the week builder starts empty and shows the line.** Games
+      already defaulted to unchecked; **Spreads did not**, and a pre-ticked
+      market is the one box on that form that got saved without anyone deciding
+      it. Save stays disabled until a market is chosen, which is the form
+      asking instead of assuming.
+      Each row now carries the consensus spread and total beside the kick time —
+      the same numbers the slate shows, so "is this worth putting on the board"
+      is answerable without leaving the page. Null renders as `—`: most of the
+      week, for a late-season game, no book has posted.
+
 ### 2.2 This week (Aug 14–18)
 
 - [x] **P1-1** Shipped 2026-08-13. A **Game status** section on `/admin`
