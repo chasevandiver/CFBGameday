@@ -9,7 +9,7 @@ import { StatTile } from "../StatTile";
 import { UnitsCurve } from "../UnitsCurve";
 import { heldVsNow, splitPositions, type GroupStanding, type HomeBet, type HomeData, type HomePick, type Position, type WeekProgress } from "../../lib/home";
 import type { TodayBlock } from "../../lib/home-today";
-import { DEFAULT_TZ, kickParts, periodLabel, tzLabel } from "../../lib/kick";
+import { breakLabel, DEFAULT_TZ, kickParts, periodLabel, tzLabel } from "../../lib/kick";
 import { statusForBet, statusForPick, tintFor } from "../../lib/live-status";
 import { cardStake } from "../../lib/stake";
 import { formatRecord, type Tally } from "../../lib/records";
@@ -430,8 +430,12 @@ function RowHeader({
           <>
             <LiveBadge />
             <span className="stat text-xs font-semibold text-chalk">
-              {periodLabel(game.period)}
-              {game.clock ? ` · ${game.clock}` : ""}
+              {breakLabel(game.period, game.clock) ?? (
+                <>
+                  {periodLabel(game.period)}
+                  {game.clock ? ` · ${game.clock}` : ""}
+                </>
+              )}
             </span>
           </>
         ) : final ? (

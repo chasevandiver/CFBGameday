@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { CSSProperties } from "react";
-import { periodLabel, underTwo } from "../../lib/kick";
+import { breakLabel, periodLabel, underTwo } from "../../lib/kick";
 import { fmtPct } from "../../lib/slate";
 import { liveHomeWinProb, type GameView, type TeamView } from "../../lib/slate";
 import { LiveBadge } from "../slate/chips";
@@ -53,8 +53,12 @@ export function JumbotronCard({ game, demo = false }: { game: GameView; demo?: b
         <span className="flex items-center gap-2">
           <LiveBadge />
           <span className={`stat text-lg font-semibold ${u2m ? "u2m" : "text-chalk"}`}>
-            {periodLabel(game.period)}
-            {game.clock ? ` · ${game.clock}` : ""}
+            {breakLabel(game.period, game.clock) ?? (
+              <>
+                {periodLabel(game.period)}
+                {game.clock ? ` · ${game.clock}` : ""}
+              </>
+            )}
           </span>
         </span>
         {game.tv && <span className="stat text-sm text-dim">{game.tv}</span>}

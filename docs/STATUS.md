@@ -1154,6 +1154,36 @@ deliberate deferrals, each recorded below with what it would take.
       degrading, then killing, live college scores for budget that was never
       spent. One `.eq("source", "cfbd")`.
 
+- [x] **LIVE-6 — nothing said "halftime", and two other things said the
+      opposite.** Owner question, 2026-08-21, an hour after the rehearsal:
+      *"Is there anything stating halftime when a game goes to half?"* There
+      was not. ESPN sends `STATUS_HALFTIME`; `src/lib/espn.ts:337` reads only
+      `type.state`, which is `"in"`, so halftime arrived as an ordinary live
+      tick and the card said **`Q2 · 0:00`** — true, and not the word anyone
+      was looking for. The gaps between quarters were equally silent.
+      **Two things made it worse, and one of them was an hour old.**
+      `underTwo` treats a Q2/Q4 clock under 2:00 as the two-minute warning, and
+      `0:00` is under 2:00 — so the card wore the tensest treatment it owns
+      through the calmest twelve minutes of the game. And **LIVE-4's new age
+      badge would have climbed past `12m` during halftime**, which is exactly
+      the "this card is stale" signal it exists to give, at the one time being
+      old is correct. Three signals, all urgent, all wrong.
+      **Derived, not captured.** `breakLabel(period, clock)` reads the stored
+      period and an expired clock: period 2 → `HALFTIME`, otherwise
+      `END Q1`/`END Q3`/`END OT`. Capturing ESPN's status string would mean a
+      column and a change in both writers *and* would do nothing for CFB, where
+      CFBD sends no equivalent — while "period 2, clock expired" means halftime
+      in both leagues and in any feed that will ever back them.
+      Wired at all seven live surfaces — slate card, its screen-reader line,
+      the ticker, the game page, its screen-reader line, the home hub, and both
+      Jumbotron views — because a game that is at halftime on one screen and
+      `Q2 · 0:00` on another is the same defect LiveSituation was extracted to
+      end. `underTwo` now excludes an expired clock, and the age badge is
+      suppressed while a break is showing.
+      **Verified by mutation, not by assertion:** stubbing `breakLabel` to null
+      turns the three card tests red, and the pair at `0:00`/`0:01` pins the
+      warning treatment from both sides.
+
 ### 2.2 This week (Aug 14–18)
 
 - [x] **P1-1** Shipped 2026-08-13. A **Game status** section on `/admin`

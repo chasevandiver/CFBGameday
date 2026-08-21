@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dayTabLabels, nflKickSlot, underTwo } from "./kick";
+import { breakLabel, dayTabLabels, nflKickSlot, underTwo } from "./kick";
 
 describe("underTwo", () => {
   it("true only in Q2/Q4 with the clock under 2:00", () => {
@@ -12,6 +12,53 @@ describe("underTwo", () => {
   it("a missing clock or period is never a warning", () => {
     expect(underTwo(4, null)).toBe(false);
     expect(underTwo(null, "1:00")).toBe(false);
+  });
+  it("an expired clock is not the two-minute warning — it is the opposite", () => {
+    // Q2 0:00 is halftime. This wore the tensest treatment the card owns
+    // through the calmest twelve minutes of the game until 2026-08-21.
+    expect(underTwo(2, "0:00")).toBe(false);
+    expect(underTwo(4, "0:00")).toBe(false);
+    expect(underTwo(2, "00:00")).toBe(false);
+    // and one second of football left is still the warning
+    expect(underTwo(2, "0:01")).toBe(true);
+  });
+});
+
+describe("breakLabel — what the card says when the game is not being played", () => {
+  /**
+   * Owner question, 2026-08-21: "is there anything stating halftime when a
+   * game goes to half?" There was not — ESPN's STATUS_HALFTIME arrives as an
+   * ordinary live tick because the parser reads only `type.state`, so the card
+   * said `Q2 · 0:00`.
+   */
+  it("names halftime", () => {
+    expect(breakLabel(2, "0:00")).toBe("HALFTIME");
+    expect(breakLabel(2, "00:00")).toBe("HALFTIME");
+  });
+
+  it("names the gap between quarters, which was equally silent", () => {
+    expect(breakLabel(1, "0:00")).toBe("END Q1");
+    expect(breakLabel(3, "0:00")).toBe("END Q3");
+    expect(breakLabel(4, "0:00")).toBe("END Q4");
+  });
+
+  it("carries overtime through the same rule", () => {
+    expect(breakLabel(5, "0:00")).toBe("END OT");
+    expect(breakLabel(6, "0:00")).toBe("END 2OT");
+  });
+
+  it("says nothing at all while the clock is running", () => {
+    // The null is what every caller renders the period and clock for.
+    expect(breakLabel(2, "0:01")).toBeNull();
+    expect(breakLabel(1, "15:00")).toBeNull();
+    expect(breakLabel(3, "7:22")).toBeNull();
+  });
+
+  it("says nothing without a period or a clock to read", () => {
+    expect(breakLabel(null, "0:00")).toBeNull();
+    expect(breakLabel(2, null)).toBeNull();
+    expect(breakLabel(0, "0:00")).toBeNull();
+    expect(breakLabel(2, "")).toBeNull();
   });
 });
 

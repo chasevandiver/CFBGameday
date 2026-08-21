@@ -18,7 +18,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { periodLabel } from "../lib/kick";
+import { breakLabel, periodLabel } from "../lib/kick";
 import type { TickerData, TickerGame, TickerMine } from "../lib/ticker";
 import { useGamesRealtime } from "../lib/use-games-realtime";
 import { useLiveRefresh } from "../lib/use-live-refresh";
@@ -343,7 +343,8 @@ function ChipBody({ g }: { g: TickerGame }) {
       </span>
       <span className="text-[10px] uppercase">
         {live
-          ? `${periodLabel(g.period)}${g.clock ? ` ${g.clock}` : ""}`
+          ? (breakLabel(g.period, g.clock) ??
+            `${periodLabel(g.period)}${g.clock ? ` ${g.clock}` : ""}`)
           : final
             ? "Final"
             : g.startTs
