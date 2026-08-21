@@ -796,27 +796,47 @@ export function HomeDashboard({
           This is also where the picks-due count belongs. It was on the Groups
           NAV TAB first and read as "9+" floating over an icon with no way to
           tell what it was counting; on a card it can say the whole sentence. */}
-      {!demo && (
-        <Link
-          href="/groups"
-          className="card card-hover mb-4 flex min-h-16 items-center justify-between gap-3 px-4 py-3"
-        >
-          <span className="min-w-0">
-            <span className="block text-sm text-chalk">Groups</span>
-            <span className="mt-0.5 block truncate text-xs text-dim">
-              {picksDue > 0
-                ? `${picksDue} ${picksDue === 1 ? "pick" : "picks"} still to make.`
-                : "Your pools, the boards, who picked what."}
+      {/* Owner correction, 2026-08-21: "I wanted it to have the same format as
+          the current group section so it'd have your groups you're in, plus
+          your standing in the group/record." The first pass put a single link
+          row here — a card that named the destination and nothing about it.
+          This is the section, hoisted: the same `GroupStandingRow`s that used
+          to sit most of a screen down, so the standing IS the card. */}
+      <section className="mb-6" aria-labelledby="hub-groups-heading">
+        <SectionHead
+          id="hub-groups-heading"
+          title="Your groups"
+          href={demo ? undefined : "/groups"}
+          linkLabel="All groups"
+        />
+        {picksDue > 0 && (
+          /* The picks-due line rides with the pool it belongs to. It was a
+             "9+" on a nav icon first, which could not say what it counted. */
+          <Link
+            href="/groups"
+            className="card card-hover mb-2.5 flex min-h-11 items-center justify-between gap-3 px-4 py-2.5"
+          >
+            <span className="stat text-xs text-accent">
+              {picksDue} {picksDue === 1 ? "pick" : "picks"} still to make
             </span>
-          </span>
-          {picksDue > 0 && (
-            <span className="stat shrink-0 rounded-full bg-accent px-2 py-0.5 text-[11px] font-bold text-accent-ink">
-              {picksDue}
-            </span>
-          )}
-          <ArrowRight className="h-4 w-4 shrink-0 text-chalk/40" aria-hidden />
-        </Link>
-      )}
+            <ArrowRight className="h-4 w-4 shrink-0 text-chalk/40" aria-hidden />
+          </Link>
+        )}
+        {data.groups.length === 0 ? (
+          <HubEmpty
+            line="You’re not in a group yet."
+            hint="Create one and you’re its admin, or join with a code."
+            href="/groups"
+            cta="Start or join a group"
+          />
+        ) : (
+          <ul className="flex flex-col gap-2.5">
+            {data.groups.map((sg) => (
+              <GroupStandingRow key={sg.group.id} standing={sg} demo={demo} />
+            ))}
+          </ul>
+        )}
+      </section>
       <HomeHero
         week={data.week}
         positionCount={data.positions.length}
@@ -943,30 +963,6 @@ export function HomeDashboard({
                 <ArrowRight className="h-4 w-4 shrink-0 text-chalk/40" aria-hidden />
               </Link>
             )}
-
-            {/* ---- your groups ---- */}
-            <section aria-labelledby="groups-heading">
-              <SectionHead
-                id="groups-heading"
-                title="Your groups"
-                href={demo ? undefined : "/groups"}
-                linkLabel="All groups"
-              />
-              {data.groups.length === 0 ? (
-                <HubEmpty
-                  line="You’re not in a group yet."
-                  hint="Create one and you’re its admin, or join with a code."
-                  href="/groups"
-                  cta="Start or join a group"
-                />
-              ) : (
-                <ul className="flex flex-col gap-2.5">
-                  {data.groups.map((s) => (
-                    <GroupStandingRow key={s.group.id} standing={s} demo={demo} />
-                  ))}
-                </ul>
-              )}
-            </section>
 
             {/* ---- your record ---- */}
             <section className="mt-7" aria-labelledby="record-heading">

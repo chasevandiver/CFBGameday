@@ -56,6 +56,7 @@ export function SlateView({
   displayName = "",
   signs = null,
   signsWeek = null,
+  poolName = null,
   demo = false,
 }: {
   initial: SlateData;
@@ -69,6 +70,9 @@ export function SlateView({
   /** Fun Mode's crowd signs (FUN-10) for `signsWeek`; null when signed out. */
   signs?: SignView[] | null;
   signsWeek?: number | null;
+  /** The pick'em group this slate is scoped to. The cards' pool layer names it,
+   *  the way the sheet layer names a betting group. */
+  poolName?: string | null;
   /**
    * Sample slate, no database behind it (`/demo`).
    *
@@ -808,6 +812,7 @@ export function SlateView({
                   tz={tz}
                   starred={starred}
                   onStar={toggleStar}
+                  poolName={poolName}
                   index={i}
                   focused
                   onFocus={toggleFocus}
@@ -858,6 +863,7 @@ export function SlateView({
               <CardGrid
                 games={s.games}
                 tz={tz}
+                poolName={poolName}
                 starred={starred}
                 onStar={toggleStar}
                 featuredId={featuredId}
@@ -871,6 +877,7 @@ export function SlateView({
           <CardGrid
             games={sorted}
             tz={tz}
+            poolName={poolName}
             starred={starred}
             onStar={toggleStar}
             featuredId={featuredId}
@@ -892,6 +899,7 @@ export function SlateView({
 function CardGrid({
   games,
   tz,
+  poolName,
   starred,
   onStar,
   featuredId,
@@ -901,6 +909,7 @@ function CardGrid({
 }: {
   games: GameView[];
   tz: string;
+  poolName?: string | null;
   starred: number[];
   onStar: (teamId: number) => void;
   featuredId: number | null;
@@ -915,6 +924,7 @@ function CardGrid({
           key={g.id}
           game={g}
           tz={tz}
+          poolName={poolName}
           starred={starred}
           onStar={onStar}
           index={i}

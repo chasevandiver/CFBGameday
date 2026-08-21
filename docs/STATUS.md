@@ -1305,6 +1305,34 @@ first because neither needed a decision.
       lit forever. Now `start_ts.is.null,start_ts.lte.now`.
       Its own route (`/api/picks-due`) rather than page data: `AppNav` renders
       on every page and this would otherwise be a query every route pays for.
+- [x] **POOL-3c — the pool layer reads like the sheet.** Owner request with a
+      screenshot: *"get rid of the tags for the group pickem picks and list them
+      like we have the bet groups. So it should say (group name) 'You USC -37 &
+      Over' then list if anyone else is on the same side or what the other
+      pickems are in that group."*
+      The card was telling one shape of fact two ways: **chips in the tag row**
+      for your picks, a **count** for everyone else's. A tag row is for facts
+      about the game; "you took USC −37" is a fact about you. Both are gone,
+      replaced by one POOL block built like SHEET — group name, a `You` row,
+      then the room, each with their record.
+      **Your picks collapse into one row joined by `&`.** "USC −37" and "Over"
+      are one decision about one game, and two rows implied two.
+      The group's name needed threading — page → SlateView → CardGrid →
+      GameCard — because the pool layer had no idea which pool it was showing,
+      the way the sheet always has.
+      *(Supersedes POOL-3's side-grouped list and POOL-3b's placement. Those
+      answered the letter of "list who picked what"; this is the form.)*
+- [x] **POOL-1d — the hub's Groups card is the groups SECTION.** Owner
+      correction: *"I wanted it to have the same format as the current group
+      section so it'd have your groups you're in, plus your standing in the
+      group/record."* The first pass put a single link row at the top — a card
+      that named the destination and said nothing about it, which is a worse
+      version of the tab that was already there.
+      The section is hoisted instead: the same `GroupStandingRow`s, with place,
+      field and record, now sitting where the arcade card used to be. Moved
+      rather than copied — it appears once, and a test pins that.
+      The picks-due line rides above it as its own row, so the count sits with
+      the pool it belongs to rather than floating on an icon.
 - [x] **POOL-1b — the swap the owner meant was the HUB, not the nav.** Owner
       correction, 2026-08-21: *"I wanted the groups card switched with the games
       tab on the users hub screen."* POOL-1 moved the bottom-bar tabs, which was

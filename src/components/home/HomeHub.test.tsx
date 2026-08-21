@@ -172,17 +172,28 @@ describe("the hub's Groups card (2026-08-21)", () => {
 
   it("says how many picks are owed, in words rather than a floating number", () => {
     render(<HomeDashboard data={empty({ picksDue: 3 })} signedIn />);
-    expect(screen.getByText("3 picks still to make.")).toBeTruthy();
+    expect(screen.getByText("3 picks still to make")).toBeTruthy();
   });
 
   it("counts one pick singular, because a card has room to be right", () => {
     render(<HomeDashboard data={empty({ picksDue: 1 })} signedIn />);
-    expect(screen.getByText("1 pick still to make.")).toBeTruthy();
+    expect(screen.getByText("1 pick still to make")).toBeTruthy();
   });
 
   it("says nothing about picks when none are owed", () => {
     render(<HomeDashboard data={empty({ picksDue: 0 })} signedIn />);
     expect(screen.queryByText(/still to make/)).toBeNull();
-    expect(screen.getByText(/Your pools, the boards/)).toBeTruthy();
+  });
+
+  it("leads with the groups SECTION, standings and all — not a bare link row", () => {
+    /* Owner correction: "I wanted it to have the same format as the current
+       group section so it'd have your groups you're in, plus your standing in
+       the group/record." A card that names the destination and nothing about
+       it is a worse tab. */
+    render(<HomeDashboard data={demoHomeData(NOW)} signedIn />);
+    const heading = screen.getByText("Your groups");
+    expect(heading).toBeTruthy();
+    // The section appears once, not twice — it was hoisted, not copied.
+    expect(screen.getAllByText("Your groups")).toHaveLength(1);
   });
 });

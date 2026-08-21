@@ -215,6 +215,23 @@ shipping it.
 
 ## Log
 
+### Aug 21 — POOL-3c/1d: the pool layer reads like the sheet, the hub leads with standings
+
+**The card.** It was telling one shape of fact two ways — chips in the tag row
+for your pick'em picks, a count for everyone else's. A tag row is for facts
+about the game; "you took USC −37" is a fact about you. Both are gone, replaced
+by one POOL block built like SHEET: group name, a `You` row with your picks
+joined by `&` (one decision about one game, not two rows), then the room with
+their records. Threading the pool's name from the page down to the card was the
+only real plumbing — the pool layer had never known which pool it was showing,
+the way the sheet always has.
+
+**The hub.** The Groups card was a single link row: it named the destination
+and said nothing about it, which is a worse version of the tab already in the
+bar. The groups section is hoisted instead — the same standings rows, place,
+field and record — moved rather than copied, with a test pinning that it
+appears once. The picks-due count rides above it as its own row.
+
 ### Aug 21 — three owner corrections: the hub, the badge, and where the pool line lives
 
 **The swap meant the hub, not the nav.** POOL-1 moved the bottom-bar tabs. The
