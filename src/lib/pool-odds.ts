@@ -86,14 +86,22 @@ export function weekWinOdds(
       arr.push({ result: won ? "win" : "loss", units: p.units });
       synth.set(p.userId, arr);
     }
-    let bestUnits = -Infinity;
+    /* POOL-6: the sim scores the week the way the board does — points. It read
+       units until 2026-08-21, which is the same defect as a machine racing in
+       units beside a board scoring in points, only harder to see: the odds
+       column would have been answering "who wins the week on a book's
+       arithmetic" while the standings underneath answered a different
+       question. Ties are now genuinely common (points are integers, and −110
+       units almost never tie), which is what the leader-splitting below is
+       for. */
+    let bestPoints = -Infinity;
     let leaders: string[] = [];
     for (const m of members) {
-      const units = (base.get(m.userId)?.units ?? 0) + tally(synth.get(m.userId) ?? []).units;
-      if (units > bestUnits + 1e-9) {
-        bestUnits = units;
+      const points = (base.get(m.userId)?.points ?? 0) + tally(synth.get(m.userId) ?? []).points;
+      if (points > bestPoints + 1e-9) {
+        bestPoints = points;
         leaders = [m.userId];
-      } else if (Math.abs(units - bestUnits) <= 1e-9) {
+      } else if (Math.abs(points - bestPoints) <= 1e-9) {
         leaders.push(m.userId);
       }
     }

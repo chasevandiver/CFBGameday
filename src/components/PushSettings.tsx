@@ -173,9 +173,30 @@ export function PushSettings({
     setBusy(false);
   }, []);
 
+  /* POOL-5, 2026-08-21. Owner report: "the notifications don't really do
+     anything — I clicked one on my admin account and on my test account and
+     nothing popped up."
+
+     What they clicked was almost certainly one of these per-kind checkboxes,
+     and it was the one control on this card that answered with silence. It
+     also DISCARDED its result: a failed save left the box ticked, so the UI
+     said a preference was on that the database had refused. A control that
+     reports nothing is indistinguishable from a control that does nothing,
+     which is what the report says out loud.
+
+     (The thing that does pop a notification is "Send a test" above, which
+     appears once push is on for this device. That existed all along.) */
   const toggleKind = useCallback(async (kind: NotificationKind, enabled: boolean) => {
     setKindState((s) => ({ ...s, [kind]: enabled }));
-    await setNotificationPref(kind, enabled);
+    setNote(null);
+    const result = await setNotificationPref(kind, enabled);
+    if (result.ok) {
+      setNote(enabled ? "Saved — you'll get these" : "Saved — these are off");
+      return;
+    }
+    // Put the switch back where the database left it, and say so.
+    setKindState((s) => ({ ...s, [kind]: !enabled }));
+    setNote(result.message ?? "Could not save that");
   }, []);
 
   if (stage === "checking") return null;

@@ -150,6 +150,18 @@ export default async function GroupsPage() {
                           <span className="block text-base font-semibold text-chalk">
                             {t && t.decided > 0 ? formatRecord(t) : "—"}
                           </span>
+                          {/* POOL-6: a pool group scores in points; a betting
+                              group scores in units. Same row, two currencies,
+                              because they are two different games. */}
+                          {g.kind !== "betting" && t && t.decided > 0 && (
+                            <span
+                              className={`block text-[11px] leading-tight ${
+                                t.points > 0 ? "text-win" : "text-dim"
+                              }`}
+                            >
+                              {t.points} {t.points === 1 ? "pt" : "pts"}
+                            </span>
+                          )}
                           {g.kind === "betting" && t && t.decided > 0 && (
                             <span
                               className={`block text-[11px] leading-tight ${

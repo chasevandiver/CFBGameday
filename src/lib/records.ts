@@ -63,8 +63,24 @@ export interface Tally {
   pushes: number;
   /** wins + losses + pushes. Zero means nothing has graded yet. */
   decided: number;
-  /** Net units won or lost. */
+  /** Net units won or lost. The money layer's number: bets, and any pick'em
+   *  surface that still wants a price on it. */
   units: number;
+  /**
+   * Pick'em score: one point per win, nothing for a loss, **nothing for a
+   * push** (owner call, 2026-08-21).
+   *
+   * A pool is not a book. Units carry the −110 convention, so a 10-5 week
+   * scores +4.1u and nobody can do that arithmetic in their head or argue with
+   * it at a bar; points are what a pick'em pool has always been counted in.
+   * The two live side by side rather than one replacing the other, because
+   * `tally` is shared with `bets`, where units are the whole point and a
+   * "point" would be meaningless.
+   *
+   * Survivor is untouched (owner call, same night): it stays alive/eliminated,
+   * which is not a score at all.
+   */
+  points: number;
   /** Units at risk on decided, non-push wagers — the ROI denominator. */
   staked: number;
   /** units / staked, or null when nothing was ever at risk. */
@@ -108,6 +124,7 @@ export const EMPTY_TALLY: Tally = {
   pushes: 0,
   decided: 0,
   units: 0,
+  points: 0,
   staked: 0,
   roi: null,
   avgClv: null,
@@ -148,6 +165,10 @@ export function tally(wagers: Iterable<Wager>): Tally {
     pushes,
     decided: wins + losses + pushes,
     units,
+    // One per win. Pushes and losses score nothing, so this is `wins` — spelled
+    // out rather than aliased, because the day someone wants a half-point for a
+    // push this is the line they should have to change.
+    points: wins,
     staked,
     roi: staked > 0 ? units / staked : null,
     avgClv: clvCount > 0 ? clvSum / clvCount : null,

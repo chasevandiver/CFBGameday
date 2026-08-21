@@ -215,6 +215,56 @@ shipping it.
 
 ## Log
 
+### Aug 21 — POOL-3/4/5: names on the card, a share menu that opens, a toggle that answers
+
+**POOL-3.** The crew line counted people; now it names them. The tail/fade
+shape already existed — initials, names, records — but only once the viewer had
+a pick of their own; the branch you see *before* picking said `Crew: 3 HOU`,
+which is the least interesting true thing the card knows. No new reveal: RLS
+hands the card another member's pick only through `picks_revealed` (0023), so a
+group that hides until kickoff passes an empty list until kickoff.
+
+**POOL-4.** The share menu was reported as "clipped by another card". It was
+neither clipping nor one bug. It opened DOWNWARD from a button in the fixed
+bottom bar, where there is no below; and it sat at `z-30` inside that bar's
+`z-20` stacking context, which cannot beat the bottom nav at `z-40` — so
+positioned correctly it would still have opened underneath the nav. Portalled
+to `document.body`, measured from the button, flipped when there is no room
+below.
+
+**POOL-5.** A "Send a test" button already existed on `/me`. What got clicked
+were the per-kind checkboxes, which saved silently **and discarded their
+result** — a failed save left the box ticked while the database had refused it.
+They now confirm, and on failure put the switch back and say why.
+
+The push plumbing itself is healthy, and the evidence was already in the
+database: 3 subscriptions, 6 settings enabled, `notify-picks-due` running green
+with `{"notified": 0, "group_weeks": 0}`. Nothing is due until a board exists.
+
+### Aug 21 — POOL-6: a pool is counted in points
+
+Owner call, with both edges settled the same night: a push scores 0, survivor
+stays alive/eliminated. Units carry the −110 convention, so a 10-5 week read
+`+4.1u` — a book's arithmetic wearing a pool's clothes.
+
+`Tally.points` is one per win, nothing for a loss or a push, added **beside**
+`units` rather than replacing it: `tally` is shared with `bets`, where units are
+the whole point.
+
+The projection and the odds column moved with the board — the Pool Machine
+raced in units and `weekWinOdds` simulated in units, and leaving either would
+have put a book's answer beside a pool's standings. Ties are now common (points
+are integers; −110 units almost never tie), which is what the sim's
+leader-splitting was always for and had almost never exercised.
+
+Two behaviour changes worth stating: **a loss costs nothing**, so a pool cannot
+go negative; and **straight-up weeks gained a score they never had**, because
+the old unit line was gated on a priced market.
+
+The pool-machine tests moved with the contract rather than being deleted —
+every expectation in them used to be a −110 unit figure, and the comments now
+say so.
+
 ### Aug 21 — POOL-1/POOL-2: Groups takes the thumb zone, the builder starts empty
 
 Owner report from a night of using the app. Groups and Games swap slots in

@@ -37,6 +37,7 @@ import {
   spreadMoveRead,
   upsetAlert,
   watchability,
+  type CrewPickView,
   type GameView,
   type MyBetView,
   type TeamView,
@@ -602,6 +603,40 @@ const initials = (name: string) =>
     .slice(0, 2)
     .toUpperCase();
 
+/** The team colour a side belongs to; null for over/under, which belong to
+ *  neither team and take the neutral push colour. */
+function sideColor(game: GameView, side: string): string | null {
+  if (side === "home") return game.home.color ?? null;
+  if (side === "away") return game.away.color ?? null;
+  return null;
+}
+
+/**
+ * The overlapping initials cluster. One implementation, so the branch that
+ * names the crew and the branch that names your tail render the same object —
+ * they were the same picture drawn twice, and the second copy is how two
+ * treatments of one idea start to drift.
+ */
+function CrewPips({ members, color }: { members: CrewPickView[]; color: string | null }) {
+  return (
+    <span className="flex shrink-0" aria-hidden>
+      {members.map((c) => (
+        <span
+          key={c.name}
+          title={c.record ? `${c.name} ${c.record}` : c.name}
+          className="stat -ml-1 flex h-[18px] w-[18px] items-center justify-center rounded-full border text-[8px] font-bold text-chalk first:ml-0"
+          style={{
+            background: `color-mix(in srgb, ${color ?? "var(--push)"} 32%, var(--elev))`,
+            borderColor: `color-mix(in srgb, ${color ?? "var(--push)"} 60%, transparent)`,
+          }}
+        >
+          {initials(c.name)}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 /**
  * Who else is riding this game, and how their week is going. With a pick of
  * your own, the line splits into "with you" and the fade; without one it
@@ -613,13 +648,30 @@ function CrewLine({ game }: { game: GameView }) {
   const my = headlinePick(game.myPicks);
 
   if (!my) {
-    const counts = new Map<string, number>();
-    for (const c of crew) counts.set(c.side, (counts.get(c.side) ?? 0) + 1);
+    /* POOL-3, owner request 2026-08-21: "on the game cards it just says a
+       number on how many people picked what team — can we do the same thing
+       like tail/fade, list who picked what."
+       The tail/fade shape below already named people; only this branch — the
+       one a reader sees before they have picked — counted them. "3 HOU" is
+       the least interesting true thing the card knows: WHO is on it is the
+       part you argue about.
+       Nothing is revealed that was not already: RLS returns another member's
+       pick only through `picks_revealed` (0023), so a group that hides picks
+       until kickoff hands this component an empty list until kickoff. The
+       reveal rule is the database's, and this is presentation. */
+    const bySide = new Map<string, CrewPickView[]>();
+    for (const c of crew) bySide.set(c.side, [...(bySide.get(c.side) ?? []), c]);
     return (
-      <div className="mt-2 flex items-center gap-1.5 border-t border-chalk/8 pt-2 text-[11px] text-dim">
-        <span className="stat truncate">
-          Crew: {[...counts.entries()].map(([s, n]) => `${n} ${sideLabel(game, s)}`).join(" · ")}
-        </span>
+      <div className="mt-2 flex flex-col gap-1 border-t border-chalk/8 pt-2 text-[11px] text-dim">
+        {[...bySide.entries()].map(([side, members]) => (
+          <div key={side} className="flex items-center gap-1.5">
+            <CrewPips members={members} color={sideColor(game, side)} />
+            <span className="stat shrink-0 font-semibold text-chalk/70">
+              {sideLabel(game, side)}
+            </span>
+            <span className="truncate">{members.map((c) => c.name).join(" · ")}</span>
+          </div>
+        ))}
       </div>
     );
   }
@@ -630,21 +682,7 @@ function CrewLine({ game }: { game: GameView }) {
   return (
     <div className="mt-2 flex items-center gap-1.5 border-t border-chalk/8 pt-2 text-[11px] text-dim">
       {withMe.length > 0 && (
-        <span className="flex shrink-0" aria-hidden>
-          {withMe.map((c) => (
-            <span
-              key={c.name}
-              title={c.record ? `${c.name} ${c.record}` : c.name}
-              className="stat -ml-1 flex h-[18px] w-[18px] items-center justify-center rounded-full border text-[8px] font-bold text-chalk first:ml-0"
-              style={{
-                background: `color-mix(in srgb, ${pickTeam?.color ?? "var(--push)"} 32%, var(--elev))`,
-                borderColor: `color-mix(in srgb, ${pickTeam?.color ?? "var(--push)"} 60%, transparent)`,
-              }}
-            >
-              {initials(c.name)}
-            </span>
-          ))}
-        </span>
+        <CrewPips members={withMe} color={pickTeam?.color ?? null} />
       )}
       <span className="truncate">
         {withMe.length === 0
