@@ -34,8 +34,8 @@ export type Outcome = "home" | "away";
 export interface ProjectedRow {
   userId: string;
   name: string;
-  /** Graded units + projected units from the toggles. */
-  units: number;
+  /** Graded points + projected points from the toggles (POOL-6). */
+  points: number;
   /** The projected part alone — 0 with no toggles touching this member. */
   delta: number;
 }
@@ -68,9 +68,14 @@ export function projectWeek(
       return {
         userId: m.userId,
         name: m.name,
-        units: (graded?.units ?? 0) + projected.units,
-        delta: projected.units,
+        /* POOL-6, owner call 2026-08-21: a pool is counted in points, not
+           units. The projection has to agree with the board it is projecting,
+           so this reads the same `points` the graded tallies now carry — a
+           machine that races in units beside a board that scores in points is
+           two answers to one question. */
+        points: (graded?.points ?? 0) + projected.points,
+        delta: projected.points,
       };
     })
-    .sort((a, b) => b.units - a.units || a.name.localeCompare(b.name));
+    .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
 }

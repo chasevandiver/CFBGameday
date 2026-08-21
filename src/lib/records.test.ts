@@ -167,3 +167,48 @@ describe("formatRecord", () => {
     expect(formatRecord({ ...EMPTY_TALLY, wins: 12, losses: 7, pushes: 1 })).toBe("12-7-1");
   });
 });
+
+describe("points — the pool's currency (POOL-6)", () => {
+  /**
+   * Owner call, 2026-08-21: "each pick should be worth a point and not by
+   * units", push scores 0, survivor stays alive/eliminated. Units carry the
+   * −110 convention, which makes a 10-5 week read "+4.1u" — a number nobody
+   * can check in their head or argue about at a bar.
+   */
+  it("scores a win at one point", () => {
+    expect(tally([{ result: "win", units: 1 }]).points).toBe(1);
+  });
+
+  it("scores a loss at nothing — a pool cannot go negative", () => {
+    // This is the whole difference from units, where a loss is −1.
+    const t = tally([{ result: "loss", units: 1 }]);
+    expect(t.points).toBe(0);
+    expect(t.units).toBe(-1);
+  });
+
+  it("scores a push at nothing, which is the owner's call and not the units rule", () => {
+    // In units a push is no action; in points it is a pick that did not win.
+    expect(tally([{ result: "push", units: 1 }]).points).toBe(0);
+  });
+
+  it("ignores voided and ungraded picks, like every other column", () => {
+    expect(tally([{ result: "void", units: 1 }, { result: null, units: 1 }]).points).toBe(0);
+  });
+
+  it("counts every winning pick, whatever it was staked at", () => {
+    // Stake is a betting idea. A pool pick is a pick.
+    expect(
+      tally([
+        { result: "win", units: 5 },
+        { result: "win", units: 1 },
+        { result: "loss", units: 3 },
+      ]).points,
+    ).toBe(2);
+  });
+
+  it("leaves units alone, because bets still need them", () => {
+    const t = tally([{ result: "win", units: 1, payoutUnits: 2.5 }]);
+    expect(t.units).toBe(2.5);
+    expect(t.points).toBe(1);
+  });
+});

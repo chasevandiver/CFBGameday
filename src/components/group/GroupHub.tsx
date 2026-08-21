@@ -310,17 +310,18 @@ export function MemberCard({
         <span className="stat block text-lg font-semibold leading-none text-chalk">
           {tally.decided > 0 ? formatRecord(tally) : "—"}
         </span>
-        {priced && (
-          <span
-            className={`stat block text-[11px] leading-tight ${
-              tally.units > 0 ? "text-win" : tally.units < 0 ? "text-loss" : "text-chalk/45"
-            }`}
-          >
-            {tally.decided > 0
-              ? `${tally.units >= 0 ? "+" : ""}${tally.units.toFixed(1)}u`
-              : " "}
-          </span>
-        )}
+        {/* POOL-6: points, and no longer gated on `priced`. Units needed a
+            number to grade against, so a straight-up week showed no score at
+            all — the one format where the score is most obvious. A point is a
+            point whatever the market was, and the non-breaking space still
+            holds the row's height so the list cannot jump. */}
+        <span
+          className={`stat block text-[11px] leading-tight ${
+            tally.points > 0 ? "text-win" : "text-chalk/45"
+          }`}
+        >
+          {tally.decided > 0 ? `${tally.points} ${tally.points === 1 ? "pt" : "pts"}` : " "}
+        </span>
       </span>
     </li>
   );

@@ -613,6 +613,8 @@ export const sampleTally = (
   pushes,
   decided: wins + losses + pushes,
   units,
+  // Same rule the real tally uses: one per win, nothing for a push.
+  points: wins,
   staked: wins + losses,
   roi: units / (wins + losses),
   avgClv,

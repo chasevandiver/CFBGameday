@@ -215,6 +215,30 @@ shipping it.
 
 ## Log
 
+### Aug 21 — POOL-6: a pool is counted in points
+
+Owner call, with both edges settled the same night: a push scores 0, survivor
+stays alive/eliminated. Units carry the −110 convention, so a 10-5 week read
+`+4.1u` — a book's arithmetic wearing a pool's clothes.
+
+`Tally.points` is one per win, nothing for a loss or a push, added **beside**
+`units` rather than replacing it: `tally` is shared with `bets`, where units are
+the whole point.
+
+The projection and the odds column moved with the board — the Pool Machine
+raced in units and `weekWinOdds` simulated in units, and leaving either would
+have put a book's answer beside a pool's standings. Ties are now common (points
+are integers; −110 units almost never tie), which is what the sim's
+leader-splitting was always for and had almost never exercised.
+
+Two behaviour changes worth stating: **a loss costs nothing**, so a pool cannot
+go negative; and **straight-up weeks gained a score they never had**, because
+the old unit line was gated on a priced market.
+
+The pool-machine tests moved with the contract rather than being deleted —
+every expectation in them used to be a −110 unit figure, and the comments now
+say so.
+
 ### Aug 21 — POOL-1/POOL-2: Groups takes the thumb zone, the builder starts empty
 
 Owner report from a night of using the app. Groups and Games swap slots in

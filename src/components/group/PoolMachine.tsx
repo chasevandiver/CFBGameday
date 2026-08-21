@@ -121,13 +121,15 @@ export function PoolMachine({
               {i + 1}. {r.name}
             </span>
             <span className="text-dim">
-              {r.units > 0 ? "+" : ""}
-              {r.units.toFixed(2)}u
+              {/* Points, not units (POOL-6). Whole numbers — a pool score with
+                  two decimals on it was the tell that this was a book's
+                  arithmetic wearing a pool's clothes. */}
+              {r.points} {r.points === 1 ? "pt" : "pts"}
               {r.delta !== 0 && (
                 <span className={r.delta > 0 ? "text-win" : "text-loss"}>
                   {" "}
                   ({r.delta > 0 ? "+" : ""}
-                  {r.delta.toFixed(2)})
+                  {r.delta})
                 </span>
               )}
               <span className="ml-2 text-chalk/45">{fmtPct(odds.get(r.userId) ?? 0)}</span>

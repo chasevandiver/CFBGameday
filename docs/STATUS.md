@@ -1305,6 +1305,31 @@ first because neither needed a decision.
       lit forever. Now `start_ts.is.null,start_ts.lte.now`.
       Its own route (`/api/picks-due`) rather than page data: `AppNav` renders
       on every page and this would otherwise be a query every route pays for.
+- [x] **POOL-6 — pick'em scores in points; bets keep their units.** Owner call
+      2026-08-21, with both edges settled the same night: **a push scores 0**,
+      and **survivor is untouched** — it stays alive/eliminated, which is not a
+      score at all.
+      Units carry the −110 convention, so a 10-5 week read `+4.1u`: a number
+      nobody can check in their head or argue about at a bar, and a book's
+      arithmetic wearing a pool's clothes. `Tally.points` is one per win,
+      nothing for a loss, nothing for a push — spelled `points: wins` rather
+      than aliased, so the day someone wants a half-point for a push there is
+      one line to change.
+      **Added beside `units` rather than replacing it.** `tally` is shared with
+      `bets`, where units are the entire point and a "point" would be
+      meaningless. Two currencies in one row because they are two different
+      games.
+      **The projection and the odds column had to move with the board.** The
+      Pool Machine raced in units and `weekWinOdds` simulated in units; leaving
+      either would have put a book's answer beside a pool's standings. Ties are
+      now genuinely common — points are integers and −110 units almost never
+      tie — which is what the sim's leader-splitting was always for and had
+      almost never exercised.
+      **The one behaviour change worth stating: a loss costs nothing.** Under
+      units it was −1 and a bad week could go negative. A pool cannot.
+      Straight-up weeks gained a score they never had: the old unit line was
+      gated on a priced market, so the one format where the score is most
+      obvious showed none.
 - [x] **POOL-2 — the week builder starts empty and shows the line.** Games
       already defaulted to unchecked; **Spreads did not**, and a pre-ticked
       market is the one box on that form that got saved without anyone deciding
