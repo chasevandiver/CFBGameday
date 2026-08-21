@@ -26,12 +26,6 @@ export interface NavItem {
    */
   overflowOnly?: true;
   icon?: ComponentType<{ size?: number | string; "aria-hidden"?: boolean }>;
-  /**
-   * Marks the tab that carries a live count. Only `picks-due` exists: a pick
-   * is the one thing in this app with a deadline, and a badge that appears for
-   * anything else teaches people to ignore it.
-   */
-  badge?: "picks-due";
 }
 
 /**
@@ -54,9 +48,6 @@ export const NAV_ITEMS: NavItem[] = [
     also: ["/crew", "/rules"],
     primary: true,
     icon: Users,
-    /** The only badged tab: unmade picks are the one thing in this app that
-     *  expires. See PicksDueBadge. */
-    badge: "picks-due",
   },
   { label: "Edges", href: "/edges", overflowOnly: true, icon: TrendingUp },
   // R5-A: a takeover surface, not a daily destination — the slate's Live

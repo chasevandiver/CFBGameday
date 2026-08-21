@@ -1305,6 +1305,39 @@ first because neither needed a decision.
       lit forever. Now `start_ts.is.null,start_ts.lte.now`.
       Its own route (`/api/picks-due`) rather than page data: `AppNav` renders
       on every page and this would otherwise be a query every route pays for.
+- [x] **POOL-1b — the swap the owner meant was the HUB, not the nav.** Owner
+      correction, 2026-08-21: *"I wanted the groups card switched with the games
+      tab on the users hub screen."* POOL-1 moved the bottom-bar tabs, which was
+      not wrong but was not the ask. The **home hub** led with the arcade — the
+      first card under the live banner — while the pool, the thing with a
+      deadline on it, was a section, most of a screen down. Groups now takes
+      that slot and Games moves down beside the standings. The nav swap stays;
+      the two are consistent.
+- [x] **POOL-1c — the badge was on the wrong surface, and said the wrong
+      thing.** Owner: *"there's a 9+ notification on the groups tab which is
+      confusing. I thought the notification to make sure you've made all your
+      picks would go on the home hub."* Both halves are right, and the second
+      explains the first: **a number floating over an icon cannot say what it is
+      counting.** "9+" over a Users glyph could be nine anything.
+      The count moved to the hub's Groups card, where it has room to be a
+      sentence — *"3 picks still to make."* — and the nav badge is gone, along
+      with the `badge` field on `NavItem` (nothing else was ever going to earn
+      one, and a field with no members is an invitation).
+      The rule did not move: `fetchOpenPickCount` is now one server-side
+      implementation used by both the hub and `/api/picks-due`, so the card and
+      the route cannot drift.
+- [x] **POOL-3b — the named pool line belongs at the BOTTOM, in every state.**
+      Owner correction with a screenshot: *"see how on the slate cards it just
+      has little tags for what you picked in the group and the bet? I want the
+      pickem picks shown at the bottom with who picked what on that game."*
+      POOL-3 named the crew — and the card only rendered that line **while a
+      game was live**. Pregame it fell back to a count chip in the tag row
+      (`1 SJSU · 1 USC`), which is exactly the state a reader is in when they
+      care who is on what.
+      The line now sits at the bottom in every state, above the money layer and
+      in the same shape: **POOL** then **SHEET**, each with the same labelled
+      header, so the card's two layers read as a pair rather than as one feature
+      and one leftover. The count chip is deleted rather than kept beside it.
 - [x] **POOL-3 — the crew line names people instead of counting them.** Owner
       request: *"on the game cards it just says a number on how many people
       picked what team — can we do the same thing like tail/fade, list who

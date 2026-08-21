@@ -215,6 +215,26 @@ shipping it.
 
 ## Log
 
+### Aug 21 — three owner corrections: the hub, the badge, and where the pool line lives
+
+**The swap meant the hub, not the nav.** POOL-1 moved the bottom-bar tabs. The
+ask was the home hub, which led with the arcade while the pool — the thing with
+a deadline on it — was a section most of a screen down. Groups takes that slot
+now; Games moves beside the standings. The nav swap stays, so the two agree.
+
+**The badge was on the wrong surface and said the wrong thing.** "9+" over a
+Users glyph could be nine of anything; a number floating on an icon cannot say
+what it is counting. The count moved to the hub's Groups card where it has room
+for a sentence — "3 picks still to make." — and the nav badge is gone, along
+with the `badge` field on `NavItem`. `fetchOpenPickCount` is now one
+server-side implementation shared by the hub and `/api/picks-due`.
+
+**The named pool line only rendered while a game was live.** Pregame the card
+fell back to a count chip in the tag row (`1 SJSU · 1 USC`) — exactly the state
+a reader is in when they care who is on what. It now sits at the bottom in
+every state, above the money layer and in the same shape: POOL then SHEET, one
+labelled header each. The count chip is deleted rather than left beside it.
+
 ### Aug 21 — POOL-3/4/5: names on the card, a share menu that opens, a toggle that answers
 
 **POOL-3.** The crew line counted people; now it names them. The tail/fade

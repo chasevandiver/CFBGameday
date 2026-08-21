@@ -23,6 +23,7 @@ const empty = (over: Partial<HomeData> = {}): HomeData => ({
   fetchedAt: new Date(NOW).toISOString(),
   firstKick: null,
   liveCount: 0,
+  picksDue: 0,
   weekGameCount: 58,
   positions: [],
   openBetCount: 0,
@@ -148,5 +149,40 @@ describe("TodayCard (R2-B1)", () => {
     );
     const label = screen.getByText("The weekend, graded");
     expect(label.closest("a")).toBeNull();
+  });
+});
+
+
+describe("the hub's Groups card (2026-08-21)", () => {
+  /**
+   * Owner call, twice over. The arcade held the first card under the live
+   * banner while the pool — the thing with a deadline on it — was a section
+   * most of a screen further down; and the picks-due count spent a few hours
+   * as a "9+" on the Groups nav tab, which the owner read as "confusing." A
+   * number floating over an icon cannot say what it is counting. A card can.
+   */
+  it("leads with Groups, and puts Games below", () => {
+    render(<HomeDashboard data={empty()} signedIn />);
+    const links = screen.getAllByRole("link");
+    const groups = links.findIndex((l) => l.getAttribute("href") === "/groups");
+    const games = links.findIndex((l) => l.getAttribute("href") === "/games");
+    expect(groups).toBeGreaterThanOrEqual(0);
+    expect(games).toBeGreaterThan(groups);
+  });
+
+  it("says how many picks are owed, in words rather than a floating number", () => {
+    render(<HomeDashboard data={empty({ picksDue: 3 })} signedIn />);
+    expect(screen.getByText("3 picks still to make.")).toBeTruthy();
+  });
+
+  it("counts one pick singular, because a card has room to be right", () => {
+    render(<HomeDashboard data={empty({ picksDue: 1 })} signedIn />);
+    expect(screen.getByText("1 pick still to make.")).toBeTruthy();
+  });
+
+  it("says nothing about picks when none are owed", () => {
+    render(<HomeDashboard data={empty({ picksDue: 0 })} signedIn />);
+    expect(screen.queryByText(/still to make/)).toBeNull();
+    expect(screen.getByText(/Your pools, the boards/)).toBeTruthy();
   });
 });

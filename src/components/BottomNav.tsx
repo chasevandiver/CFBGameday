@@ -4,7 +4,6 @@ import { MoreHorizontal } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { PicksDueBadge } from "./PicksDueBadge";
 import { PRIMARY_ITEMS, SECONDARY_ITEMS, isNavItemActive } from "./nav-items";
 
 /**
@@ -105,14 +104,7 @@ export function BottomNav() {
               }`}
               style={{ minHeight: "var(--bottom-nav-h)" }}
             >
-              {/* `relative` so the badge can hang off the icon rather than
-                  the whole cell — anchored to the label it would shift the
-                  text, and DESIGN.md's no-layout-shift rule applies to a nav
-                  that appears on every screen most of all. */}
-              <span className="relative">
-                <Icon size={21} aria-hidden />
-                {item.badge === "picks-due" && <PicksDueBadge />}
-              </span>
+              <Icon size={21} aria-hidden />
               {item.label}
             </Link>
           );

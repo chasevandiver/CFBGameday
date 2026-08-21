@@ -1,6 +1,6 @@
 "use client";
 
-import { CloudRain, Pin, Snowflake, Star, Thermometer, Ticket, Tv, Wind, X } from "lucide-react";
+import { CloudRain, Pin, Snowflake, Star, Thermometer, Ticket, Tv, Users, Wind, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { voidBet } from "../../app/actions/bets";
@@ -329,7 +329,7 @@ export function GameCard({
               flood={flash?.td ? { side: flash.side, key: flash.key } : null}
             />
           )}
-          {live && <CrewLine game={game} />}
+
 
           <div className="mt-auto">
             {dead ? null : final ? (
@@ -663,6 +663,7 @@ function CrewLine({ game }: { game: GameView }) {
     for (const c of crew) bySide.set(c.side, [...(bySide.get(c.side) ?? []), c]);
     return (
       <div className="mt-2 flex flex-col gap-1 border-t border-chalk/8 pt-2 text-[11px] text-dim">
+        <PoolLabel />
         {[...bySide.entries()].map(([side, members]) => (
           <div key={side} className="flex items-center gap-1.5">
             <CrewPips members={members} color={sideColor(game, side)} />
@@ -680,7 +681,9 @@ function CrewLine({ game }: { game: GameView }) {
   const withMe = crew.filter((c) => c.side === my.side);
   const against = crew.filter((c) => c.side !== my.side);
   return (
-    <div className="mt-2 flex items-center gap-1.5 border-t border-chalk/8 pt-2 text-[11px] text-dim">
+    <div className="mt-2 border-t border-chalk/8 pt-2 text-[11px] text-dim">
+      <PoolLabel />
+      <div className="flex items-center gap-1.5">
       {withMe.length > 0 && (
         <CrewPips members={withMe} color={pickTeam?.color ?? null} />
       )}
@@ -694,6 +697,20 @@ function CrewLine({ game }: { game: GameView }) {
           {against.map((c) => `${c.name} ${sideLabel(game, c.side)}`).join(", ")}
         </span>
       )}
+      </div>
+    </div>
+  );
+}
+
+/** Mirrors SheetLine's header, because POOL and SHEET are the card's two
+ *  layers and should announce themselves the same way. */
+function PoolLabel() {
+  return (
+    <div className="mb-1 flex items-center gap-1.5">
+      <Users size={10} aria-hidden className="shrink-0 text-chalk/45" />
+      <span className="stat text-[10px] font-semibold uppercase tracking-wider text-chalk/45">
+        Pool
+      </span>
     </div>
   );
 }
@@ -877,20 +894,6 @@ function OddsCell({
   );
 }
 
-/** Pregame crew split, shown once the viewer has locked a pick of their own. */
-function CrewSplit({ game }: { game: GameView }) {
-  const counts = new Map<string, number>();
-  for (const c of game.crewPicks) counts.set(c.side, (counts.get(c.side) ?? 0) + 1);
-  const my = headlinePick(game.myPicks);
-  if (my) counts.set(my.side, (counts.get(my.side) ?? 0) + 1);
-  if (game.crewPicks.length === 0) return null;
-  return (
-    <span className="stat min-w-0 truncate text-[10.5px] text-dim">
-      {[...counts.entries()].map(([s, n]) => `${n} ${sideLabel(game, s)}`).join(" · ")}
-    </span>
-  );
-}
-
 /* ---- footers ----------------------------------------------------------- */
 
 /**
@@ -1012,9 +1015,19 @@ function PregameFooter({ game, live }: { game: GameView; live: boolean }) {
           <ConsensusChip on={p?.consensus ?? false} />
           <MoveIndicator move={move} open={game.lines.spreadOpen} />
           {!live && <WatchRating score={watch} />}
-          {!live && game.myPicks.length > 0 && <CrewSplit game={game} />}
+
         </div>
       </div>
+
+      {/* POOL-3b, owner report 2026-08-21: "I want the pickem picks shown at the
+          bottom with who picked what on that game."
+          The named crew line was only rendering while a game was LIVE, and
+          pregame the card fell back to a count chip up in the tag row — which
+          is exactly the state a reader is in when they care who is on what.
+          It now sits here, at the bottom, above the money layer and in the same
+          shape: a labelled layer, POOL then SHEET, so the two read as a pair
+          rather than as one feature and one leftover. */}
+      <CrewLine game={game} />
 
       {/* The money layer, under the pool layer and visibly separate from it:
           who in the betting group is on this game and who put it up first.

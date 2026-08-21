@@ -783,26 +783,37 @@ export function HomeDashboard({
 
   // Naming the pool on every pick is noise when there is only one to name.
   const showPool = data.groups.filter((g) => g.group.kind === "pickem").length > 1;
+  const picksDue = data.picksDue;
 
   return (
     <>
       {note}
       <TodayCard today={data.today} demo={demo} />
-      {/* The game layer (R3-E1). This was three 12px links in a paragraph —
-          well under DESIGN.md's 44px rule, which the hub had no business
-          breaking. One row, one target, and the Games tab is the real
-          entrance now. */}
+      {/* Owner call, 2026-08-21: Groups takes this slot and Games moves down
+          beside the standings. The arcade was the first card under the live
+          banner while the pool — the thing with a deadline on it — was a
+          section most of a screen further down.
+          This is also where the picks-due count belongs. It was on the Groups
+          NAV TAB first and read as "9+" floating over an icon with no way to
+          tell what it was counting; on a card it can say the whole sentence. */}
       {!demo && (
         <Link
-          href="/games"
+          href="/groups"
           className="card card-hover mb-4 flex min-h-16 items-center justify-between gap-3 px-4 py-3"
         >
           <span className="min-w-0">
-            <span className="block text-sm text-chalk">Games</span>
+            <span className="block text-sm text-chalk">Groups</span>
             <span className="mt-0.5 block truncate text-xs text-dim">
-              The Streak, Guess the Lines, Guess the Game, the Six-Pack.
+              {picksDue > 0
+                ? `${picksDue} ${picksDue === 1 ? "pick" : "picks"} still to make.`
+                : "Your pools, the boards, who picked what."}
             </span>
           </span>
+          {picksDue > 0 && (
+            <span className="stat shrink-0 rounded-full bg-accent px-2 py-0.5 text-[11px] font-bold text-accent-ink">
+              {picksDue}
+            </span>
+          )}
           <ArrowRight className="h-4 w-4 shrink-0 text-chalk/40" aria-hidden />
         </Link>
       )}
@@ -913,6 +924,26 @@ export function HomeDashboard({
           </div>
 
           <div>
+            {/* The game layer (R3-E1). This was three 12px links in a
+                paragraph — well under DESIGN.md's 44px rule, which the hub had
+                no business breaking. One row, one target. It sat at the top of
+                the hub until 2026-08-21, when Groups took that slot (owner
+                call) and the arcade came down here, beside the standings. */}
+            {!demo && (
+              <Link
+                href="/games"
+                className="card card-hover mb-6 flex min-h-16 items-center justify-between gap-3 px-4 py-3"
+              >
+                <span className="min-w-0">
+                  <span className="block text-sm text-chalk">Games</span>
+                  <span className="mt-0.5 block truncate text-xs text-dim">
+                    The Streak, Guess the Lines, Guess the Game, the Six-Pack.
+                  </span>
+                </span>
+                <ArrowRight className="h-4 w-4 shrink-0 text-chalk/40" aria-hidden />
+              </Link>
+            )}
+
             {/* ---- your groups ---- */}
             <section aria-labelledby="groups-heading">
               <SectionHead

@@ -697,6 +697,7 @@ export function demoHomeData(now: number): HomeData {
     openBetCount: 3,
     openBetUnits: 3.0,
     weekPickCount: 5,
+    picksDue: 0,
     groups: DEMO_GROUPS,
     progress: DEMO_PROGRESS,
     bets: sampleTally(24, 18, 1, 5.7, 0.19),
