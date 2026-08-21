@@ -1184,6 +1184,39 @@ deliberate deferrals, each recorded below with what it would take.
       turns the three card tests red, and the pair at `0:00`/`0:01` pins the
       warning treatment from both sides.
 
+- [x] **LIVE-7 — the bottom line sat on a score for the rest of the game.**
+      Owner report, 2026-08-21: *"scoring plays are still getting stuck on the
+      slate cards and not the most recent plays."*
+      **It is NFL-18 working as written, and the correction is on me:** when
+      the same line was reported earlier that night I attributed it to the
+      poller gap holding a stale `last_play`. The label in the screenshot was
+      `HOU` — the scoring team's abbreviation — and that label renders only for
+      `lastScore`. The line was the SCORE line, which `LiveSituation` shows
+      **instead of** the last play, permanently, from the first score of the
+      game onward. The poller gap was real and separately confirmed (the stored
+      clock was frozen at Q1 11:13); it was not what that line was showing.
+      **What NFL-18 was defending is real and is kept.** ESPN replaces
+      `lastPlay` with the extra point about thirty seconds after a touchdown
+      and the kickoff a few seconds later, so a reader glancing down a minute
+      later found a kickoff where the touchdown had been. Permanent was the
+      part that went too far: a card could show a field goal from ten minutes
+      earlier while its own down, distance, spot and field strip updated every
+      snap — the whole card live except the line people read.
+      **`showsScore` gives the score a two-minute hold and then hands the line
+      back**, after which the newer of the two wins. Two minutes clears the PAT
+      and the kickoff, which is all NFL-18 ever needed. It needs the score's
+      arrival time, so `scoring_plays.created_at` now rides through the query
+      into the view beside LIVE-4's `last_play_at`.
+      **Conservative where it cannot tell**: a score or a play with no
+      timestamp keeps the old behaviour rather than guessing — which is every
+      row written before 0078 and every demo fixture.
+      **Two existing tests caught a real defect in the first cut**: the guard
+      read `game.lastScore !== null`, and a caller that omits the field passes
+      `undefined`, which put the card into score mode with no score to render —
+      a blank line where the play should be. `Boolean()` now.
+      Verified by mutation: stubbing the hand-back turns four tests red across
+      the pure rule and the rendered card.
+
 ### 2.2 This week (Aug 14–18)
 
 - [x] **P1-1** Shipped 2026-08-13. A **Game status** section on `/admin`

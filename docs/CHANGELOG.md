@@ -215,6 +215,39 @@ shipping it.
 
 ## Log
 
+### Aug 21 — LIVE-7: the score line gives the card back
+
+Owner: "scoring plays are still getting stuck on the slate cards and not the
+most recent plays." That is NFL-18 working as written — the bottom line shows
+the last SCORE instead of the last play, permanently, from the first score
+onward.
+
+**A correction to the earlier diagnosis in this log.** When that line was first
+reported, hours before, it was attributed to the poller gap holding a stale
+`last_play`. The screenshot's label was `HOU`, which renders only for
+`lastScore`: the line was the score line the whole time. The poller gap was
+real and separately confirmed — the stored clock was frozen at Q1 11:13 — but
+it was not what that line was showing.
+
+What NFL-18 defends is real and is kept: ESPN swaps in the extra point about
+thirty seconds after a touchdown and the kickoff a few seconds later, so the
+touchdown vanished from the line within a minute. Permanent was the overreach.
+A card could sit on a field goal from ten minutes earlier while its own down,
+distance, spot and field strip updated every snap.
+
+`showsScore` gives the score a **two-minute hold**, then hands the line back,
+after which the newer of the two wins. Two minutes clears the PAT and the
+kickoff. It reads `scoring_plays.created_at`, now carried through the query
+beside LIVE-4's `last_play_at`, and stays conservative when either timestamp is
+missing — every row written before 0078, and every demo fixture.
+
+Two existing tests caught a real defect in the first cut: the guard read
+`lastScore !== null`, and a caller that omits the field passes `undefined`,
+which put the card into score mode with nothing to render. `Boolean()` now.
+
+Verified by mutation: stubbing the hand-back turns four tests red across the
+pure rule and the rendered card. 1,820 tests across 124 files green.
+
 ### Aug 21 — LIVE-6: the card never said "halftime"
 
 Owner question an hour after the rehearsal, and the answer was no. ESPN sends

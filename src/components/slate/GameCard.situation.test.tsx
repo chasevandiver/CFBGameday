@@ -233,3 +233,62 @@ describe("the break between periods (2026-08-21)", () => {
     expect(screen.queryByText(/^\d+m$/)).toBeNull();
   });
 });
+
+
+describe("the bottom line hands back from score to play (LIVE-7)", () => {
+  /**
+   * Owner report, 2026-08-21: "scoring plays are still getting stuck on the
+   * slate cards and not the most recent plays." NFL-18 made the score win
+   * permanently — right about the touchdown (ESPN swaps in the PAT within
+   * thirty seconds), wrong for the rest of the game, where a whole drive could
+   * pass with the card still showing a field goal from ten minutes earlier.
+   *
+   * These render the real component, because the pure rule passing is not the
+   * same as the card asking it.
+   */
+  const scored = (secondsAgo: number, over: Partial<GameView> = {}) =>
+    live({
+      lastScore: {
+        text: "Woody Marks 20 Yd Rush",
+        abbr: "HOU",
+        period: 1,
+        clock: "10:06",
+        at: new Date(Date.now() - secondsAgo * 1000).toISOString(),
+      },
+      ...over,
+    } as Partial<GameView>);
+
+  it("still shows a fresh touchdown over the extra point that follows it", async () => {
+    renderCard(
+      scored(30, {
+        lastPlay: "K.Fairbairn extra point is GOOD.",
+        lastPlayAt: new Date().toISOString(),
+      }),
+    );
+    expect(await screen.findByText(/Woody Marks 20 Yd Rush/)).toBeTruthy();
+    expect(screen.queryByText(/extra point/)).toBeNull();
+  });
+
+  it("shows the current play once the score has had its two minutes", async () => {
+    renderCard(
+      scored(600, {
+        lastPlay: "C.Stroud pass short right to W.Marks for 6 yards",
+        lastPlayAt: new Date().toISOString(),
+      }),
+    );
+    // findBy* because the swap happens on the tick after mount, deliberately:
+    // the server and the browser cannot agree on `now`.
+    expect(await screen.findByText(/C.Stroud pass short right/)).toBeTruthy();
+    expect(screen.queryByText(/Woody Marks/)).toBeNull();
+  });
+
+  it("labels the line for whichever it is showing", async () => {
+    const { unmount } = renderCard(
+      scored(600, { lastPlay: "Rush for 3 yards", lastPlayAt: new Date().toISOString() }),
+    );
+    expect(await screen.findByText("Last")).toBeTruthy();
+    unmount();
+    renderCard(scored(10, { lastPlay: "Rush for 3 yards", lastPlayAt: new Date().toISOString() }));
+    expect(await screen.findByText("HOU")).toBeTruthy();
+  });
+});

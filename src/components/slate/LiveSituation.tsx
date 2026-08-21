@@ -14,7 +14,7 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import { EMPTY_TRAIL, foldTrail, type TrailState } from "../../lib/drive-trail";
-import { playAge } from "../../lib/slate";
+import { playAge, showsScore } from "../../lib/slate";
 import { breakLabel } from "../../lib/kick";
 import {
   fieldPosition,
@@ -136,27 +136,37 @@ export function LiveSituation({
      precisely when nothing is arriving. `playAge` returns the same string for
      most ticks, and setting identical state is a no-op in React, so the
      30-second interval costs a Date.parse. */
-  const [ageState, setAgeState] = useState<string | null>(null);
+  /* One clock, driving both the play's age (LIVE-4) and whether the score has
+     held the bottom line long enough (LIVE-7). Null until mount: the server
+     and the browser would not agree on `now`, and a boolean that disagrees at
+     hydration is a React error rather than a cosmetic one. Before the first
+     tick the card renders exactly what it rendered before LIVE-7 — the score,
+     when there is one — so the pre-mount frame is never wrong, only older. */
+  const [nowMs, setNowMs] = useState<number | null>(null);
   const playAt = game.lastPlayAt ?? null;
   useEffect(() => {
-    if (!playAt) return;
     // The clock is the external system being subscribed to; the zero-delay
     // first tick keeps the effect body free of a synchronous setState while
-    // still filling the age on the render after mount rather than 30s later.
-    const tick = () => setAgeState(playAge(playAt));
+    // still settling on the render after mount rather than 30s later.
+    const tick = () => setNowMs(Date.now());
     const first = setTimeout(tick, 0);
     const id = setInterval(tick, 30_000);
     return () => {
       clearTimeout(first);
       clearInterval(id);
     };
-  }, [playAt]);
+  }, []);
   /* No age during a break. At halftime the last play IS twelve minutes old and
      that is the game, not a fault — and the card is already saying HALFTIME
      beside it, so the badge would be answering a question nobody asked with a
      number that looks like an alarm. Same between quarters. */
   const atBreak = breakLabel(game.period, game.clock) !== null;
-  const age = playAt && !atBreak ? ageState : null;
+  // Boolean(), not `!== null`: a caller that omits `lastScore` entirely passes
+  // undefined, and `undefined !== null` would put the card into score mode
+  // with no score to render — a blank line where the play should be. Two
+  // existing tests caught exactly that.
+  const showScore = nowMs === null ? Boolean(game.lastScore) : showsScore(game, nowMs);
+  const age = playAt && !atBreak && !showScore && nowMs !== null ? playAge(playAt, nowMs) : null;
   const redZone = isRedZone(game);
   const posTeam =
     game.possession === "home" ? game.home : game.possession === "away" ? game.away : null;
@@ -237,16 +247,16 @@ export function LiveSituation({
       {(game.lastScore || game.lastPlay) && (
         <p className="last-play">
           <span className="stat mr-1 text-[9px] font-semibold uppercase tracking-widest text-chalk/55">
-            {game.lastScore ? (game.lastScore.abbr ?? "Score") : "Last"}
+            {showScore ? (game.lastScore?.abbr ?? "Score") : "Last"}
           </span>
-          {game.lastScore ? game.lastScore.text : game.lastPlay}
+          {showScore ? game.lastScore?.text : game.lastPlay}
           {/* LIVE-4. Only when the play is old enough that its age is news —
               see playAge. It rides inside the same paragraph so it cannot add
               a line, and `tabular-nums` keeps 9m and 10m the same width, so a
               minute ticking over moves nothing (DESIGN.md: no layout shift on
               updates). Absent for a score line: that one is meant to persist,
               and an age on it would read as staleness rather than memory. */}
-          {!game.lastScore && age && (
+          {age && (
             <span className="stat ml-1 text-[9px] tabular-nums text-chalk/45" title="Time since this play arrived">
               {age}
             </span>

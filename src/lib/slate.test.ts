@@ -29,6 +29,8 @@ import {
   type TeamView,
   playAge,
   PLAY_AGE_FLOOR_S,
+  showsScore,
+  SCORE_HOLD_S,
 } from "./slate";
 
 describe("probSurge", () => {
@@ -740,5 +742,89 @@ describe("playAge — how old the play on the card is (LIVE-4)", () => {
   it("shows nothing rather than a negative age when the clocks disagree", () => {
     // The stamp is written by a server; the reader's clock can be behind it.
     expect(playAge(at(-30), t)).toBeNull();
+  });
+});
+
+
+describe("showsScore — score or live play on the card's bottom line (LIVE-7)", () => {
+  const t = Date.parse("2026-08-21T03:00:00Z");
+  const iso = (secondsAgo: number) => new Date(t - secondsAgo * 1000).toISOString();
+  const g = (over: Record<string, unknown>) =>
+    ({
+      lastScore: null,
+      lastPlay: null,
+      lastPlayAt: null,
+      ...over,
+    }) as unknown as Parameters<typeof showsScore>[0];
+  const score = (secondsAgo: number) => ({
+    text: "Woody Marks 20 Yd Rush",
+    abbr: "HOU",
+    period: 1,
+    clock: "10:06",
+    at: iso(secondsAgo),
+  });
+
+  it("holds the line for the touchdown NFL-18 was defending", () => {
+    // ESPN swaps in the extra point ~30s later and the kickoff a few after.
+    // Both are real plays; neither may take the line off the touchdown.
+    const held = g({
+      lastScore: score(35),
+      lastPlay: "K.Fairbairn extra point is GOOD",
+      lastPlayAt: iso(5),
+    });
+    expect(showsScore(held, t)).toBe(true);
+  });
+
+  it("gives the line back once the hold expires", () => {
+    // The complaint: a drive that starts after a field goal never appeared,
+    // so a card with a live down-and-distance read as frozen.
+    const stale = g({
+      lastScore: score(SCORE_HOLD_S + 1),
+      lastPlay: "C.Stroud pass short right to W.Marks for 6 yards",
+      lastPlayAt: iso(10),
+    });
+    expect(showsScore(stale, t)).toBe(false);
+  });
+
+  it("keeps a score that is still newer than the last play we saw", () => {
+    // Past the hold, but nothing has happened since — a kickoff we never
+    // observed must not promote a pre-score play over the score.
+    const quiet = g({
+      lastScore: score(SCORE_HOLD_S + 60),
+      lastPlay: "A play from before the score",
+      lastPlayAt: iso(SCORE_HOLD_S + 120),
+    });
+    expect(showsScore(quiet, t)).toBe(true);
+  });
+
+  it("shows the score when there is no play to hand the line to", () => {
+    expect(showsScore(g({ lastScore: score(600), lastPlay: null }), t)).toBe(true);
+  });
+
+  it("shows the play when the game has not scored", () => {
+    expect(showsScore(g({ lastPlay: "Kickoff touchback", lastPlayAt: iso(5) }), t)).toBe(false);
+  });
+
+  it("keeps the old behaviour when it cannot tell which is newer", () => {
+    // Rows written before LIVE-4 and 0078 carry neither timestamp, and so do
+    // the demo fixtures. Guessing there would be worse than not changing.
+    const noScoreTime = g({
+      lastScore: { ...score(0), at: null },
+      lastPlay: "Rush for 3",
+      lastPlayAt: iso(1),
+    });
+    expect(showsScore(noScoreTime, t)).toBe(true);
+    const noPlayTime = g({
+      lastScore: score(SCORE_HOLD_S + 60),
+      lastPlay: "Rush for 3",
+      lastPlayAt: null,
+    });
+    expect(showsScore(noPlayTime, t)).toBe(true);
+  });
+
+  it("holds right up to the boundary and not past it", () => {
+    const play = { lastPlay: "Rush for 3", lastPlayAt: iso(1) };
+    expect(showsScore(g({ lastScore: score(SCORE_HOLD_S - 1), ...play }), t)).toBe(true);
+    expect(showsScore(g({ lastScore: score(SCORE_HOLD_S), ...play }), t)).toBe(false);
   });
 });
