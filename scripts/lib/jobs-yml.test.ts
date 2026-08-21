@@ -250,3 +250,63 @@ describe("jobs.yml scheduler wiring", () => {
     expect(block).not.toMatch(/preseason-bootstrap"\s*\]\s*&&\s*\[\s*"\$\(date/);
   });
 });
+
+describe("the live loop's lifetime and its concurrency group (LIVE-2)", () => {
+  /**
+   * 2026-08-20: a 63-minute loop on an hourly cron left 3 minutes of slack,
+   * Actions delivered 13-15 minutes late all evening and dropped one launch
+   * outright, and 27 minutes of a live NFL game went unpolled. The loop now
+   * runs four hours so a missed launch costs nothing — which only works if
+   * every launch shares one concurrency group, or two windows would poll side
+   * by side and double the CFBD spend.
+   *
+   * Three places name the same eight crons: the resolve case, the group
+   * expression and the timeout expression. These pin them to each other,
+   * because a cron added to one and not the others fails in the direction
+   * nobody looks — silently, during a game.
+   */
+  const loopCrons = () =>
+    new Set(
+      resolveBranches()
+        .filter((b) => b.task === "scoreboard-loop")
+        .flatMap((b) => b.patterns),
+    );
+
+  /** The JSON array inside a `contains(fromJSON('[...]'), …)` expression. */
+  const cronsInExpression = (block: string): Set<string> => {
+    const m = block.match(/fromJSON\('(\[[^']*\])'\)/);
+    expect(m, "no fromJSON list found").toBeTruthy();
+    return new Set(JSON.parse(m![1]) as string[]);
+  };
+
+  it("gives every scoreboard-loop cron the same concurrency group", () => {
+    const block = YML.split("concurrency:")[1].split("\njobs:")[0];
+    expect(cronsInExpression(block)).toEqual(loopCrons());
+  });
+
+  it("raises the job timeout for exactly those crons", () => {
+    // The timeout line alone. An earlier version of this test concatenated it
+    // with the concurrency block and matched that block's list instead — it
+    // passed while asserting nothing about the timeout at all.
+    const line = YML.split("timeout-minutes:")[1].split("\n")[0];
+    expect(line).toContain("fromJSON");
+    expect(cronsInExpression(line)).toEqual(loopCrons());
+  });
+
+  it("keeps the run's deadline inside the job's timeout", () => {
+    const minutes = Number(YML.match(/scoreboard-loop\.ts --minutes (\d+)/)![1]);
+    const timeout = Number(YML.match(/&& (\d+) \|\| 75/)![1]);
+    // The loop must finish and write its own row before the runner kills it;
+    // a job killed on timeout leaves exactly the `running` row OPS-4b exists
+    // to prevent.
+    expect(minutes).toBeLessThan(timeout);
+    expect(timeout - minutes).toBeGreaterThanOrEqual(5);
+  });
+
+  it("runs longer than the gap between launches, which is the whole point", () => {
+    const minutes = Number(YML.match(/scoreboard-loop\.ts --minutes (\d+)/)![1]);
+    // Hourly crons. A run shorter than ~2 launches has no tolerance for a
+    // dropped one, which is the failure this was written after.
+    expect(minutes).toBeGreaterThan(120);
+  });
+});

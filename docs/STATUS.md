@@ -1018,6 +1018,92 @@ deliberate deferrals, each recorded below with what it would take.
       log entry that the newer one corrects. History is not edited to look
       better in hindsight.
 
+- [x] **LIVE-1 — the 10-second refresh had never once worked.** Owner report
+      mid-game, 2026-08-20: *"I thought this was supposed to update every 10
+      seconds from espn?"* It was, and it never had. `pg_cron` job 2 fires every
+      10s, the `where exists` gate opens 15 minutes before kickoff exactly as
+      0044 designed, `pg_net` posts, the edge function is deployed and ACTIVE —
+      and **every one of 408 invocations during the Texans/Raiders opener
+      returned `espn 403`**. Zero rows written, ever. The 30-second Actions loop
+      was the only thing putting scores on the board, which is why the LIVE-2
+      hole below was total rather than degraded.
+      **Nobody knew because the failure returned HTTP 200** with the words
+      "espn 403" in the body. `cron.job_run_details` read `succeeded`,
+      `net._http_response` read `200`, `/admin` had nothing to show either way.
+      The third instance of this exact shape after OPS-4 and OPS-19: a green
+      run that did nothing is indistinguishable from one that worked.
+      **The cause was the User-Agent, established by experiment rather than
+      reasoning** — and the first guess was wrong, which is why it is worth
+      recording. `Accept: application/json` alone (mirroring `src/lib/espn.ts:53`,
+      the client that has never been refused) **still 403'd**; adding an
+      identifiable UA in place of Deno's default `Deno/x.y.z` answered
+      immediately. The cutover is in `net._http_response`: 502s stop at
+      01:00:04, 200s begin at 01:00:14, `updated 0/1` — zero because the loop
+      had already written identical values and the function diffs before
+      writing, which is the correct answer rather than a null one.
+      Deployed as version 6; `supabase/functions/nfl-scoreboard/index.ts` is the
+      source of truth and now matches. Failures answer **502** (upstream refused
+      us) and **500** (our own read failed); `idle` and `no active espn games`
+      stay 200, because both are healthy.
+- [x] **LIVE-2 — the live loop's lifetime was tuned to the cron, not to the
+      cron's reliability.** Same night: 27 minutes of a live NFL game went
+      unpolled. The 23:00 launch arrived at 23:13 (Actions ran 13–15 minutes
+      late all evening), ran its 63 minutes, exited at **00:16:50** — and the
+      00:00 Friday launch never arrived. Nothing polled again until 00:46. The
+      game sat at Q1 11:13 while it was really near the end of the quarter.
+      **63-minute runs on an hourly cron is 3 minutes of slack** against a
+      scheduler that routinely drifts 15 and sometimes drops a fire entirely.
+      The overlap that was supposed to make handoffs seamless only exists if
+      each launch is roughly on time.
+      **Fixed by making the run outlive the gap rather than barely span it:**
+      `--minutes 240`, `timeout-minutes` 245 for those eight crons (75 for
+      everything else). A missed launch now costs nothing — the loop already
+      running keeps polling until the next one replaces it.
+      **The concurrency group had to be unified first, and that is the part
+      worth reading.** The group was the cron *string*, so the eight loop
+      schedules were eight groups: two loops from different windows ran side by
+      side instead of handing off. Tolerable at 63 minutes (~3 min of
+      double-polling at the Sat/Sun seam, which `jobs.yml` already noted);
+      **not** tolerable at four hours, where it would mean hours of doubled
+      CFBD calls against a 30,000/month budget. One group now, so the newest
+      launch always replaces whatever is running and exactly one loop exists.
+      **And the run now exits after 20 idle minutes** (`idleExhausted`,
+      `scripts/lib/idle.ts`) rather than holding a runner to a four-hour
+      deadline with no football left — which keeps runner cost where it was.
+      20 minutes clears a halftime and a weather stoppage; leaving early is
+      free because the next launch re-enters within the hour and the end-of-run
+      grading sweep still runs on the way out.
+      **Three places name the same eight crons** — the resolve case, the group
+      expression, the timeout expression — and `jobs-yml.test.ts` now fails if
+      any two disagree. Both guards were checked by mutation: drop a cron from
+      either list and the matching test goes red.
+      **Not fixed, and worth stating:** nothing alerts on this in real time.
+      The watchdog covers NFL liveness (NFL-22) but runs at 08/14/20 UTC, so
+      tonight's hole would have been reported eight hours after the game ended.
+      Queued as LIVE-3.
+- [ ] **LIVE-3 — a dark loop during a live game is not alertable in real
+      time.** The watchdog's liveness gate is correct and its cadence is not:
+      `0 8,14,20 * * *` means the longest possible gap between a loop dying and
+      anyone hearing about it is ~6 hours, and every NFL kickoff on 2026-08-20
+      fell inside one. Two candidates, and the second is probably right: run the
+      watchdog every 30 minutes during game windows (cheap, one query, but more
+      crons to keep in sync); **or** let the 10-second edge function raise it —
+      it already runs during exactly the windows that matter, already knows what
+      is live, and now returns a real status code, so "live game, no loop row
+      newer than N minutes" is a few lines in a path that is already firing. · **S**
+- [ ] **LIVE-4 — a kept `last_play` carries no age.** The field goal that
+      looked stuck was `keepLastPlay` working exactly as designed: ESPN's
+      `lastPlay` was `END QUARTER 1` (type `End Period`), a non-play, so the
+      writer kept the last real play rather than letting a TV timeout erase it —
+      which is the 08-14 owner report it was built for. But the card renders a
+      kept play beside a *fresh* down-and-distance with nothing to say the two
+      are minutes apart, so a correct decision reads as a frozen card. **Needs a
+      column** (`last_play_at`, written only when `last_play` actually changes)
+      plus the stamp in the UI — so it is a migration, a writer change in both
+      the loop and the edge function, and a card change. Cosmetic next to
+      LIVE-1/LIVE-2, and deliberately not done at 1am mid-game. · **S** · after
+      the rehearsals
+
 ### 2.2 This week (Aug 14–18)
 
 - [x] **P1-1** Shipped 2026-08-13. A **Game status** section on `/admin`

@@ -87,6 +87,37 @@ export async function msUntilNextGame(
   return Math.max(0, new Date(startTs).getTime() - now);
 }
 
+/**
+ * LIVE-2. Should a running loop give up because nothing has been live or
+ * imminent for a while?
+ *
+ * The loop's lifetime is now much longer than the interval between launches,
+ * so that a late or missing cron costs no coverage (a 4-hour loop simply keeps
+ * polling until the next launch replaces it). The cost of that, unguarded, is
+ * an idle loop holding a runner for four hours after the last whistle, asking
+ * our own database the same question every minute.
+ *
+ * So the run ends once the leagues have been quiet for `limitMs`. Nothing is
+ * lost by leaving: the next launch re-enters within the hour, and the
+ * end-of-run grading sweep still runs on the way out. Twenty minutes is long
+ * enough to sit through halftime, a weather delay's stoppage or a feed that
+ * briefly forgets a game is in progress, and short enough that a quiet night
+ * costs about what it used to.
+ *
+ * `idleSince` is null whenever the last completed tick saw activity — a tick
+ * that threw leaves it alone rather than counting as quiet, since a feed error
+ * is not evidence that the football stopped.
+ */
+export const IDLE_EXIT_MS = 20 * 60_000;
+
+export function idleExhausted(
+  idleSince: number | null,
+  now: number,
+  limitMs: number = IDLE_EXIT_MS,
+): boolean {
+  return idleSince !== null && now - idleSince >= limitMs;
+}
+
 export interface IdleOptions {
   job: string;
   season: number;

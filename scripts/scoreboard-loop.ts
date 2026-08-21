@@ -24,7 +24,7 @@ import { cfbdCallCount } from "../src/lib/cfbd";
 import { espnCallCount } from "../src/lib/espn";
 import { createServiceClient } from "../src/lib/supabase/service";
 import { envNum } from "./lib/env-num";
-import { idleSkip, envDays } from "./lib/idle";
+import { idleSkip, envDays, idleExhausted, IDLE_EXIT_MS } from "./lib/idle";
 import {
   SEASON,
   cfbScoringJob,
@@ -200,6 +200,10 @@ async function main() {
 
   await recordJobRun(db, "scoreboard-loop", async () => {
     let ticks = 0;
+    /* LIVE-2. When the leagues went quiet, so this run can stop holding a
+       runner for the rest of a four-hour deadline. Null while anything is
+       live or imminent; see idleExhausted for why leaving early is free. */
+    let idleSince: number | null = null;
     // Per-league edge detection for the settle sweep, and whether this run ever
     // saw the league awake — the end-of-run sweep only pays for a league that
     // actually had games.
@@ -270,10 +274,18 @@ async function main() {
               ? "imminent"
               : "idle";
         if (state !== "idle") waitMs = state === "live" ? liveMs : 120_000;
+        idleSince = state === "idle" ? (idleSince ?? Date.now()) : null;
       } catch (err) {
         // one bad tick never kills the hour
         console.error("tick failed:", err instanceof Error ? err.message : err);
         waitMs = 60_000;
+      }
+      if (idleExhausted(idleSince, Date.now())) {
+        console.log(
+          `nothing live or imminent for ${IDLE_EXIT_MS / 60_000} min — ending this run early; ` +
+            "the next launch picks it up",
+        );
+        break;
       }
       if (Date.now() + waitMs > deadline) break;
       await sleep(waitMs);
