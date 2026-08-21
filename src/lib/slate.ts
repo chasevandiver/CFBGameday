@@ -231,6 +231,39 @@ export interface CrewPickView {
   record: string | null;
 }
 
+/**
+ * LIVE-4. How old the play on the card is, in the card's own voice — or null
+ * when it is recent enough that saying so would be noise.
+ *
+ * `lastPlay` is deliberately sticky: a TV timeout must not erase the field
+ * goal it follows, so the writer keeps the last REAL play. That is right, and
+ * on 2026-08-20 it rendered as a bug — a field goal from twenty minutes
+ * earlier sat beside a current down-and-distance, because the poller had been
+ * dark for the drive in between and the card had no way to say so.
+ *
+ * Below the threshold this returns null rather than "0m": a play from nine
+ * seconds ago is simply the current play, and stamping every card with an age
+ * that changes every render is exactly the fidget DESIGN.md's no-layout-shift
+ * rule exists to prevent. Null timestamps also return null — a play we never
+ * watched arrive has no honest age, and inventing one is worse than omitting
+ * it (migration 0078 keeps the column null for the same reason).
+ */
+export const PLAY_AGE_FLOOR_S = 90;
+
+export function playAge(
+  lastPlayAt: string | null | undefined,
+  now: number = Date.now(),
+): string | null {
+  if (!lastPlayAt) return null;
+  const ms = now - Date.parse(lastPlayAt);
+  if (!Number.isFinite(ms) || ms < PLAY_AGE_FLOOR_S * 1000) return null;
+  const min = Math.floor(ms / 60_000);
+  // Minutes only. A play old enough to need an age is old enough that seconds
+  // are false precision, and an hour-plus means something is wrong rather than
+  // slow — "60m+" says that without inventing a unit for it.
+  return min >= 60 ? "60m+" : `${min}m`;
+}
+
 export interface GameView {
   id: number;
   week: number;
@@ -242,6 +275,11 @@ export interface GameView {
   situation: string | null;
   /** One-line last play while live, so a reopened app shows what just changed */
   lastPlay: string | null;
+  /** LIVE-4. When that play arrived, or null if we never watched it arrive.
+   *  `lastPlay` is deliberately sticky through timeouts, so without this the
+   *  card cannot tell a play from ten seconds ago from one from ten minutes
+   *  ago — which is exactly how a dark poller read on 2026-08-20. */
+  lastPlayAt?: string | null;
   /**
    * The most recent scoring play, which persists until the next one (NFL-18).
    *

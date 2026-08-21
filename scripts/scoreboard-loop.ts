@@ -27,8 +27,11 @@ import { envNum } from "./lib/env-num";
 import { idleSkip, envDays, idleExhausted, IDLE_EXIT_MS } from "./lib/idle";
 import {
   SEASON,
+  beat,
+  beatAgeMin,
   cfbScoringJob,
   gradeSeasonFinals,
+  HEARTBEAT_SOURCES,
   logCfbdCalls,
   logEspnCalls,
   nflScoreboardJob,
@@ -37,12 +40,19 @@ import {
   scoreboardJob,
 } from "./lib/jobs-core";
 import { NFL_SEASON } from "./lib/nfl";
+import { notifyWatchdog } from "./lib/notify-jobs";
 
 // `??` only catches undefined, so this used to read `CFBD_MONTHLY_BUDGET=""` as
 // a budget of zero — which throttles at 80% of nothing and refuses to poll at
 // 95% of nothing, i.e. a Saturday with no live scores. envNum treats blank as
 // unset (P2-1).
 const MONTHLY_BUDGET = envNum("CFBD_MONTHLY_BUDGET", 30_000, { min: 1 });
+
+/* LIVE-3. How quiet the 10-second path has to go, during a live NFL game,
+   before this loop pages about it. Three minutes is ~18 missed pulls — long
+   enough to ride out a slow ESPN response or a pg_cron hiccup, short enough
+   that the answer arrives during the game rather than after it. */
+const EDGE_SILENT_MIN = envNum("EDGE_SILENT_MIN", 3, { min: 1 });
 
 function argNum(flag: string, fallback: number): number {
   const i = process.argv.indexOf(flag);
@@ -123,9 +133,19 @@ async function callsThisMonth(db: ReturnType<typeof createServiceClient>): Promi
   const monthStart = new Date();
   monthStart.setUTCDate(1);
   monthStart.setUTCHours(0, 0, 0, 0);
+  /* LIVE-5, 2026-08-20. `source = "cfbd"`, which this had never filtered on.
+     Every ESPN call lands in the same table by design (an unmetered feed is
+     invisible in /admin), so the number this returned was CFBD + ESPN measured
+     against CFBD's 30,000 — 1,719 ESPN against 714 CFBD in the month this was
+     found, i.e. the count was more than three times the real usage.
+     Harmless at 2,400 and not harmless later: the gates below halve the CFB
+     poll rate at 80% and switch CFB polling OFF at 95%, so a Saturday's ESPN
+     traffic could have taken college scores down with thousands of CFBD calls
+     still unspent. */
   const { count } = await db
     .from("api_call_log")
     .select("id", { count: "exact", head: true })
+    .eq("source", "cfbd")
     .gte("called_at", monthStart.toISOString());
   return count ?? 0;
 }
@@ -204,6 +224,8 @@ async function main() {
        runner for the rest of a four-hour deadline. Null while anything is
        live or imminent; see idleExhausted for why leaving early is free. */
     let idleSince: number | null = null;
+    /** LIVE-3. One page per run about the other path, not one per tick. */
+    let edgePaged = false;
     // Per-league edge detection for the settle sweep, and whether this run ever
     // saw the league awake — the end-of-run sweep only pays for a league that
     // actually had games.
@@ -233,6 +255,31 @@ async function main() {
           await logEspnCalls(db, "scoreboard-nfl", espnCallCount() - before);
           ticks++;
           if (ticks % 10 === 1) console.log(`[nfl ${nflState}]`, JSON.stringify(result));
+        }
+        /* LIVE-3. One beat per tick that polled anything, so "did anything
+           pull" is answerable without inferring it from data that may
+           legitimately not have changed. After the writes, so a beat means a
+           completed pull rather than an attempted one. */
+        if (cfbState !== "idle" || nflState !== "idle") {
+          await beat(db, HEARTBEAT_SOURCES.loop, { cfb: cfbState, nfl: nflState });
+        }
+        /* LIVE-3, the half that would have caught tonight. The 10-second path
+           ran for a whole game returning `espn 403` and nothing said so; this
+           loop is awake during exactly those minutes and can see its silence.
+           Once per run — a page repeated every 30 seconds is a page nobody
+           reads — and only while an NFL game is actually live, since that path
+           is NFL-only and correctly quiet otherwise. */
+        if (!edgePaged && nflState === "live") {
+          const edgeAge = await beatAgeMin(db, HEARTBEAT_SOURCES.edge);
+          if (edgeAge > EDGE_SILENT_MIN) {
+            edgePaged = true;
+            const how = Number.isFinite(edgeAge) ? `${Math.round(edgeAge)}m` : "ever";
+            const problem =
+              `10-second NFL refresh: an NFL game is LIVE and the edge pull has not ` +
+              `succeeded in ${how} — this loop is covering it at ${liveMs / 1000}s`;
+            console.error(problem);
+            await notifyWatchdog(db, [problem]);
+          }
         }
         // After the scores are written, so a play that just landed is matched
         // against the score it produced rather than the previous one.

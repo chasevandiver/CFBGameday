@@ -27,6 +27,8 @@ import {
   weekModelRecord,
   type GameView,
   type TeamView,
+  playAge,
+  PLAY_AGE_FLOOR_S,
 } from "./slate";
 
 describe("probSurge", () => {
@@ -695,5 +697,48 @@ describe("teamHeadline", () => {
     expect(teamHeadline(t({ school: "Las Vegas Raiders", mascot: null }), "nfl")).toBe(
       "Las Vegas Raiders",
     );
+  });
+});
+
+
+describe("playAge — how old the play on the card is (LIVE-4)", () => {
+  const t = Date.parse("2026-08-21T01:00:00Z");
+  const at = (secondsAgo: number) => new Date(t - secondsAgo * 1000).toISOString();
+
+  it("says nothing about a play that just happened", () => {
+    // A play from nine seconds ago IS the current play. Stamping every card
+    // with an age would be noise on every card on the slate.
+    expect(playAge(at(9), t)).toBeNull();
+    expect(playAge(at(PLAY_AGE_FLOOR_S - 1), t)).toBeNull();
+  });
+
+  it("speaks up exactly at the floor", () => {
+    expect(playAge(at(PLAY_AGE_FLOOR_S), t)).toBe("1m");
+  });
+
+  it("counts whole minutes, because seconds would be false precision", () => {
+    expect(playAge(at(150), t)).toBe("2m");
+    expect(playAge(at(179), t)).toBe("2m");
+    expect(playAge(at(180), t)).toBe("3m");
+    expect(playAge(at(20 * 60), t)).toBe("20m");
+  });
+
+  it("stops counting past an hour, where the number stops being the point", () => {
+    expect(playAge(at(59 * 60), t)).toBe("59m");
+    expect(playAge(at(60 * 60), t)).toBe("60m+");
+    expect(playAge(at(6 * 3600), t)).toBe("60m+");
+  });
+
+  it("invents no age for a play it never watched arrive", () => {
+    // Null is the honest answer for every row written before 0078, and for a
+    // play kept through a timeout that has no stamp of its own.
+    expect(playAge(null, t)).toBeNull();
+    expect(playAge(undefined, t)).toBeNull();
+    expect(playAge("not a timestamp", t)).toBeNull();
+  });
+
+  it("shows nothing rather than a negative age when the clocks disagree", () => {
+    // The stamp is written by a server; the reader's clock can be behind it.
+    expect(playAge(at(-30), t)).toBeNull();
   });
 });
