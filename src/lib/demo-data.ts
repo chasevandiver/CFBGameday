@@ -179,8 +179,23 @@ const systems = (spHome: number, spAway: number): SystemRatingView[] => [
   { system: "elo", home: 1850 + spHome * 4, away: 1850 + spAway * 4 },
 ];
 
-const crew = (...rows: Array<[string, string, string]>): CrewPickView[] =>
-  rows.map(([name, side, record]) => ({ name, side, record }));
+/* A demo crew member. The optional fourth element is a SECOND market they took
+   — "Dave USC & Over" — so the sample slate exercises the card's joined row
+   rather than only the one-pick case. */
+const crew = (
+  ...rows: Array<[string, string, string] | [string, string, string, string]>
+): CrewPickView[] =>
+  rows.map(([name, side, record, alsoSide]) => ({
+    name,
+    side,
+    record,
+    picks: alsoSide
+      ? [
+          { market: "spread" as const, side },
+          { market: "total" as const, side: alsoSide },
+        ]
+      : [{ market: "spread" as const, side }],
+  }));
 
 const gb = (
   betId: number,
@@ -306,7 +321,7 @@ export function demoGames(now: number): GameView[] {
       lines: { spread: 1.5, spreadOpen: 3.5, total: 34.5, totalOpen: 36.5, mlHome: 105, mlAway: -125 },
       prediction: prediction(2.4, 33.5, 17.8, 15.4, 0.44, 1.5, { frozen: true }),
       systems: systems(6.1, 8.5),
-      crewPicks: crew(["Jake", "home", "12-8"], ["Ty", "away", "15-5"], ["Sam", "home", "9-11"]),
+      crewPicks: crew(["Jake", "home", "12-8", "over"], ["Ty", "away", "15-5"], ["Sam", "home", "9-11"]),
       weather: { tempF: 34, windMph: 21, precipProb: 40 },
     },
     {

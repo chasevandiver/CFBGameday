@@ -37,6 +37,7 @@ import {
   spreadMoveRead,
   upsetAlert,
   watchability,
+  type CrewPickView,
   type GameView,
   type MyBetView,
   type TeamView,
@@ -626,8 +627,13 @@ function CrewLine({ game, poolName }: { game: GameView; poolName?: string | null
 
   const myLine = mine.map((mp) => pickPrefix(game, mp)).join(" & ");
   const mySides = new Set(mine.map((mp) => mp.side));
-  const withMe = crew.filter((c) => mySides.has(c.side));
-  const against = crew.filter((c) => !mySides.has(c.side));
+  /* "With you" means sharing ANY side, now that a member can hold two: the
+     person who took your team and the other total is with you on the thing you
+     are both watching, and calling them a fade because their second pick
+     differs would be the card picking an argument. */
+  const sidesOf = (c: CrewPickView) => (c.picks.length > 0 ? c.picks.map((pk) => pk.side) : [c.side]);
+  const withMe = crew.filter((c) => sidesOf(c).some((side) => mySides.has(side)));
+  const against = crew.filter((c) => !sidesOf(c).some((side) => mySides.has(side)));
 
   return (
     <div className="mt-2 border-t border-chalk/8 pt-2 text-[11px]">
@@ -658,7 +664,14 @@ function CrewLine({ game, poolName }: { game: GameView; poolName?: string | null
         {[...withMe, ...against].map((c) => (
           <li key={`${c.name}-${c.side}`} className="flex items-baseline gap-1.5">
             <span className="stat shrink-0 truncate text-chalk/70">{c.name}</span>
-            <span className="stat truncate text-dim">{sideLabel(game, c.side)}</span>
+            {/* Every market they took, joined the way yours is: "USC & Over".
+                Sides only — the crew query never reads `line_at_pick`, and a
+                number here would be claiming a price nobody fetched. */}
+            <span className="stat truncate text-dim">
+              {(c.picks.length > 0 ? c.picks.map((pk) => pk.side) : [c.side])
+                .map((side) => sideLabel(game, side))
+                .join(" & ")}
+            </span>
             {c.record && (
               <span className="stat ml-auto shrink-0 text-[10px] text-chalk/35">{c.record}</span>
             )}

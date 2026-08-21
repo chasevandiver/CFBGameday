@@ -329,22 +329,36 @@ export async function fetchSlateView(
   const recordByUser = tallyBy(allPicks, (p) => p.user_id);
   const gameIdSet = new Set(gameIds);
   const crewByGame = new Map<number, CrewPickView[]>();
-  // Same one-per-mate rule as above: a crew line reading "Dave home, Dave over,
-  // Dave home" is three renderings of one opinion.
-  const seen = new Set<string>();
+  /* One ENTRY per mate per game, carrying ALL of their picks on it.
+     This used to keep the first pick and drop the rest ("a crew line reading
+     'Dave home, Dave over, Dave home' is three renderings of one opinion"),
+     which was right when the card showed a single side per person and wrong
+     the moment it listed picks: a member who took the spread and the total
+     showed as their spread alone, so the card disagreed with the board about
+     what they had picked. Grouping keeps The Panel's one-chair-per-person
+     while letting the card say "Dave USC & Over". */
+  const crewIndex = new Map<string, CrewPickView>();
   for (const p of [...allPicks].sort((a, b) => (a.market === "spread" ? -1 : 0) - (b.market === "spread" ? -1 : 0))) {
     if (!gameIdSet.has(p.game_id) || p.user_id === userId) continue;
-    if (seen.has(`${p.game_id}:${p.user_id}`)) continue;
-    seen.add(`${p.game_id}:${p.user_id}`);
+    const key = `${p.game_id}:${p.user_id}`;
+    const pick = { market: p.market, side: p.side };
+    const existing = crewIndex.get(key);
+    if (existing) {
+      existing.picks.push(pick);
+      continue;
+    }
     const rec = recordByUser.get(p.user_id);
-    const arr = crewByGame.get(p.game_id) ?? [];
-    arr.push({
+    const entry: CrewPickView = {
       name: nameByUser.get(p.user_id) ?? "Crew",
       side: p.side,
+      picks: [pick],
       // Null, not "0-0", until something has graded — an empty record beside a
       // name reads as a standing, and in week 1 nobody has one yet.
       record: rec && rec.decided > 0 ? `${rec.wins}-${rec.losses}` : null,
-    });
+    };
+    crewIndex.set(key, entry);
+    const arr = crewByGame.get(p.game_id) ?? [];
+    arr.push(entry);
     crewByGame.set(p.game_id, arr);
   }
 

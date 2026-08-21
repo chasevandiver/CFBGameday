@@ -226,7 +226,28 @@ export function headlinePick(picks: MyPickView[]): MyPickView | null {
 /** A crew mate's pick on this game (the viewer's own picks live in myPicks). */
 export interface CrewPickView {
   name: string;
+  /**
+   * The side of their FIRST pick, spread before total. A one-line summary —
+   * The Panel's chairs — shows one side per person and this is it.
+   */
   side: string;
+  /**
+   * Every pick this member has on this game, spread first.
+   *
+   * Owner question, 2026-08-21: *"is it going to have all of the picks listed
+   * so it would say Dave USC & Over and Ann SJSU & Under?"* It was not. The
+   * loader kept ONE row per mate per game and dropped the rest, so a member
+   * who took the spread and the total showed as their spread alone — the card
+   * silently disagreed with the board about what they had picked. Grouped here
+   * rather than deduplicated, so the card can join them the way it joins yours
+   * and The Panel can still seat one person in one chair.
+   *
+   * Market and side only — deliberately not the line. The crew picks query
+   * does not read `line_at_pick`, and a crew row saying "USC -37" would be
+   * claiming the price THEY got from a column nobody fetched. Their side is
+   * the fact; the number beside your own pick is yours.
+   */
+  picks: Array<Pick<MyPickView, "market" | "side">>;
   /** Their season pick'em record, e.g. "12-8"; null before any graded picks */
   record: string | null;
 }
