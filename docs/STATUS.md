@@ -3726,6 +3726,24 @@ are `src/lib/league.ts`'s offset scheme doing its job.
       CFBD route is metered (Tier 2, 30,000/month), where a 10s pull over a
       14-hour Saturday is ~5,000 calls a Saturday and would eat the budget the
       rest of the ingest chain runs on. · owner decision + build
+      **2026-08-21 — the first blocker is probably not real, and that changes
+      what this costs.** Read from the live table rather than assumed: CFB game
+      ids run **401856634–401871103** and NFL game ids, which come straight from
+      ESPN, run **401872656–401874394** — one contiguous, non-overlapping ESPN
+      event-id space, CFB allocated just below NFL. CFBD appears to be passing
+      ESPN's event ids through, so **the join key this row says has to be built
+      already exists**, and an ESPN college board is free and unmetered, which
+      takes the second blocker with it.
+      **Not confirmed, and the confirmation is one command**: this container's
+      network policy refuses `site.api.espn.com` (502 from the proxy), so the
+      ids were never checked against a real ESPN response. `curl` ESPN's
+      college-football scoreboard for a date with games and compare event ids to
+      `games.id`. If they match, this row is a mapping-free build rather than a
+      mapping project — and it is the only lever that gets CFB the 10-second
+      path the NFL already has. Owner report the same day: *"the whole point of
+      this app is getting the equivalent or better than ESPN on scoreboard
+      timing."* At a 30s poll the ceiling is 30s + whatever CFBD's own lag is,
+      and CFBD's lag has never been measured on a live college game.
 - [x] **NFL-11** The touchdown was the one play guaranteed not to render.
       Owner report 2026-08-14 ("on the last play on the slate cards, it
       doesn't show what the touchdown play was"). `LiveSituation` opened with
