@@ -252,7 +252,7 @@ export async function fetchSlateView(
       scoredIds.length > 0
         ? supabase
             .from("scoring_plays")
-            .select("game_id, sequence, period, clock, play_text, scoring_team_id")
+            .select("game_id, sequence, period, clock, play_text, scoring_team_id, created_at")
             .in("game_id", scoredIds)
             .order("sequence", { ascending: true })
         : Promise.resolve({ data: [], error: null }),
@@ -293,7 +293,15 @@ export async function fetchSlateView(
      above, so the last write per game id wins and no comparison is needed. */
   const lastScoreByGame = new Map<
     number,
-    { text: string; teamId: number | null; period: number | null; clock: string | null }
+    {
+      text: string;
+      teamId: number | null;
+      period: number | null;
+      clock: string | null;
+      /** LIVE-7. When we ingested it, which is when the card should start
+       *  counting the hold that keeps a PAT from erasing a touchdown. */
+      at: string | null;
+    }
   >();
   for (const r of (scoresRes.data ?? []) as Array<{
     game_id: number;
@@ -301,12 +309,14 @@ export async function fetchSlateView(
     clock: string | null;
     play_text: string;
     scoring_team_id: number | null;
+    created_at: string | null;
   }>) {
     lastScoreByGame.set(r.game_id, {
       text: r.play_text,
       teamId: r.scoring_team_id,
       period: r.period,
       clock: r.clock,
+      at: r.created_at,
     });
   }
 
@@ -552,6 +562,7 @@ export async function fetchSlateView(
           // are already loaded — the card should not have to look one up.
           const t = sc.teamId === null ? undefined : teams.get(sc.teamId);
           return {
+            at: sc.at,
             text: sc.text,
             // Same derivation `toTeamView` uses, so a scoring team reads
             // exactly as it does everywhere else on the card.

@@ -232,6 +232,48 @@ export interface CrewPickView {
 }
 
 /**
+ * LIVE-7. Which of the two the card's bottom line should be showing: the last
+ * score, or the play that just happened.
+ *
+ * NFL-18 made the score win permanently, for a good reason that is worth
+ * keeping: ESPN replaces `lastPlay` with the extra point about thirty seconds
+ * after a touchdown and the kickoff a few seconds after that, so a reader
+ * glancing down a minute later found a kickoff where the touchdown had been.
+ *
+ * Permanently was too far. Owner report, 2026-08-21: the line sits on a score
+ * for the rest of the game, so a drive that starts after a field goal never
+ * appears — the card reads as frozen even while every other part of it (down,
+ * distance, spot, field strip) updates every snap.
+ *
+ * So the score holds the line for two minutes and then gives it back. Long
+ * enough to survive the PAT and the kickoff, which is all NFL-18 was ever
+ * defending against; short enough that the next drive is what a live card
+ * shows. Once the hold expires the newer of the two wins, so a score still
+ * beats a play that arrived before it.
+ *
+ * Conservative when it cannot tell: a score with no arrival time, or a play
+ * with none, keeps the old behaviour rather than guessing. Both are the state
+ * of every row written before LIVE-4 and 0078, and of the demo fixtures.
+ */
+export const SCORE_HOLD_S = 120;
+
+export function showsScore(
+  game: Pick<GameView, "lastScore" | "lastPlay" | "lastPlayAt">,
+  now: number = Date.now(),
+): boolean {
+  const sc = game.lastScore;
+  if (!sc) return false;
+  // Nothing to hand the line to.
+  if (!game.lastPlay) return true;
+  const scoredAt = sc.at ? Date.parse(sc.at) : NaN;
+  if (!Number.isFinite(scoredAt)) return true;
+  if (now - scoredAt < SCORE_HOLD_S * 1000) return true;
+  const playAt = game.lastPlayAt ? Date.parse(game.lastPlayAt) : NaN;
+  if (!Number.isFinite(playAt)) return true;
+  return playAt <= scoredAt;
+}
+
+/**
  * LIVE-4. How old the play on the card is, in the card's own voice — or null
  * when it is recent enough that saying so would be noise.
  *
@@ -289,7 +331,15 @@ export interface GameView {
    * kickoff. This does not expire; the live state is carried by the situation
    * row above it.
    */
-  lastScore: { text: string; abbr: string | null; period: number | null; clock: string | null } | null;
+  lastScore: {
+    text: string;
+    abbr: string | null;
+    period: number | null;
+    clock: string | null;
+    /** LIVE-7. When the score arrived. Optional: a fixture without one keeps
+     *  the old NFL-18 behaviour of showing the score indefinitely. */
+    at?: string | null;
+  } | null;
   possession: "home" | "away" | null;
   tv: string | null;
   neutralSite: boolean;
