@@ -1361,6 +1361,53 @@ deliberate deferrals, each recorded below with what it would take.
       `sync-games` runs — next scheduled 09:35 UTC. Merging alone changes
       nothing in the database.
 
+- [ ] **FREEZE-1 — a midweek game never gets a receipt.** Found 2026-08-21 while
+      measuring what WEEK0-1 was about to cost, and it is the same seam from the
+      other side. `jobs.yml` has exactly **one** freeze cron — `0 3 * * 5`,
+      Friday 03:00 UTC = **10 pm CT Thursday** — and `freezeJob` only takes games
+      still `status = 'scheduled'`. A game that kicks before that has already
+      started, so it is filtered out, and the next freeze is seven days later
+      when it is long final. There is no run it can be caught by.
+      Counted against the 2026 schedule as it stands, excluding TBD placeholders
+      (see SLATE-2, which inflates the raw day counts): **34 Thursday, 17
+      Tuesday, 7 Wednesday — 58 games, ~7% of the season.** Friday nights are
+      fine: they kick *after* the Thursday-night freeze. Confirmed against the
+      pointer, not just the cron — on the Friday before a Tuesday game the slate
+      pointer is still on the previous week, so the earlier run cannot reach it
+      either.
+      **WEEK0-1 changed this week's version of the problem rather than removing
+      it, and the swap is worth stating.** Merged, the Aug 28 freeze caught the
+      19 Sep 3–4 games six days early on preseason ratings and stale lines. Split,
+      they fall in the gap above and get **no receipt at all**. The second is more
+      honest — a receipt priced six days early is a worse artifact than no
+      receipt — but it is a hole either way, and it is now the *stated* behaviour
+      rather than an accident of a merged week.
+      **Not fixed, and deliberately not eight days from Week 0.** The shapes are
+      a second cron (Monday, say) or a per-game "freeze N hours before kickoff",
+      which is the same per-game thinking `FREEZE_HORIZON_DAYS` already carries
+      and would retire the weekly cron entirely. Both change when receipts are
+      priced for every game in the season, which is not a change to make on the
+      week the first ones are written. · **decision** · S/M
+- [ ] **SLATE-2 — 391 games sit on the wrong day tab, and the card knows better
+      than the tab does.** Found 2026-08-21. CFBD gives an unscheduled game a
+      placeholder kickoff of **04:00 UTC** — midnight Eastern on game day — which
+      is **11 pm the previous day in Central**. So a Saturday game with no
+      announced time renders on the **Friday** tab, and under a `Fri · Late`
+      slot header. Measured live: 391 of 888 rows carry `start_time_tbd = true`,
+      and every one of them lands on Friday CT.
+      `SlateView` groups tabs and slot headers off `startTs` alone
+      (`SlateView.tsx:488`, `:578`); its "Kickoff TBD" branch fires only when
+      `startTs` is **null**, which is a different and rarer case. The card is
+      already right — `GameCard.tsx:430` renders `TBD` — so the row and the
+      heading above it disagree about the same game.
+      **It does not touch launch weekend**: week 1 has **zero** TBD kickoffs, and
+      the effect self-heals as CFBD publishes times about two weeks out. What is
+      visible today is browsing October in August — week 4 shows 41 Saturday
+      games under Friday.
+      **The fix is small and is not a date fix**: a TBD game should not be placed
+      on a day tab at all, the way a null one already isn't. Sized after Week 0
+      because the surface it changes is the one being watched on the 29th. · S
+
 ### 2.1i The pool lane — owner report, 2026-08-21
 
 Six requests from a night of using the app against live football, in the order

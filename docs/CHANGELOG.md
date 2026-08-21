@@ -273,6 +273,23 @@ freeze for the whole opening slate.
 `sync-games` runs — the next scheduled one is 09:35 UTC. Nothing in production
 changes by merging alone.
 
+**Two things the same pass turned up, both logged in `docs/STATUS.md` §2.1j and
+neither fixed** — sized after Week 0 on purpose, since both change surfaces that
+are about to be watched:
+
+- **FREEZE-1.** One freeze cron, Fridays 03:00 UTC = 10 pm CT Thursday, and the
+  job only takes games still `scheduled`. A midweek game has already kicked, so
+  it is filtered out, and the next run is seven days later. 58 games this
+  season (34 Thu, 17 Tue, 7 Wed, excluding TBD placeholders). This fix changes
+  week 1's version of it rather than removing it: the Sep 3–4 games go from
+  "frozen six days early on preseason numbers" to "no receipt at all".
+- **SLATE-2.** CFBD's placeholder kickoff for an unscheduled game is 04:00 UTC —
+  midnight Eastern, which is 11 pm the previous day Central — so 391 of 888 rows
+  render on the Friday tab. `SlateView` groups on `startTs` and only says
+  "Kickoff TBD" for a *null* one; the card already renders TBD correctly, so the
+  row and its own heading disagree. Week 1 has zero TBD kickoffs, so launch
+  weekend is unaffected.
+
 ### Aug 21 — SPLASH-1 un-ticked: iPadOS ignores landscape startup images
 
 The 08-20 fix does not work, and the box it checked has been un-checked. A
