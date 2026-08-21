@@ -344,3 +344,61 @@ describe("the header row keeps the clock whole (2026-08-21)", () => {
     expect(tv.className).toContain("truncate");
   });
 });
+
+
+describe("the crew line names people (POOL-3)", () => {
+  /**
+   * Owner request, 2026-08-21: "on the game cards it just says a number on how
+   * many people picked what team — can we do the same thing like tail/fade,
+   * list who picked what."
+   *
+   * The tail/fade branch (viewer has a pick) already named people. The branch a
+   * reader sees BEFORE picking counted them: "Crew: 3 HOU · 2 LV". Who is on it
+   * is the part you argue about.
+   *
+   * Nothing new is revealed: RLS hands this component another member's pick
+   * only through `picks_revealed` (0023), so a group that hides picks until
+   * kickoff passes an empty list until kickoff. The reveal rule is the
+   * database's; this is presentation.
+   */
+  const withCrew = (crew: Array<{ name: string; side: string; record: string | null }>) =>
+    live({ crewPicks: crew } as Partial<GameView>);
+
+  it("lists who took each side instead of counting them", () => {
+    renderCard(
+      withCrew([
+        { name: "Dave", side: "home", record: "12-8" },
+        { name: "Ann", side: "home", record: null },
+        { name: "Bob", side: "away", record: "9-11" },
+      ]),
+    );
+    expect(screen.getByText(/Dave · Ann/)).toBeTruthy();
+    expect(screen.getByText("Bob")).toBeTruthy();
+    // The count line is gone.
+    expect(screen.queryByText(/Crew: 2/)).toBeNull();
+  });
+
+  it("groups the names under the side they took", () => {
+    renderCard(
+      withCrew([
+        { name: "Dave", side: "home", record: null },
+        { name: "Bob", side: "away", record: null },
+      ]),
+    );
+    /* The abbreviation appears in the team rows too, so scope to the crew
+       line: each side's label sits immediately before its names, in the same
+       row. Asserting on the pairing is the point — a label and a list that
+       drifted apart would still pass a bare getAllByText. */
+    const home = screen.getByText("Dave").previousElementSibling;
+    const away = screen.getByText("Bob").previousElementSibling;
+    expect(home?.textContent).toBe("CIN");
+    expect(away?.textContent).toBe("DET");
+  });
+
+  it("says nothing at all when the blind is hiding the crew", () => {
+    // An empty list is what a hidden group looks like from here, and the line
+    // should not appear as an empty shell.
+    const { container } = renderCard(withCrew([]));
+    expect(container.textContent).not.toContain("·  ");
+  });
+});

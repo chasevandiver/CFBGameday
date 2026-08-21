@@ -215,6 +215,32 @@ shipping it.
 
 ## Log
 
+### Aug 21 — POOL-3/4/5: names on the card, a share menu that opens, a toggle that answers
+
+**POOL-3.** The crew line counted people; now it names them. The tail/fade
+shape already existed — initials, names, records — but only once the viewer had
+a pick of their own; the branch you see *before* picking said `Crew: 3 HOU`,
+which is the least interesting true thing the card knows. No new reveal: RLS
+hands the card another member's pick only through `picks_revealed` (0023), so a
+group that hides until kickoff passes an empty list until kickoff.
+
+**POOL-4.** The share menu was reported as "clipped by another card". It was
+neither clipping nor one bug. It opened DOWNWARD from a button in the fixed
+bottom bar, where there is no below; and it sat at `z-30` inside that bar's
+`z-20` stacking context, which cannot beat the bottom nav at `z-40` — so
+positioned correctly it would still have opened underneath the nav. Portalled
+to `document.body`, measured from the button, flipped when there is no room
+below.
+
+**POOL-5.** A "Send a test" button already existed on `/me`. What got clicked
+were the per-kind checkboxes, which saved silently **and discarded their
+result** — a failed save left the box ticked while the database had refused it.
+They now confirm, and on failure put the switch back and say why.
+
+The push plumbing itself is healthy, and the evidence was already in the
+database: 3 subscriptions, 6 settings enabled, `notify-picks-due` running green
+with `{"notified": 0, "group_weeks": 0}`. Nothing is due until a board exists.
+
 ### Aug 21 — POOL-6: a pool is counted in points
 
 Owner call, with both edges settled the same night: a push scores 0, survivor

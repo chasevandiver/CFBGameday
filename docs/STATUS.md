@@ -1305,6 +1305,52 @@ first because neither needed a decision.
       lit forever. Now `start_ts.is.null,start_ts.lte.now`.
       Its own route (`/api/picks-due`) rather than page data: `AppNav` renders
       on every page and this would otherwise be a query every route pays for.
+- [x] **POOL-3 — the crew line names people instead of counting them.** Owner
+      request: *"on the game cards it just says a number on how many people
+      picked what team — can we do the same thing like tail/fade, list who
+      picked what."*
+      **The tail/fade shape already existed** — initials, names and records —
+      but only on the branch where the viewer has a pick of their own. The
+      branch a reader sees *before* picking counted them: `Crew: 3 HOU · 2 LV`,
+      the least interesting true thing the card knows. Both branches now render
+      the same object; the overlapping-initials cluster was the same picture
+      drawn twice and is now one `CrewPips`.
+      **No new reveal.** RLS hands this component another member's pick only
+      through `picks_revealed` (0023) — either the group shows picks as they
+      land or it hides them until kickoff, which are the two options that
+      already exist. A hiding group passes an empty list until kickoff, so the
+      rule stays the database's and this stays presentation.
+- [x] **POOL-4 — the share menu opened off-screen, twice over.** Owner report:
+      *"the share button for the pickem doesn't pop anything up — it looks like
+      it's getting caught where it doesn't show up because it's being clipped
+      by another card."* Not clipping, and not one bug but two, either fatal
+      alone:
+      **Direction.** The menu opened downward (`mt-1.5`) from a button that
+      lives in `PickBoard`'s **fixed bottom bar**. There is no "below" there.
+      **Stacking.** That bar is `z-20` and forms its own stacking context, so
+      the menu's `z-30` could never rise above the bottom nav at `z-40`.
+      Positioned correctly it would still have opened underneath the nav.
+      Fixed by portalling to `document.body` and measuring the button: it flips
+      upward when there is no room below, and sits at `z-50`. That answers both
+      faults and every overflow ancestor a future caller might add — the same
+      component is used in the ledger header, in GroupHub and in the thumb-zone
+      bar, and it is now right in all three.
+- [x] **POOL-5 — the notification toggles were the silent control.** Owner
+      report: *"the notifications don't really do anything — I clicked one on my
+      admin account and on my test account and nothing popped up."*
+      **A "Send a test" button already existed** on `/me`, shown once push is on
+      for that device; it was not what got clicked. The per-kind checkboxes were,
+      and they were the one control on that card that answered with silence —
+      **and discarded their result**, so a failed save left the box ticked while
+      the database had refused it. A control that reports nothing is
+      indistinguishable from a control that does nothing, which is what the
+      report says out loud.
+      They now confirm ("Saved — you'll get these") and, on failure, put the
+      switch back where the database left it and say why.
+      **The push plumbing itself is fine** and the evidence was already there:
+      3 subscriptions, 6 settings enabled, `notify-picks-due` green — and
+      `{"notified": 0, "group_weeks": 0}`, because no group week exists yet.
+      Nothing is due until there is a board. That is the Aug 27 row, not a bug.
 - [x] **POOL-6 — pick'em scores in points; bets keep their units.** Owner call
       2026-08-21, with both edges settled the same night: **a push scores 0**,
       and **survivor is untouched** — it stays alive/eliminated, which is not a
