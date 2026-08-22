@@ -1050,7 +1050,18 @@ export async function syncSystemsJob(db: SupabaseClient): Promise<Json> {
   const [sp, fpi, elo, { data: teamRows }] = await Promise.all([
     cfbd.spRatings(SEASON),
     cfbd.fpiRatings(SEASON),
-    cfbd.eloRatings(SEASON),
+    /* SYS-1. `/ratings/elo` with no week returned nothing for a season with no
+       games played, and had done since this job was written — `system_ratings`
+       has never held an Elo row, in any season. Elo is a running rating, so a
+       seasonal query has nothing to average until games exist; asking for week
+       1 gets the carry-in from last season, which is exactly the preseason
+       number the consensus flag wants.
+       Ordered rather than either/or: the seasonal call stays first because it
+       is right once the season is under way, and the week-1 fallback only runs
+       when it came back empty. */
+    cfbd
+      .eloRatings(SEASON)
+      .then(async (r) => (r.length > 0 ? r : cfbd.eloRatings(SEASON, 1))),
     db.from("teams").select("id, school, alt_names"),
   ]);
   const nameIndex = buildTeamNameIndex(
@@ -1078,6 +1089,14 @@ export async function syncSystemsJob(db: SupabaseClient): Promise<Json> {
   for (const r of sp) push("sp", r.team, r.rating);
   for (const r of fpi) push("fpi", r.team, r.fpi);
   for (const r of elo) push("elo", r.team, r.elo);
+  /* Per system, not a total. `rows: 276` is what this job reported for months
+     while storing zero Elo — sp 138 + fpi 138 reads like a healthy number, and
+     a green run with a whole feed missing is indistinguishable from a green run
+     that worked. The consensus flag needs all three, so one absent feed
+     silently disables it on every frozen receipt. Counted here so /admin and
+     `job_runs.detail` can show the hole. */
+  const bySystem = { sp: 0, fpi: 0, elo: 0 } as Record<string, number>;
+  for (const r of rows) bySystem[(r as { system: string }).system]++;
 
   for (let i = 0; i < rows.length; i += 500) {
     const { error } = await db.from("system_ratings").upsert(rows.slice(i, i + 500), {
@@ -1086,7 +1105,17 @@ export async function syncSystemsJob(db: SupabaseClient): Promise<Json> {
     if (error) throw new Error(error.message);
   }
 
-  return { week, rows: rows.length, unmatched: [...unmatched] };
+  return {
+    week,
+    rows: rows.length,
+    by_system: bySystem,
+    /* Names the empty ones rather than leaving it to be spotted in a map — a
+       missing feed is the finding, and it should read as one. */
+    ...(Object.entries(bySystem).filter(([, n]) => n === 0).length > 0
+      ? { empty_systems: Object.entries(bySystem).filter(([, n]) => n === 0).map(([k]) => k) }
+      : {}),
+    unmatched: [...unmatched],
+  };
 }
 
 /** Open-Meteo forecasts for outdoor games in the next 7 days. */

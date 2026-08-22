@@ -784,3 +784,41 @@ describe("the freeze dry-run writes nothing", () => {
     }
   });
 });
+
+/**
+ * SYS-1. `system_ratings` never held an Elo row, in any season, and the job
+ * that fills it reported `rows: 276` and went green the whole time — sp 138 +
+ * fpi 138 reads like a healthy number. `priceGame` needs all four systems
+ * non-null, so one absent feed silently disabled the consensus flag on every
+ * frozen receipt, and the CFBD probe could not catch it: it asks 2025 week 2,
+ * gets rows, and passes.
+ */
+describe("sync-systems reports per system, not a total", () => {
+  const SRC = readFileSync(join(__dirname, "./jobs-core.ts"), "utf8");
+  const body = SRC.slice(SRC.indexOf("export async function syncSystemsJob"));
+
+  it("counts each system so an empty feed is visible in job_runs.detail", () => {
+    // A total cannot distinguish "all three healthy" from "two healthy and one
+    // gone", which is the exact failure this job hid for months.
+    expect(body).toContain("by_system");
+    expect(body).toMatch(/bySystem\s*=\s*\{\s*sp:\s*0,\s*fpi:\s*0,\s*elo:\s*0/);
+  });
+
+  it("names the empty ones rather than leaving them to be spotted in a map", () => {
+    expect(body).toContain("empty_systems");
+  });
+
+  it("falls back to a week when the seasonal Elo call comes back empty", () => {
+    // Elo is a running rating: a seasonal query has nothing to average until
+    // games exist, and week 1 is the carry-in from last season — the preseason
+    // number the consensus flag wants.
+    expect(body).toMatch(/eloRatings\(SEASON\)[\s\S]{0,120}eloRatings\(SEASON,\s*1\)/);
+  });
+
+  it("still tries the seasonal call first, since it is right once games exist", () => {
+    const seasonal = body.indexOf("eloRatings(SEASON)");
+    const fallback = body.indexOf("eloRatings(SEASON, 1)");
+    expect(seasonal).toBeGreaterThan(-1);
+    expect(fallback).toBeGreaterThan(seasonal);
+  });
+});
