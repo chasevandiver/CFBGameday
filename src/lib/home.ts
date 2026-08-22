@@ -193,6 +193,62 @@ export function placeOf(
  * implementation. The hub loads the slate with a null user precisely so it can
  * supply these itself across every pool rather than one.
  */
+/**
+ * How long a graded position stays on the hub after its game kicked (HUB-2).
+ *
+ * Measured from KICKOFF, not from the final whistle, because nothing stores a
+ * reliable end time for a CFB game — `last_play_at` is the NFL edge function's
+ * heartbeat and is null for most of the board. Kickoff plus 48h is ~44h past a
+ * typical finish, which is the property that matters: a game that kicks 9pm CT
+ * Saturday is still on the hub through Monday evening.
+ *
+ * Why not "until your next kickoff", which is what this row was first sketched
+ * as: it does not survive a Saturday. Your noon game finals at 3pm and your
+ * 6pm game kicks three hours later, so the rule would clear the afternoon's
+ * results while the day was still going. A duration is duller and correct.
+ */
+export const GRADED_HOLD_MS = 48 * 3600_000;
+
+/**
+ * Game ids the viewer holds something on that this week does not cover.
+ *
+ * The only ids worth asking the database about — for most of the season it is
+ * empty, because the week pointer covers a position from the moment it is made
+ * until its own slate ends.
+ */
+export function outsideWeekIds(
+  picks: ReadonlyArray<{ game_id: number | null }>,
+  bets: ReadonlyArray<{ game_id: number | null }>,
+  inWeek: ReadonlySet<number>,
+): number[] {
+  return [
+    ...new Set(
+      [...picks, ...bets]
+        .map((r) => r.game_id)
+        .filter((id): id is number => id !== null && !inWeek.has(id)),
+    ),
+  ];
+}
+
+/**
+ * Those of them the database confirmed are recent finals, indexed two ways:
+ * as a flat set for the row filters, and per season because the CFB and NFL
+ * slates are loaded by separate calls and each may only be handed its own.
+ */
+export function heldFinals(rows: ReadonlyArray<{ id: number; season_id: number }>): {
+  ids: Set<number>;
+  bySeason: Map<number, number[]>;
+} {
+  const ids = new Set<number>();
+  const bySeason = new Map<number, number[]>();
+  for (const g of rows) {
+    if (ids.has(g.id)) continue;
+    ids.add(g.id);
+    bySeason.set(g.season_id, [...(bySeason.get(g.season_id) ?? []), g.id]);
+  }
+  return { ids, bySeason };
+}
+
 export function buildPositions(
   games: GameView[],
   picks: HomePick[],
@@ -566,10 +622,38 @@ export async function fetchHomeData(
       };
     });
 
+  /* ---- held finals (HUB-2) ---- */
+
+  /* Games the viewer holds a position on that the current week no longer
+     covers, and that finished recently enough to still be worth showing.
+     One narrow read, and only when there is something outside the week to ask
+     about — which is nothing at all for most of the season, since the week
+     pointer covers a position from the moment it is made until its slate ends. */
+  const outsideWeek = outsideWeekIds(myPickRows, betRows, actionWeekGameIds);
+  let heldRows: Array<{ id: number; season_id: number }> = [];
+  if (outsideWeek.length > 0) {
+    const { data } = await supabase
+      .from("games")
+      .select("id, season_id")
+      .in("id", outsideWeek)
+      .eq("status", "final")
+      .gte("start_ts", new Date(Date.parse(fetchedAt) - GRADED_HOLD_MS).toISOString());
+    heldRows = (data ?? []) as Array<{ id: number; season_id: number }>;
+  }
+  const { ids: heldFinalIds, bySeason: heldBySeason } = heldFinals(heldRows);
+
   /* ---- your positions ---- */
 
   const groupById = new Map(mine.map((g) => [g.id, g]));
-  const homePicks: HomePick[] = myWeekPicks.map((p) => ({
+  /* HUB-2. The week counters above stay week-scoped — "3 picks in this week"
+     must not start counting last Saturday — but the POSITIONS list carries the
+     held finals too, or the hub loses every result around midnight on the one
+     night people want to read them. `heldFinalIds` is empty except in the
+     window after a slate settles. */
+  const heldPicks = myPickRows.filter(
+    (p) => !actionWeekGameIds.has(p.game_id) && heldFinalIds.has(p.game_id),
+  );
+  const homePicks: HomePick[] = [...myWeekPicks, ...heldPicks].map((p) => ({
     gameId: p.game_id,
     market: p.market,
     side: p.side,
@@ -580,7 +664,10 @@ export async function fetchHomeData(
     groupSlug: groupById.get(p.group_id)?.slug ?? "",
   }));
   const weekBetRows = betRows.filter((b) => b.game_id !== null && actionWeekGameIds.has(b.game_id));
-  const homeBets: HomeBet[] = weekBetRows.map((b) => ({
+  const heldBets = betRows.filter(
+    (b) => b.game_id !== null && !actionWeekGameIds.has(b.game_id) && heldFinalIds.has(b.game_id),
+  );
+  const homeBets: HomeBet[] = [...weekBetRows, ...heldBets].map((b) => ({
     id: b.id,
     gameId: b.game_id as number,
     betType: b.bet_type,
@@ -608,9 +695,24 @@ export async function fetchHomeData(
     // the hub shows every pool the viewer is in, and `fetchSlateView` can only
     // scope its pick layer to one. The NFL slate is only loaded when a
     // position actually rides on it.
-    const wantsNfl = nflPointer && [...actionGameIds].some((id) => nflWeekGameIds.has(id));
+    /* A held NFL final is outside `nflWeekGameIds` by definition — the week has
+       moved on — so it has to be able to pull its own slate in, or Sunday's
+       results vanish for the league that plays on Sunday. */
+    const nflHeld = nflPointer ? (heldBySeason.get(nflPointer.seasonId) ?? []) : [];
+    const wantsNfl =
+      nflPointer &&
+      ([...actionGameIds].some((id) => nflWeekGameIds.has(id)) || nflHeld.length > 0);
     const [slate, nflSlate] = await Promise.all([
-      fetchSlateView(supabase, seasonId, week, null, seasonType, null, null),
+      fetchSlateView(
+        supabase,
+        seasonId,
+        week,
+        null,
+        seasonType,
+        null,
+        null,
+        heldBySeason.get(seasonId) ?? [],
+      ),
       wantsNfl && nflPointer
         ? fetchSlateView(
             supabase,
@@ -620,6 +722,7 @@ export async function fetchHomeData(
             nflPointer.seasonType,
             null,
             null,
+            heldBySeason.get(nflPointer.seasonId) ?? [],
           )
         : Promise.resolve(null),
     ]);

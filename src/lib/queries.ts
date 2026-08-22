@@ -135,15 +135,35 @@ export async function fetchSlateView(
    * own terms.
    */
   bettingGroupId: string | null = null,
+  /**
+   * Games to load ALONGSIDE the week — the hub's held finals (HUB-2).
+   *
+   * The hub keeps a graded position visible for a while after its game ends,
+   * and by then the week pointer has usually rolled past it. Rather than run
+   * this whole loader a second time for the previous week (fifteen queries for
+   * a handful of rows, and wrong the moment a held game is two weeks back),
+   * the ids ride in here and the week filter widens to include them. Empty for
+   * every caller but the hub, where it is also empty most of the time.
+   */
+  alsoGameIds: number[] = [],
 ): Promise<SlateData> {
   const fetchedAt = new Date().toISOString();
-  const { data: games, error } = await supabase
-    .from("games")
-    .select("*")
-    .eq("season_id", seasonId)
-    .eq("week", week)
-    .eq("season_type", seasonType)
-    .order("start_ts", { ascending: true });
+  // Ids are interpolated into a PostgREST `or` filter, so they are constrained
+  // to integers here rather than trusted for being "from the database" —
+  // they arrive through a function signature that anything can call.
+  const extra = [...new Set(alsoGameIds.filter((id) => Number.isSafeInteger(id)))];
+  const scoped = supabase.from("games").select("*").eq("season_id", seasonId);
+  /* `season_type` moves INSIDE the or when ids are present, rather than sitting
+     outside it as another `.eq`. Outside, it silently drops any held game whose
+     type differs from the current pointer's — an NFL preseason final while the
+     pointer has rolled to the regular season, which is precisely the handoff
+     week HUB-2 exists to survive. The week branch still carries it. */
+  const { data: games, error } = await (extra.length > 0
+    ? scoped.or(
+        `and(week.eq.${week},season_type.eq.${seasonType}),id.in.(${extra.join(",")})`,
+      )
+    : scoped.eq("week", week).eq("season_type", seasonType)
+  ).order("start_ts", { ascending: true });
   if (error) throw error;
   if (!games || games.length === 0)
     return { seasonId, sport: sportOfSeasonId(seasonId), week, seasonType, fetchedAt, linesAsOf: null, games: [] };

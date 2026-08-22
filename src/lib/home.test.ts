@@ -1,7 +1,12 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildPositions,
+  GRADED_HOLD_MS,
+  heldFinals,
   heldVsNow,
+  outsideWeekIds,
   homeRefreshTier,
   placeOf,
   splitPositions,
@@ -316,5 +321,104 @@ describe("heldVsNow", () => {
   it("has nothing to say about a market with no number", () => {
     expect(heldVsNow("straight_up", "home", null, lines(-7, null))).toBeNull();
     expect(heldVsNow("moneyline", "home", -7, lines(-7, null))).toBeNull();
+  });
+});
+
+/**
+ * HUB-2. The hub's positions are scoped to the current week, and the week
+ * pointer rolls the instant nothing in it is live or still scheduled. Week 0's
+ * last game finals around midnight Saturday, so every graded card from that
+ * Saturday used to disappear hours before anyone opened the app on Sunday —
+ * the roadmap's Monday question ("How did I do?") failing outright.
+ */
+describe("held finals (HUB-2)", () => {
+  const week = new Set([100, 101]);
+
+  describe("outsideWeekIds", () => {
+    it("asks about nothing when every position is inside the week", () => {
+      // The common case by a wide margin: the pointer covers a position from
+      // the moment it is made until its own slate ends, so this saves a query
+      // on almost every hub render.
+      expect(
+        outsideWeekIds([{ game_id: 100 }], [{ game_id: 101 }], week),
+      ).toEqual([]);
+    });
+
+    it("collects picks and bets alike, deduped", () => {
+      const out = outsideWeekIds(
+        [{ game_id: 900 }, { game_id: 900 }, { game_id: 100 }],
+        [{ game_id: 900 }, { game_id: 901 }],
+        week,
+      );
+      expect(out.sort()).toEqual([900, 901]);
+    });
+
+    it("drops the null game_id a future or parlay bet carries", () => {
+      expect(outsideWeekIds([], [{ game_id: null }, { game_id: 902 }], week)).toEqual([902]);
+    });
+  });
+
+  describe("heldFinals", () => {
+    it("indexes per season, because the two slates are loaded separately", () => {
+      // Handing the CFB loader an NFL id would filter it out on season_id and
+      // quietly lose the position it was fetched for.
+      const { ids, bySeason } = heldFinals([
+        { id: 900, season_id: 2026 },
+        { id: 901, season_id: 2026 },
+        { id: 800, season_id: 102026 },
+      ]);
+      expect([...ids].sort()).toEqual([800, 900, 901]);
+      expect(bySeason.get(2026)).toEqual([900, 901]);
+      expect(bySeason.get(102026)).toEqual([800]);
+    });
+
+    it("is empty for an empty answer, not undefined", () => {
+      const { ids, bySeason } = heldFinals([]);
+      expect(ids.size).toBe(0);
+      expect(bySeason.get(2026) ?? []).toEqual([]);
+    });
+
+    it("does not list a game twice if the read returns it twice", () => {
+      const { bySeason } = heldFinals([
+        { id: 900, season_id: 2026 },
+        { id: 900, season_id: 2026 },
+      ]);
+      expect(bySeason.get(2026)).toEqual([900]);
+    });
+  });
+
+  it("holds a game from kickoff for two days, so a 9pm Saturday still shows Monday", () => {
+    // Measured from KICKOFF because nothing stores a reliable end time for a
+    // CFB game. A 9pm CT Saturday kick is ~44h past its finish at the cutoff.
+    const kick = Date.parse("2026-08-30T02:00:00Z"); // 9pm CT Sat Aug 29
+    const mondayEvening = Date.parse("2026-08-31T23:00:00Z"); // 6pm CT Mon
+    expect(mondayEvening - kick).toBeLessThan(GRADED_HOLD_MS);
+    // And gone before the next board matters.
+    const wednesday = Date.parse("2026-09-02T15:00:00Z");
+    expect(wednesday - kick).toBeGreaterThan(GRADED_HOLD_MS);
+  });
+});
+
+/**
+ * The held ids widen `fetchSlateView`'s week filter, and the trap is where
+ * `season_type` sits. Left outside the `or` as another `.eq`, it silently drops
+ * any held game whose type differs from the current pointer's — an NFL
+ * preseason final while the pointer has rolled to the regular season, which is
+ * exactly the handoff week HUB-2 exists to survive. A dropped row is not an
+ * error: the position simply is not there, which is the bug HUB-2 fixed.
+ */
+describe("the widened slate query keeps season_type with the week", () => {
+  const SRC = readFileSync(join(__dirname, "./queries.ts"), "utf8");
+
+  it("puts season_type inside the or, not beside it", () => {
+    const or = /\.or\(\s*`([^`]+)`/.exec(SRC)?.[1] ?? "";
+    expect(or, "fetchSlateView no longer builds an or filter").toContain("id.in.");
+    expect(or).toMatch(/and\(week\.eq\.\$\{week\},season_type\.eq\.\$\{seasonType\}\)/);
+  });
+
+  it("still constrains the ids to integers before interpolating them", () => {
+    // They reach a string that becomes a PostgREST filter, through a public
+    // function signature anything can call.
+    expect(SRC).toMatch(/Number\.isSafeInteger/);
   });
 });

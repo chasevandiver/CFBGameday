@@ -215,6 +215,67 @@ shipping it.
 
 ## Log
 
+### Aug 22 — HUB-2: the results stop vanishing before anyone reads them
+
+The hub's positions were scoped to the current week, and the week pointer rolls
+the instant nothing in it is live or still scheduled. Week 0's last game kicks
+9pm CT Saturday and finals around midnight, so **every graded card from that
+Saturday disappeared hours before anyone opened the app on Sunday** — the
+roadmap's Monday question, *"How did I do?"*, failing outright.
+
+**The shape recommended when this was filed is wrong, and it is worth saying
+why.** "Hold until your next kickoff" sounded derived and self-clearing. It does
+not survive a Saturday: your noon game finals at 3pm, your 6pm game kicks three
+hours later, and the rule clears the afternoon's results while the day is still
+going.
+
+Shipped as a duration instead — `GRADED_HOLD_MS`, **48 hours from kickoff**.
+From kickoff rather than the whistle because nothing stores a reliable end time
+for a CFB game (`last_play_at` is the NFL edge function's heartbeat, null for
+most of the board). A 9pm CT Saturday kick is held through Monday evening and
+gone before Wednesday's board matters. Duller, and correct.
+
+Three things the build turned on:
+
+- **The week counters stay week-scoped.** `myWeekPicks` feeds "3 picks in this
+  week" as well as the positions list; widening it would have made the progress
+  line start counting last Saturday. Held rows join the positions list only.
+- **One narrow read, and only when something sits outside the week** — nothing
+  does, for most of the season. The ids then widen `fetchSlateView`'s week
+  filter rather than running that fifteen-query loader again for a few rows.
+- **`season_type` had to move inside the `or`.** Outside it, as another `.eq`,
+  it silently drops any held game whose type differs from the current pointer's
+  — an NFL preseason final once the pointer rolls to the regular season, which
+  is precisely the handoff week this exists to survive. A dropped row is not an
+  error; the position is simply absent, which is the original bug wearing a
+  different hat. Pinned by a source scan and mutation-checked.
+
+Held ids are constrained to integers before interpolation — they reach a
+PostgREST filter string through a public function signature.
+
+**Folded in on the owner's question** — *"does this make them look more
+visually appealing too with logos and green or red if won or loss?"* — because
+the answer was half yes and half no:
+
+- **Green/red was already there, twice.** `ResultChip` (`bg-win/12` + ✓,
+  `bg-loss/12` + ✗, `bg-push/12` + –) and the card's own aura.
+- **Logos were not.** The row printed text abbreviations while `TeamMark` —
+  which renders the logo and falls back to a colour-filled monogram — sat unused
+  two directories away. Both crests now sit in the score line at `size={20}`,
+  the smallest size already in the app, so no new value enters the scale. The
+  abbreviation stays beside the mark, because the fallback is a monogram and a
+  row of monograms with no letters is worse than the text was.
+- **The aura went 0.1 → 0.35, and only when there is a verdict.** 0.1 is the
+  tall card's setting for a final, tuned for a row that already spells the
+  outcome out in a cover strip and two team rails. This row is mostly verdict,
+  so the glow is what makes a scrolled column of results read as colour before
+  it reads as words. A settled game the viewer held nothing on keeps the faint
+  team-colour wash. **That number is a guess made without seeing it rendered**,
+  and it is the one thing on this row to eyeball on the 29th.
+
+Eleven tests, every behavioural one mutation-checked. 1,892 across 127 files,
+typecheck, lint and `next build` green. **Not seen rendered.**
+
 ### Aug 22 — HUB-1: a settled game is one line, not a scoreboard
 
 Owner call: *"for the hub we just do a small one line card of the matchup, final
