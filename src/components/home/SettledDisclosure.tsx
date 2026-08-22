@@ -26,10 +26,13 @@ import { useEffect, useRef, type ReactNode } from "react";
 export function SettledDisclosure({
   storageKey,
   summary,
+  count,
   children,
 }: {
   storageKey: string;
   summary: ReactNode;
+  /** How many rows are behind the fold — the thing the label cannot say. */
+  count: number;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDetailsElement>(null);
@@ -46,8 +49,15 @@ export function SettledDisclosure({
 
   return (
     <details ref={ref} className="mt-3.5">
+      {/* `card card-hover`, not bare text. Owner report 2026-08-22 with a
+          screenshot: "the settled expand option needs to stand out way more —
+          I almost missed it." It was a 10.5px label on the page background
+          sitting between two glass cards, which is the visual grammar of a
+          section HEADING, not a control. On a card surface it reads as an
+          object you can press, and `min-h-11` finally clears DESIGN.md's 44px
+          target, which the old py-2 row did not. */}
       <summary
-        className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-1 py-2 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent [&::-webkit-details-marker]:hidden"
+        className="card card-hover flex min-h-11 cursor-pointer list-none items-center gap-3 px-3 py-2.5 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent [&::-webkit-details-marker]:hidden"
         onClick={() => {
           // Fires before the element toggles, so the value being stored is the
           // one it is about to have.
@@ -62,11 +72,18 @@ export function SettledDisclosure({
         }}
       >
         {summary}
-        <ChevronDown
-          size={14}
-          aria-hidden
-          className="ml-auto shrink-0 text-dim transition-transform duration-150 motion-reduce:transition-none [details[open]_&]:rotate-180"
-        />
+        {/* The app's own "this is yours / this is interactive" vocabulary — the
+            same accent chip a logged bet wears — so the affordance is one the
+            eye has already been taught on this page. The count says what is
+            behind it; the chevron says which way it goes. */}
+        <span className="chip ml-auto bg-accent/15 text-accent ring-1 ring-inset ring-accent">
+          {count} {count === 1 ? "game" : "games"}
+          <ChevronDown
+            size={12}
+            aria-hidden
+            className="shrink-0 transition-transform duration-150 motion-reduce:transition-none [details[open]_&]:rotate-180"
+          />
+        </span>
       </summary>
       {children}
     </details>
