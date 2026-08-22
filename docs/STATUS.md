@@ -1421,6 +1421,36 @@ deliberate deferrals, each recorded below with what it would take.
       on a day tab at all, the way a null one already isn't. Sized after Week 0
       because the surface it changes is the one being watched on the 29th. · S
 
+- [x] **UX-42 — the watchability score couldn't leave the 50s, and every card
+      said Filler.** Owner observation on the live Week 0 board, 2026-08-22,
+      following the blind UX audit (`audit/ux-blind-2026-08/REPORT.md`, which
+      flagged the label; the scoring came out of the follow-up): *"The highest
+      I've seen is like a 50 and have only seen filler games."*
+      The quality term read only the top-25 rank — #1 → +17.5 down to #25 →
+      +0.7, and **every unranked team a flat +2**, so rank 26 scored the same
+      as rank 130. An unranked-vs-unranked game therefore capped at 69 in
+      theory and the low 50s in practice; Week 0 has no ranked matchup, so the
+      whole board read Filler. Spec §7 always defined the term as `w2·(sum of
+      team ratings)` — the rank curve was the available proxy from before
+      ratings reached the card.
+      Fixed in the commit that checks this box: `latest_ratings.overall` now
+      rides `TeamView.rating` (the slate query already fetched it and threw it
+      away after sorting into ranks), and `watchability()`'s quality term reads
+      it continuously — −5 and below → +0, +10 → +8.75, +25 → the full +17.5
+      the old #1 earned. An average team (0) earns +2.9, about the old
+      unranked +2, so ordinary boards don't inflate. The rank curve stays as
+      the fallback for views without ratings (fixtures, the demo, NFL).
+      Measured on the real Week 0 board: 32–51 wall-to-wall Filler becomes
+      25–64, with NC State–Virginia (+9.5 vs +8.7, −4.5, o54) at 64 **Good**
+      on top and the FSU/USC cupcakes at the bottom — the board now ranks the
+      way the model already believed. Four new anchors in `slate.test.ts`; the
+      old marquee/rivalry anchors are unchanged and now pin the fallback.
+      **Not fixed here, recorded rather than queued**: the NFL board still
+      can't leave Filler — NFL has no `latest_ratings` rows (so quality stays
+      +2+2) and NFL totals sit under the shootout term's 38-point floor. That
+      is an NFL-ratings question, not a formula question; it becomes worth an
+      item of its own only if NFL team ratings ever land. · S
+
 - [x] **AUTH-4 — the magic link cannot sign anyone in to the installed app, and
       that is where the crew will be on the 27th.** Owner question, 2026-08-22:
       *"if I sign out on the app or safari on my phone, do I need to re-signin

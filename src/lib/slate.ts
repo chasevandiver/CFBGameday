@@ -24,6 +24,13 @@ export interface TeamView {
   logo: string | null;
   /** Model rank from the latest ratings week (1 = best), null if unrated */
   rank: number | null;
+  /**
+   * Model rating in points vs an average FBS team (latest ratings week), the
+   * same scale the ratings page teaches. Optional because only the slate
+   * query plumbs it; views built without it (NFL, fixtures) leave it unset
+   * and watchability falls back to the rank curve.
+   */
+  rating?: number | null;
   /** Human-poll rank (AP/CFP/Coaches, latest week), null if unranked */
   pollRank: number | null;
   /** Which poll pollRank came from, e.g. "AP Top 25" */
@@ -849,10 +856,17 @@ export function spreadMoveRead(g: GameView): MoveRead | null {
 
 /**
  * Watchability 0–100 (spec §7 defines the formula shape; weights tuned by
- * feel): closeness of spread + combined team quality (poll/model rank as the
- * available proxy for ratings) + expected points, on a base of 10, plus the
- * rivalry term the formula was always meant to carry (migration 0017 seeded
- * the data). Null for dead games.
+ * feel): closeness of spread + combined team quality + expected points, on a
+ * base of 10, plus the rivalry term the formula was always meant to carry
+ * (migration 0017 seeded the data). Null for dead games.
+ *
+ * Quality reads the model rating when the view carries one — spec §7 says
+ * "sum of team ratings", and the top-25 rank curve was only ever the
+ * available proxy. The proxy was a cliff: rank 26 scored the same +2 as rank
+ * 130, so an unranked-vs-unranked board (all of Week 0, every NFL week)
+ * mathematically capped in the 50s and printed wall-to-wall "Filler"
+ * (UX-42, observed on the live Week 0 slate 2026-08-22). The rank curve
+ * stays as the fallback for views built without ratings.
  *
  * The rivalry bonus is deliberately small. A rivalry makes a mediocre game
  * worth watching; it does not make it a better game than two top-10 teams in
@@ -864,10 +878,18 @@ export function watchability(g: GameView): number | null {
   // closeness: PK → +35, 24+ point spread → +0
   score +=
     g.lines.spread === null ? 12 : Math.max(0, 35 - (Math.abs(g.lines.spread) * 35) / 24);
-  // quality: each side rank 1 → +17.5 … rank 25 → ~+0.7; unranked → +2
-  const q = (r: number | null) =>
-    r === null || r > 25 ? 2 : (17.5 * (26 - r)) / 25;
-  score += q(displayRank(g.home)) + q(displayRank(g.away));
+  // quality: rated → continuous in the model's points scale, anchored to the
+  // ratings-page legend: −5 and below → +0, +10 (fringe top-25) → +8.75,
+  // +25 (a playoff side) → the full +17.5 the old #1 earned. An average team
+  // (0) earns +2.9, about the +2 every unranked team got from the old curve,
+  // so ordinary boards don't inflate. Unrated → the old rank curve: rank 1 →
+  // +17.5 … rank 25 → ~+0.7; unranked → +2.
+  const q = (t: TeamView) => {
+    if (t.rating != null) return 17.5 * Math.max(0, Math.min(1, (t.rating + 5) / 30));
+    const r = displayRank(t);
+    return r === null || r > 25 ? 2 : (17.5 * (26 - r)) / 25;
+  };
+  score += q(g.home) + q(g.away);
   // shootout potential: total 38 → +0 … 75+ → +20
   score +=
     g.lines.total === null

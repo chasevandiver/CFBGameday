@@ -52,7 +52,7 @@ describe("probSurge", () => {
   });
 });
 
-const team = (id: number, rank: number | null = null): TeamView => ({
+const team = (id: number, rank: number | null = null, rating: number | null = null): TeamView => ({
   id,
   school: `Team ${id}`,
   abbr: `T${id}`,
@@ -62,6 +62,7 @@ const team = (id: number, rank: number | null = null): TeamView => ({
   altColor: null,
   logo: null,
   rank,
+  rating,
   pollRank: null,
   poll: null,
   record: null,
@@ -500,6 +501,58 @@ describe("watchability", () => {
     // it's a rivalry — but not more than #2 vs #5 in a one-score game
     expect(watchability(rivalry)!).toBeGreaterThan(watchability(plain)!);
     expect(watchability(rivalry)!).toBeLessThan(watchability(marquee)!);
+  });
+
+  // UX-42: quality reads the model rating when the view carries one. The old
+  // top-25 rank curve was a cliff — rank 26 scored the same +2 as rank 130 —
+  // so an unranked-vs-unranked board capped in the 50s and printed
+  // wall-to-wall "Filler" (all of Week 0 2026, observed live).
+  it("two playoff-grade ratings make a marquee game without any rank", () => {
+    const g = game({
+      status: "scheduled",
+      home: team(1, null, 27.2),
+      away: team(2, null, 25.4),
+      lines: { ...game().lines, spread: -2.5, total: 62 },
+    });
+    expect(watchability(g)!).toBeGreaterThanOrEqual(80);
+  });
+
+  it("solid unranked teams in a close game clear Good — the cliff is gone", () => {
+    // NC State (+9.5) at Virginia (+8.7), −4.5, o54 — the real Week 0 opener
+    // that scored 51 "Filler" under the rank curve.
+    const g = game({
+      status: "scheduled",
+      home: team(1, null, 8.7),
+      away: team(2, null, 9.5),
+      lines: { ...game().lines, spread: -4.5, total: 54 },
+    });
+    expect(watchability(g)!).toBeGreaterThanOrEqual(60);
+    expect(watchability(g)!).toBeLessThan(70);
+  });
+
+  it("bad teams earn nothing from closeness alone", () => {
+    // Sacramento State (−13.0) at Eastern Michigan (−15.4), −8.5, o53.5
+    const g = game({
+      status: "scheduled",
+      home: team(1, null, -15.4),
+      away: team(2, null, -13.0),
+      lines: { ...game().lines, spread: -8.5, total: 53.5 },
+    });
+    expect(watchability(g)!).toBeLessThan(60);
+  });
+
+  it("an average-rated matchup scores about what unrated used to", () => {
+    const rated = game({
+      status: "scheduled",
+      home: team(1, null, 0),
+      away: team(2, null, 0),
+      lines: { ...game().lines, spread: -4, total: 50 },
+    });
+    const unrated = game({
+      status: "scheduled",
+      lines: { ...game().lines, spread: -4, total: 50 },
+    });
+    expect(Math.abs(watchability(rated)! - watchability(unrated)!)).toBeLessThanOrEqual(2);
   });
 });
 

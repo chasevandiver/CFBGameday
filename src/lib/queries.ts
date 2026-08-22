@@ -86,6 +86,7 @@ function mean(vals: Array<number | null>): number | null {
 function toTeamView(
   t: TeamRow,
   ranks: Map<number, number>,
+  ratings: Map<number, number>,
   records: Map<number, { w: number; l: number }>,
   confRecords: Map<number, { w: number; l: number }>,
   pollRanks: Map<number, number>,
@@ -104,6 +105,7 @@ function toTeamView(
     altColor: t.alt_color,
     logo: t.logo_url,
     rank: ranks.get(t.id) ?? null,
+    rating: ratings.get(t.id) ?? null,
     pollRank,
     poll: pollRank === null ? null : pollName,
     record: rec ? `${rec.w}-${rec.l}` : null,
@@ -546,6 +548,10 @@ export async function fetchSlateView(
   [...allRatings]
     .sort((a, b) => Number(b.overall) - Number(a.overall))
     .forEach((r, i) => ranks.set(r.team_id, i + 1));
+  // the points themselves, not just the order — watchability's quality term
+  // reads the rating directly (UX-42)
+  const ratings = new Map<number, number>();
+  allRatings.forEach((r) => ratings.set(r.team_id, Number(r.overall)));
 
   // human-poll ranks: latest week, CFP > AP > Coaches
   const { poll, byTeam: pollRanks } = pickPollRanks(
@@ -612,8 +618,8 @@ export async function fetchSlateView(
         neutralSite: game.neutral_site,
         homePoints: game.home_points,
         awayPoints: game.away_points,
-        home: toTeamView(home, ranks, records, confRecords, pollRanks, pollName),
-        away: toTeamView(away, ranks, records, confRecords, pollRanks, pollName),
+        home: toTeamView(home, ranks, ratings, records, confRecords, pollRanks, pollName),
+        away: toTeamView(away, ranks, ratings, records, confRecords, pollRanks, pollName),
         lines: {
           spread: consensus.spread,
           spreadOpen: consensus.open,

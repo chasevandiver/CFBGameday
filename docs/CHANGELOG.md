@@ -215,6 +215,36 @@ shipping it.
 
 ## Log
 
+### Aug 22 — UX-42: watchability reads the rating, not the top-25 cliff
+
+Owner, on the live Week 0 board: *"The highest I've seen is like a 50 and have
+only seen filler games."* He was right, and it was arithmetic: the quality term
+gave a top-25 team up to +17.5 and **every other team in the sport a flat +2**,
+so an unranked-vs-unranked game — all of Week 0 — capped in the 50s and the
+whole board printed Filler. Spec §7 always said `w2·(sum of team ratings)`; the
+rank curve was a proxy from before ratings reached the card.
+
+The fix is the spec's own sentence: `latest_ratings.overall` (already fetched by
+the slate query, then discarded after sorting into ranks) now rides
+`TeamView.rating`, and quality maps it continuously — −5 and below → +0, +10 →
++8.75, +25 → the full +17.5 the old #1 earned. An average team (0) earns +2.9 ≈
+the old unranked +2, so ordinary boards don't inflate; two bad teams in a close
+game still read Filler, because closeness alone was never the claim. The rank
+curve survives as the fallback for unrated views (fixtures, demo, NFL).
+
+Measured on the real Week 0 board: 32–51 becomes 25–64 — NC State–Virginia
+(+9.5 vs +8.7, −4.5, o54) tops it at 64 **Good**, the cupcakes sink to 25–36.
+The score now orders the board the way the model already believed. Four new
+anchors in `slate.test.ts` (rating marquee ≥ 80, the real NCSU–UVA card in
+[60, 70), bad-teams-stay-Filler, average ≈ old unranked); the old
+marquee/rivalry anchors unchanged, now pinning the fallback. 1,918 tests,
+typecheck, lint green.
+
+Not touched, recorded: the NFL board still can't leave Filler — no
+`latest_ratings` rows for NFL and totals under the shootout term's 38-point
+floor. That is an NFL-ratings question, recorded in UX-42's STATUS entry rather
+than queued. This is display-layer scoring; no `DEFAULT_PARAMS` gate applies.
+
 ### Aug 22 — HUB-3: five settled games were the page
 
 Owner screenshot, minutes after HUB-1/HUB-2 deployed: *"There's gotta be a
