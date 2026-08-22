@@ -276,6 +276,28 @@ Four more tests, mutation-checked: stripping the card surface and the count
 turns all four red. 1,907 across 127 files, typecheck, lint and `next build`
 green.
 
+**Third pass, and the second time this row's visual read was wrong.** Owner, on
+the rendered card: *"do you think this is still eye catching enough?"* No — it
+was still a short dim band between two tall bright cards and a section heading,
+which is the shape of a divider.
+
+Two things, both visible only rendered:
+
+- **"SETTLED" was dimmer than the headings it sat between** — `text-[10.5px]
+  text-dim` against their `text-sm text-accent`. The one row on the page that is
+  a control was the faintest thing near it. Matched to them now.
+- **The record carried no colour.** 14px chalk → **18px, tinted by which way the
+  week went** (`recordTone` — green ahead, red behind, chalk even; pushes do not
+  decide it, a 3-3-4 week is even however it is spelled).
+
+The tint is the substantive half. Without it 4-4 and 8-0 are the same shape, and
+the row is a button rather than a result — nothing about it rewards looking.
+
+Seven more tests. 1,914 across 127 files, typecheck, lint and `next build`
+green. **Not seen rendered** — and worth recording that every visual judgement
+on this row was computed from a stylesheet and wrong twice, with both
+corrections arriving as screenshots this session cannot take.
+
 ### Aug 22 — HUB-2: the results stop vanishing before anyone reads them
 
 The hub's positions were scoped to the current week, and the week pointer rolls

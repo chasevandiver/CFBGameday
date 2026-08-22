@@ -9,7 +9,7 @@ import { TeamMark } from "../slate/TeamMark";
 import { SettledDisclosure } from "./SettledDisclosure";
 import { StatTile } from "../StatTile";
 import { UnitsCurve } from "../UnitsCurve";
-import { heldVsNow, settledRecord, splitPositions, splitSettled, type GroupStanding, type HomeBet, type HomeData, type HomePick, type Position, type WeekProgress } from "../../lib/home";
+import { heldVsNow, recordTone, settledRecord, splitPositions, splitSettled, type GroupStanding, type HomeBet, type HomeData, type HomePick, type Position, type WeekProgress } from "../../lib/home";
 import type { TodayBlock } from "../../lib/home-today";
 import { breakLabel, DEFAULT_TZ, kickParts, periodLabel, tzLabel } from "../../lib/kick";
 import { statusForBet, statusForPick, tintFor } from "../../lib/live-status";
@@ -316,14 +316,29 @@ function PositionColumn({
           count={settled.length}
           summary={
             <>
-              <span className="stat text-[10.5px] font-semibold uppercase tracking-[0.18em] text-dim">
+              {/* Was 10.5px dim — quieter than the section headings around it,
+                  which are `text-sm text-accent` and are NOT clickable. The one
+                  row that is a control should not be the faintest thing near
+                  it. Same size and colour as those headings now; the card
+                  surface and the chip are what keep it from reading as one. */}
+              <span className="stat text-sm font-semibold uppercase tracking-[0.18em] text-accent">
                 Settled
               </span>
-              {/* The record, or the count when nothing has graded yet — the
-                  grader settles within a tick of the whistle, but that tick
-                  exists and a number that moves while you read it is worse
-                  than none. */}
-              <span className="stat text-sm font-semibold tabular-nums text-chalk">
+              {/* The record, tinted by which way it went, or the count when
+                  nothing has graded yet — the grader settles within a tick of
+                  the whistle, but that tick exists and a number that moves
+                  while you read it is worse than none.
+                  The tint is the point: 4-4 and 8-0 are the same shape, and
+                  without colour the row is a button rather than a result. */}
+              <span
+                className={`stat text-lg font-semibold tabular-nums ${
+                  record.decided === 0
+                    ? "text-chalk"
+                    : { win: "text-win", loss: "text-loss", even: "text-chalk" }[
+                        recordTone(record)
+                      ]
+                }`}
+              >
                 {record.decided > 0
                   ? formatRecord({ ...EMPTY_TALLY, ...record })
                   : `${settled.length} final`}

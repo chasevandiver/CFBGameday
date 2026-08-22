@@ -444,3 +444,52 @@ describe("the fold looks like something you can press", () => {
     expect(container.querySelector("summary")?.textContent).toContain("2 games");
   });
 })
+
+describe("the fold's record carries its own colour", () => {
+  const finals = () => demoGames(NOW).filter((g) => g.status === "final").slice(0, 3);
+  const withResults = (results: Array<"win" | "loss">) => {
+    const games = finals().slice(0, results.length);
+    return empty({
+      positions: buildPositions(games, [], games.map((g, i) => ({
+        id: i,
+        gameId: g.id,
+        betType: "spread",
+        side: "away",
+        line: 3.5,
+        result: results[i],
+      })) as HomeBet[]),
+    });
+  };
+  const record = (c: HTMLElement) =>
+    [...c.querySelectorAll("summary span")].find((el) => /^\d+-\d+/.test(el.textContent ?? ""));
+
+  it("goes green on a winning week and red on a losing one", () => {
+    // Without this, 4-4 and 8-0 are the same shape and the row is a button
+    // rather than a result.
+    const { container: won } = render(<HomeDashboard data={withResults(["win", "win"])} signedIn />);
+    expect(record(won)?.className).toContain("text-win");
+    cleanup();
+    const { container: lost } = render(
+      <HomeDashboard data={withResults(["loss", "loss"])} signedIn />,
+    );
+    expect(record(lost)?.className).toContain("text-loss");
+  });
+
+  it("stays neutral when the week is even, rather than picking a side", () => {
+    const { container } = render(<HomeDashboard data={withResults(["win", "loss"])} signedIn />);
+    const el = record(container);
+    expect(el?.className).not.toContain("text-win");
+    expect(el?.className).not.toContain("text-loss");
+  });
+
+  it("gives the label the same weight as the headings it sits between", () => {
+    // It was 10.5px dim — quieter than "YOUR BETS" and "POOL PICKS", which are
+    // text-sm accent and are not clickable.
+    const { container } = render(<HomeDashboard data={withResults(["win"])} signedIn />);
+    const label = [...container.querySelectorAll("summary span")].find(
+      (el) => el.textContent === "Settled",
+    );
+    expect(label?.className).toContain("text-accent");
+    expect(label?.className).toContain("text-sm");
+  });
+});

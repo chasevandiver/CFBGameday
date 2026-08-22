@@ -7,6 +7,7 @@ import {
   heldFinals,
   heldVsNow,
   outsideWeekIds,
+  recordTone,
   settledRecord,
   splitSettled,
   homeRefreshTier,
@@ -496,5 +497,28 @@ describe("the settled half of a section", () => {
         decided: 3,
       });
     });
+  });
+});
+
+describe("recordTone", () => {
+  it("colours a winning week green and a losing one red", () => {
+    expect(recordTone({ wins: 6, losses: 2 })).toBe("win");
+    expect(recordTone({ wins: 2, losses: 6 })).toBe("loss");
+  });
+
+  it("leaves an even week neutral rather than picking a side", () => {
+    expect(recordTone({ wins: 4, losses: 4 })).toBe("even");
+    expect(recordTone({ wins: 0, losses: 0 })).toBe("even");
+  });
+
+  it("does not let pushes decide it", () => {
+    // A push is the absence of an outcome. 3-3-4 is even however it is spelled,
+    // and tinting it either way would claim something the week did not do.
+    expect(recordTone({ wins: 3, losses: 3 })).toBe("even");
+  });
+
+  it("turns on one game, since 1-0 is a good week and should look like one", () => {
+    expect(recordTone({ wins: 1, losses: 0 })).toBe("win");
+    expect(recordTone({ wins: 0, losses: 1 })).toBe("loss");
   });
 });
