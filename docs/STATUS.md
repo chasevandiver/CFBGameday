@@ -2306,7 +2306,7 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       `--tune-team-hfa`'s Gate 0 defect again: an absent measurement reported as
       evidence of absence. It is now a **notice, not a failure**: loud about
       being unevaluable, and not a reason to turn a good load red.
-- [ ] **Aug 22** — 🔴 **The Q1 escalation fires**, 11:00 UTC, unattended:
+- [x] **Aug 22** — 🔴 **The Q1 escalation fires**, 11:00 UTC, unattended:
       `preseason-refresh` stops declining and loads the best build available.
       **Verify the same day** — `ratings` at 2026.5.0 for 138 teams, `/ratings`
       rendering Off/Def, and the `/model` note either present (talent still
@@ -2321,6 +2321,29 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       no-ops. A red run here now means something regressed after the 19th,
       which is a different and more interesting question than the one this row
       was written to ask.
+      **Watched 2026-08-22 and it went green** — Actions run **32569581229**,
+      11:10 UTC, on `63aa6120`. **It did not no-op, and the distinction is
+      worth keeping**: it rebuilt and reloaded (`Done: 2421 rows loaded`) the
+      way the daily refresh has since CFBD-5 cleared the gate, then
+      `verify-preseason` read it back — **138 week-0 ratings at 2026.5.0**,
+      `team_hfa` 138 at **1** distinct `blended_hfa`, `preseason_components` 138
+      with **0 `talent_stale`**, halves mismatched **0**, games already final
+      **0**. Same numbers as the 19th; nothing regressed. The chain check is
+      still the one unevaluable notice, for the same reason it always was.
+      **And WEEK0-1 survived a second unattended load on the escalation path.**
+      Read back at 11:31 UTC, after both the 09:25 `sync-games` and this
+      11:11 preseason load: **week 0 = 8, week 1 = 91**. Last night's proof was
+      a dispatched pair; this is the same result with nobody watching.
+      **`refresh-lines` has NOT left its idle guard yet, and the Aug 20 row's
+      "~Aug 22" was about eight hours early.** The 10:34 UTC run still reported
+      `skipped: next_game_gt_7d`, correctly: `idleSkip` proceeds at
+      `days <= 7`, the next CFB kickoff is **Aug 29 16:00 UTC**, so the guard
+      clears at **Aug 22 16:00 UTC** and not before. The first `refresh-lines`
+      cron after that is `50 18 * * 6` — **18:50 UTC / 1:50 pm CT today** — and
+      that is when CFB snapshots go non-zero for the first time since
+      **2026-08-07**. The NFL side is unaffected and snapshotting (11 at 10:34,
+      preseason week 3). Nothing to fix; the date in the older row was a
+      round number where the guard is an inequality.
 - [ ] **Aug 22–23** — **Full dress rehearsal.** Dispatch `refresh-lines`,
       `sync-games`, `scoreboard-loop`, `freeze --force` against a scratch week.
       Watch `job_runs` and `api_call_log` fill. This is the only end-to-end test
