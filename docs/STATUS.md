@@ -61,7 +61,7 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **1,862 tests across 126 files**, all green in-session 2026-08-21 along with `npm run typecheck` and lint — run after WEEK0-1 (§2.1j); eight of them are new and the source scan among them was checked failing against the pre-fix file. `next build` was NOT re-run for that batch and did not need to be: it changes one `scripts/` emit and one test, no route, no component, no migration. Previously: **1,773 tests across 124 files**, all green in-session 2026-08-20 along with `npm run typecheck`, lint and `next build` — run after OPS-4b (§2.1h); seven of them are new and cover the cancelled-run path. The kill was also reproduced outside vitest, since that is the half a unit test cannot reach: a real `npx tsx` process under `bash -c`, SIGTERM to the shell and SIGKILL to the tree, and the id file still readable afterwards — which is exactly what the `if: cancelled()` step depends on. Previously: **1,316 tests across 98 files**, all green in-session 2026-08-18 along with `tsc` and lint, and `next build` compiles clean — run after the SURV-1…SURV-4 batch in §2.1g. The DB suite was **not** re-run for that batch and did not need to be: it changes no migration, no RPC and no policy, and `supabase/tests/survivor.sql`'s 27 assertions cover rules the UI now merely reports. *(**Superseded 2026-08-19.** This said the one `tsc` complaint, `LayoutProps` in `src/app/layout.tsx`, was Next's generated route types being absent until a build has run. True, and it made a bare `tsc --noEmit` look permanently dirty — so a REAL type error hid in the noise and reached a Vercel deploy on 08-19 after `npm test` and `npm run lint` both passed. `npx next typegen` generates those types in about a second without a build, and the check is now **`npm run typecheck`** (`next typegen && tsc --noEmit`), which is clean. Run it before pushing; CI has always run both steps and would have caught it, but not before a red deploy.)* Previously: **975 tests across 71 files**, all green in-session 2026-08-15 along with `tsc`, lint and `next build`, after the owner-report batch in §2.1e and the AUTH-2 proxy change. **257 DB assertions** against a real Postgres 16 cluster, 0 failed — 27 of them new in `supabase/tests/survivor.sql`, and three of those were rewritten after they passed for the wrong reason (the `raises` helper accepts any error, and the seed was refusing the pick on start-week rather than on the rule under test). Previously: **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
+| **Build** | **1,873 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after AUTH-4 (§2.1j). Eleven are new and seven of them drive the real component under jsdom rather than a pure function, because the defect AUTH-4 was most likely to ship — verifying a signup code as type `email` — lives in the wiring, not in any function worth unit-testing. Both mutations were checked failing. Previously: **1,862 tests across 126 files**, all green in-session 2026-08-21 along with `npm run typecheck` and lint — run after WEEK0-1 (§2.1j); eight of them are new and the source scan among them was checked failing against the pre-fix file. `next build` was NOT re-run for that batch and did not need to be: it changes one `scripts/` emit and one test, no route, no component, no migration. Previously: **1,773 tests across 124 files**, all green in-session 2026-08-20 along with `npm run typecheck`, lint and `next build` — run after OPS-4b (§2.1h); seven of them are new and cover the cancelled-run path. The kill was also reproduced outside vitest, since that is the half a unit test cannot reach: a real `npx tsx` process under `bash -c`, SIGTERM to the shell and SIGKILL to the tree, and the id file still readable afterwards — which is exactly what the `if: cancelled()` step depends on. Previously: **1,316 tests across 98 files**, all green in-session 2026-08-18 along with `tsc` and lint, and `next build` compiles clean — run after the SURV-1…SURV-4 batch in §2.1g. The DB suite was **not** re-run for that batch and did not need to be: it changes no migration, no RPC and no policy, and `supabase/tests/survivor.sql`'s 27 assertions cover rules the UI now merely reports. *(**Superseded 2026-08-19.** This said the one `tsc` complaint, `LayoutProps` in `src/app/layout.tsx`, was Next's generated route types being absent until a build has run. True, and it made a bare `tsc --noEmit` look permanently dirty — so a REAL type error hid in the noise and reached a Vercel deploy on 08-19 after `npm test` and `npm run lint` both passed. `npx next typegen` generates those types in about a second without a build, and the check is now **`npm run typecheck`** (`next typegen && tsc --noEmit`), which is clean. Run it before pushing; CI has always run both steps and would have caught it, but not before a red deploy.)* Previously: **975 tests across 71 files**, all green in-session 2026-08-15 along with `tsc`, lint and `next build`, after the owner-report batch in §2.1e and the AUTH-2 proxy change. **257 DB assertions** against a real Postgres 16 cluster, 0 failed — 27 of them new in `supabase/tests/survivor.sql`, and three of those were rewritten after they passed for the wrong reason (the `raises` helper accepts any error, and the seed was refusing the pick on start-week rather than on the rule under test). Previously: **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
 | **Scheduler** | 111 completed runs. Reds to date: one watchdog firing correctly on a cold `job_runs` table, and runs #107–109 — the backup verification sequence, each a real defect, all closed. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
@@ -1420,6 +1420,60 @@ deliberate deferrals, each recorded below with what it would take.
       **The fix is small and is not a date fix**: a TBD game should not be placed
       on a day tab at all, the way a null one already isn't. Sized after Week 0
       because the surface it changes is the one being watched on the 29th. · S
+
+- [x] **AUTH-4 — the magic link cannot sign anyone in to the installed app, and
+      that is where the crew will be on the 27th.** Owner question, 2026-08-22:
+      *"if I sign out on the app or safari on my phone, do I need to re-signin
+      and then readd the bookmark?"* The bookmark half is no — a home-screen
+      icon is a shortcut and a session has nothing to do with it. The sign-in
+      half turned up a defect that had six days to bite eight people at once.
+      **Three facts that only matter together.** `createBrowserClient`
+      (`src/lib/supabase/client.ts`) uses **PKCE**, which writes a code-verifier
+      cookie in whichever browser asked for the link. On iOS a home-screen web
+      app has **its own cookie jar**, separate from Safari's. And a link in Mail
+      **always opens in Safari**, installed app or not. So: request the link
+      inside the installed app → verifier is in the app's jar → Safari opens the
+      link without it → `exchangeCodeForSession` fails →
+      `/auth/confirm` sends them to `?error=link`. A hard failure with a generic
+      message, on the exact path the Aug 27 row calls *"invite the crew, confirm
+      each person signs in."*
+      **A six-digit code is the fix, and it is the only option that never leaves
+      the app.** Password moves the same email-link problem into the reset flow.
+      Sign in with Apple is worse here specifically: `handle_new_user`
+      (migration 0002) matches `lower(email) = lower(new.email)`, so **Hide My
+      Email** hands over an `@privaterelay.appleid.com` address that matches no
+      allowlist row, the trigger raises, and the user gets the red `{}` this
+      form already has an essay about. Both recorded, neither built.
+      **`verifyOtp` has to be told which template was sent, and that is the part
+      that would have failed silently.** GoTrue sends Magic Link to an existing
+      account (verifies as `email`) and Confirm Signup to one the second call
+      just created (verifies as `signup`). A hardcoded `"email"` works for
+      everyone who already has an account — which is everyone testing it — and
+      **rejects every genuinely new invitee on their first try.** The type is
+      captured at the moment the send succeeds, and a jsdom test drives both
+      branches; hardcoding either one turns it red.
+      `explainCodeError` keeps `explainAuthError`'s hard-won rule — `auth-js`
+      builds a 5xx message with `JSON.stringify(Response)`, so `verifyOtp` is
+      just as capable of putting a literal `{}` on screen — and quotes **no
+      expiry duration**, because that is a Supabase project setting this file
+      cannot see and a wrong number in an error message is worse than none.
+      **Two things the `web-design-guidelines` pass changed**, run per
+      DESIGN.md: the submit button no longer greys out on a short code (a
+      disabled control cannot say what is wrong — it now submits and answers
+      *"that's not the whole code — it's six digits"*), and both inputs gained
+      the `name` the rules ask for. `autoComplete="one-time-code"` is what makes
+      iOS offer the digits above the keyboard, and a test pins it, because
+      without it the whole argument for the code costs a trip to Mail anyway.
+      **Not seen rendered.** Every check here is computed — 17 tests, typecheck,
+      lint, `next build` — and the 375px pass on 08-21 is what that is worth
+      without a device. *(Deviations from the guidelines, deliberate: the button
+      reads "Sign in" rather than Title Case, matching "Send my link" beside it,
+      and the placeholder `123456` carries no ellipsis because one would imply
+      more digits follow.)*
+      **Owner action, and it is the half that cannot ship from here:** the code
+      only exists in the email if the template emits it. Add `{{ .Token }}` to
+      **both** Authentication → Emails → **Magic Link** and **Confirm signup**.
+      Without it the form asks for a number nobody was sent.
 
 ### 2.1i The pool lane — owner report, 2026-08-21
 
