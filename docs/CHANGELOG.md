@@ -269,9 +269,27 @@ is `APPEND_ONLY`, so a refresh skips it; only `--bootstrap` loads it, and the
 table has 0 rows), but a bootstrap against 2026 would pre-empt the Thursday
 freeze for the whole opening slate.
 
-**The database is still merged** until the fix reaches `main` and a
-`sync-games` runs — the next scheduled one is 09:35 UTC. Nothing in production
-changes by merging alone.
+**Verified end to end, 2026-08-22 00:41–00:42 UTC**, by running the two jobs in
+the order that made the bug rather than just the one that fixes it:
+
+| run | job | result |
+|---|---|---|
+| 32541114222 | `sync-games` | week 0 = 8, week 1 = 91 |
+| 32541165986 | `preseason-refresh` — **the job that was undoing it** | week 0 still 8 |
+
+The second run's log carries the new line from `build-preseason` itself —
+`week 0 split out of CFBD's week 1: 8 games` — then four games files loaded,
+`Done: 2421 rows loaded`, and `verify-preseason` reading back 138 week-0 ratings
+at 2026.5.0, `team_hfa` at 1 distinct `blended_hfa`, 0 `talent_stale`, 0 halves
+mismatched, 0 games already final.
+
+Running `sync-games` alone would have proved nothing: it had been splitting
+correctly and silently every morning since Aug 17. The test is whether the split
+survives the load that came after it, and it does.
+
+The residual above is confirmed by the same log and stays unreachable:
+`Week 1 games priced: 99 (of 99 on the slate)`, then
+`skip 16-predictions-0.json → predictions (99 rows) — append-only, use --bootstrap`.
 
 **Two things the same pass turned up, both logged in `docs/STATUS.md` §2.1j and
 neither fixed** — sized after Week 0 on purpose, since both change surfaces that

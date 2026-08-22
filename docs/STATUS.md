@@ -1357,9 +1357,22 @@ deliberate deferrals, each recorded below with what it would take.
       (`predictions` is `APPEND_ONLY`, skipped on refresh; only `--bootstrap`
       loads it, and the table has 0 rows), but a bootstrap against 2026 would
       pre-empt the Thursday freeze for the whole opening slate.
-      **Production is still merged** until this reaches `main` and a
-      `sync-games` runs — next scheduled 09:35 UTC. Merging alone changes
-      nothing in the database.
+      **Verified end to end against production, 2026-08-22 00:41–00:42 UTC**,
+      by running the two jobs in the order that made the bug: `sync-games`
+      (Actions run 32541114222) split Week 0 back out, then
+      **`preseason-refresh` (32541165986) — the job that had been undoing it —
+      ran on the fixed code, wrote 888 games over the top, and Week 0 survived.**
+      Its log carries the new line from `build-preseason` itself:
+      `week 0 split out of CFBD's week 1: 8 games`, then four games files loaded,
+      `Done: 2421 rows loaded`, and `verify-preseason` reading back 138 week-0
+      ratings at 2026.5.0, `team_hfa` at 1 distinct `blended_hfa`, 0
+      `talent_stale`, 0 halves mismatched. Read back after: **week 0 = 8 games
+      (Aug 29, 11:00–21:00 CT), week 1 = 91 (Sep 3–7)**.
+      That ordering is the whole test. `sync-games` alone was never the
+      question — it had been splitting correctly and silently every morning
+      since Aug 17. *(This row previously ended "Production is still merged
+      until this reaches `main` and a `sync-games` runs", which was true when
+      written and stopped being true two minutes after the merge.)*
 
 - [ ] **FREEZE-1 — a midweek game never gets a receipt.** Found 2026-08-21 while
       measuring what WEEK0-1 was about to cost, and it is the same seam from the
