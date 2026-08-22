@@ -260,6 +260,19 @@ export function settledRecord(positions: Position[]): {
   return { wins, losses, pushes, decided: wins + losses + pushes };
 }
 
+/**
+ * Which way a settled record went — the colour the fold's number wears.
+ *
+ * Without it 4-4 and 8-0 look identical until you open the block, which makes
+ * the row a button rather than a result. Pushes do not decide it: they are the
+ * absence of an outcome, and a 3-3-4 week is even however it is spelled.
+ */
+export function recordTone(record: { wins: number; losses: number }): "win" | "loss" | "even" {
+  if (record.wins > record.losses) return "win";
+  if (record.losses > record.wins) return "loss";
+  return "even";
+}
+
 export function outsideWeekIds(
   picks: ReadonlyArray<{ game_id: number | null }>,
   bets: ReadonlyArray<{ game_id: number | null }>,
