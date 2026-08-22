@@ -272,6 +272,24 @@ imply more digits follow.
 to **both** Authentication → Emails → **Magic Link** and **Confirm signup**.
 Until then the form asks for a number nobody was sent.
 
+**Corrected within the hour — the first real email carried eight digits.**
+GoTrue's email-OTP length is a dashboard setting anywhere in 6–10 and this
+project is set to 8, so `maxLength={6}` truncated a good code into one GoTrue
+would never accept: a sign-in that fails and blames the person typing.
+
+Which is the same mistake the paragraph above avoids on purpose. `explainCodeError`
+quotes no expiry because that is a project setting the file cannot see — and
+then the length, the same kind of fact, was hardcoded one screen down.
+
+The field bounds the range now (`MIN_CODE` 6 as the floor for the short-code
+message, `MAX_CODE` 10 as the ceiling) and the placeholder is gone, since a
+worked example is worse than none when the length varies. Writing the test
+turned up a second thing: **`maxLength` bounds typing but not a value set any
+other way**, so the clip belongs in the change handler and an 11th digit
+survived until it went there. Both new tests checked failing against the
+hardcoded 6. Nothing to change in Supabase — 8 works, 6 works, so does anything
+between.
+
 ### Aug 21 — WEEK0-1: two jobs disagreed about Week 0, and the later one won every morning
 
 Owner report: Week 0 still shows as Week 1 on the slate and in the groups. It

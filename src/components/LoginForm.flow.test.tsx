@@ -41,7 +41,7 @@ async function submitEmail() {
 }
 
 async function submitCode(code: string) {
-  fireEvent.change(screen.getByLabelText(/six-digit code/i), { target: { value: code } });
+  fireEvent.change(screen.getByLabelText(/code from the sign-in email/i), { target: { value: code } });
   await act(async () => {
     fireEvent.submit(screen.getByRole("button", { name: /sign in/i }).closest("form")!);
   });
@@ -100,7 +100,7 @@ describe("the code form", () => {
     expect(screen.getByRole("status").textContent).toMatch(/send a new email/i);
     // Still on the code step — a bad code must not throw them back to the email
     // form, which would mean requesting a second email to retype the first code.
-    expect(screen.getByLabelText(/six-digit code/i)).toBeTruthy();
+    expect(screen.getByLabelText(/code from the sign-in email/i)).toBeTruthy();
   });
 
   it("carries `one-time-code`, which is what makes iOS offer the digits", () => {
@@ -109,7 +109,7 @@ describe("the code form", () => {
     signInWithOtp.mockResolvedValue({ error: null });
     render(<LoginForm linkFailed={false} />);
     return submitEmail().then(() => {
-      const input = screen.getByLabelText(/six-digit code/i);
+      const input = screen.getByLabelText(/code from the sign-in email/i);
       expect(input.getAttribute("autocomplete")).toBe("one-time-code");
       expect(input.getAttribute("inputmode")).toBe("numeric");
     });
@@ -118,7 +118,7 @@ describe("the code form", () => {
   it("drops anything that is not a digit, so a pasted `123 456` still works", async () => {
     render(<LoginForm linkFailed={false} />);
     await submitEmail();
-    const input = screen.getByLabelText(/six-digit code/i) as HTMLInputElement;
+    const input = screen.getByLabelText(/code from the sign-in email/i) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "12a3 4b" } });
     expect(input.value).toBe("1234");
   });
@@ -128,15 +128,53 @@ describe("the code form", () => {
     // cannot tell anyone what is wrong with what they typed.
     render(<LoginForm linkFailed={false} />);
     await submitEmail();
-    fireEvent.change(screen.getByLabelText(/six-digit code/i), { target: { value: "1234" } });
+    fireEvent.change(screen.getByLabelText(/code from the sign-in email/i), {
+      target: { value: "1234" },
+    });
     const button = screen.getByRole("button", { name: /sign in/i });
     expect(button.hasAttribute("disabled")).toBe(false);
     await act(async () => {
       fireEvent.submit(button.closest("form")!);
     });
     expect(verifyOtp).not.toHaveBeenCalled();
-    expect(screen.getByRole("status").textContent).toMatch(/six digits/i);
-    expect(document.activeElement).toBe(screen.getByLabelText(/six-digit code/i));
+    expect(screen.getByRole("status").textContent).toMatch(/looks short/i);
+    expect(document.activeElement).toBe(screen.getByLabelText(/code from the sign-in email/i));
+  });
+
+  /**
+   * The first cut hardcoded six. Supabase's email-OTP length is a dashboard
+   * setting between 6 and 10, this project is set to **8**, and `maxLength={6}`
+   * truncated a perfectly good code to something GoTrue would never accept —
+   * reported by the owner the first time he opened the email. A form does not
+   * get to decide a server-side setting.
+   */
+  it("takes whatever length the project is configured for, not six", async () => {
+    render(<LoginForm linkFailed={false} />);
+    await submitEmail();
+    const input = screen.getByLabelText(/code from the sign-in email/i) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "12345678" } });
+    expect(input.value).toBe("12345678");
+    await act(async () => {
+      fireEvent.submit(screen.getByRole("button", { name: /sign in/i }).closest("form")!);
+    });
+    expect(verifyOtp).toHaveBeenCalledWith({
+      email: "dave@example.com",
+      token: "12345678",
+      type: "email",
+    });
+  });
+
+  it("accepts the whole 6–10 range GoTrue can be set to", async () => {
+    render(<LoginForm linkFailed={false} />);
+    await submitEmail();
+    const input = screen.getByLabelText(/code from the sign-in email/i) as HTMLInputElement;
+    for (const n of [6, 7, 8, 9, 10]) {
+      fireEvent.change(input, { target: { value: "1".repeat(n) } });
+      expect(input.value.length, `${n}-digit code was truncated`).toBe(n);
+    }
+    // And no further: an 11th digit is not a length GoTrue offers.
+    fireEvent.change(input, { target: { value: "1".repeat(11) } });
+    expect(input.value.length).toBe(10);
   });
 
   it("offers the way back out without stranding a typo'd address", async () => {
