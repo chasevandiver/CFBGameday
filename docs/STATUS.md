@@ -1673,6 +1673,33 @@ deliberate deferrals, each recorded below with what it would take.
       was computed from a stylesheet and wrong twice. Both corrections came from
       a screenshot this session cannot take.)*
 
+- [ ] **REHEARSE-1 — the dress rehearsal cannot include the freeze, and the
+      §2.5 row asks for a scratch week that does not exist.** Found 2026-08-22
+      while running the Aug 22–23 rehearsal on owner instruction. The row says
+      *"dispatch `refresh-lines`, `sync-games`, `scoreboard-loop`,
+      `freeze --force` against a scratch week"* — there is no scratch week.
+      `freezeJob` takes no week argument; it reads `fetchCurrentSlate`, and the
+      current slate is **Week 0, the live one**.
+      **Measured before dispatching rather than after**: `FREEZE_HORIZON_DAYS`
+      is **8**, the next CFB kickoff was **7.08 days** out, so `freezableGames`
+      would have taken all 8 openers **with or without `--force`** — the flag
+      only widens a horizon that was already open. `predictions` is append-only
+      and `alreadyFrozen` skips a game that has one, so those rows would have
+      become **the permanent Week 0 receipts**, priced a week early.
+      **And priced on nothing.** CFB's newest line snapshot is **2026-08-07**,
+      because `refresh-lines` is still behind its own idle guard until 16:00 UTC
+      today. The Aug 28 row asks to *"verify one frozen row per Aug 29 game,
+      correct `model_version`, non-null `vegas_spread` and `total`"* — a
+      rehearsal freeze today produces exactly the rows that check would fail,
+      and it produces them irreversibly.
+      **So the freeze was not run.** Everything else was, and is recorded in the
+      Aug 22–23 row below.
+      **What would make it rehearsable, not built:** a `--dry-run` on
+      `freezeJob` that prices every game it would freeze and prints the batch —
+      same code path, same `freezableGames`, same pricing, no insert. It is the
+      only job in the chain with no safe way to exercise it, which is a strange
+      property for the one that writes the receipts. · **decision** · S
+
 ### 2.1i The pool lane — owner report, 2026-08-21
 
 Six requests from a night of using the app against live football, in the order
@@ -2306,7 +2333,7 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       `--tune-team-hfa`'s Gate 0 defect again: an absent measurement reported as
       evidence of absence. It is now a **notice, not a failure**: loud about
       being unevaluable, and not a reason to turn a good load red.
-- [ ] **Aug 22** — 🔴 **The Q1 escalation fires**, 11:00 UTC, unattended:
+- [x] **Aug 22** — 🔴 **The Q1 escalation fires**, 11:00 UTC, unattended:
       `preseason-refresh` stops declining and loads the best build available.
       **Verify the same day** — `ratings` at 2026.5.0 for 138 teams, `/ratings`
       rendering Off/Def, and the `/model` note either present (talent still
@@ -2321,10 +2348,51 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       no-ops. A red run here now means something regressed after the 19th,
       which is a different and more interesting question than the one this row
       was written to ask.
-- [ ] **Aug 22–23** — **Full dress rehearsal.** Dispatch `refresh-lines`,
+      **Watched 2026-08-22 and it went green** — Actions run **32569581229**,
+      11:10 UTC, on `63aa6120`. **It did not no-op, and the distinction is
+      worth keeping**: it rebuilt and reloaded (`Done: 2421 rows loaded`) the
+      way the daily refresh has since CFBD-5 cleared the gate, then
+      `verify-preseason` read it back — **138 week-0 ratings at 2026.5.0**,
+      `team_hfa` 138 at **1** distinct `blended_hfa`, `preseason_components` 138
+      with **0 `talent_stale`**, halves mismatched **0**, games already final
+      **0**. Same numbers as the 19th; nothing regressed. The chain check is
+      still the one unevaluable notice, for the same reason it always was.
+      **And WEEK0-1 survived a second unattended load on the escalation path.**
+      Read back at 11:31 UTC, after both the 09:25 `sync-games` and this
+      11:11 preseason load: **week 0 = 8, week 1 = 91**. Last night's proof was
+      a dispatched pair; this is the same result with nobody watching.
+      **`refresh-lines` has NOT left its idle guard yet, and the Aug 20 row's
+      "~Aug 22" was about eight hours early.** The 10:34 UTC run still reported
+      `skipped: next_game_gt_7d`, correctly: `idleSkip` proceeds at
+      `days <= 7`, the next CFB kickoff is **Aug 29 16:00 UTC**, so the guard
+      clears at **Aug 22 16:00 UTC** and not before. The first `refresh-lines`
+      cron after that is `50 18 * * 6` — **18:50 UTC / 1:50 pm CT today** — and
+      that is when CFB snapshots go non-zero for the first time since
+      **2026-08-07**. The NFL side is unaffected and snapshotting (11 at 10:34,
+      preseason week 3). Nothing to fix; the date in the older row was a
+      round number where the guard is an inequality.
+- [x] **Aug 22–23** — **Full dress rehearsal.** Dispatch `refresh-lines`,
       `sync-games`, `scoreboard-loop`, `freeze --force` against a scratch week.
       Watch `job_runs` and `api_call_log` fill. This is the only end-to-end test
       there is. Sunday: fix what it surfaced, re-run.
+      **Run 2026-08-22 14:02–14:03 UTC, three of four.** `freeze` was withheld
+      and REHEARSE-1 above says why — it is the finding, not an omission.
+      | job | result |
+      |---|---|
+      | `sync-games` | ok, **888 games**, tv 299; chained `nfl-sync-games` 321, `sync-rankings` 50, `sync-systems` 276 |
+      | `refresh-lines` | ok, `skipped: next_game_gt_7d` — the guard behaving, not a fault |
+      | `nfl-refresh-lines` | ok, **11 snapshots**, preseason week 3 |
+      | `freeze-groups` | ok, 0 frozen of 3 considered |
+      | `scoreboard-loop` | **not dispatched.** One runs hourly on its own and there are 10 NFL games tonight; a real live window is better evidence than a forced idle one, and a second dispatch races the concurrency group holding the live poller |
+      **`api_call_log` filled and the two sources stayed separate**, which is
+      the half LIVE-5 exists for: `cfbd` **8 calls** across sync-games (4),
+      sync-systems (3), sync-rankings (1); `espn` **27** across nfl-sync-games
+      (26) and nfl-refresh-lines (1). Month to date: **890 CFBD of 30,000**,
+      against 3,751 rows total — the number the loop throttles on is a third of
+      what an unfiltered count would have said.
+      **State unchanged after**: `predictions` still **0**, week 0 still **8**,
+      week 1 **91**. The rehearsal wrote schedule and line rows and nothing that
+      cannot be written again.
 - [ ] **Aug 24** — Run the 7 preseason smell tests (`04:§5`) on the first real
       `--top 40` table. **UX-32:** eyeball the matchup cards with real names.
 - [ ] **Aug 26** — 🔴 **HARD CHECKPOINT (`04:DQ-1` / P0-3), and since
