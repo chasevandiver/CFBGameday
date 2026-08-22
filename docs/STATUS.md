@@ -1700,6 +1700,81 @@ deliberate deferrals, each recorded below with what it would take.
       only job in the chain with no safe way to exercise it, which is a strange
       property for the one that writes the receipts. · **decision** · S
 
+- [ ] **SYS-1 — the consensus flag has never once been true, and cannot be.**
+      Found 2026-08-22 by the first `freeze-dry-run`: all 8 Week 0 rows carried
+      `consensus_flag: false`. Not chance — structural.
+      `priceGame` requires **all four** of model, SP+, FPI and Elo to be
+      non-null before it even evaluates agreement (`ratings.ts:680`). And
+      `system_ratings` has **no Elo row, in any season, ever**:
+
+      | season | system | rows |
+      |---|---|---|
+      | 2026 | fpi | 276 |
+      | 2026 | sp | 138 |
+      | — | **elo** | **0** |
+
+      `syncSystemsJob` calls `cfbd.eloRatings(SEASON)` **with no week**
+      (`jobs-core.ts:1080` pushes `r.elo` over whatever came back). `/ratings/elo`
+      with no week, on a season with no games played, returns nothing — so the
+      loop pushes nothing, the job reports `rows: 276` (sp 138 + fpi 138) and
+      goes **green**.
+      **Nothing could have caught it.** `probe-cfbd` calls
+      `eloRatings(PAST, 2)` — **2025, week 2** — gets 136 rows and passes. The
+      probe proves the route works; it cannot prove the season being played has
+      data. Exactly the shape of the talent gate, which was watched for weeks.
+      **This retires a claim in the record.** The note that the flag's inputs
+      "previously never passed, so the flag could only ever be false" reads as
+      fixed. The margins are passed now — and the flag is still always false,
+      because one of the four was never in the database to pass.
+      **What to decide, not just fix:** whether Elo needs a week parameter (or a
+      most-recent-week fallback), and whether consensus should require all four
+      or agree on three when one system has no data for the season. The second
+      is the real question — as written, one absent feed silently disables a
+      flag that every frozen receipt carries. · **decision** · S
+- [ ] **FREEZE-2 — three of eight Week 0 openers flag BIG_EDGE, two with the
+      sign flipped.** From the same dry-run. Recorded as an observation, not a
+      defect: preseason ratings on teams with zero games played is exactly when
+      the model is least trustworthy, and the edge verdict in §1 already says
+      edges are information rather than bets.
+
+      | vegas | model | edge | flag |
+      |---|---|---|---|
+      | −7 | **+3.6** | +10.6 | BIG_EDGE |
+      | −9 | −0.7 | +8.3 | BIG_EDGE |
+      | −5.5 | **+1.4** | +6.9 | BIG_EDGE |
+
+      Two of those have the model on the underdog outright. Worth an eye before
+      the Aug 28 freeze makes them permanent receipts — which is the whole
+      reason the dry-run exists. · watch
+- [ ] **GRP-6 — the betting group sheet is CFB-only while its own standings are
+      not.** Owner report 2026-08-22 with a screenshot: *"on this it doesn't
+      show nfl picks on the group it looks like it just has cfb picks."*
+      Correct. `BettingHome` calls
+      `fetchSlateView(supabase, seasonId, week, …)` — **one league, one week** —
+      so the sheet can only ever render the current CFB week's games. Every NFL
+      bet a member logs is invisible on the group page.
+      **The same page already contradicts itself two sections down.** The
+      standings caption reads `CFB 8-9 … · NFL x-x` off `member.leagueSplit`
+      (`betting-groups.ts:46`), so the records are cross-league and the sheet is
+      not. The ledger is one book by design; the group sheet is the surface that
+      forgot. · S/M
+- [ ] **GRP-7 — tap a member, see what they are worth to YOU.** Owner request
+      2026-08-22: *"I want to be able to click on another users record and see
+      what their stats are as well… what my record is tailing or fading him.
+      That's the social fun of it."*
+      **Half of it exists and is aggregate, not personal.** `BettingHub` already
+      renders They open / Tailing them / Fading them under a member — but those
+      are *"how everyone who rode them has done"*, group-wide, and only when
+      `timesFollowed > 0`. What is asked for is **the viewer's own** record
+      tailing and fading that one person, which is a different number and the
+      one that starts an argument.
+      The rows are all there — `picks`/`bets` carry who took which side at what
+      number, and `TailFadeAudit` already computes this shape for the whole
+      group. What is missing is a per-member view and the viewer-scoped cut.
+      Pairs with G7/G8/G11, which are held pending a pre-registered sample of
+      graded picks — **but this one is not an inference**, it is a record of
+      what two people actually did, so it does not need that gate. · M
+
 ### 2.1i The pool lane — owner report, 2026-08-21
 
 Six requests from a night of using the app against live football, in the order
