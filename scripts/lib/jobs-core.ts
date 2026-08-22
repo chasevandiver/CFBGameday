@@ -1933,7 +1933,10 @@ export function freezableGames<G extends { id: number; start_ts: string | null }
  * Thursday job: freeze predictions for the upcoming week (receipts), pricing
  * with current ratings + team HFA + admin-CONFIRMED rating adjustments.
  */
-export async function freezeJob(db: SupabaseClient): Promise<Json> {
+export async function freezeJob(
+  db: SupabaseClient,
+  opts: { dryRun?: boolean } = {},
+): Promise<Json> {
   const { week, seasonType } = await fetchCurrentSlate(db, SEASON);
 
   const { data: gameRows } = await db
@@ -2132,6 +2135,47 @@ export async function freezeJob(db: SupabaseClient): Promise<Json> {
       adjustments: { situational },
     });
   }
+  /* REHEARSE-1. Every other job in the chain can be run twice; this one cannot
+     be run at all without spending what it writes. `predictions` is
+     append-only and `alreadyFrozen` skips a game that has a row, so a
+     rehearsal freeze does not test the Thursday run — it REPLACES it, with
+     numbers priced on whatever the board happened to hold that day.
+     So the batch can be built and printed instead. Same slate pointer, same
+     `freezableGames`, same pricing, same rows — the insert is the only thing
+     skipped, which is what makes this worth trusting: it is not a simulation
+     of the freeze, it is the freeze, stopped one line short.
+     Printed rather than summarised, because the Aug 28 row asks to verify
+     `model_version`, non-null `vegas_spread` and non-null `total` per game,
+     and a count cannot answer any of those. */
+  if (opts.dryRun) {
+    for (const r of rows) {
+      console.log(
+        JSON.stringify({
+          game_id: r.game_id,
+          model_version: r.model_version,
+          spread: r.spread,
+          total: r.total,
+          vegas_spread: r.vegas_spread,
+          open_spread: r.open_spread,
+          edge: r.edge,
+          edge_flag: r.edge_flag,
+          consensus_flag: r.consensus_flag,
+        }),
+      );
+    }
+    /* The three fields the Aug 28 verification is written against, counted
+       here so a red flag is visible in `job_runs.detail` and on /admin rather
+       than only to whoever reads the log. */
+    return {
+      week,
+      dry_run: true,
+      would_freeze: rows.length,
+      missing_vegas_spread: rows.filter((r) => r.vegas_spread === null).length,
+      missing_total: rows.filter((r) => r.total === null).length,
+      wrong_model_version: rows.filter((r) => r.model_version !== MODEL_VERSION).length,
+    };
+  }
+
   if (rows.length > 0) {
     const { error } = await db.from("predictions").insert(rows);
     if (error) throw new Error(error.message);

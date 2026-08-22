@@ -736,3 +736,51 @@ describe("scoreboardPatch stamps when the play arrived (LIVE-4)", () => {
     expect(patch?.last_play_at).toBeUndefined();
   });
 });
+
+/**
+ * REHEARSE-1. The freeze is the only job in the chain that cannot be rehearsed
+ * by running it: `predictions` is append-only and `alreadyFrozen` skips a game
+ * that has a row, so a rehearsal does not test the Thursday run — it REPLACES
+ * it, with numbers priced on whatever the board held that day. Found 2026-08-22
+ * while running the dress rehearsal, before dispatching rather than after.
+ */
+describe("the freeze dry-run writes nothing", () => {
+  it("is wired into run-job and the workflow, or it cannot be dispatched", () => {
+    // The job existing is not the same as being reachable. This is the seam
+    // SCHED-1 failed at: six crons that resolved to task=unknown and sent
+    // nothing for weeks, all of them green.
+    const runJob = readFileSync(join(__dirname, "../run-job.ts"), "utf8");
+    const yml = readFileSync(join(__dirname, "../../.github/workflows/jobs.yml"), "utf8");
+    expect(runJob).toContain('"freeze-dry-run"');
+    expect(runJob).toMatch(/freezeJob\(db,\s*\{\s*dryRun:\s*true\s*\}\)/);
+    // In the dropdown AND in the case that actually runs something.
+    expect(yml).toContain("- freeze-dry-run");
+    expect(yml).toMatch(/ratings-update\|freeze\|freeze-dry-run\|freeze-groups/);
+  });
+
+  it("never reaches an insert on the dry-run branch", () => {
+    // The property that makes this safe to point at the live week. Read off the
+    // source because the alternative is a fixture deep enough to price a game,
+    // and a fixture that thorough is its own thing to get wrong.
+    const src = readFileSync(join(__dirname, "./jobs-core.ts"), "utf8");
+    const body = src.slice(src.indexOf("export async function freezeJob"));
+    const dry = body.indexOf("if (opts.dryRun)");
+    const insert = body.indexOf('from("predictions").insert');
+    expect(dry, "dry-run branch missing").toBeGreaterThan(-1);
+    expect(insert, "insert missing").toBeGreaterThan(-1);
+    // The dry-run returns before the insert can be reached.
+    expect(dry).toBeLessThan(insert);
+    expect(body.slice(dry, insert)).toContain("return {");
+  });
+
+  it("reports the three fields the Aug 28 verification is written against", () => {
+    // "Verify one frozen row per Aug 29 game, correct model_version, non-null
+    // vegas_spread and total." A count of rows answers none of those, so the
+    // detail carries each as its own number — visible in job_runs and /admin
+    // rather than only to whoever reads the log.
+    const src = readFileSync(join(__dirname, "./jobs-core.ts"), "utf8");
+    for (const field of ["missing_vegas_spread", "missing_total", "wrong_model_version"]) {
+      expect(src, field).toContain(field);
+    }
+  });
+});

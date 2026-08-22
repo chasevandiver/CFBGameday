@@ -110,6 +110,12 @@ on:
           - weather
           - ratings-update
           - freeze
+          # REHEARSE-1: the freeze, stopped one line short of the insert.
+          # Every other job here can be run twice; this one cannot be run at
+          # all without spending what it writes, because `predictions` is
+          # append-only and a second run skips the games the first one froze.
+          # Read-only: it prices the batch, prints every row, writes nothing.
+          - freeze-dry-run
           - freeze-groups
           - questions
           - verdicts
@@ -502,7 +508,7 @@ jobs:
             nfl-sync-games) npx tsx scripts/nfl-sync-games.ts ;;
             nfl-refresh-lines) npx tsx scripts/nfl-refresh-lines.ts ;;
             scoreboard-loop) npx tsx scripts/scoreboard-loop.ts --minutes 240 ;;
-            sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze|freeze-groups|watchdog|notify-picks-due|notify-log-bets|nfl-grade|nfl-scoring|cfb-scoring|guess-lines|streak|six-pack|daily-puzzles|backfill-games|backfill-lines|backfill-rankings) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
+            sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze|freeze-dry-run|freeze-groups|watchdog|notify-picks-due|notify-log-bets|nfl-grade|nfl-scoring|cfb-scoring|guess-lines|streak|six-pack|daily-puzzles|backfill-games|backfill-lines|backfill-rankings) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
             # Keep-alive: touch nothing, just make the run green so GitHub's
             # 60-day inactivity timer resets. No DB, no CFBD.
             keepalive) echo "keep-alive tick $(date -u +%Y-%m-%d) — resets the Actions inactivity clock" ;;
