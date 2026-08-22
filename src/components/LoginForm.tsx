@@ -44,6 +44,12 @@ import { createClient } from "../lib/supabase/client";
 const INVITE_ONLY =
   "This site is invite-only, and that address isn’t on the list yet — ask the commissioner to add it from the admin console.";
 
+/* GoTrue's configurable email-OTP length. The dashboard allows 6–10 and this
+   app must accept whatever the project is set to, so the input bounds the
+   range rather than asserting a number. */
+const MIN_CODE = 6;
+const MAX_CODE = 10;
+
 /** `otp_disabled` is GoTrue's answer to "sign this person in, don't create them". */
 function isUnknownAccount(error: AuthError): boolean {
   return (
@@ -81,7 +87,7 @@ export function explainAuthError(error: AuthError, signup: boolean): string {
 }
 
 /**
- * The sentence for a six-digit code that did not verify.
+ * The sentence for a code that did not verify.
  *
  * Separate from `explainAuthError` because the failures are different — a code
  * is wrong, stale or reused, none of which the link path can be — but it keeps
@@ -177,12 +183,17 @@ export function LoginForm({ linkFailed }: { linkFailed: boolean }) {
   async function verifyCode(e: React.FormEvent) {
     e.preventDefault();
     const token = code.trim();
-    // The button stays enabled and this says why, rather than a greyed-out
-    // control that explains nothing (Web Interface Guidelines: submit stays
-    // enabled until the request starts).
-    if (token.length < 6) {
+    /* Six is the FLOOR, not the length. Supabase's OTP length is a project
+       setting (6–10 digits) and this form does not get to know which — the
+       first cut hardcoded 6, `maxLength` silently ate the last two digits of
+       an 8-digit code, and the owner could not sign in with a code that was
+       perfectly good. Exactly the mistake `explainCodeError` avoids one screen
+       up by refusing to quote an expiry it cannot see.
+       The button stays enabled and this says why, rather than a greyed-out
+       control that explains nothing (Web Interface Guidelines). */
+    if (token.length < MIN_CODE) {
       setCodeStatus("error");
-      setCodeMessage("That’s not the whole code — it’s six digits.");
+      setCodeMessage("That looks short — enter the whole code from the email.");
       codeRef.current?.focus();
       return;
     }
@@ -231,8 +242,8 @@ export function LoginForm({ linkFailed }: { linkFailed: boolean }) {
           <div className="rounded-lg border border-accent/40 bg-surface p-6">
             <p className="text-lg">Check your email 📬</p>
             <p className="mt-2 text-sm text-chalk/70">
-              Enter the 6-digit code below and you&rsquo;re in — you won&rsquo;t need to log in
-              again on this device.
+              Enter the code from the email below and you&rsquo;re in — you won&rsquo;t need to
+              log in again on this device.
             </p>
           </div>
           <input
@@ -245,12 +256,13 @@ export function LoginForm({ linkFailed }: { linkFailed: boolean }) {
                making anyone switch to Mail and back. */
             autoComplete="one-time-code"
             pattern="[0-9]*"
-            maxLength={6}
+            maxLength={MAX_CODE}
             spellCheck={false}
-            aria-label="Six-digit code from the email"
-            placeholder="123456"
+            aria-label="Code from the sign-in email"
             value={code}
-            onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+            /* Strip AND clip here rather than leaning on `maxLength`, which
+               bounds typing but not a value set any other way. */
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, MAX_CODE))}
             className="stat rounded-lg border border-chalk/25 bg-elev px-4 py-3 text-center text-2xl tracking-[0.4em] text-chalk placeholder:text-chalk/40 focus:border-accent focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
           />
           <button
