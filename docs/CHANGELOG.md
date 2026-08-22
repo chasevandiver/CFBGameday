@@ -256,6 +256,26 @@ and `next build` green. **Not seen rendered.**
 Recorded, not built: the fold shows a W-L record, not units — `HomeBet` carries
 no `units` in the hub payload.
 
+**The fold shipped invisible.** Owner screenshot minutes later: *"The settled
+expand option needs to stand out way more. I almost missed it."*
+
+It was a 10.5px label on the page background between two glass cards — the
+visual grammar of a section **heading**. It was styled as a caption for the
+cards around it and read as exactly that. Nothing said *press me*.
+
+- `card card-hover` now, the surface every other pressable object on this page
+  wears, so it reads as a sibling of the rows rather than a label for them
+- the count moved into the app's own accent chip — the same treatment a logged
+  bet wears — saying **"5 games"** beside the record, which is the one thing the
+  word SETTLED cannot tell you
+- the record went 10.5px dim → 14px semibold chalk
+- **`min-h-11`**: the first cut was `px-1 py-2`, about 32px, and DESIGN.md's
+  thumb-zone rule has said 44 the whole time. This row quietly did not meet it.
+
+Four more tests, mutation-checked: stripping the card surface and the count
+turns all four red. 1,907 across 127 files, typecheck, lint and `next build`
+green.
+
 ### Aug 22 — HUB-2: the results stop vanishing before anyone reads them
 
 The hub's positions were scoped to the current week, and the week pointer rolls

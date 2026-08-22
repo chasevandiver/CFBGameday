@@ -393,3 +393,54 @@ describe("the settled block folds the results away", () => {
     expect(container.querySelector("details")).toBeNull();
   });
 });
+
+/**
+ * Owner report with a screenshot, 2026-08-22: *"The settled expand option needs
+ * to stand out way more. I almost missed it."* It was a 10.5px label on the
+ * page background between two glass cards — the visual grammar of a section
+ * HEADING, which is exactly how it read.
+ */
+describe("the fold looks like something you can press", () => {
+  const settledData = () =>
+    empty({
+      positions: buildPositions([demoGames(NOW).find((g) => g.id === 9102)!], [], [
+        { id: 1, gameId: 9102, betType: "spread", side: "away", line: 3.5, result: "win" },
+      ] as HomeBet[]),
+    });
+
+  it("sits on a card, not on the page", () => {
+    // `card` is what every other pressable object on this page wears. Bare
+    // text between two cards reads as a label for them.
+    const { container } = render(<HomeDashboard data={settledData()} signedIn />);
+    const summary = container.querySelector("summary");
+    expect(summary?.className).toContain("card");
+  });
+
+  it("clears the 44px touch target DESIGN.md asks for", () => {
+    // The first cut was px-1 py-2 — about 32px, and a control nobody can hit
+    // reliably is a control nobody uses.
+    const { container } = render(<HomeDashboard data={settledData()} signedIn />);
+    expect(container.querySelector("summary")?.className).toContain("min-h-11");
+  });
+
+  it("says how many games are behind it, which the label cannot", () => {
+    const { container } = render(<HomeDashboard data={settledData()} signedIn />);
+    expect(container.querySelector("summary")?.textContent).toContain("1 game");
+  });
+
+  it("pluralises, because '2 game' is the kind of thing people notice", () => {
+    const games = demoGames(NOW).filter((g) => g.status === "final").slice(0, 2);
+    const data = empty({
+      positions: buildPositions(games, [], games.map((g, i) => ({
+        id: i,
+        gameId: g.id,
+        betType: "spread",
+        side: "away",
+        line: 3.5,
+        result: "win",
+      })) as HomeBet[]),
+    });
+    const { container } = render(<HomeDashboard data={data} signedIn />);
+    expect(container.querySelector("summary")?.textContent).toContain("2 games");
+  });
+})

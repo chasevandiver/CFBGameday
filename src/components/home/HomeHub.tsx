@@ -313,6 +313,7 @@ function PositionColumn({
       {settled.length > 0 && (
         <SettledDisclosure
           storageKey={`slate:hub:settled:${scope}`}
+          count={settled.length}
           summary={
             <>
               <span className="stat text-[10.5px] font-semibold uppercase tracking-[0.18em] text-dim">
@@ -322,7 +323,7 @@ function PositionColumn({
                   grader settles within a tick of the whistle, but that tick
                   exists and a number that moves while you read it is worse
                   than none. */}
-              <span className="stat text-xs tabular-nums text-chalk/70">
+              <span className="stat text-sm font-semibold tabular-nums text-chalk">
                 {record.decided > 0
                   ? formatRecord({ ...EMPTY_TALLY, ...record })
                   : `${settled.length} final`}
