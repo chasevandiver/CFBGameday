@@ -215,6 +215,44 @@ shipping it.
 
 ## Log
 
+### Aug 22 — HUB-1: a settled game is one line, not a scoreboard
+
+Owner call: *"for the hub we just do a small one line card of the matchup, final
+score, the bets they had on that game and if they covered or not."*
+
+The full position row spends ~120px on team rails, a cover strip and an aura
+built for a game still in doubt. On Aug 29 a viewer can hold positions across
+eight openers plus the NFL card, and settled games push everything still live
+below the fold — the hub stops answering "what have I got riding" at the moment
+it has the most to say. Hub only, by owner call; the slate keeps its full card.
+
+**The verdict half already existed, and is the part worth stating.**
+`verdictForBet`/`verdictForPick` prefer the grader's stored `result` over the
+live formula, so the words are **Won / Lost / Push / Void** for spread, total
+and moneyline alike. That is not cosmetic: a final score settles a spread and a
+total on its own, but only the stored row speaks for a moneyline priced at real
+odds, or for a wager that was voided — and the live vocabulary would have put
+*"Leading by 4"* on a game that finished hours ago.
+
+**One definition, two shells.** The position list is built once and rendered by
+both rows; writing it twice is how the two drift into disagreeing about a
+result. The line-move readout is dropped on a final — `heldVsNow` measures your
+number against a board that has stopped, and the closing number is CLV, which
+lives on `/receipts`.
+
+Eight tests, verified by mutation twice: switching the compact branch off turns
+four red, and deleting the "trust the grader" line turns the moneyline and
+Push/Void cases red on their own. 1,881 tests across 127 files, typecheck, lint
+and `next build` green. **Not seen rendered.**
+
+**HUB-2 filed and deliberately not built** (`docs/STATUS.md` §2.1j): the hub's
+positions are scoped to the current week, and the week pointer rolls the instant
+nothing in it is live or scheduled. Week 0's last game finals around midnight
+Saturday, so every graded card from Aug 29 disappears hours before anyone opens
+the app on Sunday. A tidier row that is not there is still not there. That is the
+roadmap's Monday question — *"How did I do?"* — failing outright, and the fix
+changes the window on the exact surface being watched on the 29th.
+
 ### Aug 22 — AUTH-4: the magic link cannot sign anyone in to the installed app
 
 Owner question — *"if I sign out on the app or safari on my phone, do I need to

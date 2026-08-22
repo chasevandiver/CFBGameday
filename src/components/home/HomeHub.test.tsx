@@ -2,8 +2,8 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { HomeDashboard } from "./HomeHub";
-import { demoHomeData } from "../../lib/demo-data";
-import type { HomeData } from "../../lib/home";
+import { demoGames, demoHomeData } from "../../lib/demo-data";
+import { buildPositions, type HomeBet, type HomeData } from "../../lib/home";
 import { EMPTY_TALLY } from "../../lib/records";
 
 afterEach(cleanup);
@@ -195,5 +195,106 @@ describe("the hub's Groups card (2026-08-21)", () => {
     expect(heading).toBeTruthy();
     // The section appears once, not twice — it was hoisted, not copied.
     expect(screen.getAllByText("Your groups")).toHaveLength(1);
+  });
+});
+
+/**
+ * A settled game is one line, not a scoreboard.
+ *
+ * The full row spends ~120px on team rails, a cover strip and an aura built for
+ * a game still in doubt. On a Saturday with positions across eight openers plus
+ * the NFL card that pushes everything still in play below the fold — the hub
+ * stops answering "what have I got riding" exactly when it has the most to say.
+ */
+describe("a final game collapses to one line", () => {
+  /** IOWA 17 @ WISCONSIN 13, final, from the same fixtures /demo renders. */
+  const finalGame = () => demoGames(NOW).find((g) => g.id === 9102)!;
+
+  const withBets = (bets: HomeBet[]): HomeData =>
+    empty({ positions: buildPositions([finalGame()], [], bets) });
+
+  const bet = (id: number, betType: string, side: string, line: number | null, result: HomeBet["result"]): HomeBet =>
+    ({ id, gameId: 9102, betType, side, line, result }) as HomeBet;
+
+  it("gives the grader's word for spread, total AND moneyline", () => {
+    // The point of the whole row. A final score settles a spread and a total on
+    // its own, but the stored `result` is the only thing that can speak for a
+    // moneyline priced at real odds — or for a wager that was voided.
+    render(
+      <HomeDashboard
+        data={withBets([
+          bet(1, "spread", "away", 3.5, "win"),
+          bet(2, "total", "over", 34.5, "loss"),
+          bet(3, "moneyline", "away", null, "win"),
+        ])}
+        signedIn
+      />,
+    );
+    expect(screen.getAllByText("Won").length).toBe(2);
+    expect(screen.getByText("Lost")).toBeDefined();
+    // And the markets are still distinguishable, not three identical verdicts.
+    expect(screen.getByText(/IOWA ML/)).toBeDefined();
+    expect(screen.getByText(/O 34\.5|O 34½/)).toBeDefined();
+  });
+
+  it("says Push and Void rather than collapsing both to a non-answer", () => {
+    // A push tied the number; a void never happened. Same neutral styling, and
+    // "Push" on a canceled game is simply wrong.
+    render(
+      <HomeDashboard
+        data={withBets([bet(1, "spread", "away", 3.5, "push"), bet(2, "total", "over", 34.5, "void")])}
+        signedIn
+      />,
+    );
+    expect(screen.getByText("Push")).toBeDefined();
+    expect(screen.getByText("Void")).toBeDefined();
+  });
+
+  it("shows the matchup and the final score on one line", () => {
+    const { container } = render(
+      <HomeDashboard data={withBets([bet(1, "spread", "away", 3.5, "win")])} signedIn />,
+    );
+    // Split across nested spans so the loser can be dimmed, which is why this
+    // reads textContent rather than asking getByText for a whole string.
+    const line = container.querySelector("span.stat.tabular-nums");
+    const text = line?.textContent?.replace(/\s+/g, " ") ?? "";
+    expect(text).toContain("IOWA 17");
+    expect(text).toContain("WIS 13");
+    expect(screen.getAllByText("Final").length).toBeGreaterThan(0);
+  });
+
+  it("dims the loser, so the score is scannable without reading both numbers", () => {
+    const { container } = render(
+      <HomeDashboard data={withBets([bet(1, "spread", "away", 3.5, "win")])} signedIn />,
+    );
+    const spans = [...(container.querySelector("span.stat.tabular-nums")?.children ?? [])];
+    const wis = spans.find((el) => el.textContent?.includes("WIS"));
+    const iowa = spans.find((el) => el.textContent?.includes("IOWA"));
+    // Wisconsin lost 13-17.
+    expect(wis?.className).toContain("text-dim");
+    expect(iowa?.className).not.toContain("text-dim");
+  });
+
+  it("drops the line-move readout, which measures a board that has stopped", () => {
+    // `heldVsNow` compares your number to the current one. After a final there
+    // is no "now" — the closing number is CLV and it lives on /receipts.
+    const { container } = render(
+      <HomeDashboard data={withBets([bet(1, "spread", "away", 3.5, "win")])} signedIn />,
+    );
+    expect(container.textContent).not.toMatch(/vs now/i);
+  });
+
+  it("still gives a live game the full row", () => {
+    // The collapse is for settled games only — a game in doubt keeps its rails,
+    // its cover strip and its aura, which is the whole reason they exist.
+    const live = demoGames(NOW).find((g) => g.status === "in_progress")!;
+    const data = empty({
+      positions: buildPositions([live], [], [
+        { id: 9, gameId: live.id, betType: "spread", side: "away", line: 3, result: null },
+      ]),
+    });
+    const { container } = render(<HomeDashboard data={data} signedIn />);
+    expect(container.querySelectorAll(".glass-aura").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Final")).toBeNull();
   });
 });

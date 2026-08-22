@@ -317,6 +317,95 @@ export function PositionRow({
           ? ["var(--accent)", "var(--accent)"]
           : [muted(game.away.color), muted(game.home.color)];
 
+  /* One definition, two shells. The compact final row below and the full row
+     further down show the SAME positions with the same words; writing the list
+     twice is how the two would drift into disagreeing about a result. */
+  const positionList = (
+    <ul className="border-t border-chalk/8">
+      {picks.map((p) => (
+        <li key={`${p.groupId}-${p.market}`}>
+          <PositionLine
+            label={pickSideLabel(p.market, p.side, p.line, game.home.abbr, game.away.abbr, {
+              compact: true,
+            })}
+            kind="pick"
+            note={showPool ? p.groupName : null}
+            verdict={verdictForPick(p, settled, h, a)}
+            /* Nothing to compare against once it is over: `heldVsNow` measures
+               your number against a board that has stopped moving. The closing
+               number is CLV and it has a home on /receipts. */
+            move={final ? null : heldVsNow(p.market, p.side, p.line, game.lines)}
+          />
+        </li>
+      ))}
+      {bets.map((b) => (
+        <li key={b.id}>
+          <PositionLine
+            label={betSideLabel(b.betType, b.side, b.line, game.home.abbr, game.away.abbr)}
+            kind="bet"
+            note={null}
+            verdict={verdictForBet(b, settled, h, a)}
+            move={final ? null : heldVsNow(b.betType, b.side ?? "home", b.line, game.lines)}
+          />
+        </li>
+      ))}
+    </ul>
+  );
+
+  /**
+   * A settled game is one line, not a scoreboard.
+   *
+   * The full row spends ~120px on team rails, a cover strip and an aura built
+   * for a game still in doubt. On a Saturday with positions across eight
+   * openers plus the NFL card, that pushes everything still in play below the
+   * fold — the hub stops answering "what have I got riding" at the moment it
+   * has the most to say.
+   *
+   * Same shell (`glass-wrap`, `card`, the final aura at 0.1) so it reads as the
+   * same family scrolled past, and the same `positionList`, so the verdict on a
+   * collapsed row is the grader's word — Won / Lost / Push / Void, for spread,
+   * total and moneyline alike, since `verdictFor*` reads the stored `result`
+   * rather than recomputing from a final score that cannot settle a moneyline
+   * price or a voided wager.
+   */
+  if (final) {
+    return (
+      <li
+        className="glass-wrap"
+        data-tint={hasVerdict ? "position" : "teams"}
+        style={{ "--aura-strength": 0.1 } as React.CSSProperties}
+      >
+        <div className="glass-aura" aria-hidden>
+          <span className="aura-a" style={{ background: aura[0] }} />
+          <span className="aura-b" style={{ background: aura[1] }} />
+        </div>
+        <div className="card overflow-hidden">
+          <MaybeLink
+            href={`/game/${game.id}`}
+            inert={demo}
+            className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-3 py-2"
+          >
+            {/* Loser dimmed, exactly as the tall row does it — the score is
+                read left to right and the dim is what makes it scannable. */}
+            <span className="stat text-sm tabular-nums">
+              <span className={a < h ? "text-dim" : ""}>
+                {game.away.abbr} {a}
+              </span>
+              <span className="text-dim"> · </span>
+              <span className={h < a ? "text-dim" : ""}>
+                {game.home.abbr} {h}
+              </span>
+            </span>
+            <span className="stat text-[10.5px] font-semibold uppercase tracking-wide text-dim">
+              Final
+            </span>
+          </MaybeLink>
+          {positionList}
+        </div>
+      </li>
+    );
+  }
+
   return (
     <li
       className="glass-wrap"
@@ -371,32 +460,7 @@ export function PositionRow({
           {live && <LiveSituation game={game} compact />}
         </MaybeLink>
 
-        <ul className="border-t border-chalk/8">
-          {picks.map((p) => (
-            <li key={`${p.groupId}-${p.market}`}>
-              <PositionLine
-                label={pickSideLabel(p.market, p.side, p.line, game.home.abbr, game.away.abbr, {
-                  compact: true,
-                })}
-                kind="pick"
-                note={showPool ? p.groupName : null}
-                verdict={verdictForPick(p, settled, h, a)}
-                move={heldVsNow(p.market, p.side, p.line, game.lines)}
-              />
-            </li>
-          ))}
-          {bets.map((b) => (
-            <li key={b.id}>
-              <PositionLine
-                label={betSideLabel(b.betType, b.side, b.line, game.home.abbr, game.away.abbr)}
-                kind="bet"
-                note={null}
-                verdict={verdictForBet(b, settled, h, a)}
-                move={heldVsNow(b.betType, b.side ?? "home", b.line, game.lines)}
-              />
-            </li>
-          ))}
-        </ul>
+        {positionList}
       </div>
     </li>
   );
