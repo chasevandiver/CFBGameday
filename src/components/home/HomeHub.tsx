@@ -6,14 +6,15 @@ import { CoverStrip } from "../slate/CoverStrip";
 import { LiveSituation } from "../slate/LiveSituation";
 import { TeamScoreLine } from "../slate/TeamLine";
 import { TeamMark } from "../slate/TeamMark";
+import { SettledDisclosure } from "./SettledDisclosure";
 import { StatTile } from "../StatTile";
 import { UnitsCurve } from "../UnitsCurve";
-import { heldVsNow, splitPositions, type GroupStanding, type HomeBet, type HomeData, type HomePick, type Position, type WeekProgress } from "../../lib/home";
+import { heldVsNow, settledRecord, splitPositions, splitSettled, type GroupStanding, type HomeBet, type HomeData, type HomePick, type Position, type WeekProgress } from "../../lib/home";
 import type { TodayBlock } from "../../lib/home-today";
 import { breakLabel, DEFAULT_TZ, kickParts, periodLabel, tzLabel } from "../../lib/kick";
 import { statusForBet, statusForPick, tintFor } from "../../lib/live-status";
 import { cardStake } from "../../lib/stake";
-import { formatRecord, type Tally } from "../../lib/records";
+import { EMPTY_TALLY, formatRecord, type Tally } from "../../lib/records";
 import { betSideLabel, pickSideLabel, type GameView } from "../../lib/slate";
 
 /**
@@ -281,6 +282,61 @@ export function HomeHero({
  * with the group mark; a logged bet is accent — accent means money, and a card
  * that renders the two identically cannot tell you what you have money on.
  */
+/**
+ * A hub section's positions: what is still in doubt, then everything that
+ * isn't, folded away behind its record.
+ *
+ * Shipped 2026-08-22 against a real screenshot — five settled NFL games above
+ * the fold, ~1,000px of scroll, and the single undecided pick at the top of it
+ * pushed out of sight. HUB-1 made each settled row short; it could not make
+ * five of them stop being the page. The answer is not a smaller row, it is not
+ * rendering them expanded at all: Monday's question is "how did I do", and a
+ * record answers it in a glance where five cards do not.
+ *
+ * Closed by default and no block at all until something has settled, so the
+ * common case — a Saturday still in progress — is untouched.
+ */
+function PositionColumn({
+  scope,
+  positions,
+  render,
+}: {
+  scope: "bets" | "picks";
+  positions: Position[];
+  render: (p: Position) => ReactNode;
+}) {
+  const { live, settled } = splitSettled(positions);
+  const record = settledRecord(settled);
+  return (
+    <>
+      {live.length > 0 && <ul className="flex flex-col gap-3.5">{live.map(render)}</ul>}
+      {settled.length > 0 && (
+        <SettledDisclosure
+          storageKey={`slate:hub:settled:${scope}`}
+          summary={
+            <>
+              <span className="stat text-[10.5px] font-semibold uppercase tracking-[0.18em] text-dim">
+                Settled
+              </span>
+              {/* The record, or the count when nothing has graded yet — the
+                  grader settles within a tick of the whistle, but that tick
+                  exists and a number that moves while you read it is worse
+                  than none. */}
+              <span className="stat text-xs tabular-nums text-chalk/70">
+                {record.decided > 0
+                  ? formatRecord({ ...EMPTY_TALLY, ...record })
+                  : `${settled.length} final`}
+              </span>
+            </>
+          }
+        >
+          <ul className="mt-1 flex flex-col gap-3.5">{settled.map(render)}</ul>
+        </SettledDisclosure>
+      )}
+    </>
+  );
+}
+
 export function PositionRow({
   position,
   tz = DEFAULT_TZ,
@@ -978,11 +1034,11 @@ export function HomeDashboard({
                   cta="Find a number"
                 />
               ) : (
-                <ul className="flex flex-col gap-3.5">
-                  {betPositions.map((p) => (
-                    <PositionRow key={`bet-${p.game.id}`} position={p} demo={demo} />
-                  ))}
-                </ul>
+                <PositionColumn
+                  scope="bets"
+                  positions={betPositions}
+                  render={(p) => <PositionRow key={`bet-${p.game.id}`} position={p} demo={demo} />}
+                />
               )}
             </section>
 
@@ -1011,11 +1067,18 @@ export function HomeDashboard({
                   cta={data.progress.length === 0 ? "Your groups" : "Make picks"}
                 />
               ) : (
-                <ul className="flex flex-col gap-3.5">
-                  {pickPositions.map((p) => (
-                    <PositionRow key={`pick-${p.game.id}`} position={p} showPool={showPool} demo={demo} />
-                  ))}
-                </ul>
+                <PositionColumn
+                  scope="picks"
+                  positions={pickPositions}
+                  render={(p) => (
+                    <PositionRow
+                      key={`pick-${p.game.id}`}
+                      position={p}
+                      showPool={showPool}
+                      demo={demo}
+                    />
+                  )}
+                />
               )}
             </section>
           </div>

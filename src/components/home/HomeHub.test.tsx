@@ -256,7 +256,11 @@ describe("a final game collapses to one line", () => {
     );
     // Split across nested spans so the loser can be dimmed, which is why this
     // reads textContent rather than asking getByText for a whole string.
-    const line = container.querySelector("span.stat.tabular-nums");
+    // The settled block's summary line also carries `stat tabular-nums`, so
+    // this finds the one that is actually the scoreline.
+    const line = [...container.querySelectorAll("span.stat")].find((el) =>
+      el.textContent?.includes("IOWA"),
+    );
     const text = line?.textContent?.replace(/\s+/g, " ") ?? "";
     expect(text).toContain("IOWA 17");
     expect(text).toContain("WIS 13");
@@ -267,7 +271,10 @@ describe("a final game collapses to one line", () => {
     const { container } = render(
       <HomeDashboard data={withBets([bet(1, "spread", "away", 3.5, "win")])} signedIn />,
     );
-    const spans = [...(container.querySelector("span.stat.tabular-nums")?.children ?? [])];
+    const scoreLine = [...container.querySelectorAll("span.stat")].find((el) =>
+      el.textContent?.includes("IOWA"),
+    );
+    const spans = [...(scoreLine?.children ?? [])];
     const wis = spans.find((el) => el.textContent?.includes("WIS"));
     const iowa = spans.find((el) => el.textContent?.includes("IOWA"));
     // Wisconsin lost 13-17.
@@ -323,5 +330,66 @@ describe("a final game collapses to one line", () => {
     const { container } = render(<HomeDashboard data={data} signedIn />);
     expect(container.querySelectorAll(".glass-aura").length).toBeGreaterThan(0);
     expect(screen.queryByText("Final")).toBeNull();
+  });
+});
+
+describe("the settled block folds the results away", () => {
+  const finalGame = () => demoGames(NOW).find((g) => g.id === 9102)!;
+  const liveGame = () => demoGames(NOW).find((g) => g.status === "in_progress")!;
+
+  it("puts settled games inside a closed disclosure and leaves live ones out of it", () => {
+    // The whole point: the one thing still in doubt must not be pushed off the
+    // screen by games that already happened.
+    const data = empty({
+      positions: buildPositions(
+        [finalGame(), liveGame()],
+        [],
+        [
+          { id: 1, gameId: 9102, betType: "spread", side: "away", line: 3.5, result: "win" },
+          { id: 2, gameId: liveGame().id, betType: "spread", side: "away", line: 3, result: null },
+        ] as HomeBet[],
+      ),
+    });
+    const { container } = render(<HomeDashboard data={data} signedIn />);
+    const details = container.querySelector("details");
+    expect(details, "no settled disclosure rendered").toBeTruthy();
+    expect(details?.hasAttribute("open"), "settled block should default closed").toBe(false);
+    expect(details?.textContent).toContain("IOWA");
+    // The live game's row is a sibling of the disclosure, not inside it.
+    expect(details?.textContent).not.toContain(liveGame().away.abbr);
+  });
+
+  it("leads the fold with the record, which is Monday's whole question", () => {
+    const data = empty({
+      positions: buildPositions([finalGame()], [], [
+        { id: 1, gameId: 9102, betType: "spread", side: "away", line: 3.5, result: "win" },
+        { id: 2, gameId: 9102, betType: "total", side: "over", line: 34.5, result: "loss" },
+      ] as HomeBet[]),
+    });
+    render(<HomeDashboard data={data} signedIn />);
+    expect(screen.getByText("Settled")).toBeDefined();
+    expect(screen.getByText("1-1")).toBeDefined();
+  });
+
+  it("counts the finals instead of a record while the grader is still working", () => {
+    // "0-0" over two ungraded finals is a claim the data does not support.
+    const data = empty({
+      positions: buildPositions([finalGame()], [], [
+        { id: 1, gameId: 9102, betType: "spread", side: "away", line: 3.5, result: null },
+      ] as HomeBet[]),
+    });
+    render(<HomeDashboard data={data} signedIn />);
+    expect(screen.getByText("1 final")).toBeDefined();
+  });
+
+  it("renders no disclosure at all on a Saturday with nothing settled yet", () => {
+    // The common case must be untouched — no empty fold, no chevron to explain.
+    const data = empty({
+      positions: buildPositions([liveGame()], [], [
+        { id: 1, gameId: liveGame().id, betType: "spread", side: "away", line: 3, result: null },
+      ] as HomeBet[]),
+    });
+    const { container } = render(<HomeDashboard data={data} signedIn />);
+    expect(container.querySelector("details")).toBeNull();
   });
 });

@@ -216,6 +216,50 @@ export const GRADED_HOLD_MS = 48 * 3600_000;
  * empty, because the week pointer covers a position from the moment it is made
  * until its own slate ends.
  */
+/**
+ * Live and upcoming on top, settled underneath — the hub's two halves.
+ *
+ * A settled game is not news. Five of them expanded is a thousand pixels of
+ * scroll between the viewer and the one thing still in doubt, which is the
+ * opposite of what this page is for. The caller collapses the second list.
+ */
+export function splitSettled(positions: Position[]): { live: Position[]; settled: Position[] } {
+  return {
+    live: positions.filter((p) => p.game.status !== "final"),
+    settled: positions.filter((p) => p.game.status === "final"),
+  };
+}
+
+/**
+ * The one line a collapsed block has to earn its place with: W-L, or W-L-P.
+ *
+ * Counted off the grader's stored `result`, the same source the row's verdict
+ * chip reads, so the summary and the rows underneath it cannot disagree. A
+ * void is not a result and is not counted — it never happened.
+ *
+ * Ungraded finals are skipped too. The grader settles within a tick of the
+ * whistle, but that tick exists, and "3-1" over a game still being scored is a
+ * number that changes while you look at it.
+ */
+export function settledRecord(positions: Position[]): {
+  wins: number;
+  losses: number;
+  pushes: number;
+  decided: number;
+} {
+  let wins = 0;
+  let losses = 0;
+  let pushes = 0;
+  for (const p of positions) {
+    for (const r of [...p.picks, ...p.bets]) {
+      if (r.result === "win") wins++;
+      else if (r.result === "loss") losses++;
+      else if (r.result === "push") pushes++;
+    }
+  }
+  return { wins, losses, pushes, decided: wins + losses + pushes };
+}
+
 export function outsideWeekIds(
   picks: ReadonlyArray<{ game_id: number | null }>,
   bets: ReadonlyArray<{ game_id: number | null }>,

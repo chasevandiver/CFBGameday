@@ -7,6 +7,8 @@ import {
   heldFinals,
   heldVsNow,
   outsideWeekIds,
+  settledRecord,
+  splitSettled,
   homeRefreshTier,
   placeOf,
   splitPositions,
@@ -420,5 +422,79 @@ describe("the widened slate query keeps season_type with the week", () => {
     // They reach a string that becomes a PostgREST filter, through a public
     // function signature anything can call.
     expect(SRC).toMatch(/Number\.isSafeInteger/);
+  });
+});
+
+/**
+ * Five settled games above the fold, ~1,000px of scroll, and the one pick still
+ * in doubt pushed out of sight — from a real screenshot on 2026-08-22. HUB-1
+ * made each settled row short; it could not make five of them stop being the
+ * page.
+ */
+describe("the settled half of a section", () => {
+  const at = (id: number, status: GameView["status"]) =>
+    ({ game: { id, status }, picks: [], bets: [] }) as unknown as Position;
+
+  it("keeps anything still in doubt out of the fold", () => {
+    // Scheduled AND live: a game that has not kicked is as much "what have I
+    // got riding" as one in the fourth quarter, and neither is a result.
+    const { live, settled } = splitSettled([
+      at(1, "final"),
+      at(2, "in_progress"),
+      at(3, "scheduled"),
+      at(4, "final"),
+    ]);
+    expect(live.map((p) => p.game.id)).toEqual([2, 3]);
+    expect(settled.map((p) => p.game.id)).toEqual([1, 4]);
+  });
+
+  it("leaves a postponed game in the live half rather than calling it settled", () => {
+    // It has no result and never had one. Folding it under a record would file
+    // it as something that happened.
+    const { live, settled } = splitSettled([at(1, "postponed"), at(2, "canceled")]);
+    expect(live.length).toBe(2);
+    expect(settled.length).toBe(0);
+  });
+
+  describe("settledRecord", () => {
+    const pos = (results: Array<string | null>): Position =>
+      ({
+        game: { id: 1, status: "final" },
+        picks: [],
+        bets: results.map((result, i) => ({ id: i, result })),
+      }) as unknown as Position;
+
+    it("counts every position on a game, not one per card", () => {
+      // Two bets on one game is two results, and a card that says 1-0 over a
+      // row showing a win and a loss is the summary lying about its own list.
+      expect(settledRecord([pos(["win", "loss"])])).toMatchObject({ wins: 1, losses: 1 });
+    });
+
+    it("does not count a void, which never happened", () => {
+      expect(settledRecord([pos(["win", "void"])])).toMatchObject({
+        wins: 1,
+        losses: 0,
+        pushes: 0,
+        decided: 1,
+      });
+    });
+
+    it("does not count an ungraded final, so the number stops moving as you read it", () => {
+      // The grader settles within a tick of the whistle, but that tick exists.
+      expect(settledRecord([pos(["win", null])]).decided).toBe(1);
+    });
+
+    it("reports nothing decided when nothing has graded, so the caller can say so", () => {
+      expect(settledRecord([pos([null, null])]).decided).toBe(0);
+    });
+
+    it("counts pushes separately, since W-L-P and W-L are different sentences", () => {
+      expect(settledRecord([pos(["win", "push", "push"])])).toMatchObject({
+        wins: 1,
+        losses: 0,
+        pushes: 2,
+        decided: 3,
+      });
+    });
   });
 });
