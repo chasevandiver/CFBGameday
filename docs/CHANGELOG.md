@@ -215,6 +215,47 @@ shipping it.
 
 ## Log
 
+### Aug 22 — HUB-3: five settled games were the page
+
+Owner screenshot, minutes after HUB-1/HUB-2 deployed: *"There's gotta be a
+better way we can show this."*
+
+The rows worked — logos, scores, WON/LOST, green and red. There were five of
+them stacked above the fold, roughly a thousand pixels of scroll, and the one
+pick still undecided was pushed off the top by games that had already finished.
+
+**HUB-1 made each settled row short. It could not make five of them stop being
+the page**, and the answer was never a smaller row — it is not rendering them
+expanded at all.
+
+Each section splits now: live and upcoming as before, everything settled folded
+into a `<details>` behind one line, **SETTLED · 4-3**. Which is also the
+roadmap's Monday question in the form it actually has: *"how did I do"* is a
+record, not five cards.
+
+Closed by default every time, and **no fold at all until something has
+settled** — a Saturday in progress is untouched, with no empty disclosure and no
+chevron to explain.
+
+**`<details>`, uncontrolled.** The obvious shape — `useState` seeded from an
+effect — is a cascading render, which the linter caught, and a hydration hazard
+besides: the server cannot know what this browser last chose. The element owns
+its state, an effect nudges the DOM once, React is never told. The preference is
+remembered per device, both storage calls guarded, because a private window must
+render the section rather than throw over a chevron.
+
+The record is counted off the grader's stored `result` — the same source the row
+chips read, so the summary cannot disagree with the list under it. A void is not
+counted (it never happened) and neither is an ungraded final: the fold says
+**"1 final"** rather than "0-0" until the grader has an answer.
+
+Eleven tests, mutation-checked twice: rendering everything flat turns three red,
+defaulting the fold open turns another. 1,903 across 127 files, typecheck, lint
+and `next build` green. **Not seen rendered.**
+
+Recorded, not built: the fold shows a W-L record, not units — `HomeBet` carries
+no `units` in the hub payload.
+
 ### Aug 22 — HUB-2: the results stop vanishing before anyone reads them
 
 The hub's positions were scoped to the current week, and the week pointer rolls
