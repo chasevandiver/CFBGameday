@@ -37,6 +37,10 @@ async function main() {
     weather: weatherJob,
     "ratings-update": ratingsUpdateJob,
     freeze: freezeJob,
+    /* REHEARSE-1: the freeze, stopped one line short of the insert. The only
+       job here that cannot be rehearsed by running it, because `predictions`
+       is append-only and a second run skips what the first one wrote. */
+    "freeze-dry-run": (db: Parameters<typeof freezeJob>[0]) => freezeJob(db, { dryRun: true }),
     "freeze-groups": freezeGroupWeeksJob,
     "sync-rankings": syncRankingsJob,
     "sync-systems": syncSystemsJob,
