@@ -61,7 +61,7 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **1,875 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after AUTH-4's eight-digit correction. Previously: **1,873 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after AUTH-4 (§2.1j). Eleven are new and seven of them drive the real component under jsdom rather than a pure function, because the defect AUTH-4 was most likely to ship — verifying a signup code as type `email` — lives in the wiring, not in any function worth unit-testing. Both mutations were checked failing. Previously: **1,862 tests across 126 files**, all green in-session 2026-08-21 along with `npm run typecheck` and lint — run after WEEK0-1 (§2.1j); eight of them are new and the source scan among them was checked failing against the pre-fix file. `next build` was NOT re-run for that batch and did not need to be: it changes one `scripts/` emit and one test, no route, no component, no migration. Previously: **1,773 tests across 124 files**, all green in-session 2026-08-20 along with `npm run typecheck`, lint and `next build` — run after OPS-4b (§2.1h); seven of them are new and cover the cancelled-run path. The kill was also reproduced outside vitest, since that is the half a unit test cannot reach: a real `npx tsx` process under `bash -c`, SIGTERM to the shell and SIGKILL to the tree, and the id file still readable afterwards — which is exactly what the `if: cancelled()` step depends on. Previously: **1,316 tests across 98 files**, all green in-session 2026-08-18 along with `tsc` and lint, and `next build` compiles clean — run after the SURV-1…SURV-4 batch in §2.1g. The DB suite was **not** re-run for that batch and did not need to be: it changes no migration, no RPC and no policy, and `supabase/tests/survivor.sql`'s 27 assertions cover rules the UI now merely reports. *(**Superseded 2026-08-19.** This said the one `tsc` complaint, `LayoutProps` in `src/app/layout.tsx`, was Next's generated route types being absent until a build has run. True, and it made a bare `tsc --noEmit` look permanently dirty — so a REAL type error hid in the noise and reached a Vercel deploy on 08-19 after `npm test` and `npm run lint` both passed. `npx next typegen` generates those types in about a second without a build, and the check is now **`npm run typecheck`** (`next typegen && tsc --noEmit`), which is clean. Run it before pushing; CI has always run both steps and would have caught it, but not before a red deploy.)* Previously: **975 tests across 71 files**, all green in-session 2026-08-15 along with `tsc`, lint and `next build`, after the owner-report batch in §2.1e and the AUTH-2 proxy change. **257 DB assertions** against a real Postgres 16 cluster, 0 failed — 27 of them new in `supabase/tests/survivor.sql`, and three of those were rewritten after they passed for the wrong reason (the `raises` helper accepts any error, and the seed was refusing the pick on start-week rather than on the rule under test). Previously: **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
+| **Build** | **1,881 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after HUB-1. Previously: **1,875 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after AUTH-4's eight-digit correction. Previously: **1,873 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after AUTH-4 (§2.1j). Eleven are new and seven of them drive the real component under jsdom rather than a pure function, because the defect AUTH-4 was most likely to ship — verifying a signup code as type `email` — lives in the wiring, not in any function worth unit-testing. Both mutations were checked failing. Previously: **1,862 tests across 126 files**, all green in-session 2026-08-21 along with `npm run typecheck` and lint — run after WEEK0-1 (§2.1j); eight of them are new and the source scan among them was checked failing against the pre-fix file. `next build` was NOT re-run for that batch and did not need to be: it changes one `scripts/` emit and one test, no route, no component, no migration. Previously: **1,773 tests across 124 files**, all green in-session 2026-08-20 along with `npm run typecheck`, lint and `next build` — run after OPS-4b (§2.1h); seven of them are new and cover the cancelled-run path. The kill was also reproduced outside vitest, since that is the half a unit test cannot reach: a real `npx tsx` process under `bash -c`, SIGTERM to the shell and SIGKILL to the tree, and the id file still readable afterwards — which is exactly what the `if: cancelled()` step depends on. Previously: **1,316 tests across 98 files**, all green in-session 2026-08-18 along with `tsc` and lint, and `next build` compiles clean — run after the SURV-1…SURV-4 batch in §2.1g. The DB suite was **not** re-run for that batch and did not need to be: it changes no migration, no RPC and no policy, and `supabase/tests/survivor.sql`'s 27 assertions cover rules the UI now merely reports. *(**Superseded 2026-08-19.** This said the one `tsc` complaint, `LayoutProps` in `src/app/layout.tsx`, was Next's generated route types being absent until a build has run. True, and it made a bare `tsc --noEmit` look permanently dirty — so a REAL type error hid in the noise and reached a Vercel deploy on 08-19 after `npm test` and `npm run lint` both passed. `npx next typegen` generates those types in about a second without a build, and the check is now **`npm run typecheck`** (`next typegen && tsc --noEmit`), which is clean. Run it before pushing; CI has always run both steps and would have caught it, but not before a red deploy.)* Previously: **975 tests across 71 files**, all green in-session 2026-08-15 along with `tsc`, lint and `next build`, after the owner-report batch in §2.1e and the AUTH-2 proxy change. **257 DB assertions** against a real Postgres 16 cluster, 0 failed — 27 of them new in `supabase/tests/survivor.sql`, and three of those were rewritten after they passed for the wrong reason (the `raises` helper accepts any error, and the seed was refusing the pick on start-week rather than on the rule under test). Previously: **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
 | **Scheduler** | 111 completed runs. Reds to date: one watchdog firing correctly on a cold `job_runs` table, and runs #107–109 — the backup verification sequence, each a real defect, all closed. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
@@ -1494,6 +1494,64 @@ deliberate deferrals, each recorded below with what it would take.
       against the hardcoded 6.
       **Nothing needs changing in Supabase for this** — 8 works, 6 works, so
       does anything between.
+
+- [x] **HUB-1 — a settled game is one line, not a scoreboard.** Owner call,
+      2026-08-22: *"for the hub we just do a small one line card of the matchup,
+      final score, the bets they had on that game and if they covered or not."*
+      The full position row spends ~120px on team rails, a cover strip and an
+      aura built for a game still in doubt. On Aug 29 a viewer can hold
+      positions across eight openers plus the NFL card, and settled games push
+      everything still live below the fold — **the hub stops answering "what
+      have I got riding" at the moment it has the most to say.**
+      Scoped to the hub by owner call; the slate keeps its full card.
+      **The verdict half already existed and is the part worth stating.**
+      `verdictForBet`/`verdictForPick` prefer the grader's stored `result` over
+      the live formula, so the words are **Won / Lost / Push / Void** for
+      spread, total **and moneyline** alike. That matters beyond tidiness: a
+      final score settles a spread and a total on its own, but only the stored
+      row can speak for a moneyline priced at real odds, or for a wager that was
+      voided — and the live vocabulary would have said *"Leading by 4"* on a
+      game that finished hours ago.
+      **One definition, two shells.** The position list is built once and
+      rendered by both the compact and the full row. Writing it twice is how the
+      two drift into disagreeing about a result, which is the same failure
+      LiveSituation was extracted to end.
+      The line-move readout is dropped on a final: `heldVsNow` measures your
+      number against a board that has stopped, and the closing number is CLV,
+      which has a home on `/receipts`.
+      Same `glass-wrap`/`card` shell and the same final aura strength (0.1), so
+      it reads as the same family scrolled past. Loser dimmed, as the tall row
+      already does it. Eight tests; verified by mutation twice — switching the
+      compact branch off turns four red, and deleting the "trust the grader"
+      line turns the moneyline and Push/Void cases red on their own.
+      **Not seen rendered.**
+- [ ] **HUB-2 — the results are gone before anyone wakes up to read them.**
+      Found 2026-08-22 while sizing HUB-1, and it is the larger half of the same
+      complaint. The hub's positions are filtered to the current week
+      (`home.ts:553`, `:582`), and `fetchCurrentSlate` points at the week of the
+      **next kickoff** — so the pointer rolls the instant nothing in the week is
+      live or still scheduled. Week 0's last game kicks **9:00 pm CT Sat Aug 29**
+      and finals around midnight; **every graded card from that Saturday
+      disappears at once, hours before anyone opens the app on Sunday.**
+      HUB-1 makes those rows compact. It does not make them present: a tidier
+      row that is not there is still not there.
+      What survives is the record — group standings, `/ledger`, `/receipts`,
+      `/recap/[week]`. Only the position cards roll.
+      **This is the roadmap's Monday question failing outright.** `docs/ROADMAP.md`
+      §"seven days, seven questions" has Monday as *"How did I do? Who won the
+      week?"*, and the hub cannot answer it, because by Monday the pointer moved
+      on two days earlier. F4/F5/F6 (homepage-by-day) is the feature that owns
+      this; the specific defect was not recorded anywhere until now.
+      **Recommended shape, not built:** keep a graded position until the next
+      game the viewer holds a position in kicks off, capped at 7 days. Derived
+      rather than a magic number — results stay up exactly until there is new
+      skin in the game, then clear themselves — and it survives Thursday games,
+      NFL Sunday/Monday and bowls. The simpler alternative is a flat 48 hours
+      after the final, which is easier to reason about and will be wrong for
+      some calendar shape in November.
+      **Deliberately not built before Week 0**, by the same rule HUB-1 was:
+      it changes the window on the surface being watched on the 29th, and
+      Aug 30 is the day the owner finds out whether it actually bothers him. · M
 
 ### 2.1i The pool lane — owner report, 2026-08-21
 
