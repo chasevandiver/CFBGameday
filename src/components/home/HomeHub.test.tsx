@@ -275,6 +275,33 @@ describe("a final game collapses to one line", () => {
     expect(iowa?.className).not.toContain("text-dim");
   });
 
+  it("carries both team marks, so the row is glanceable as crests not words", () => {
+    // TeamMark renders the logo and falls back to a colour-filled monogram when
+    // one is null — which is why the abbreviation stays beside it rather than
+    // being replaced by it, and why this asserts on the mark's own wrapper
+    // rather than on an <img> that a fixture team may not have.
+    const { container } = render(
+      <HomeDashboard data={withBets([bet(1, "spread", "away", 3.5, "win")])} signedIn />,
+    );
+    const marks = container.querySelectorAll('span[style*="width: 20px"]');
+    expect(marks.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("turns the glow up once there is a verdict to glow about", () => {
+    // 0.1 is the tall card's setting, tuned for a row that already spells the
+    // verdict out in a cover strip and two team rails. This row is mostly
+    // verdict, so a scrolled column of results should read as colour first.
+    const { container } = render(
+      <HomeDashboard data={withBets([bet(1, "spread", "away", 3.5, "win")])} signedIn />,
+    );
+    // The hub has other .glass-wrap cards; take the one that is this game's row.
+    const wrap = [...container.querySelectorAll<HTMLElement>(".glass-wrap")].find((el) =>
+      el.textContent?.includes("IOWA"),
+    );
+    expect(wrap, "no glass-wrap contained the final row").toBeDefined();
+    expect(wrap?.getAttribute("style")).toContain("0.35");
+  });
+
   it("drops the line-move readout, which measures a board that has stopped", () => {
     // `heldVsNow` compares your number to the current one. After a final there
     // is no "now" — the closing number is CLV and it lives on /receipts.

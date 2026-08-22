@@ -253,8 +253,28 @@ Three things the build turned on:
 Held ids are constrained to integers before interpolation — they reach a
 PostgREST filter string through a public function signature.
 
-Nine tests. 1,890 across 127 files, typecheck, lint and `next build` green.
-**Not seen rendered.**
+**Folded in on the owner's question** — *"does this make them look more
+visually appealing too with logos and green or red if won or loss?"* — because
+the answer was half yes and half no:
+
+- **Green/red was already there, twice.** `ResultChip` (`bg-win/12` + ✓,
+  `bg-loss/12` + ✗, `bg-push/12` + –) and the card's own aura.
+- **Logos were not.** The row printed text abbreviations while `TeamMark` —
+  which renders the logo and falls back to a colour-filled monogram — sat unused
+  two directories away. Both crests now sit in the score line at `size={20}`,
+  the smallest size already in the app, so no new value enters the scale. The
+  abbreviation stays beside the mark, because the fallback is a monogram and a
+  row of monograms with no letters is worse than the text was.
+- **The aura went 0.1 → 0.35, and only when there is a verdict.** 0.1 is the
+  tall card's setting for a final, tuned for a row that already spells the
+  outcome out in a cover strip and two team rails. This row is mostly verdict,
+  so the glow is what makes a scrolled column of results read as colour before
+  it reads as words. A settled game the viewer held nothing on keeps the faint
+  team-colour wash. **That number is a guess made without seeing it rendered**,
+  and it is the one thing on this row to eyeball on the 29th.
+
+Eleven tests, every behavioural one mutation-checked. 1,892 across 127 files,
+typecheck, lint and `next build` green. **Not seen rendered.**
 
 ### Aug 22 — HUB-1: a settled game is one line, not a scoreboard
 

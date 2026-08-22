@@ -5,6 +5,7 @@ import { LiveBadge, LiveStatusChip, PickedChip, ResultChip } from "../slate/chip
 import { CoverStrip } from "../slate/CoverStrip";
 import { LiveSituation } from "../slate/LiveSituation";
 import { TeamScoreLine } from "../slate/TeamLine";
+import { TeamMark } from "../slate/TeamMark";
 import { StatTile } from "../StatTile";
 import { UnitsCurve } from "../UnitsCurve";
 import { heldVsNow, splitPositions, type GroupStanding, type HomeBet, type HomeData, type HomePick, type Position, type WeekProgress } from "../../lib/home";
@@ -373,7 +374,13 @@ export function PositionRow({
       <li
         className="glass-wrap"
         data-tint={hasVerdict ? "position" : "teams"}
-        style={{ "--aura-strength": 0.1 } as React.CSSProperties}
+        /* 0.35 where the tall row uses 0.1 for a final. That 0.1 was tuned for
+           a card whose verdict is already spelled out by a cover strip and two
+           team rails; this row is mostly verdict, so the glow is doing the work
+           of making a scrolled column of results readable as colour before it
+           is read as words. Only when there IS a verdict — a settled game you
+           held nothing on keeps the faint team-colour wash. */
+        style={{ "--aura-strength": hasVerdict ? 0.35 : 0.1 } as React.CSSProperties}
       >
         <div className="glass-aura" aria-hidden>
           <span className="aura-a" style={{ background: aura[0] }} />
@@ -386,12 +393,18 @@ export function PositionRow({
             className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-3 py-2"
           >
             {/* Loser dimmed, exactly as the tall row does it — the score is
-                read left to right and the dim is what makes it scannable. */}
-            <span className="stat text-sm tabular-nums">
+                read left to right and the dim is what makes it scannable.
+                `TeamMark` at 20 (the smallest size already in use) so the row
+                is glanceable as two crests rather than parsed as four words;
+                it falls back to a colour-filled monogram when a logo is null,
+                which is why the abbreviation stays beside it rather than being
+                replaced by it. */}
+            <span className="stat flex items-center gap-1.5 text-sm tabular-nums">
+              <TeamMark team={game.away} size={20} />
               <span className={a < h ? "text-dim" : ""}>
                 {game.away.abbr} {a}
               </span>
-              <span className="text-dim"> · </span>
+              <TeamMark team={game.home} size={20} />
               <span className={h < a ? "text-dim" : ""}>
                 {game.home.abbr} {h}
               </span>
