@@ -617,6 +617,10 @@ export interface GamePrice {
   /** P(home covers vegasSpread); null when no line */
   homeCoverProb: number | null;
   consensusFlag: boolean;
+  /** External systems that had a number for this game (SYS-1). */
+  consensusAvailable: number;
+  /** How many of those leaned the same way as the model against the line. */
+  consensusAgreed: number;
 }
 
 export const FBS_AVG_POINTS = 28.5; // average team points/game baseline for projections
@@ -646,6 +650,14 @@ export function splitInformative(
   return false;
 }
 
+/**
+ * How many external systems must have a number before "consensus" is a word
+ * worth using. One is the model plus a friend; none is the model agreeing with
+ * itself. A definition rather than a tunable — no tuner fits it and no backtest
+ * can, because it decides what the label means rather than what it predicts.
+ */
+export const MIN_CONSENSUS_SYSTEMS = 2;
+
 export function priceGame(inp: PricingInputs, p: ModelParams = DEFAULT_PARAMS): GamePrice {
   const hfa = inp.neutralSite ? 0 : inp.homeTeamHfa;
   const margin =
@@ -665,6 +677,8 @@ export function priceGame(inp: PricingInputs, p: ModelParams = DEFAULT_PARAMS): 
   let edgeFlag: "EDGE" | "BIG_EDGE" | null = null;
   let homeCoverProb: number | null = null;
   let consensusFlag = false;
+  let consensusAvailable = 0;
+  let consensusAgreed = 0;
 
   if (inp.vegasSpread !== null) {
     const modelSpread = -margin; // convert to Vegas convention
@@ -674,13 +688,31 @@ export function priceGame(inp: PricingInputs, p: ModelParams = DEFAULT_PARAMS): 
     // P(home covers): P(actual margin > -vegasSpread), margin ~ N(model margin, sigma)
     homeCoverProb = 1 - normalCdf(-inp.vegasSpread, margin, p.marginSigma);
 
-    // Consensus: model + SP+ + FPI + Elo all disagree with the line the same way
+    /* Consensus: the model and every OTHER system THAT HAS A NUMBER lean the
+       same way against the line.
+       It used to require all four present, which sounds stricter and was in
+       practice weaker: `system_ratings` never held an Elo row in any season
+       (SYS-1), so the `every` guard below never passed and the flag was false
+       on every prediction this project has ever made. A rule one absent feed
+       can silently switch off is not a strict rule, it is a dead one.
+       `MIN_CONSENSUS_SYSTEMS` is what stops the other failure — with one
+       external system "consensus" is the model plus a friend, and with none it
+       is the model agreeing with itself. Two is the smallest number for which
+       the word means anything. It is a definition, not a fitted parameter, so
+       it lives here rather than in DEFAULT_PARAMS and needs no tuner.
+       Nothing downstream of this changes: `consensusFlag` annotates a receipt
+       and feeds no spread, edge or probability, so MODEL_VERSION does not move. */
     const vegasMargin = -inp.vegasSpread;
-    const systems = [margin, inp.spPlusMargin, inp.fpiMargin, inp.eloMargin];
-    if (systems.every((s) => s !== null && s !== undefined)) {
-      const dirs = (systems as number[]).map((s) => Math.sign(s - vegasMargin));
-      consensusFlag = dirs.every((d) => d === dirs[0] && d !== 0);
-    }
+    const externals = [inp.spPlusMargin, inp.fpiMargin, inp.eloMargin].filter(
+      (v): v is number => v !== null && v !== undefined,
+    );
+    consensusAvailable = externals.length;
+    const modelDir = Math.sign(margin - vegasMargin);
+    consensusAgreed = externals.filter((v) => Math.sign(v - vegasMargin) === modelDir).length;
+    consensusFlag =
+      modelDir !== 0 &&
+      consensusAvailable >= MIN_CONSENSUS_SYSTEMS &&
+      consensusAgreed === consensusAvailable;
   }
 
   return {
@@ -694,6 +726,8 @@ export function priceGame(inp: PricingInputs, p: ModelParams = DEFAULT_PARAMS): 
     edgeFlag,
     homeCoverProb,
     consensusFlag,
+    consensusAvailable,
+    consensusAgreed,
   };
 }
 
