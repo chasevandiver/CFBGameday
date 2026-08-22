@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { AuthError } from "@supabase/supabase-js";
 import { createClient } from "../lib/supabase/client";
 
@@ -79,10 +80,53 @@ export function explainAuthError(error: AuthError, signup: boolean): string {
   return raw;
 }
 
+/**
+ * The sentence for a six-digit code that did not verify.
+ *
+ * Separate from `explainAuthError` because the failures are different — a code
+ * is wrong, stale or reused, none of which the link path can be — but it keeps
+ * that function's one hard-won rule: **a 5xx must never reach the UI as its own
+ * message.** `auth-js` builds a 5xx message with `JSON.stringify(Response)`, so
+ * `error.message` is literally `"{}"` on `verifyOtp` exactly as it is on
+ * `signInWithOtp`. Same bug, same guard.
+ *
+ * No expiry duration in the copy. It is a Supabase project setting, not
+ * something this file knows, and a wrong number in an error message is worse
+ * than no number.
+ */
+export function explainCodeError(error: AuthError): string {
+  const status = error.status ?? 0;
+  const raw = (error.message ?? "").trim();
+
+  if (status === 429 || error.code === "over_request_rate_limit") {
+    return "Too many tries just now. Wait a minute and try again.";
+  }
+  if (status >= 500 || raw === "" || raw === "{}") {
+    return "The sign-in service returned an error. Try again in a minute — if it keeps happening, tell the commissioner.";
+  }
+  // Everything else from this endpoint is the same practical answer: the code
+  // in the box is not the code the server is holding. GoTrue spells that
+  // several ways (otp_expired, 403, "Token has expired or is invalid") and the
+  // distinction does not change what the person should do next.
+  return "That code didn’t work — it may have expired, or already been used. Send a new email and use the fresh code.";
+}
+
 export function LoginForm({ linkFailed }: { linkFailed: boolean }) {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [message, setMessage] = useState("");
+  const [code, setCode] = useState("");
+  const [codeStatus, setCodeStatus] = useState<"idle" | "verifying" | "error">("idle");
+  const [codeMessage, setCodeMessage] = useState("");
+  /* Which template GoTrue sent, and therefore what `verifyOtp` must be told.
+     An existing account gets the Magic Link email and verifies as `email`; an
+     account created by the second call below gets Confirm Signup and verifies
+     as `signup`. Passing the wrong one fails a perfectly good code, so it is
+     tracked at the moment the send succeeds rather than guessed at verify
+     time. Both templates need `{{ .Token }}` for the code to exist at all. */
+  const [otpType, setOtpType] = useState<"email" | "signup">("email");
+  const codeRef = useRef<HTMLInputElement>(null);
 
   async function sendLink(e: React.FormEvent) {
     e.preventDefault();
@@ -102,6 +146,7 @@ export function LoginForm({ linkFailed }: { linkFailed: boolean }) {
       options: { emailRedirectTo, shouldCreateUser: false },
     });
     if (!existing.error) {
+      setOtpType("email");
       setStatus("sent");
       return;
     }
@@ -116,7 +161,50 @@ export function LoginForm({ linkFailed }: { linkFailed: boolean }) {
       fail(created.error, true);
       return;
     }
+    setOtpType("signup");
     setStatus("sent");
+  }
+
+  /**
+   * The code path, and the reason it exists: an emailed link always opens in
+   * the default browser, and on iOS a home-screen web app has its own cookie
+   * jar. `createBrowserClient` uses PKCE, so the verifier written when the link
+   * was requested inside the installed app is not there when Safari opens the
+   * link — the exchange fails and `/auth/confirm` sends them to
+   * `?error=link`. Typing the code never leaves the app, so none of that
+   * applies. The link still works for anyone who prefers it.
+   */
+  async function verifyCode(e: React.FormEvent) {
+    e.preventDefault();
+    const token = code.trim();
+    // The button stays enabled and this says why, rather than a greyed-out
+    // control that explains nothing (Web Interface Guidelines: submit stays
+    // enabled until the request starts).
+    if (token.length < 6) {
+      setCodeStatus("error");
+      setCodeMessage("That’s not the whole code — it’s six digits.");
+      codeRef.current?.focus();
+      return;
+    }
+    setCodeStatus("verifying");
+    setCodeMessage("");
+    const supabase = createClient();
+    const { error } = await supabase.auth.verifyOtp({ email, token, type: otpType });
+    if (error) {
+      setCodeStatus("error");
+      setCodeMessage(explainCodeError(error));
+      // Back in the box: the next thing they do is retype it.
+      codeRef.current?.focus();
+      return;
+    }
+    // `refresh` BEFORE `push`, and both: the browser client has just written
+    // the session cookie, but every server component rendered before that is
+    // still in the router cache and still thinks nobody is signed in. `refresh`
+    // invalidates it; `push` then lands on a hub that knows who you are. The
+    // link path gets this for free — `/auth/confirm` redirects server-side —
+    // and this is the client-side equivalent.
+    router.refresh();
+    router.push("/");
   }
 
   return (
@@ -136,12 +224,62 @@ export function LoginForm({ linkFailed }: { linkFailed: boolean }) {
       </div>
 
       {status === "sent" ? (
-        <div className="max-w-sm rounded-lg border border-accent/40 bg-surface p-6">
-          <p className="text-lg">Check your email 📬</p>
-          <p className="mt-2 text-sm text-chalk/70">
-            Tap the link and you&rsquo;re in — you won&rsquo;t need to log in again on this device.
+        /* The sent state used to be a dead end that said "tap the link" and
+           left. It is now where you finish signing in, because the code is the
+           half that cannot be taken to another browser. */
+        <form onSubmit={verifyCode} className="flex w-full max-w-sm flex-col gap-3">
+          <div className="rounded-lg border border-accent/40 bg-surface p-6">
+            <p className="text-lg">Check your email 📬</p>
+            <p className="mt-2 text-sm text-chalk/70">
+              Enter the 6-digit code below and you&rsquo;re in — you won&rsquo;t need to log in
+              again on this device.
+            </p>
+          </div>
+          <input
+            ref={codeRef}
+            type="text"
+            required
+            name="one-time-code"
+            inputMode="numeric"
+            /* The reason iOS offers the code above the keyboard instead of
+               making anyone switch to Mail and back. */
+            autoComplete="one-time-code"
+            pattern="[0-9]*"
+            maxLength={6}
+            spellCheck={false}
+            aria-label="Six-digit code from the email"
+            placeholder="123456"
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+            className="stat rounded-lg border border-chalk/25 bg-elev px-4 py-3 text-center text-2xl tracking-[0.4em] text-chalk placeholder:text-chalk/40 focus:border-accent focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+          />
+          <button
+            type="submit"
+            disabled={codeStatus === "verifying"}
+            className="rounded-lg bg-accent px-4 py-3 font-semibold text-accent-ink disabled:opacity-60"
+          >
+            {codeStatus === "verifying" ? "Signing you in…" : "Sign in"}
+          </button>
+          <p role="status" aria-live="polite" className="text-sm text-loss">
+            {codeStatus === "error" ? codeMessage : ""}
           </p>
-        </div>
+          <p className="text-sm text-chalk/70">
+            The link in the same email works too — but it opens in Safari, so if you added The
+            Slate to your home screen, use the code to stay in the app.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setStatus("idle");
+              setCode("");
+              setCodeStatus("idle");
+              setCodeMessage("");
+            }}
+            className="stat text-xs text-dim underline-offset-2 hover:text-chalk focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+          >
+            Use a different email, or send a new code
+          </button>
+        </form>
       ) : (
         <form onSubmit={sendLink} className="flex w-full max-w-sm flex-col gap-3">
           {linkFailed && (
@@ -156,6 +294,7 @@ export function LoginForm({ linkFailed }: { linkFailed: boolean }) {
           <input
             type="email"
             required
+            name="email"
             autoComplete="email"
             spellCheck={false}
             aria-label="Email address"

@@ -215,6 +215,63 @@ shipping it.
 
 ## Log
 
+### Aug 22 — AUTH-4: the magic link cannot sign anyone in to the installed app
+
+Owner question — *"if I sign out on the app or safari on my phone, do I need to
+re-signin and then readd the bookmark?"* — and the bookmark half is a plain no.
+The sign-in half is a defect with six days on the clock.
+
+Three facts, each harmless alone:
+
+- `createBrowserClient` uses **PKCE**, which writes a code-verifier cookie in
+  whichever browser asked for the link.
+- On iOS a home-screen web app has **its own cookie jar**, separate from Safari.
+- A link in Mail **always opens in Safari**.
+
+So a crew member who installs the app, then asks for a link from inside it,
+gets: verifier in the app's jar → Safari opens the link without it →
+`exchangeCodeForSession` fails → `?error=link`. A hard failure with a generic
+message, on exactly the path the Aug 27 row calls "invite the crew, confirm each
+person signs in."
+
+**Fixed with a six-digit code**, which is the only option where the whole flow
+stays inside the app. The link still works for anyone who prefers it.
+
+**Why not the alternatives**, both recorded rather than built:
+
+| | Why not |
+|---|---|
+| Password | Moves the same email-link problem into the reset flow, where someone is already frustrated |
+| Sign in with Apple | `handle_new_user` matches `lower(email)`; **Hide My Email** gives `@privaterelay.appleid.com`, which matches no allowlist row — the trigger raises and the user gets the red `{}` |
+
+**The part that would have failed silently.** GoTrue sends Magic Link to an
+existing account (verify type `email`) and Confirm Signup to one just created
+(type `signup`). A hardcoded `"email"` works for everyone who already has an
+account — which is everyone testing it — and **rejects every genuinely new
+invitee on their first attempt**. The type is captured when the send succeeds,
+and a jsdom test drives both branches. Verified by mutation: hardcoding either
+value turns it red, as does dropping `autoComplete="one-time-code"`.
+
+`explainCodeError` keeps `explainAuthError`'s rule — `auth-js` builds a 5xx
+message with `JSON.stringify(Response)`, so `verifyOtp` can put a literal `{}`
+on screen just as easily — and quotes no expiry duration, since that is a
+project setting this file cannot see.
+
+**Two changes from the `web-design-guidelines` pass** (run per DESIGN.md): the
+submit button no longer greys out on a short code, because a disabled control
+cannot say what is wrong — it submits and answers *"that's not the whole code —
+it's six digits"*, putting the cursor back in the box. And both inputs gained a
+`name`. Deliberate deviations: "Sign in" rather than Title Case, matching "Send
+my link" beside it, and no ellipsis on the `123456` placeholder, which would
+imply more digits follow.
+
+1,873 tests across 127 files, typecheck, lint and `next build` green.
+**Not seen rendered** — every check here is computed.
+
+**Owner action, and the half that cannot ship from a repo:** add `{{ .Token }}`
+to **both** Authentication → Emails → **Magic Link** and **Confirm signup**.
+Until then the form asks for a number nobody was sent.
+
 ### Aug 21 — WEEK0-1: two jobs disagreed about Week 0, and the later one won every morning
 
 Owner report: Week 0 still shows as Week 1 on the slate and in the groups. It
