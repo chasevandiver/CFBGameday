@@ -495,3 +495,77 @@ describe("hasCalibratedTotals", () => {
     expect(hasCalibratedTotals("garbage")).toBe(false);
   });
 });
+
+/**
+ * SYS-1. The old rule required all four systems present before it would even
+ * look, which sounds stricter and was in practice weaker: `system_ratings`
+ * never held an Elo row in any season, so the guard never passed and
+ * `consensus_flag` was false on every prediction this project has ever made.
+ * A rule that one absent feed silently switches off is not strict, it is dead.
+ */
+describe("consensus fires on the systems that have a number", () => {
+  const base = {
+    home: { overall: 10, offense: 5, defense: 5, tempo: 70 },
+    away: { overall: 0, offense: 0, defense: 0, tempo: 70 },
+    homeTeamHfa: 0,
+    neutralSite: true,
+    situationalPoints: 0,
+  };
+  // Model has home by 10; the line has home by 3. Model leans home.
+  const price = (over: Record<string, number | null>) =>
+    priceGame({ ...base, vegasSpread: -3, ...over } as Parameters<typeof priceGame>[0]);
+
+  it("fires on two agreeing systems when the third has no data", () => {
+    // The live 2026 case exactly: SP+ and FPI present, Elo absent all season.
+    const p = price({ spPlusMargin: 8, fpiMargin: 7, eloMargin: null });
+    expect(p.consensusFlag).toBe(true);
+    expect(p.consensusAvailable).toBe(2);
+    expect(p.consensusAgreed).toBe(2);
+  });
+
+  it("still refuses when one of the present systems disagrees", () => {
+    // FPI leans the other way: 1 < 3 means it likes the away side of the line.
+    const p = price({ spPlusMargin: 8, fpiMargin: 1, eloMargin: null });
+    expect(p.consensusFlag).toBe(false);
+    expect(p.consensusAgreed).toBe(1);
+    expect(p.consensusAvailable).toBe(2);
+  });
+
+  it("will not call one external system a consensus", () => {
+    // The model plus a friend is not agreement, it is a pair.
+    const p = price({ spPlusMargin: 8, fpiMargin: null, eloMargin: null });
+    expect(p.consensusFlag).toBe(false);
+    expect(p.consensusAvailable).toBe(1);
+  });
+
+  it("will not call the model agreeing with itself a consensus", () => {
+    const p = price({ spPlusMargin: null, fpiMargin: null, eloMargin: null });
+    expect(p.consensusFlag).toBe(false);
+    expect(p.consensusAvailable).toBe(0);
+    expect(p.consensusAgreed).toBe(0);
+  });
+
+  it("uses all three when all three are there", () => {
+    const p = price({ spPlusMargin: 8, fpiMargin: 7, eloMargin: 9 });
+    expect(p.consensusFlag).toBe(true);
+    expect(p.consensusAvailable).toBe(3);
+  });
+
+  it("refuses when the model itself sits exactly on the line", () => {
+    // Sign zero is not a direction, and "everyone agrees on nothing" is not a
+    // lean worth flagging.
+    const p = priceGame({
+      ...base,
+      vegasSpread: -10,
+      spPlusMargin: 12,
+      fpiMargin: 11,
+    } as Parameters<typeof priceGame>[0]);
+    expect(p.consensusFlag).toBe(false);
+  });
+
+  it("counts nothing without a line, since there is nothing to disagree with", () => {
+    const p = priceGame({ ...base, vegasSpread: null } as Parameters<typeof priceGame>[0]);
+    expect(p.consensusFlag).toBe(false);
+    expect(p.consensusAvailable).toBe(0);
+  });
+});

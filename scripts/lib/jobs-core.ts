@@ -2161,7 +2161,16 @@ export async function freezeJob(
       edge: price.edge !== null ? Math.round(price.edge * 10) / 10 : null,
       edge_flag: price.edgeFlag,
       consensus_flag: price.consensusFlag,
-      adjustments: { situational },
+      /* SYS-1: how the flag was reached, not just what it said. `adjustments`
+         is jsonb and already written, so this needs no migration — which
+         matters six days from the freeze, where a new column would have to be
+         applied to production BEFORE the code that writes it deploys or every
+         insert fails. A receipt reading "2 of 2 agreed" stays truthful when Elo
+         returns mid-season and the denominator becomes 3. */
+      adjustments: {
+        situational,
+        consensus: { agreed: price.consensusAgreed, available: price.consensusAvailable },
+      },
     });
   }
   /* REHEARSE-1. Every other job in the chain can be run twice; this one cannot
