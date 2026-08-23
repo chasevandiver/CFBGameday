@@ -49,7 +49,7 @@ describe("SourceCard opens onto the viewer's record against that member", () => 
   it("expands another member's row and shows YOUR tail/fade record", () => {
     const { container } = render(
       <ul>
-        <SourceCard place={1} member={member("Hayden")} isMe={false} pair={pair()} />
+        <SourceCard slug="test-crew" place={1} member={member("Hayden")} isMe={false} pair={pair()} />
       </ul>,
     );
     expect(container.querySelector("details")).toBeTruthy();
@@ -63,7 +63,7 @@ describe("SourceCard opens onto the viewer's record against that member", () => 
     // tapping. The caller synthesizes an empty pair for exactly this case.
     const { container } = render(
       <ul>
-        <SourceCard
+        <SourceCard slug="test-crew"
           place={2}
           member={member("Hayden")}
           isMe={false}
@@ -78,7 +78,7 @@ describe("SourceCard opens onto the viewer's record against that member", () => 
   it("renders your own row as a plain card — you cannot tail yourself", () => {
     const { container } = render(
       <ul>
-        <SourceCard place={1} member={member("me")} isMe pair={null} />
+        <SourceCard slug="test-crew" place={1} member={member("me")} isMe pair={null} />
       </ul>,
     );
     expect(container.querySelector("details")).toBeNull();
@@ -87,7 +87,7 @@ describe("SourceCard opens onto the viewer's record against that member", () => 
   it("renders a plain card signed out, where there is no history to show", () => {
     const { container } = render(
       <ul>
-        <SourceCard place={1} member={member("Hayden")} isMe={false} pair={null} />
+        <SourceCard slug="test-crew" place={1} member={member("Hayden")} isMe={false} pair={null} />
       </ul>,
     );
     expect(container.querySelector("details")).toBeNull();
@@ -99,10 +99,57 @@ describe("SourceCard opens onto the viewer's record against that member", () => 
     // different denominators.
     render(
       <ul>
-        <SourceCard place={1} member={member("Hayden")} isMe={false} pair={pair()} />
+        <SourceCard slug="test-crew" place={1} member={member("Hayden")} isMe={false} pair={pair()} />
       </ul>,
     );
     expect(screen.getByText("Tailing them")).toBeDefined();
     expect(screen.getByText("You tailing them")).toBeDefined();
+  });
+});
+
+/**
+ * GRP-8. Owner, after GRP-7 shipped: "I want to be able to click on their name
+ * and see other users full stats and bet history. Not just tail/fade." A
+ * season of bets is a list, and a list belongs on a page, not in an accordion
+ * — so the name is the door, and the expando keeps the quick answer with a
+ * "full stats" link at the bottom.
+ */
+describe("a member's name is the door to their full page", () => {
+  it("links another member's name to /groups/<slug>/member/<id>", () => {
+    render(
+      <ul>
+        <SourceCard place={1} slug="test-crew" member={member("Hayden")} isMe={false} pair={pair()} />
+      </ul>,
+    );
+    const link = screen.getByRole("link", { name: "Hayden" });
+    expect(link.getAttribute("href")).toBe("/groups/test-crew/member/u-Hayden");
+  });
+
+  it("offers the full page from inside the expando too", () => {
+    render(
+      <ul>
+        <SourceCard place={1} slug="test-crew" member={member("Hayden")} isMe={false} pair={pair()} />
+      </ul>,
+    );
+    const link = screen.getByRole("link", { name: /full stats/i });
+    expect(link.getAttribute("href")).toBe("/groups/test-crew/member/u-Hayden");
+  });
+
+  it("does not link your own name — your page is the ledger", () => {
+    render(
+      <ul>
+        <SourceCard place={1} slug="test-crew" member={member("me")} isMe pair={null} />
+      </ul>,
+    );
+    expect(screen.queryByRole("link", { name: "me" })).toBeNull();
+  });
+
+  it("stays plain text on /demo and the preview, where the ids are invented", () => {
+    render(
+      <ul>
+        <SourceCard place={1} slug={null} member={member("Hayden")} isMe={false} pair={pair()} />
+      </ul>,
+    );
+    expect(screen.queryByRole("link", { name: "Hayden" })).toBeNull();
   });
 });

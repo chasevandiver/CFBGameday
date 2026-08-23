@@ -322,8 +322,8 @@ export function SlatePreviewClient() {
               <SheetGameRow game={HERO} />
             </ul>
             <ul className="mb-4 flex flex-col gap-2">
-              <SourceCard place={1} isMe member={SAMPLE_SOURCE} pair={null} />
-              <SourceCard place={2} isMe={false} member={SAMPLE_SOURCE_2} pair={null} />
+              <SourceCard slug={null} place={1} isMe member={SAMPLE_SOURCE} pair={null} />
+              <SourceCard slug={null} place={2} isMe={false} member={SAMPLE_SOURCE_2} pair={null} />
             </ul>
             <PairPanel
               pairs={[

@@ -77,11 +77,18 @@ export function SourceCard({
   place,
   member,
   isMe,
+  slug,
   pair,
 }: {
   place: number;
   member: SheetMember;
   isMe: boolean;
+  /**
+   * Where a name links (GRP-8): `/groups/<slug>/member/<id>`, the member's
+   * full stats and season bet history. Null on `/demo` and the preview, where
+   * the ids are invented and the page would 404.
+   */
+  slug: string | null;
   /**
    * The VIEWER's record against this member (GRP-7). Null only when there is
    * no viewer to have one — signed out, or the preview. A signed-in viewer who
@@ -104,7 +111,7 @@ export function SourceCard({
   if (isMe || pair === null) {
     return (
       <li className={`card px-3.5 py-2.5 ${isMe ? "ring-1 ring-inset ring-accent/40" : ""}`}>
-        <SourceCardBody place={place} member={member} isMe={isMe} />
+        <SourceCardBody place={place} member={member} isMe={isMe} slug={slug} />
       </li>
     );
   }
@@ -113,7 +120,7 @@ export function SourceCard({
       <details>
         <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3.5 py-2.5 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent [&::-webkit-details-marker]:hidden">
           <span className="min-w-0 flex-1">
-            <SourceCardBody place={place} member={member} isMe={isMe} />
+            <SourceCardBody place={place} member={member} isMe={isMe} slug={slug} />
           </span>
           <ChevronDown
             size={14}
@@ -136,6 +143,15 @@ export function SourceCard({
             hint="Your bets that took the other side after they posted"
           />
         </dl>
+        {/* GRP-8: the quick answer is here; the whole season is a page. */}
+        {slug && (
+          <Link
+            href={`/groups/${slug}/member/${member.userId}`}
+            className="stat block border-t border-chalk/8 px-3.5 py-2.5 text-[11px] text-accent underline-offset-2 hover:underline"
+          >
+            Full stats &amp; bet history →
+          </Link>
+        )}
       </details>
     </li>
   );
@@ -145,10 +161,12 @@ function SourceCardBody({
   place,
   member,
   isMe,
+  slug,
 }: {
   place: number;
   member: SheetMember;
   isMe: boolean;
+  slug: string | null;
 }) {
   const s = member.stats;
   return (
@@ -157,7 +175,20 @@ function SourceCardBody({
         <span className="stat w-5 shrink-0 text-center text-sm text-chalk/35">{place}</span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
-            <span className="truncate font-medium text-chalk">{member.name}</span>
+            {/* The name is the door (GRP-8, owner: "click on their name and
+                see other users full stats and bet history"). A link inside a
+                <summary> navigates on click — the toggle firing too is
+                harmless, since the page change wins. */}
+            {slug && !isMe ? (
+              <Link
+                href={`/groups/${slug}/member/${member.userId}`}
+                className="truncate font-medium text-chalk underline-offset-2 hover:text-accent hover:underline"
+              >
+                {member.name}
+              </Link>
+            ) : (
+              <span className="truncate font-medium text-chalk">{member.name}</span>
+            )}
             {isMe && (
               <span className="stat shrink-0 text-[10px] uppercase tracking-wider text-accent">
                 you

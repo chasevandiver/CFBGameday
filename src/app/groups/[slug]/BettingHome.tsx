@@ -264,6 +264,7 @@ export async function BettingHome({
               place={i + 1}
               member={m}
               isMe={m.userId === userId}
+              slug={group.slug}
               /* GRP-7: the viewer's own record against this member, tap to
                  open. `pairs` is already computed for the pair panel below;
                  handing each row its slice costs nothing new. Signed in but
