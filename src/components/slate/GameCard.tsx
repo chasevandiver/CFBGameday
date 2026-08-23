@@ -973,8 +973,23 @@ function PregameFooter({
     status: settled ? statusForBet(b, h, a) : null,
   }));
 
+  /* SLATE-4b, owner report 2026-08-23: "there's still a weird gap where it
+     was." Gating the glyph left its ROW behind — an empty flex div spends no
+     height of its own, but the wrapper's pt-2.5 plus the layers' own margins
+     still opened a dead band between the last play and SHEET. So the row only
+     renders when something will actually sit in it, mirroring each child's own
+     null condition: chips only pregame-with-open-bets, edge only with a flag,
+     consensus only when on, move and watchability only pregame. */
+  const hasTagRow =
+    (!settled && betStatuses.some(({ bet }) => !bet.result)) ||
+    (p?.edgeFlag ?? null) !== null ||
+    (p?.consensus ?? false) ||
+    (!live && !settled && move !== null) ||
+    (!live && watch !== null);
+
   return (
     <div className="mt-3 border-t border-chalk/8 pt-2.5">
+      {hasTagRow && (
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           {/* Your side leads the row: it is the one thing on a pregame card
@@ -1000,9 +1015,9 @@ function PregameFooter({
               on a final). Gated like WatchRating beside it. */}
           {!live && !settled && <MoveIndicator move={move} open={game.lines.spreadOpen} />}
           {!live && <WatchRating score={watch} />}
-
         </div>
       </div>
+      )}
 
       {/* POOL-3b, owner report 2026-08-21: "I want the pickem picks shown at the
           bottom with who picked what on that game."
