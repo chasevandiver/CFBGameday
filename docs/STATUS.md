@@ -1700,7 +1700,7 @@ deliberate deferrals, each recorded below with what it would take.
       only job in the chain with no safe way to exercise it, which is a strange
       property for the one that writes the receipts. · **decision** · S
 
-- [ ] **SYS-1 — the consensus flag has never once been true, and cannot be.**
+- [x] **SYS-1 — the consensus flag has never once been true, and cannot be.**
       Found 2026-08-22 by the first `freeze-dry-run`: all 8 Week 0 rows carried
       `consensus_flag: false`. Not chance — structural.
       `priceGame` requires **all four** of model, SP+, FPI and Elo to be
@@ -1730,7 +1730,33 @@ deliberate deferrals, each recorded below with what it would take.
       most-recent-week fallback), and whether consensus should require all four
       or agree on three when one system has no data for the season. The second
       is the real question — as written, one absent feed silently disables a
-      flag that every frozen receipt carries. · **decision** · S
+      flag that every frozen receipt carries.
+      **Answered and shipped 2026-08-22, owner call: option A.** First the
+      cheap possibility was ruled out — `eloRatings(SEASON)` now falls back to
+      week 1 when the seasonal call is empty, and a dispatched `sync-systems`
+      (Actions 32599333453) came back `by_system {sp:138, fpi:138, elo:0}`,
+      `empty_systems ["elo"]`. **CFBD has no 2026 Elo at all**, seasonal or
+      week-scoped. Not a parameter problem.
+      So consensus now means *the model and every external system THAT HAS A
+      NUMBER lean the same way against the line*, with at least
+      `MIN_CONSENSUS_SYSTEMS` (2) externals present. Two is the floor because
+      one external is the model plus a friend and none is the model agreeing
+      with itself — a **definition, not a fitted parameter**, so it sits beside
+      `priceGame` rather than in `DEFAULT_PARAMS` and needs no tuner.
+      **`MODEL_VERSION` deliberately does not move**: `consensusFlag` annotates
+      a receipt and feeds no spread, edge or probability, so nothing downstream
+      changes and AGENTS.md's gate is not in play.
+      The freeze records **how** the flag was reached — `adjustments.consensus
+      { agreed, available }` — in the existing jsonb rather than a new column,
+      which matters six days out: a column would have to be applied to
+      production before the code writing it deploys or every insert fails. It
+      also stays truthful when Elo returns and the denominator becomes 3.
+      Seven tests, mutation-checked twice. The per-system counts are the other
+      half and the more durable one: `rows: 276` looked healthy for months.
+      **Still open, deliberately:** nothing has confirmed a flag actually flips
+      true on the eight openers. The dry-run summary reports the three Aug 28
+      fields, not the consensus counts, so a `false` there could be real
+      disagreement or a rule still not firing. · watch
 - [ ] **FREEZE-2 — three of eight Week 0 openers flag BIG_EDGE, two with the
       sign flipped.** From the same dry-run. Recorded as an observation, not a
       defect: preseason ratings on teams with zero games played is exactly when
@@ -1746,7 +1772,7 @@ deliberate deferrals, each recorded below with what it would take.
       Two of those have the model on the underdog outright. Worth an eye before
       the Aug 28 freeze makes them permanent receipts — which is the whole
       reason the dry-run exists. · watch
-- [ ] **GRP-6 — the betting group sheet is CFB-only while its own standings are
+- [x] **GRP-6 — the betting group sheet is CFB-only while its own standings are
       not.** Owner report 2026-08-22 with a screenshot: *"on this it doesn't
       show nfl picks on the group it looks like it just has cfb picks."*
       Correct. `BettingHome` calls
@@ -1757,7 +1783,22 @@ deliberate deferrals, each recorded below with what it would take.
       standings caption reads `CFB 8-9 … · NFL x-x` off `member.leagueSplit`
       (`betting-groups.ts:46`), so the records are cross-league and the sheet is
       not. The ledger is one book by design; the group sheet is the surface that
-      forgot. · S/M
+      forgot.
+      **Fixed 2026-08-22.** The data was never the problem — `fetchBettingSheet`
+      has read both leagues since 0042 (*"the sheet is its members' one book"*).
+      Only the display was week-and-league shaped.
+      **Scoped by the selected week's own kickoffs, not by the NFL calendar.**
+      The two leagues do not share week numbers and "Week 0" is a CFB idea, so
+      what belongs here is what the group had money on *while this week was
+      being played*. One narrow read places the off-slate ids in that window;
+      only what lands inside it is loaded.
+      Reuses `outsideWeekIds` and `fetchSlateView`'s `alsoGameIds` — both built
+      for HUB-2 three hours earlier, both asking the identical question — rather
+      than a second loader. `WEEK_NONE` is how a caller says *the ids are the
+      whole query*.
+      The share text and the bets image see the merged set too, or the card
+      would have kept omitting exactly the bets the sheet just started showing.
+      **Not seen rendered.** · S/M
 - [ ] **GRP-7 — tap a member, see what they are worth to YOU.** Owner request
       2026-08-22: *"I want to be able to click on another users record and see
       what their stats are as well… what my record is tailing or fading him.

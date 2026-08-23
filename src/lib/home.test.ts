@@ -522,3 +522,24 @@ describe("recordTone", () => {
     expect(recordTone({ wins: 0, losses: 1 })).toBe("loss");
   });
 });
+
+/**
+ * GRP-6 reuses `outsideWeekIds` to ask the same question of a betting group's
+ * sheet — which of these game ids does the loaded slate not already cover. The
+ * sheet was one week of one league, so every NFL bet a member logged was
+ * invisible on the group page while the standings two sections down printed
+ * "CFB 8-9 · NFL 3-1" off the same book.
+ */
+describe("outsideWeekIds serves the group sheet too", () => {
+  it("takes bets alone, with no picks — a betting group has none", () => {
+    const onSlate = new Set([100, 101]);
+    expect(
+      outsideWeekIds([], [{ game_id: 100 }, { game_id: 900 }, { game_id: 901 }], onSlate),
+    ).toEqual([900, 901]);
+  });
+
+  it("returns nothing when the slate already covers every bet", () => {
+    // The common case for a CFB-only week: no second loader call at all.
+    expect(outsideWeekIds([], [{ game_id: 100 }], new Set([100, 101]))).toEqual([]);
+  });
+});
