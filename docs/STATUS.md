@@ -1920,6 +1920,31 @@ deliberate deferrals, each recorded below with what it would take.
       at whatever `cover_flips` has actually witnessed — the table only began
       recording on 0026, so early-season numbers are floors, not history. · M
 
+- [x] **GRP-10 — the season's numbers come home to the ledger, and the follow
+      list learns to speak in sentences.** Owner screenshot, 2026-08-23, on the
+      first rendered member page: *"It's a bit confusing on the who they follow
+      for fading and tailing. Also I wanted the season, in numbers to be on
+      their personal ledger as well."* Both fixed 2026-08-23.
+      **The confusion was direction, and the dashes.** A row reading
+      `chasevandiver   tailing —   fading 0-1` never says whose record it is or
+      which way the verbs point. Now: a subtitle under the heading —
+      *"{name}'s record when they bet behind — or against — each group-mate"* —
+      the verbs are phrases with a subject (*"tails them 3-1 +2.1u"*), and **an
+      empty half simply is not said**: the dashes were most of the noise. A
+      followed member with nothing graded reads *"followed, nothing graded
+      yet"*. The group-wide trio also renamed — *"Others tailing them"* — so
+      the three tail/fade denominators on one page (the group's, yours, theirs)
+      each carry their own words.
+      **"The season, in numbers" is now on `/ledger` too**, between the curve
+      and the tail/fade audit — bad beats, backdoors, current run, longest
+      heater, best win, worst loss, computed for your own book. Extracted to
+      one shared `SeasonNumbers` component rather than two copies, because the
+      tiles carry *definitions* (what counts as a bad beat, what breaks a run)
+      and two spellings of a definition is how one word comes to mean two
+      things on two pages. `bet-stats` generalised to a structural `StatBet`
+      so the ledger's rows fit without a mapping layer that would drift.
+      **Not seen rendered.** · S/M
+
 ### 2.1i The pool lane — owner report, 2026-08-21
 
 Six requests from a night of using the app against live football, in the order

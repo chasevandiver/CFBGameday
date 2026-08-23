@@ -10,9 +10,26 @@
  */
 
 import { tally, type Tally, type Wager } from "./records";
-import type { ClassifiedBet } from "./tailing";
+import type { WagerResult } from "./records";
 
-const asWager = (b: ClassifiedBet): Wager => ({
+/**
+ * The slice of a bet these functions read — structural on purpose, so the
+ * group sheet's `ClassifiedBet` and the ledger's own rows both fit without a
+ * mapping layer that would drift.
+ */
+export interface StatBet {
+  id: number;
+  gameId: number | null;
+  betType: string;
+  side: string | null;
+  units: number;
+  placedAt: string;
+  result: WagerResult;
+  payoutUnits: number | null;
+  clv: number | null;
+}
+
+const asWager = (b: StatBet): Wager => ({
   result: b.result,
   units: b.units,
   payoutUnits: b.payoutUnits,
@@ -33,7 +50,7 @@ export interface MarketSplit {
  * than earning a tile per exotic — a grid of six one-bet categories reads as
  * noise, and "Other 1-0" reads as a footnote, which is what it is.
  */
-export function marketSplit(bets: ClassifiedBet[]): MarketSplit[] {
+export function marketSplit(bets: StatBet[]): MarketSplit[] {
   const buckets: Array<{ key: string; label: string; match: (t: string) => boolean }> = [
     { key: "spread", label: "Spreads", match: (t) => t === "spread" },
     { key: "total", label: "Totals", match: (t) => t === "total" },
@@ -57,7 +74,7 @@ export interface Streaks {
 }
 
 /** `bets` in any order; graded wins/losses are sorted by placement here. */
-export function streaks(bets: ClassifiedBet[]): Streaks {
+export function streaks(bets: StatBet[]): Streaks {
   const decided = bets
     .filter((b) => b.result === "win" || b.result === "loss")
     .sort((a, b) => a.placedAt.localeCompare(b.placedAt) || a.id - b.id)
@@ -86,19 +103,19 @@ export function streaks(bets: ClassifiedBet[]): Streaks {
 
 export interface Extremes {
   /** Their best day, by what it actually paid. */
-  bestWin: ClassifiedBet | null;
+  bestWin: StatBet | null;
   /** Their worst, by what it cost — units risked, since a loss pays nothing. */
-  worstLoss: ClassifiedBet | null;
+  worstLoss: StatBet | null;
 }
 
-export function extremes(bets: ClassifiedBet[]): Extremes {
+export function extremes(bets: StatBet[]): Extremes {
   const wins = bets.filter((b) => b.result === "win");
   const losses = bets.filter((b) => b.result === "loss");
-  const bestWin = wins.reduce<ClassifiedBet | null>(
+  const bestWin = wins.reduce<StatBet | null>(
     (best, b) => (best === null || (b.payoutUnits ?? 0) > (best.payoutUnits ?? 0) ? b : best),
     null,
   );
-  const worstLoss = losses.reduce<ClassifiedBet | null>(
+  const worstLoss = losses.reduce<StatBet | null>(
     (worst, b) => (worst === null || b.units > worst.units ? b : worst),
     null,
   );
@@ -135,7 +152,7 @@ export interface LateFlips {
  * total only, and an ML "bad beat" (blowing a lead) is a different fact this
  * table does not record.
  */
-export function lateFlips(bets: ClassifiedBet[], flips: FlipRow[]): LateFlips {
+export function lateFlips(bets: StatBet[], flips: FlipRow[]): LateFlips {
   const late = flips.filter((f) => (f.period ?? 0) >= 4);
   const key = (gameId: number, market: string) => `${gameId}:${market}`;
   const byMarket = new Map<string, FlipRow[]>();
