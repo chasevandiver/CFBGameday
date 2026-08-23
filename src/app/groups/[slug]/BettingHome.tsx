@@ -13,6 +13,7 @@ import { ShareImageButton } from "../../../components/ShareImageButton";
 import { ShareSheetButton } from "../../../components/group/ShareSheetButton";
 import { WeekJump } from "../../../components/group/WeekJump";
 import { byUnits, fetchBettingSheet } from "../../../lib/betting-groups";
+import { outsideWeekIds } from "../../../lib/home";
 import { weekLabel, type WeekRef } from "../../../lib/group-weeks";
 import type { GroupSummary } from "../../../lib/groups";
 import type { BetRow } from "../../../lib/db-types";
@@ -23,7 +24,7 @@ import {
   shareableBets,
   type BetCardGame,
 } from "../../../lib/share-card-build";
-import { fetchSlateView } from "../../../lib/queries";
+import { fetchSlateView, WEEK_NONE } from "../../../lib/queries";
 import type { SeasonType } from "../../../lib/season";
 import { pairStatsFor } from "../../../lib/tailing";
 
@@ -72,7 +73,50 @@ export async function BettingHome({
       : Promise.resolve({ data: null }),
   ]);
 
-  const onTheSheet = slate.games
+  /* GRP-6. The sheet was one `fetchSlateView` — one league, one week — so every
+     NFL bet a member logged was invisible here, while the standings two
+     sections down printed "CFB 8-9 · NFL 3-1" off the same book. `sheet` has
+     always read both leagues (0042); only the display forgot.
+     Scoped by the selected week's own dates rather than by the NFL calendar,
+     because the two leagues do not share week numbers and "week 0" is a CFB
+     idea. What belongs on this sheet is what the group had money on while this
+     week was being played. */
+  const onSlate = new Set(slate.games.map((g) => g.id));
+  const kickoffs = slate.games
+    .map((g) => g.startTs)
+    .filter((t): t is string => t !== null)
+    .sort();
+  /* `outsideWeekIds` rather than a near-copy of it: HUB-2 asks the same
+     question of the hub's positions — which of the viewer's game ids does the
+     loaded slate not already cover — and two spellings of one rule is how they
+     drift. Picks are empty here; a betting group has none. */
+  const otherIds = outsideWeekIds([], sheet.raw, onSlate);
+  let otherGames: typeof slate.games = [];
+  if (otherIds.length > 0 && kickoffs.length > 0) {
+    /* One narrow read to place them, then one loader call for the ones that
+       land inside this week. A bet on a game three weeks ago is a real bet and
+       belongs on the ledger; it does not belong on this week's sheet. */
+    const { data: placed } = await supabase
+      .from("games")
+      .select("id, season_id")
+      .in("id", otherIds)
+      .gte("start_ts", kickoffs[0])
+      .lte("start_ts", kickoffs[kickoffs.length - 1]);
+    const bySeason = new Map<number, number[]>();
+    for (const g of (placed ?? []) as Array<{ id: number; season_id: number }>) {
+      bySeason.set(g.season_id, [...(bySeason.get(g.season_id) ?? []), g.id]);
+    }
+    const loaded = await Promise.all(
+      [...bySeason].map(([sid, ids]) =>
+        /* WEEK_NONE: these games have no week of their own worth naming here,
+           and the ids are the whole query. */
+        fetchSlateView(supabase, sid, WEEK_NONE, userId, "regular", null, group.id, ids),
+      ),
+    );
+    otherGames = loaded.flatMap((s) => s.games);
+  }
+
+  const onTheSheet = [...slate.games, ...otherGames]
     .filter((g) => g.groupBets.length > 0)
     .sort((a, b) => (a.startTs ?? "9999").localeCompare(b.startTs ?? "9999"));
   const standings = [...sheet.members].sort(byUnits);
@@ -81,7 +125,7 @@ export async function BettingHome({
   // The image share is the viewer's OWN bets, not the whole sheet — a card
   // titled "<display_name> Bets" carrying someone else's picks would be a lie,
   // and the text share already covers the whole-sheet case.
-  const weekGameIds = slate.games.map((g) => g.id);
+  const weekGameIds = [...slate.games, ...otherGames].map((g) => g.id);
   const { data: myBetRows } =
     userId && weekGameIds.length > 0
       ? await supabase
@@ -92,7 +136,7 @@ export async function BettingHome({
       : { data: [] };
   const myOpen = shareableBets((myBetRows ?? []) as BetRow[]);
   const cardGameById = new Map<number, BetCardGame>(
-    slate.games.map((g) => [
+    [...slate.games, ...otherGames].map((g) => [
       g.id,
       {
         startTs: g.startTs,

@@ -121,6 +121,17 @@ function toTeamView(
  * view" — signed out, or signed in with no membership — and the pick layer is
  * simply empty, which is the honest rendering of "you have nothing on this".
  */
+/**
+ * A week number no game carries, for callers that want ONLY `alsoGameIds`.
+ *
+ * `fetchSlateView` is week-shaped by design and every other caller wants a
+ * week. GRP-6 wants the opposite — a handful of named games from the other
+ * league, with no week of their own — and inventing a second loader for that
+ * would be two implementations of the same fifteen queries. Passing a week
+ * nothing matches leaves the id branch of the `or` as the whole query.
+ */
+export const WEEK_NONE = -1;
+
 export async function fetchSlateView(
   supabase: SupabaseClient,
   seasonId: number,
