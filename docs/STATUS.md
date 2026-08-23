@@ -1889,6 +1889,37 @@ deliberate deferrals, each recorded below with what it would take.
       Four more jsdom tests, mutation-checked: forcing the name to plain text
       turns the link test red. **Not seen rendered.** · M
 
+- [x] **GRP-9 — the member page grows the deeper cuts: bad beats, who they
+      follow, the season in numbers.** Owner, minutes after GRP-8 merged:
+      *"I want it broken down by person tailed. And for the bet stats can we
+      get more bet stats tracked like the bad beats, etc.?"* Built 2026-08-23,
+      all of it derived at read time from rows that already exist — no new
+      table, no new write.
+      **Who they follow, by person.** `pairStatsFor` run for the member being
+      viewed — the identical function GRP-7 runs for the viewer — so the page
+      says *"Hayden tailing Chase 3-1 +2.1u · fading Dave 0-2 −2.0u"*, one row
+      per group-mate they have ever followed, with the record attached.
+      **Bad beats are a join, not a memory.** `cover_flips` (0026) has recorded
+      every late ATS/O-U transition live precisely because the moment cannot be
+      reconstructed afterwards. A **bad beat** is a graded spread/total loss
+      whose game logged a 4th-quarter-or-later flip AWAY from the side they
+      held — a loss that was a win in the fourth. Its mirror, the **backdoor**,
+      is a win the late flip swung TO them, which nobody mentions at the bar.
+      Moneylines are excluded by construction: `cover_flips.market` is spread
+      or total only, and a blown ML lead is a different fact that table does
+      not record.
+      Also on the page: **by-market records** (spreads / totals / moneylines,
+      with exotics pooled under "Other" — a grid of one-bet categories reads as
+      noise), **current run** (pushes neither extend nor break it: a heater
+      does not end on a tie), **longest heater**, **best win** by what it paid
+      and **worst loss** by what it risked, since a loss pays nothing and its
+      size is the stake.
+      All pure functions in `src/lib/bet-stats.ts`, twelve unit tests covering
+      the semantic edges (a pre-4th flip is just football; a total flip is not
+      a spread bad beat). **Not seen rendered**, and the bad-beat counts start
+      at whatever `cover_flips` has actually witnessed — the table only began
+      recording on 0026, so early-season numbers are floors, not history. · M
+
 ### 2.1i The pool lane — owner report, 2026-08-21
 
 Six requests from a night of using the app against live football, in the order
