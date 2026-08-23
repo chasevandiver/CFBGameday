@@ -508,6 +508,13 @@ describe("the line-move glyph is pregame furniture", () => {
     expect(container.querySelector("svg.lucide-arrow-up, svg.lucide-arrow-down")).toBeNull();
   });
 
+  it("takes its empty row with it — no dead band above SHEET (SLATE-4b)", () => {
+    // Gating the glyph alone left the wrapper's padding behind: "there's
+    // still a weird gap where it was." The row only renders with content.
+    const { container } = renderCard(live({}));
+    expect(container.querySelector(".items-start.justify-between")).toBeNull();
+  });
+
   it("still renders pregame, where its neighbours give it context", () => {
     const { container } = renderCard(
       live({ status: "scheduled", period: null, clock: null, homePoints: null, awayPoints: null }),

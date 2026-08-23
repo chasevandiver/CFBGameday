@@ -1958,7 +1958,12 @@ deliberate deferrals, each recorded below with what it would take.
       which the SHEET below already shows. Same reasoning as HUB-1 dropping
       held-vs-now on a final. Gated `!live && !settled`, matching the
       `WatchRating` beside it. Two tests, mutation-checked. Fixed 2026-08-23.
-      · S
+      **SLATE-4b, same night:** *"there's still a weird gap where it was."*
+      Gating the glyph left its ROW behind — an empty flex div spends no height
+      of its own, but the wrapper's padding plus the layers' own margins still
+      opened a dead band between the last play and SHEET. The row now renders
+      only when something will sit in it, `hasTagRow` mirroring each child's
+      own null condition. One more test, mutation-checked. · S
 
 ### 2.1i The pool lane — owner report, 2026-08-21
 
