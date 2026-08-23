@@ -1395,12 +1395,25 @@ deliberate deferrals, each recorded below with what it would take.
       honest — a receipt priced six days early is a worse artifact than no
       receipt — but it is a hole either way, and it is now the *stated* behaviour
       rather than an accident of a merged week.
-      **Not fixed, and deliberately not eight days from Week 0.** The shapes are
-      a second cron (Monday, say) or a per-game "freeze N hours before kickoff",
-      which is the same per-game thinking `FREEZE_HORIZON_DAYS` already carries
-      and would retire the weekly cron entirely. Both change when receipts are
-      priced for every game in the season, which is not a change to make on the
-      week the first ones are written. · **decision** · S/M
+      **Decided 2026-08-23, owner call, after arriving at the hole
+      independently** — *"what about when the MAC has their Tuesday/Wednesday
+      games?"* The design is **per-game lead time**, not a second cron: freeze
+      each game when it comes within ~40 hours of ITS OWN kickoff (the current
+      Thursday→Saturday gap), with the job running daily. A Monday cron was
+      considered and rejected — with the 8-day horizon it would freeze the whole
+      upcoming weekend five days early, which is FREEZE-1's failure inverted.
+      Under per-game lead: a Tuesday MAC game freezes Sunday night, a Saturday
+      game freezes Thursday night exactly as today, and **every receipt in the
+      season is priced the same distance from its kick** — more comparable than
+      "Thursday for everyone", not less. `freezableGames` already thinks
+      per-game, and `freeze-dry-run` means the change can be rehearsed against
+      real weeks before it ever writes a row: run the dry-run daily for a week
+      in September and diff what it would have frozen against what Thursday did.
+      **Build in early September.** First midweek CFB game is Tuesday Oct 6
+      (week 6), so there are ~5 weeks of runway after launch, and the Aug 28
+      freeze ships unchanged. Sibling of SLATE-3 below — one is when receipts
+      are stamped, the other is what shows before stamping. · **scheduled
+      early Sep** · M
 - [ ] **SLATE-2 — 391 games sit on the wrong day tab, and the card knows better
       than the tab does.** Found 2026-08-21. CFBD gives an unscheduled game a
       placeholder kickoff of **04:00 UTC** — midnight Eastern on game day — which
@@ -1420,6 +1433,25 @@ deliberate deferrals, each recorded below with what it would take.
       **The fix is small and is not a date fix**: a TBD game should not be placed
       on a day tab at all, the way a null one already isn't. Sized after Week 0
       because the surface it changes is the one being watched on the 29th. · S
+- [ ] **SLATE-3 — the model is invisible exactly when picks are made.** Filed
+      2026-08-23 from an owner question (*"is there a reason we'd wait until
+      Thursday for the predictions?"*) whose honest answer exposed an every-week
+      gap, not a Week 0 one: predictions exist on the site ONLY as frozen
+      receipt rows, and the freeze fires Thursday 10pm CT — so the slate shows
+      **no model number Monday through Thursday**, which is precisely when the
+      crew browses lines and makes picks. The roadmap's own Wednesday is *"lines
+      are up, edges as information"*, and the current design cannot deliver
+      edges on a Wednesday.
+      **The fix is decoupling display from freezing**, not moving the freeze:
+      show a live-priced model lean on cards before the receipt exists, clearly
+      marked unfrozen (*"model lean · freezes Thu"*), while the permanent row is
+      still stamped on FREEZE-1's schedule. `priceGame` is pure and the dry-run
+      already exercises exactly this path server-side; the work is the display
+      surface and the honesty marking, not the pricing.
+      **Deliberately not built before Week 0** — it changes the slate cards in
+      launch week. Sibling of FREEZE-1 above: one is when receipts are stamped,
+      the other is what shows before stamping. Build together in early
+      September. · **scheduled early Sep** · M
 
 - [x] **AUTH-4 — the magic link cannot sign anyone in to the installed app, and
       that is where the crew will be on the 27th.** Owner question, 2026-08-22:
