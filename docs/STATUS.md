@@ -1945,6 +1945,21 @@ deliberate deferrals, each recorded below with what it would take.
       so the ledger's rows fit without a mapping layer that would drift.
       **Not seen rendered.** · S/M
 
+- [x] **SLATE-4 — the orphaned "↑ 3" on a live card.** Owner screenshot,
+      2026-08-23, PHI@NE in Q4: *"What is the up arrow 3 above the bet sheet?
+      It looks weird."* It is the **line-movement indicator** — spread moved 3
+      off its opener, arrow for direction — and pregame it reads fine, sitting
+      among labelled chips. Live, every neighbour hides (`EdgeChip` null
+      without a prediction, `ConsensusChip` off, `WatchRating` gated `!live`,
+      bet chips settled away) and the glyph floats alone with its explanation
+      in a hover tooltip a phone cannot show.
+      **It is also stale by then**: the movement is PREGAME movement, the board
+      has stopped, and the number that matters mid-game is the one you hold —
+      which the SHEET below already shows. Same reasoning as HUB-1 dropping
+      held-vs-now on a final. Gated `!live && !settled`, matching the
+      `WatchRating` beside it. Two tests, mutation-checked. Fixed 2026-08-23.
+      · S
+
 ### 2.1i The pool lane — owner report, 2026-08-21
 
 Six requests from a night of using the app against live football, in the order
