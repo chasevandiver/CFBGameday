@@ -2198,6 +2198,10 @@ export async function freezeJob(
           edge: r.edge,
           edge_flag: r.edge_flag,
           consensus_flag: r.consensus_flag,
+          /* SYS-1's loose end: a `false` flag on a printed row could be real
+             disagreement between the systems or a rule that still is not
+             firing, and the flag alone cannot say which. "agreed 1 of 2" can. */
+          consensus: (r.adjustments as { consensus?: object }).consensus,
         }),
       );
     }

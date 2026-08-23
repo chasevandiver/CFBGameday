@@ -15,6 +15,7 @@ import { WeekJump } from "../../../components/group/WeekJump";
 import { byUnits, fetchBettingSheet } from "../../../lib/betting-groups";
 import { outsideWeekIds } from "../../../lib/home";
 import { weekLabel, type WeekRef } from "../../../lib/group-weeks";
+import { EMPTY_TALLY } from "../../../lib/records";
 import type { GroupSummary } from "../../../lib/groups";
 import type { BetRow } from "../../../lib/db-types";
 import { buildSheetShareContext } from "../../../lib/group-share";
@@ -258,7 +259,28 @@ export async function BettingHome({
         </div>
         <ul className="flex flex-col gap-2">
           {standings.map((m, i) => (
-            <SourceCard key={m.userId} place={i + 1} member={m} isMe={m.userId === userId} />
+            <SourceCard
+              key={m.userId}
+              place={i + 1}
+              member={m}
+              isMe={m.userId === userId}
+              /* GRP-7: the viewer's own record against this member, tap to
+                 open. `pairs` is already computed for the pair panel below;
+                 handing each row its slice costs nothing new. Signed in but
+                 never followed them synthesizes an EMPTY pair rather than
+                 null: the row still expands, and "you have never tailed
+                 Hayden" is an answer. Null — a plain card — is only for the
+                 signed-out visitor, who has no history to show. */
+              pair={
+                userId
+                  ? (pairs.find((pr) => pr.otherId === m.userId) ?? {
+                      otherId: m.userId,
+                      tailing: EMPTY_TALLY,
+                      fading: EMPTY_TALLY,
+                    })
+                  : null
+              }
+            />
           ))}
         </ul>
       </section>

@@ -1799,7 +1799,7 @@ deliberate deferrals, each recorded below with what it would take.
       The share text and the bets image see the merged set too, or the card
       would have kept omitting exactly the bets the sheet just started showing.
       **Not seen rendered.** · S/M
-- [ ] **GRP-7 — tap a member, see what they are worth to YOU.** Owner request
+- [x] **GRP-7 — tap a member, see what they are worth to YOU.** Owner request
       2026-08-22: *"I want to be able to click on another users record and see
       what their stats are as well… what my record is tailing or fading him.
       That's the social fun of it."*
@@ -1814,7 +1814,23 @@ deliberate deferrals, each recorded below with what it would take.
       group. What is missing is a per-member view and the viewer-scoped cut.
       Pairs with G7/G8/G11, which are held pending a pre-registered sample of
       graded picks — **but this one is not an inference**, it is a record of
-      what two people actually did, so it does not need that gate. · M
+      what two people actually did, so it does not need that gate.
+      **Built 2026-08-23.** Each standings row (except your own) is now a
+      `<details>`: tap and it opens onto **"You tailing them"** and **"You
+      fading them"** — `pairStatsFor`'s cut for that one member, which was
+      already computed for the pairs panel and never handed to the rows.
+      Three states, deliberate: your own row is a plain card (you cannot tail
+      yourself); signed out is a plain card (no history to show); signed in but
+      never-followed **still expands and answers with dashes** — an expando
+      that sometimes opens onto nothing teaches people to stop tapping, and
+      "you have never tailed Hayden" is an answer. The caller synthesizes the
+      empty pair so the component never has to guess which null it holds.
+      The HUB-3 lesson applied up front rather than re-learned: chevron on the
+      row, `min-h-11` on the summary, and the group-wide trio keeps its own
+      words ("Tailing them") apart from the personal cut ("You tailing them"),
+      because they are different denominators and the same label would be a
+      lie. Five jsdom tests, mutation-checked — flattening the expando turns
+      three red. **Not seen rendered.** · M
 
 ### 2.1i The pool lane — owner report, 2026-08-21
 

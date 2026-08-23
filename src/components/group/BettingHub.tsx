@@ -1,8 +1,8 @@
-import { Flame, Snowflake, TrendingDown, TrendingUp } from "lucide-react";
+import { ChevronDown, Flame, Snowflake, TrendingDown, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import type { SheetMember } from "../../lib/betting-groups";
 import { DEFAULT_TZ, kickParts, tzLabel } from "../../lib/kick";
-import { formatRecord, type Tally } from "../../lib/records";
+import { EMPTY_TALLY, formatRecord, type Tally } from "../../lib/records";
 import { betSideLabel, type GameView } from "../../lib/slate";
 import type { PairStats } from "../../lib/tailing";
 import { TeamLine } from "../slate/TeamLine";
@@ -77,6 +77,74 @@ export function SourceCard({
   place,
   member,
   isMe,
+  pair,
+}: {
+  place: number;
+  member: SheetMember;
+  isMe: boolean;
+  /**
+   * The VIEWER's record against this member (GRP-7). Null only when there is
+   * no viewer to have one — signed out, or the preview. A signed-in viewer who
+   * has never followed this member gets an EMPTY pair from the caller, so the
+   * row still expands and answers with dashes. Distinct from `tailedByOthers`
+   * below, which is the whole group's — "how has everyone done riding them"
+   * and "how have I done riding them" diverge, and the second is the one that
+   * starts an argument.
+   */
+  pair: PairStats | null;
+}) {
+  /* Nothing personal to open on your own row or signed out — a plain card,
+     exactly as before. Everyone else expands: owner request 2026-08-22,
+     "click on another user's record and see what their stats are… and what my
+     record is tailing or fading him. That's the social fun of it."
+     A `<details>` for the same reasons as SettledDisclosure — keyboard and
+     screen-reader semantics for free, server-rendered children — and the
+     HUB-3 lesson applied up front rather than re-learned: the row already sits
+     on a card surface, and a chevron says it opens. */
+  if (isMe || pair === null) {
+    return (
+      <li className={`card px-3.5 py-2.5 ${isMe ? "ring-1 ring-inset ring-accent/40" : ""}`}>
+        <SourceCardBody place={place} member={member} isMe={isMe} />
+      </li>
+    );
+  }
+  return (
+    <li className={`card overflow-hidden ${isMe ? "ring-1 ring-inset ring-accent/40" : ""}`}>
+      <details>
+        <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3.5 py-2.5 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent [&::-webkit-details-marker]:hidden">
+          <span className="min-w-0 flex-1">
+            <SourceCardBody place={place} member={member} isMe={isMe} />
+          </span>
+          <ChevronDown
+            size={14}
+            aria-hidden
+            className="shrink-0 text-dim transition-transform duration-150 motion-reduce:transition-none [details[open]_&]:rotate-180"
+          />
+        </summary>
+        {/* YOUR history with them, not the group's. Rendered even when empty —
+            "you have never tailed Hayden" is an answer, and an expando that
+            sometimes opens onto nothing teaches people to stop tapping. */}
+        <dl className="grid grid-cols-2 gap-2 border-t border-chalk/8 px-3.5 py-2.5 text-[10.5px]">
+          <Mini
+            label="You tailing them"
+            t={pair?.tailing ?? EMPTY_TALLY}
+            hint="Your bets that rode their side after they posted it"
+          />
+          <Mini
+            label="You fading them"
+            t={pair?.fading ?? EMPTY_TALLY}
+            hint="Your bets that took the other side after they posted"
+          />
+        </dl>
+      </details>
+    </li>
+  );
+}
+
+function SourceCardBody({
+  place,
+  member,
+  isMe,
 }: {
   place: number;
   member: SheetMember;
@@ -84,7 +152,7 @@ export function SourceCard({
 }) {
   const s = member.stats;
   return (
-    <li className={`card px-3.5 py-2.5 ${isMe ? "ring-1 ring-inset ring-accent/40" : ""}`}>
+    <>
       <div className="flex items-center gap-3">
         <span className="stat w-5 shrink-0 text-center text-sm text-chalk/35">{place}</span>
         <span className="min-w-0 flex-1">
@@ -137,7 +205,7 @@ export function SourceCard({
           />
         </dl>
       )}
-    </li>
+    </>
   );
 }
 
