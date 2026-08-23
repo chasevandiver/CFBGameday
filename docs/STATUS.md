@@ -1864,6 +1864,31 @@ deliberate deferrals, each recorded below with what it would take.
       lie. Five jsdom tests, mutation-checked — flattening the expando turns
       three red. **Not seen rendered.** · M
 
+- [x] **GRP-8 — the name is the door: a member's full page.** Owner, hours
+      after GRP-7 shipped: *"I want to be able to click on their name and see
+      other users full stats and bet history. Not just tail/fade."* Built
+      2026-08-23 as `/groups/[slug]/member/[memberId]`.
+      **A season of bets is a list, and a list belongs on a page, not in an
+      accordion** — the GRP-7 expando keeps the quick answer (your two numbers
+      against them) and gains a "Full stats & bet history →" footer; the name
+      itself links through. Your own name does not link (your page is the
+      ledger), and on `/demo`/preview the ids are invented so names stay plain.
+      **The page adds no reach a member did not already have.** It renders the
+      same `fetchBettingSheet` rows the group home always has — RLS allowed
+      exactly this the whole time; the page gives it a URL. Gated like the
+      group home: `resolveActiveGroup` + membership, with "not found" and "not
+      yours" deliberately one answer, and a uuid not in the group 404s the same
+      way a wrong slug does.
+      What it shows: overall record/units/ROI/CLV with the form pip, the
+      CFB/NFL split, the group-relational trio (they open / tailed / faded),
+      **your** tailing/fading pair on someone else's page, and the season's bet
+      history newest-first — each row with date, matchup, their side at their
+      number, units, tailed/faded counts on their opens, and the grader's
+      Won/Lost/Push/Void chip (an ungraded row carries no chip, which reads as
+      "still open" without a fifth word).
+      Four more jsdom tests, mutation-checked: forcing the name to plain text
+      turns the link test red. **Not seen rendered.** · M
+
 ### 2.1i The pool lane — owner report, 2026-08-21
 
 Six requests from a night of using the app against live football, in the order
