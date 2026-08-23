@@ -991,7 +991,14 @@ function PregameFooter({
               ))}
           <EdgeChip flag={p?.edgeFlag ?? null} edge={p?.edge ?? null} />
           <ConsensusChip on={p?.consensus ?? false} />
-          <MoveIndicator move={move} open={game.lines.spreadOpen} />
+          {/* SLATE-4, owner report 2026-08-23: "what is the up arrow 3? It
+              looks weird." Pregame this sits among labelled chips and reads as
+              line movement; live, every neighbour hides and it floats alone as
+              a bare glyph whose explanation is a hover tooltip a phone cannot
+              show. It is also stale by then — the movement is PREGAME movement,
+              and the board has stopped (the same reason HUB-1 drops held-vs-now
+              on a final). Gated like WatchRating beside it. */}
+          {!live && !settled && <MoveIndicator move={move} open={game.lines.spreadOpen} />}
           {!live && <WatchRating score={watch} />}
 
         </div>

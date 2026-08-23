@@ -491,3 +491,27 @@ describe("the pool layer reads like the sheet (POOL-3c)", () => {
     expect(container.textContent).not.toContain("Pool");
   });
 });
+
+/**
+ * SLATE-4, owner report 2026-08-23: *"What is the up arrow 3? It looks
+ * weird."* The line-movement indicator. Pregame it sits among labelled chips
+ * and reads as movement; live, every neighbour hides and it floats alone as a
+ * bare glyph whose explanation is a hover tooltip a phone cannot show — and
+ * the movement is PREGAME movement anyway, stale the moment the board stops.
+ */
+describe("the line-move glyph is pregame furniture", () => {
+  // spreadOpen -3.5 → spread -7 in the fixture: a real 3.5-point move, so the
+  // indicator WOULD render if only the data gated it.
+  it("does not render on a live card", () => {
+    const { container } = renderCard(live({}));
+    expect(container.textContent).not.toMatch(/3\.5/);
+    expect(container.querySelector("svg.lucide-arrow-up, svg.lucide-arrow-down")).toBeNull();
+  });
+
+  it("still renders pregame, where its neighbours give it context", () => {
+    const { container } = renderCard(
+      live({ status: "scheduled", period: null, clock: null, homePoints: null, awayPoints: null }),
+    );
+    expect(container.querySelector("svg.lucide-arrow-up, svg.lucide-arrow-down")).toBeTruthy();
+  });
+});
