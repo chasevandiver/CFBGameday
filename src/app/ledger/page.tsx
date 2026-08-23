@@ -7,7 +7,9 @@ import { ShareButton } from "../../components/ShareButton";
 import { DeleteWagerButton } from "../../components/DeleteWagerButton";
 import { RetagBetButton } from "../../components/RetagBetButton";
 import { ShareImageButton } from "../../components/ShareImageButton";
+import { SeasonNumbers } from "../../components/SeasonNumbers";
 import { StatTile } from "../../components/StatTile";
+import { extremes, lateFlips, streaks, type FlipRow, type StatBet } from "../../lib/bet-stats";
 import { UnitsCurve } from "../../components/UnitsCurve";
 import { MarkFutureButton } from "../../components/MarkFutureButton";
 import { VoidBetButton } from "../../components/VoidBetButton";
@@ -258,6 +260,42 @@ export default async function LedgerPage({
   // per-league split only appears once there are graded bets in BOTH leagues —
   // an all-CFB ledger looks exactly like it did before the NFL existed.
   const byLeague = tallyBy(graded, (b) => sportOfSeasonId(b.season_id));
+
+  /* GRP-10: the same "season, in numbers" a group-mate's page shows, on your
+     own book. One mapping into the shared StatBet shape (voids already
+     dropped by `graded`'s filter upstream is NOT enough here — streaks and
+     extremes read the unvoided set including open bets, so map from `bets`
+     minus voids), then the same pure functions and the same component. */
+  const statBets: StatBet[] = bets
+    .filter((b) => b.voided_at === null)
+    .map((b) => ({
+      id: b.id,
+      gameId: b.game_id,
+      betType: b.bet_type,
+      side: b.side,
+      units: Number(b.units),
+      placedAt: b.placed_at,
+      result: b.result,
+      payoutUnits: b.payout_units === null ? null : Number(b.payout_units),
+      clv: b.clv === null ? null : Number(b.clv),
+    }));
+  const flipGameIds = [
+    ...new Set(
+      statBets
+        .filter((b) => (b.betType === "spread" || b.betType === "total") && b.gameId !== null)
+        .map((b) => b.gameId as number),
+    ),
+  ];
+  const { data: flipRows } =
+    flipGameIds.length > 0
+      ? await supabase
+          .from("cover_flips")
+          .select("game_id, market, from_side, to_side, period")
+          .in("game_id", flipGameIds)
+      : { data: [] };
+  const seasonFlips = lateFlips(statBets, (flipRows ?? []) as FlipRow[]);
+  const seasonRun = streaks(statBets);
+  const seasonEnds = extremes(statBets);
   const cfbSplit = byLeague.get("cfb");
   const nflSplit = byLeague.get("nfl");
   const showSplit = cfbSplit !== undefined && nflSplit !== undefined;
@@ -437,6 +475,12 @@ export default async function LedgerPage({
               Cumulative units, bet by bet, oldest to newest.
             </p>
           </section>
+        )}
+
+        {graded.length > 0 && (
+          <div className="mb-6">
+            <SeasonNumbers id="season-numbers" flips={seasonFlips} run={seasonRun} ends={seasonEnds} />
+          </div>
         )}
 
         <TailFadeAudit groups={auditGroups} />

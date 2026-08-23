@@ -2,6 +2,7 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppNav } from "../../../../../components/AppNav";
+import { SeasonNumbers } from "../../../../../components/SeasonNumbers";
 import { FormPip, RecordAndUnits, Units } from "../../../../../components/group/BettingHub";
 import { ResultChip } from "../../../../../components/slate/chips";
 import { fetchBettingSheet } from "../../../../../lib/betting-groups";
@@ -163,14 +164,14 @@ export default async function GroupMemberPage({
           <Stat label="NFL" t={member.leagueSplit.nfl} />
           <Stat label="They open" t={s.originated} hint="Bets where they were first in the group" />
           <Stat
-            label="Tailing them"
+            label="Others tailing them"
             t={s.tailedByOthers}
-            hint="How everyone who rode them has done"
+            hint="How everyone who rode their bets has done"
           />
           <Stat
-            label="Fading them"
+            label="Others fading them"
             t={s.fadedByOthers}
-            hint="How everyone who took the other side has done"
+            hint="How everyone who took the other side of their bets has done"
           />
           {pair && (
             <>
@@ -193,44 +194,7 @@ export default async function GroupMemberPage({
         )}
 
         {history.some((b) => b.result === "win" || b.result === "loss") && (
-          <section className="mt-6" aria-labelledby="story-heading">
-            <SectionRule id="story-heading" title="The season, in numbers" />
-            <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              <Plain
-                label="Bad beats"
-                value={String(beats.badBeats)}
-                tone={beats.badBeats > 0 ? "loss" : undefined}
-                hint="Spread or total losses that were WINS in the 4th quarter — the cover left them late"
-              />
-              <Plain
-                label="Backdoors"
-                value={String(beats.backdoors)}
-                tone={beats.backdoors > 0 ? "win" : undefined}
-                hint="Wins the late flip swung TO them — the ones nobody mentions at the bar"
-              />
-              {run.current && (
-                <Plain
-                  label="Current run"
-                  value={`${run.current.length} ${run.current.kind === "win" ? "W" : "L"}${run.current.length > 1 ? "s" : ""}`}
-                  tone={run.current.kind}
-                  hint="Consecutive graded results — pushes neither extend nor break it"
-                />
-              )}
-              <Plain label="Longest heater" value={run.longestWin > 0 ? `${run.longestWin} straight` : "—"} hint="Most consecutive wins this season" />
-              <Plain
-                label="Best win"
-                value={ends.bestWin?.payoutUnits != null ? `+${ends.bestWin.payoutUnits.toFixed(1)}u` : "—"}
-                tone={ends.bestWin ? "win" : undefined}
-                hint="Their largest single payout"
-              />
-              <Plain
-                label="Worst loss"
-                value={ends.worstLoss ? `−${ends.worstLoss.units.toFixed(1)}u` : "—"}
-                tone={ends.worstLoss ? "loss" : undefined}
-                hint="Their largest single stake lost"
-              />
-            </dl>
-          </section>
+          <SeasonNumbers id="story-heading" flips={beats} run={run} ends={ends} />
         )}
 
         {theirPairs.length > 0 && (
@@ -240,6 +204,13 @@ export default async function GroupMemberPage({
               title="Who they follow"
               count={`${theirPairs.length} in the group`}
             />
+            {/* Owner report 2026-08-23: the bare "tailing — / fading 0-1" row
+                read as noise — whose record, in which direction? The rows are
+                sentences now, subject first, and an empty half simply is not
+                said: dashes were most of the confusion. */}
+            <p className="stat -mt-1 mb-2 text-[11px] text-chalk/50">
+              {member.name}&rsquo;s record when they bet behind — or against — each group-mate.
+            </p>
             {/* Broken down BY PERSON — the record they post when copying (or
                 opposing) each specific member, with receipts. This is
                 pairStatsFor run for the member on the page, exactly the
@@ -250,8 +221,13 @@ export default async function GroupMemberPage({
                   <span className="min-w-0 flex-1 truncate text-sm text-chalk">
                     {sheet.nameById.get(p.otherId) ?? "A member"}
                   </span>
-                  <PairCell label="tailing" t={p.tailing} />
-                  <PairCell label="fading" t={p.fading} />
+                  {p.tailing.decided > 0 && <PairCell label="tails them" t={p.tailing} />}
+                  {p.fading.decided > 0 && <PairCell label="fades them" t={p.fading} />}
+                  {p.tailing.decided === 0 && p.fading.decided === 0 && (
+                    <span className="stat shrink-0 text-[11px] text-chalk/35">
+                      followed, nothing graded yet
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -285,30 +261,6 @@ function SectionRule({ id, title, count }: { id: string; title: string; count?: 
       </h2>
       {count && <span className="stat text-[11px] text-dim">{count}</span>}
       <span className="h-px flex-1 bg-chalk/10" aria-hidden />
-    </div>
-  );
-}
-
-/** A tile whose value is a sentence fragment, not a Tally. */
-function Plain({
-  label,
-  value,
-  tone,
-  hint,
-}: {
-  label: string;
-  value: string;
-  tone?: "win" | "loss";
-  hint?: string;
-}) {
-  return (
-    <div className="card px-3 py-2" title={hint}>
-      <dt className="stat text-[10.5px] uppercase tracking-wide text-dim">{label}</dt>
-      <dd
-        className={`stat mt-0.5 text-sm ${tone === "win" ? "text-win" : tone === "loss" ? "text-loss" : "text-chalk"}`}
-      >
-        {value}
-      </dd>
     </div>
   );
 }
