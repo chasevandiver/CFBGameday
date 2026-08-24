@@ -215,6 +215,34 @@ shipping it.
 
 ## Log
 
+### Aug 24 — 09:P-16: the load rehearsal ran, and both bars pass
+
+The last zero-evidence area before kickoff. Ran in the dev container rather
+than owner-run: `next build && next start` against the **production** database
+(real Week 0 data, anon/RLS traffic, GETs only — nothing written), which is
+more realistic than the seeded-fixture plan in `audit/09 §8` and needed no
+seeding. The numbers, per house style:
+
+| Measurement | Result | Bar |
+|---|---|---|
+| Tick payload, `/api/slate?sport=cfb&week=0` | **9.1 KB** (NFL 17 KB) | < 300 KB — **33× under** |
+| `autocannon -c 15 -d 30` on the tick | p50 357 ms · p97.5 921 ms · p99 1.19 s · 1,075/1,075 = 200 | p95 < 1.5 s — **pass** |
+| `-c 30 -d 30` (double the bar's concurrency) | p50 643 ms · p97.5 1.53 s · 1 timeout/1,131 · plateau ~38 req/s | informational |
+| `/slate` page, `-c 15` | p50 434 ms · p97.5 992 ms · 0 errors | pass |
+| `/` hub, `-c 15` | p50 472 ms · p97.5 896 ms · 0 errors | pass |
+
+15 sustained connections is ~75× the real Saturday load (15 users polling every
+30 s ≈ 0.5 req/s). The 9.1 KB tick is the P-1/P-6 slimming paying off; it
+extrapolates to ~68 KB at a 60-game November Saturday, still 4× under the bar.
+
+**Not measured:** Vercel's serverless runtime (this was one container process),
+and the realtime fan-out question (P-17). The 60-game Saturday stays
+extrapolated until one happens — re-check the tick size during the September
+FREEZE-1 work.
+
+**Decision fallout:** `09:P-1b` (slim `/api/slate-live` heal endpoint) closed
+as *not building* — the endpoint it would slim is already 9.1 KB.
+
 ### Aug 22 — HUB-3: five settled games were the page
 
 Owner screenshot, minutes after HUB-1/HUB-2 deployed: *"There's gotta be a
