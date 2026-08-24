@@ -2678,8 +2678,21 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       **State unchanged after**: `predictions` still **0**, week 0 still **8**,
       week 1 **91**. The rehearsal wrote schedule and line rows and nothing that
       cannot be written again.
-- [ ] **Aug 24** — Run the 7 preseason smell tests (`04:§5`) on the first real
-      `--top 40` table. **UX-32:** eyeball the matchup cards with real names.
+- [ ] **Aug 24** — ~~Run the 7 preseason smell tests (`04:§5`) on the first
+      real `--top 40` table~~ — **done 2026-08-24, all seven pass** (run
+      `32764813658`, cross-checked against the production `preseason_components`
+      + week-0 `ratings` where the top-40 view can't answer; full numbers in
+      the changelog). Two stances surfaced for the owner rather than flags:
+      (1) new FBS entrants rank above established bottom-quartile FBS — Sac
+      State 104th / NDSU 114th vs UTEP 133rd, Charlotte 136th, UMass 138th —
+      on real distinct inputs, which `04:§5.4` says requires a conscious
+      belief ("NDSU beats UMass" is one most bettors hold); (2) Alabama is
+      talent #1 and model #21, one spot outside the test's top-20 letter, but
+      the double-count mechanism the test hunts is absent — churn −2.6,
+      unclamped, rating tracking a genuinely mediocre prev of 15.1 through the
+      twice-earned 0.70 carryover. **Still open in this row — UX-32:** eyeball
+      the matchup cards with real names (owner: needs your signed-in group
+      view).
 - [ ] **Aug 26** — 🔴 **HARD CHECKPOINT (`04:DQ-1` / P0-3), and since
       2026-08-18 it is a verification rather than a decision.** The question was
       "is `preseason-refresh` green, and if not, what ships?"; Q1 answered the
