@@ -2196,10 +2196,30 @@ first because neither needed a decision.
       **Not verified from here:** the end-to-end run needs the live database —
       void a scratch game from `/admin`, confirm the card reads POSTPONED,
       confirm `job_runs.detail` on the next `ratings-update`.
-- [ ] **09:P-16** Load rehearsal — **owner-run**, needs a live server. Seed via
-      `scripts/seed-fixtures.ts`, `autocannon -c 15 / -c 30` against
-      `next start`, record against the bars: p95 < 1.5 s, tick < 300 KB. The
-      only zero-evidence area left before a 60-game Saturday. · 3 h
+- [x] **09:P-16** Load rehearsal — run 2026-08-24, **both bars pass**. Not
+      owner-run in the end: `next build && next start` in the dev container
+      against the production database (real Week 0 data — 8 CFB games, NFL
+      preseason — anon/RLS traffic, GETs only), which beats the seeded-fixture
+      plan on realism and skips the seeding. Numbers, recorded like a tuner
+      result:
+      - **Tick** `/api/slate?sport=cfb&week=0` = **9.1 KB** uncompressed
+        (NFL slate 17 KB) vs the 300 KB bar — 33× under. The P-1/P-6 slimming
+        is what did this; at 60 games it extrapolates to ~68 KB, still 4× under.
+      - **`autocannon -c 15 -d 30`** on the tick: 1,075 requests, all 200,
+        p50 357 ms / p97.5 921 ms / p99 1.19 s — **p95 < 1.5 s passes**.
+        15 connections sustained is ~75× the real load (15 users polling
+        every 30 s ≈ 0.5 req/s).
+      - **`-c 30 -d 30`**: p50 643 ms, p97.5 1.53 s, 1 timeout in 1,131;
+        throughput plateaus ~38 req/s. The tail crosses the bar at double the
+        defined concurrency — noted, not a failure; the bar is set at 15.
+      - **Pages at `-c 15`**: `/slate` p50 434 / p97.5 992 ms; hub `/` p50
+        472 / p97.5 896 ms; zero errors on either.
+      **What this did not measure:** Vercel's serverless runtime (this was one
+      container process — per-invocation scaling should do better under
+      concurrency, cold starts worse) and the realtime fan-out half of
+      `audit/09 §8` step 4 (P-17's anon-subscription question). The 60-game
+      Saturday itself stays extrapolated until a real one happens — re-check
+      the tick size in the September FREEZE-1 window.
 - [x] **P1-3** `.env.example` committed, 2026-08-13, plus the `!.env.example`
       negation under `.gitignore`'s `.env*`. **20 keys, not 17** — the count in
       this row was low; every `process.env` read in `src/`, `scripts/` and
@@ -2945,8 +2965,11 @@ Two items remain open; the closed ones are kept for the record.
       fields that page reads is real work. Seven other `teams.select("*")` sites
       remain (`teams/`, `team/[id]`, `rankings/`, `receipts/`, `ledger/`,
       `standings/`, `queries.ts:156`) and are not part of this row.
-- [ ] **09:P-1b** Slim `/api/slate-live` heal endpoint — decide after P-16's
-      numbers. · M
+- [x] **09:P-1b** Slim `/api/slate-live` heal endpoint — **decided 2026-08-24:
+      not building it.** The number that decided it: P-16 measured the existing
+      poll endpoint at 9.1 KB a tick. There is nothing left to slim — a
+      dedicated heal endpoint would save single-digit kilobytes at the cost of
+      a second code path that can disagree with the first.
 - [ ] **09:P-11** Cacheable weekly-static pages · M
 - [x] **09:P-6** `fetchTeamAtsSeason` re-fetches every snapshot per game view.
       Fixed 2026-08-14: `select("*")` → the columns the consensus actually
