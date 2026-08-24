@@ -215,6 +215,41 @@ shipping it.
 
 ## Log
 
+### Aug 24 — 04:§5: the seven preseason smell tests, on the first real table
+
+Dispatched `preseason-preview` (run `32764813658`) and applied the seven tests
+from `audit/04-data-quality.md §5` to the printed `--top 40` table, with the
+full-table counts cross-checked against production `preseason_components` +
+week-0 `ratings` (the log only prints 40 rows). All seven pass:
+
+1. **Talent −8.0 constant** (bar ≤ ~4 teams): **0 teams at exactly −8.0.**
+   11 teams sit *below* −7.99, but at distinct values spread −8.25 → −12.02
+   (service academies, new FBS entrants, bottom G5) — that is the
+   recruiting-class substitute's real scale extending below the old constant,
+   not the partial-file signature the test hunts.
+2. **Churn exactly ±4.00** (portal-clamp signature): **0 teams.** At the real
+   ±6 clamp: 2 (UMass −6.00 among them), against a bar of >5.
+3. **Talent-rank vs model-rank** (the Alabama test): Alabama is talent #1
+   (13.2) and model **#21** — one spot outside the test's top-20 letter, but
+   the double-count mechanism is absent: churn −2.6 (unclamped; Ohio State
+   −2.1, Oregon −2.2 — nobody pinned), and the rating tracks a genuinely
+   mediocre prev of 15.1 through the twice-earned 0.70 carryover.
+4. **New FBS entrants**: Sac State **104th**, NDSU **114th** — above UTEP
+   (133rd), Charlotte (136th), UMass (138th). The test allows this only as a
+   conscious belief; recording it as one: the entrants are priced on real
+   distinct inputs (no prior + recruiting talent), and the teams below them
+   are there on their own priors (UMass carries a real −35.89 prev).
+5. **`prev 0.0` ambiguity**: the 2 no-prior teams (NDSU, Sac State — null in
+   the DB, matching the "2 team(s) had no prior-season rating" note) are
+   outside the top 40, so no printed 0.0 is masking a null.
+6. **Coach count** (single digits = partial feed): **33** new head coaches.
+7. **Range/median** (compression = flattened input): **−38.1 → +27.4, median
+   −1.5.** No compression; both edges have legible causes — the top is the
+   tier recentre's +5.5 P4 lift, the bottom is UMass's real prev.
+
+UX-32 (matchup cards with real names) stays open — it needs the owner's
+signed-in group view.
+
 ### Aug 24 — 09:P-16: the load rehearsal ran, and both bars pass
 
 The last zero-evidence area before kickoff. Ran in the dev container rather
