@@ -1789,7 +1789,7 @@ deliberate deferrals, each recorded below with what it would take.
       true on the eight openers. The dry-run summary reports the three Aug 28
       fields, not the consensus counts, so a `false` there could be real
       disagreement or a rule still not firing. · watch
-- [ ] **FREEZE-2 — three of eight Week 0 openers flag BIG_EDGE, two with the
+- [x] **FREEZE-2 — three of eight Week 0 openers flag BIG_EDGE, two with the
       sign flipped.** From the same dry-run. Recorded as an observation, not a
       defect: preseason ratings on teams with zero games played is exactly when
       the model is least trustworthy, and the edge verdict in §1 already says
@@ -1803,7 +1803,15 @@ deliberate deferrals, each recorded below with what it would take.
 
       Two of those have the model on the underdog outright. Worth an eye before
       the Aug 28 freeze makes them permanent receipts — which is the whole
-      reason the dry-run exists. · watch
+      reason the dry-run exists.
+      **Owner call, 2026-08-24: "Leave the bold calls in."** The eye happened —
+      a fresh dry-run re-priced all eight (run `32766820509`; the three
+      BIG_EDGEs held: Jax State +7 at NDSU with the model on Jax State
+      outright, Sac State +9.5 at EMU, Memphis +5.5 at UNLV with the model on
+      Memphis outright; all three carry `consensus 0–1 of 2`, so the external
+      systems disagree and the flags say so). Shipping as honest model output:
+      the receipts page exists to record exactly this. Nothing held back,
+      nothing overridden. Thursday's freeze stamps them as-is.
 - [x] **GRP-6 — the betting group sheet is CFB-only while its own standings are
       not.** Owner report 2026-08-22 with a screenshot: *"on this it doesn't
       show nfl picks on the group it looks like it just has cfb picks."*
