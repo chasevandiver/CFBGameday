@@ -120,6 +120,9 @@ on:
           - questions
           - verdicts
           - drop
+          # F3 v1: the morning team-news pull (ESPN, free + unauthenticated,
+          # no LLM). Upserts, so a mistap costs nothing.
+          - team-news
           # Read-only preview: builds the preseason ratings and prints the
           # ranking table to the log. Writes JSON to a scratch dir that is
           # thrown away with the runner — nothing reaches the database.
@@ -329,6 +332,12 @@ on:
     # Three Questions per game, Friday morning after the freeze (LLM; green
     # no-op until the ANTHROPIC_API_KEY secret exists)
     - cron: "0 9 * * 5"
+    # Team news (F3 v1): the morning pull off ESPN's team feed for everyone
+    # playing in the next 7 days. Daily at 11:30 UTC — 6:30am CT, before the
+    # morning open the ROADMAP wants this for, and clear of the 11:00 August
+    # preseason-refresh slot. Free and unauthenticated; a missed run costs
+    # freshness only, the next day's upsert catches up.
+    - cron: "30 11 * * *"
     # The Tuesday Drop (R2-B2): the ratings-update paragraph, Monday 15:00 UTC
     # — two hours after Sunday's ratings land would be Sunday; Monday gives the
     # grading chain a full day of slack, and the hub features it Tuesday. The
@@ -459,6 +468,7 @@ jobs:
             "0 6 1 * *") echo "task=keepalive" >> "$GITHUB_OUTPUT" ;;
             "0 3 * * 5") echo "task=freeze" >> "$GITHUB_OUTPUT" ;;
             "0 9 * * 5") echo "task=questions" >> "$GITHUB_OUTPUT" ;;
+            "30 11 * * *") echo "task=team-news" >> "$GITHUB_OUTPUT" ;;
             "0 15 * * 1") echo "task=drop" >> "$GITHUB_OUTPUT" ;;
             "30 16 * * 1,2,3") echo "task=guess-lines" >> "$GITHUB_OUTPUT" ;;
             "0 14 * * *") echo "task=streak" >> "$GITHUB_OUTPUT" ;;
@@ -508,7 +518,7 @@ jobs:
             nfl-sync-games) npx tsx scripts/nfl-sync-games.ts ;;
             nfl-refresh-lines) npx tsx scripts/nfl-refresh-lines.ts ;;
             scoreboard-loop) npx tsx scripts/scoreboard-loop.ts --minutes 240 ;;
-            sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze|freeze-dry-run|freeze-groups|watchdog|notify-picks-due|notify-log-bets|nfl-grade|nfl-scoring|cfb-scoring|guess-lines|streak|six-pack|daily-puzzles|backfill-games|backfill-lines|backfill-rankings) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
+            sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze|freeze-dry-run|freeze-groups|watchdog|notify-picks-due|notify-log-bets|nfl-grade|nfl-scoring|cfb-scoring|guess-lines|streak|six-pack|daily-puzzles|team-news|backfill-games|backfill-lines|backfill-rankings) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
             # Keep-alive: touch nothing, just make the run green so GitHub's
             # 60-day inactivity timer resets. No DB, no CFBD.
             keepalive) echo "keep-alive tick $(date -u +%Y-%m-%d) — resets the Actions inactivity clock" ;;

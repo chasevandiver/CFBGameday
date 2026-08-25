@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppNav } from "../../../components/AppNav";
-import type { GameRow, TeamRow } from "../../../lib/db-types";
+import type { GameRow, TeamNewsRow, TeamRow } from "../../../lib/db-types";
+import { agoLabel, recentTeamNews } from "../../../lib/team-news";
 import { DEFAULT_TZ, kickDateLong } from "../../../lib/kick";
 import { RatingStat } from "../../../components/RatingStat";
 import { fetchCurrentSeasonWeek } from "../../../lib/queries";
@@ -66,7 +67,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
     .maybeSingle<TeamRow>();
   if (!team) notFound();
 
-  const [ratingsRes, compsRes, hfaRes, gamesRes, verdictRes, pollsRes, systemsRes] = await Promise.all([
+  const [ratingsRes, compsRes, hfaRes, gamesRes, verdictRes, pollsRes, systemsRes, newsRes] = await Promise.all([
     supabase.from("latest_ratings").select("team_id, overall").eq("season_id", seasonId),
     supabase
       .from("preseason_components")
@@ -100,6 +101,15 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
       .select("team_id, system, week, value")
       .eq("season_id", seasonId)
       .order("week", { ascending: false }),
+    // F3 v1: only fresh rows render (recentTeamNews), so an off-week team —
+    // whose feed the daily pull doesn't cover — shows no section rather than
+    // stale rows presented as news.
+    supabase
+      .from("team_news")
+      .select("*")
+      .eq("team_id", teamId)
+      .order("published_at", { ascending: false })
+      .limit(20),
   ]);
 
   // Latest rating per team + this team's rank
@@ -190,6 +200,10 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
     (verdictRow.ceiling || verdictRow.floor || verdictRow.swing_factor || verdictRow.market_note)
       ? verdictRow
       : null;
+
+  const teamNews = recentTeamNews((newsRes.data ?? []) as TeamNewsRow[], new Date(), {
+    maxItems: 4,
+  });
 
   const { poll, byTeam: pollRanks } = pickPollRanks(
     (pollsRes.data ?? []) as Array<{ week: number; poll: string; team_id: number; rank: number }>,
@@ -295,6 +309,44 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
             </p>
           )}
         </section>
+
+        {/* Team news (F3 v1) — fresh ESPN headlines; absent when off the slate */}
+        {teamNews.length > 0 && (
+          <section className="card mb-4 p-4">
+            <h2 className="mb-3 text-sm text-accent">Team news</h2>
+            <ul className="flex flex-col">
+              {teamNews.map((n) => {
+                const meta = (
+                  <p className="mt-0.5 text-xs text-dim">
+                    {agoLabel(n.published_at, new Date())}
+                    {n.premium ? " · ESPN+" : ""}
+                  </p>
+                );
+                return (
+                  <li key={n.article_id} className="min-w-0 border-b border-chalk/5 last:border-0">
+                    {n.url ? (
+                      // 44px tap target: the whole item is the link, not the line.
+                      <a
+                        href={n.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block py-2.5 hover:bg-elev/50"
+                      >
+                        <p className="text-sm font-medium text-chalk">{n.headline}</p>
+                        {meta}
+                      </a>
+                    ) : (
+                      <div className="py-2.5">
+                        <p className="text-sm font-medium text-chalk">{n.headline}</p>
+                        {meta}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
 
         {/* Schedule map */}
         <section className="card p-4">
