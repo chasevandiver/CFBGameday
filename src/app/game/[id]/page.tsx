@@ -133,7 +133,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     .maybeSingle<GameRow>();
   if (!game) notFound();
 
-  const [teamsRes, linesRes, predRes, picksRes, scoringRes, betsRes, crewBetsRes, profilesRes, weatherRes, questionsRes, pollsRes, systemsRes, rivalryRes, newsRes] = await Promise.all([
+  const [teamsRes, linesRes, predRes, picksRes, scoringRes, betsRes, crewBetsRes, profilesRes, weatherRes, questionsRes, pollsRes, systemsRes, rivalryRes, newsRes, notesRes] = await Promise.all([
     supabase.from("teams").select("*").in("id", [game.home_team_id, game.away_team_id]),
     supabase.from("line_snapshots").select("*").eq("game_id", gameId),
     supabase
@@ -199,6 +199,8 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
       .in("team_id", [game.home_team_id, game.away_team_id])
       .order("published_at", { ascending: false })
       .limit(40),
+    // F3b: 0–3 LLM-classified notes over the stored headlines + model numbers.
+    supabase.from("game_notes").select("notes").eq("game_id", gameId).maybeSingle(),
   ]);
 
   const teams = new Map(((teamsRes.data ?? []) as TeamRow[]).map((t) => [t.id, t]));
@@ -246,6 +248,10 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   const teamNews =
     game.status === "scheduled"
       ? recentTeamNews((newsRes.data ?? []) as TeamNewsRow[], new Date())
+      : [];
+  const gameNotes =
+    game.status === "scheduled"
+      ? ((notesRes.data as { notes: { kind: string; note: string }[] } | null)?.notes ?? [])
       : [];
 
   const trends = await fetchTeamAtsSeason(supabase, game.season_id, [
@@ -982,6 +988,23 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                 </li>
               ))}
             </ol>
+          </section>
+        )}
+
+        {/* Pregame notes (F3b) — the classified read over headlines + model numbers */}
+        {gameNotes.length > 0 && (
+          <section className="card mt-4 px-4 py-4">
+            <h2 className="mb-3 text-sm text-accent">Pregame notes</h2>
+            <dl className="flex flex-col gap-2 text-sm">
+              {gameNotes.map((n, i) => (
+                <div key={i} className="flex gap-2">
+                  <dt className="w-24 shrink-0 text-xs font-semibold uppercase tracking-wide text-dim">
+                    {n.kind}
+                  </dt>
+                  <dd className="min-w-0 flex-1 text-chalk">{n.note}</dd>
+                </div>
+              ))}
+            </dl>
           </section>
         )}
 

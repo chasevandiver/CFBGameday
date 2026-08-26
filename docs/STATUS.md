@@ -4077,15 +4077,27 @@ viewer's own bets, not the whole sheet.
       storing to `team_news` (migration 0079), rendered pregame on the game
       page and fresh-only on team pages (`src/lib/team-news.ts`, tested on
       verbatim feed fixtures). $0/season against the ~$20 budgeted.
-- [ ] **F3b** The half of F3 no free feed covers: classify stored headlines
-      into proposed rating adjustments with the SPEC §4 admin-confirm tap.
-      Structured CFB injury data does not exist to load — ESPN's injuries
-      endpoint answers `count: 0` for CFB (checked live Aug 25) while the NFL
-      one answers 75, because college has no league-mandated injury report —
-      so this layer is either the admin reading the F3 feed (works today), or
-      one cheap batch classification call over stored headline text
-      (~kilobytes, no web search) if reading stops scaling. · S–M · after
-      launch
+- [x] **F3b — the classify layer, shipped 2026-08-25 as pregame notes.**
+      Reading the raw F3 feed stopped scaling the same day it shipped: the
+      owner's read of the Week 0 board was that per-team headline lists miss
+      the point, which is *per-game* relevance — the projected QB who is
+      suddenly gone, the exodus a poll rank hasn't priced. So the cheap
+      batch-classification call this row already priced is now
+      `scripts/generate-notes.ts` (daily `notes` task, 11:45 UTC, 15 min
+      behind the pull it reads): per window game the LLM gets ONLY our stored
+      headlines and the model's own stored numbers (rating + model rank vs
+      poll rank, churn/coaching components, frozen line, market consensus —
+      assembled by `scripts/lib/notes.ts`, tested) and returns 0–3 typed
+      notes, zero the instructed normal. `game_notes` (migration 0080),
+      rendered above the headlines on the game page. No web search —
+      discovery stays free; input is ~1–2KB of our own text per game, at the
+      SPEC's editorial-layer model. What stays deliberately manual: turning a
+      note into a rating adjustment — the admin owns the number, per the
+      model gate, and the SPEC §4 one-tap-confirm flow remains unbuilt with
+      no evidence yet that reading the notes doesn't suffice. Structured CFB
+      injury data still does not exist to load (ESPN answers `count: 0` for
+      CFB, 75 for an NFL team — no league-mandated report), which is why this
+      is classification of headlines rather than ingestion of statuses.
 - [ ] **F4/F5/F6** Rooting guide; playoff race tracker; homepage-by-day · M each
 - [ ] **F9** Ratings sparklines — needs weekly rating history
 - [x] **F11 — §5.1 soft-market taxonomy on `/edges`, shipped 2026-08-17.**
