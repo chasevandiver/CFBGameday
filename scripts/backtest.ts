@@ -1434,16 +1434,30 @@ async function tuneCoaching(seasons: SeasonData[], teamIdsByName: Map<string, nu
  *   class prints beside it, informational — the pooled rejection already
  *   answered it.
  *
- *   Gate 1 — the healthy intercept's optimum must be interior, not pinned at
- *   the −5 edge. The pooled fit died exactly here; an edge optimum is the
- *   same artifact again and ships nothing.
+ *   Gate 1 — the healthy intercept's optimum must be interior. AMENDED
+ *   2026-08-26 after the first run and before any widened number was seen:
+ *   the original grid stopped at −5, but Gate 0's own E4 point estimate was
+ *   −6.31, so pinning at −5 was not evidence of unconvergence — the grid
+ *   edge sat INSIDE the measured effect. Widened to −10 (the pooled run's
+ *   own precedent when pinned at −2.5). An optimum at −10 is unconverged
+ *   for real and ships nothing.
  *
- *   Gate 2 — early NLL at the best cell must beat identity (0, 0) by ≥ 0.003,
- *   the standing bar every tuner in the decisions table is held to.
+ *   Gate 2 — early NLL at the best cell must beat identity (0, 0) by ≥ 0.003
+ *   on the FIT seasons, the standing bar every tuner is held to.
  *
- *   Gate 3 — stated now, run separately: the direction must agree on the E4
- *   window (--seasons=2023-2025). A sign that era-flips ships nothing, per
- *   the --tune-prior precedent.
+ *   Gate H — added with the widening, per the wide window's standing holdout
+ *   rule: fit on scored seasons before 2024, hold out 2024–25; the holdout
+ *   Δ must have the same sign and at least half the size of the fit Δ.
+ *   (Narrow windows with no pre-2024 scored seasons skip this gate and
+ *   cannot ship alone.)
+ *
+ *   Gate L — added with the widening: a preseason dock lingers through the
+ *   prior chain, and scoring only weeks 1–4 would let a big penalty buy
+ *   early NLL while quietly costing October. Weeks-5+ NLL at the best cell
+ *   must not be worse than identity by more than 0.001.
+ *
+ *   Gate 3 — the direction must agree on the E4 window (--seasons=2023-2025).
+ *   A sign that era-flips ships nothing, per the --tune-prior precedent.
  *
  * Slope is held at 0 throughout: the pooled run showed NLL flat across slope
  * values, and re-fitting a parameter already shown inert would only add cells.
@@ -1501,10 +1515,10 @@ async function tuneCoachingSplit(seasons: SeasonData[], teamIdsByName: Map<strin
       iHealthy,
       iStruggling,
     );
-    const early: ReplayPrediction[] = [];
+    const scored: ReplayPrediction[] = [];
     for (const season of seasons) {
       const { predictions, finalRatings } = replaySeason(season, priors, DEFAULT_PARAMS);
-      if (SCORED.includes(season.season)) early.push(...predictions.filter((p) => p.week <= 4));
+      if (SCORED.includes(season.season)) scored.push(...predictions);
       const spFinal = spFinalBySeason.get(season.season)!;
       const talent = talentBySeason.get(season.season)!;
       const next = new Map<number, number>();
@@ -1515,11 +1529,12 @@ async function tuneCoachingSplit(seasons: SeasonData[], teamIdsByName: Map<strin
       }
       priors = applySplit(next, season.season + 1, iHealthy, iStruggling);
     }
-    return early;
+    return scored;
   };
 
   // ---- Gate 0: identity replay, oriented residuals per class -------------
-  const identity = replayAt(0, 0);
+  const identityAll = replayAt(0, 0);
+  const identity = identityAll.filter((p) => p.week <= 4);
   const counts = { healthy: 0, struggling: 0 };
   for (const s of SCORED) {
     for (const cls of classOf.get(s)?.values() ?? []) counts[cls] += 1;
@@ -1557,33 +1572,62 @@ async function tuneCoachingSplit(seasons: SeasonData[], teamIdsByName: Map<strin
   console.log(gate0 ? "Gate 0 PASSES — fitting the split." : "Gate 0 FAILS — nothing to fit; grid below is informational only.");
 
   // ---- Grid: healthy × struggling intercepts, slope held 0 ---------------
-  console.log("\nhealthy  struggling   early NLL   early MAE");
-  const identityNll = nll(identity);
-  let best: { h: number; s: number; nllV: number } | null = null;
-  for (const iHealthy of [0, -0.5, -1, -1.5, -2, -2.5, -3, -4, -5]) {
+  // Selection is on FIT-season early NLL when the window has pre-2024 scored
+  // seasons (Gate H's split); otherwise on all early NLL, and Gate H is n/a.
+  const HOLDOUT_FROM = 2024;
+  const fitSeasons = SCORED.filter((s) => s < HOLDOUT_FROM);
+  const holdSeasons = SCORED.filter((s) => s >= HOLDOUT_FROM);
+  const useHoldout = fitSeasons.length >= 3 && holdSeasons.length >= 1;
+  const earlyOf = (preds: ReplayPrediction[], set: number[]) =>
+    preds.filter((p) => p.week <= 4 && set.includes(p.season));
+  const lateOf = (preds: ReplayPrediction[]) => preds.filter((p) => p.week >= 5);
+
+  console.log(
+    useHoldout
+      ? `\nSelection on FIT early NLL (${fitSeasons.join(", ")}); holdout ${holdSeasons.join(", ")}.`
+      : `\nNo pre-${HOLDOUT_FROM} scored seasons — selection on all early NLL, Gate H n/a here.`,
+  );
+  console.log("healthy  struggling    fit NLL   hold NLL   late NLL   early MAE");
+  const idFitNll = nll(useHoldout ? earlyOf(identityAll, fitSeasons) : identity);
+  const idHoldNll = useHoldout ? nll(earlyOf(identityAll, holdSeasons)) : NaN;
+  const idLateNll = nll(lateOf(identityAll));
+  let best: { h: number; s: number; fit: number; hold: number; late: number } | null = null;
+  for (const iHealthy of [0, -1, -2, -3, -4, -5, -6, -7, -8, -10]) {
     for (const iStruggling of [0, -1, -2, -3]) {
-      const early = iHealthy === 0 && iStruggling === 0 ? identity : replayAt(iHealthy, iStruggling);
-      const n = nll(early);
+      const all = iHealthy === 0 && iStruggling === 0 ? identityAll : replayAt(iHealthy, iStruggling);
+      const early = all.filter((p) => p.week <= 4);
+      const fit = useHoldout ? nll(earlyOf(all, fitSeasons)) : nll(early);
+      const hold = useHoldout ? nll(earlyOf(all, holdSeasons)) : NaN;
+      const late = nll(lateOf(all));
       console.log(
-        `${iHealthy.toFixed(1).padStart(6)}   ${iStruggling.toFixed(1).padStart(6)}       ${n.toFixed(4)}      ` +
+        `${iHealthy.toFixed(1).padStart(6)}   ${iStruggling.toFixed(1).padStart(6)}      ${fit.toFixed(4)}     ${useHoldout ? hold.toFixed(4) : "  n/a "}     ${late.toFixed(4)}     ` +
           maeOf(early.map((p) => p.actualMargin - p.margin)).toFixed(2),
       );
-      if (!best || n < best.nllV) best = { h: iHealthy, s: iStruggling, nllV: n };
+      if (!best || fit < best.fit) best = { h: iHealthy, s: iStruggling, fit, hold, late };
     }
   }
   if (!best) return;
-  const delta = identityNll - best.nllV;
-  const gate1 = best.h > -5;
-  const gate2 = delta >= 0.003;
+  const fitDelta = idFitNll - best.fit;
+  const holdDelta = useHoldout ? idHoldNll - best.hold : NaN;
+  const lateDelta = idLateNll - best.late; // positive = late got BETTER
+  const gate1 = best.h > -10;
+  const gate2 = fitDelta >= 0.003;
+  const gateH = !useHoldout || (holdDelta > 0 && holdDelta >= fitDelta / 2);
+  const gateL = lateDelta >= -0.001;
   console.log(
-    `\nBest: healthy=${best.h} struggling=${best.s} (NLL ${best.nllV.toFixed(4)}; identity ${identityNll.toFixed(4)}; Δ ${delta.toFixed(4)})\n` +
-      `Gate 1 (interior optimum): ${gate1 ? "PASSES" : "FAILS — pinned at the −5 edge, unconverged again"}\n` +
-      `Gate 2 (ΔNLL ≥ 0.003): ${gate2 ? "PASSES" : "FAILS"}\n` +
+    `\nBest: healthy=${best.h} struggling=${best.s}` +
+      ` (fit NLL ${best.fit.toFixed(4)}, identity ${idFitNll.toFixed(4)}, Δ ${fitDelta.toFixed(4)}` +
+      (useHoldout ? `; holdout Δ ${holdDelta.toFixed(4)}` : "") +
+      `; late Δ ${lateDelta.toFixed(4)})\n` +
+      `Gate 1 (interior, widened grid to −10): ${gate1 ? "PASSES" : "FAILS — pinned at −10, unconverged for real"}\n` +
+      `Gate 2 (fit ΔNLL ≥ 0.003): ${gate2 ? "PASSES" : "FAILS"}\n` +
+      `Gate H (holdout same sign, ≥ half): ${useHoldout ? (gateH ? "PASSES" : "FAILS") : "n/a on this window"}\n` +
+      `Gate L (weeks 5+ not worse by > 0.001): ${gateL ? "PASSES" : "FAILS — the early gain is borrowed from October"}\n` +
       `Gate 3: re-run with --seasons=2023-2025 and require the same sign before believing any of this.`,
   );
   console.log(
-    gate0 && gate1 && gate2
-      ? "→ All local gates pass. This still ships NOTHING by itself: DEFAULT_PARAMS has one intercept, so shipping is a params + rebuild decision for the owner, on this row plus Gate 3."
+    gate0 && gate1 && gate2 && gateH && gateL
+      ? "→ All local gates pass. This still ships NOTHING by itself: shipping means a class-aware coaching term in DEFAULT_PARAMS (and a clamp wider than the current −4), a MODEL_VERSION bump and a preseason rebuild — an owner decision on this row plus Gate 3."
       : "→ Rejected on the gates above. Record the row; the zero stands.",
   );
 
