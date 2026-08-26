@@ -28,6 +28,8 @@ on:
           - tune-preseason-tilts
           - tune-coaching
           - tune-coaching-split
+          - tune-qb-exit
+          - tune-coaching-quality
           - tune-anchors
           - tune-sp-blend
           - tune-prior
