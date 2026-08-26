@@ -437,15 +437,26 @@ async function main() {
         })
       : 0;
 
-    // Coaching: a real signal now, but zero for everyone until the tuner fits
-    // newHcIntercept/newHcSlope. A school CFBD has no 2026 row for is treated
-    // as intact and reported, never guessed at.
+    // Coaching (2026.6.0): the healthy-succession install cost is live —
+    // newHcHealthyIntercept applies when the PRE-coaching composed rating is
+    // ≥ 0, the production analog of the pre-adjustment chained prior
+    // --tune-coaching-split fit its class boundary on. The pooled intercept
+    // and slope stay at their rejected identity zeros. A school CFBD has no
+    // 2026 row for is treated as intact and reported, never guessed at.
     const transition = transitions.get(team.school);
     if (!transition || transition.coach === null) missingCoachData.push(team.school);
+    const preCoachingRating = preseasonRating({
+      finalPrevRating: finalPrev,
+      talentBaseline: tal,
+      churnAdjustment: churn,
+      coachingAdjustment: 0,
+      luckCorrection: luckCorr,
+    });
     const coaching = coachingAdjustmentContinuous(
       {
         newHc: transition?.newHc ?? false,
         overPerf: transition?.overPerf ?? null,
+        priorRating: preCoachingRating,
       },
       DEFAULT_PARAMS,
     );

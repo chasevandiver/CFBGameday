@@ -3236,6 +3236,18 @@ rather than absorbed silently.*
       grid-boundary optimum, un-flatten an unidentified likelihood surface, or
       reverse a directional failure like `--tune-epa`, which degraded
       monotonically at every weight. · dispatch
+- [ ] **BT-7 — the backtest's main report chains priors without the coaching
+      term.** Opened 2026-08-26 by the 2026.6.0 ship, recorded rather than
+      hidden: the report's prior chain (and every tuner sharing its shape
+      except `--tune-coaching`/`--tune-coaching-split`) applies no coaching
+      adjustment — always true, moot while `newHcIntercept`/`newHcSlope` sat
+      at identity zeros, and no longer moot with `newHcHealthyIntercept` at
+      −6. Until the report chain learns the term, its headline numbers
+      slightly understate the shipped model, and any future tuner fit on the
+      un-coached chain fits a baseline production no longer runs. The fix is
+      plumbing coach transitions into the report path the way the split
+      tuner already does. The value itself is unaffected — the tuner that
+      earned it measured the exact term that shipped. · S/M
 - [x] **BT-6 — `talent` changes shape mid-window, and the floor cannot see it.**
       **Closed 2026-08-19 by the intersection it asked for.** `loadPriorInputs`
       — which every talent-reading tuner now goes through, `--tune-prior` and

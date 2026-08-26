@@ -27,9 +27,15 @@ carries the number that killed it.
 
 ## Current state
 
-**`MODEL_VERSION` 2026.5.0** (`src/model/ratings.ts`) — 2026.4.1 plus the
-market-anchored tier recentre in the preseason build (Aug 12, below), which
-removes a measured +9.8-point cross-classification lean from the 2026 openers.
+**`MODEL_VERSION` 2026.6.0** (`src/model/ratings.ts`) — 2026.5.0 plus the
+healthy-succession coaching term (`newHcHealthyIntercept` **−6**, Aug 26,
+below): a new head coach inheriting a pre-coaching preseason rating ≥ 0 costs
+six points in year one, fitted by `--tune-coaching-split` with every
+pre-registered gate passing on both windows. 19 teams move in 2026 (Utah,
+Ole Miss, Penn State, LSU, Michigan, Kansas State, Florida, Arkansas, …).
+*(2026.5.0 was 2026.4.1 plus the market-anchored tier recentre in the
+preseason build — Aug 12, below — which removes a measured +9.8-point
+cross-classification lean from the 2026 openers.)*
 
 ✅ **In production since 2026-08-19**, on the recruiting-class substitute rather
 than the stale-talent build the Aug 22 escalation authorised. Dispatched
@@ -63,7 +69,8 @@ run by hand. See Open items for what it is waiting on.
 | `returningProdWeight` | **6** | Fitted `--tune-churn`, interior point not argmin |
 | `talentReloadStrength` | **1** | Fitted `--tune-churn` |
 | `priorSigmaExtra` | 0 | **Identity** — tested, rejected |
-| `newHcIntercept` / `newHcSlope` | 0 / 0 | **Identity** — unconverged, not shipped |
+| `newHcIntercept` / `newHcSlope` | 0 / 0 | **Identity** — the pooled fit stayed unconverged (its class is the double-count) |
+| `newHcHealthyIntercept` | **−6** | Fitted `--tune-coaching-split` (2026.6.0): interior on both windows, holdout-supported, weeks-5+ improved. Outer clamp widened −4 → −8 to admit it |
 | `epaWeight` | 0 | **Identity** — tested, rejected |
 | `PRESEASON_TILT_CARRY` | 0.4 | Fitted (env var in `build-preseason.ts`) |
 | `TALENT_SOURCE` | **recruiting** (fallback only) | Fitted **rule** `--tune-talent-source` `2015-2025/warmup1/covid-chain` — env var in `build-preseason.ts`, set by `jobs.yml`. Governs only what stands in while `/talent` is unpublished: classes first, stale composite last. Code default stays `composite` (identity) |
@@ -105,7 +112,7 @@ and must say so. See "The window changed" below.
 | `--tune-anchors` | ΔNLL **0.0026** vs a pre-registered bar of 0.003. | Rejected, by 0.0004. (Also ran on contaminated week-1 Elo — see below — so it failed *with* an unfair advantage.) |
 | `--tune-coaching` | Optimum pinned at the grid edge (−2.5, then −5 after widening). Slope inert: NLL flat across 0/0.15/0.30/0.45. | Rejected — unconverged. A new HC almost always follows a bad season, which the prior already encodes, so the penalty double-counts. |
 | `--tune-coaching-split` (owner hypothesis off Utah's Whittingham→Scalley; healthy prior ≥ 0 vs struggling, slope 0) | **Gate 0 passes hard in both windows — the effect is real.** Healthy-succession teams underperform the identity model in wks 1–4: wide `2015-2025/warmup1/covid-chain` mean **−3.51** (t −3.95, n 426; struggling −3.62, t −4.20); E4 `2023-2025` mean **−6.31** (t −3.33, n 90; struggling −1.88, t −1.24, ns). But **Gate 1 fails in both**: best cells (−5, −3) wide / (−5, −2) E4, pinned at the −5 edge with NLL still falling (Δ 0.0049 / 0.0042, both past the 0.003 bar) — the same unconverged pathology as the pooled fit, at a boundary twice as wide as the one that killed it. Runs 32925804195 / 32925806206. | **Rejected — the zero stands, and the finding is sharpened.** New-HC teams get overrated early and it is NOT explained by the bad-season confound (the healthy class shows it strongest, exactly the owner's read). But a constant intercept cannot be the mechanism: an optimizer that wants −5-and-beyond for a quarter of a point of rating is absorbing something correlated (roster upheaval, scheme install, regression) rather than measuring an install cost, and shipping an edge-pinned value is the exact mistake the first rejection refused. The supported response to a specific case (Utah) is an admin adjustment with the Gate 0 number as its argument; the modelling response, if ever, is a mechanism with a shape — not a bigger grid. |
-| `--tune-coaching-split`, widened grid + holdout + late guard (amended before the widened numbers were seen — the first grid's −5 edge sat INSIDE Gate 0's −6.31 E4 estimate, so its Gate 1 failure was the grid's, not the fit's) | **All gates pass, both windows, same interior optimum.** Wide `2015-2025/warmup1/covid-chain`, selection on fit seasons 2016–2023: best (healthy −6, struggling −3), fit ΔNLL **0.0055**, holdout (2024–25) Δ **0.0041** (same sign, > half), weeks-5+ Δ **+0.0020** (late got better); −6 interior (−7 ties, −8/−10 worse). E4 `2023-2025`: best (−6, −1), Δ **0.0042**, late Δ +0.0028, interior again. Healthy-only (−6, 0) also clears every bar on both windows: wide fit Δ 0.0041 / holdout Δ 0.0034; E4 Δ 0.0038. Struggling's own cell sits at its −3 edge — that half stays unconverged, consistent with the original double-count diagnosis. Runs 32927283304 / 32927284706. | **The healthy-succession install cost is real, fitted, and interior: −6 points, year one, for a new HC inheriting a prior ≥ 0 program.** Struggling-class stays 0 (its optimum is still an edge; the pooled rejection's diagnosis holds there). Shipping is a model change — class-aware term in `DEFAULT_PARAMS`, clamp widened past −4, MODEL_VERSION bump, preseason rebuild — **owner decision, pending** at time of this row; the parameter does not move until it is made. |
+| `--tune-coaching-split`, widened grid + holdout + late guard (amended before the widened numbers were seen — the first grid's −5 edge sat INSIDE Gate 0's −6.31 E4 estimate, so its Gate 1 failure was the grid's, not the fit's) | **All gates pass, both windows, same interior optimum.** Wide `2015-2025/warmup1/covid-chain`, selection on fit seasons 2016–2023: best (healthy −6, struggling −3), fit ΔNLL **0.0055**, holdout (2024–25) Δ **0.0041** (same sign, > half), weeks-5+ Δ **+0.0020** (late got better); −6 interior (−7 ties, −8/−10 worse). E4 `2023-2025`: best (−6, −1), Δ **0.0042**, late Δ +0.0028, interior again. Healthy-only (−6, 0) also clears every bar on both windows: wide fit Δ 0.0041 / holdout Δ 0.0034; E4 Δ 0.0038. Struggling's own cell sits at its −3 edge — that half stays unconverged, consistent with the original double-count diagnosis. Runs 32927283304 / 32927284706. | **The healthy-succession install cost is real, fitted, and interior: −6 points, year one, for a new HC inheriting a prior ≥ 0 program.** Struggling-class stays 0 (its optimum is still an edge; the pooled rejection's diagnosis holds there). **Shipped (2026.6.0), owner call 2026-08-26** — the same session, after the pending row landed: class-aware term at the fitted −6, clamp −4 → −8, preseason rebuild dispatched before the Week-0 freeze. The owner's constraint was the point: no manual adjustments — either the parameter ships through the gate or the zero stands. |
 | `--tune-epa` | Best case **0.010** MAE; NLL degraded monotonically (0.5005 → 0.5095) and early MAE got worse. PPA coverage was fine (1492/1606/1658 games). | Rejected. Swapping the scoreboard margin for a PPA margin still feeds one noisy per-game number into an Elo that already averages a dozen games. |
 | `--tune-ensemble` | Pure 50/50 with weekly Elo is **worse than our model alone (−0.069)**. Fitted weights: true holdout 0.138 vs bar 0.15. Prior-season SP+ t=0.43. | Rejected. The apparent gain was an intercept, not information — which is how the home bias was found. |
 | `--diagnose-edges` | b₁ = **0.035 (t=0.84)** for our model vs **0.987 (t=22.81)** for the market, n=2611. All five pre-registered tier tests failed (totals, thin/thick market, conference/non-). | Rejected → **edges demoted to information.** `stakeForPrediction` replaced by `modelSideOf`; ¼-Kelly stake removed from the UI. |
@@ -216,6 +223,31 @@ shipping it.
 ---
 
 ## Log
+
+### Aug 26 — 2026.6.0: the healthy-succession term ships, by owner call
+
+The pending row below closed the same session: ship. `newHcHealthyIntercept`
+enters `DEFAULT_PARAMS` at the fitted **−6**, applied when the pre-coaching
+composed preseason rating is ≥ 0 (the production analog of the pre-adjustment
+chained prior the tuner classified on); the outer clamp widens −4 → −8
+because a floor inside the fitted value would silently re-reject the
+parameter the gate just passed. The pooled intercept and slope stay at their
+rejected zeros — the healthy term stacks on top of them, so the pooled tuner
+now fits residual rather than re-litigating the split. Tests pin the
+boundary (≥ 0 charges, −0.01 doesn't, null prior takes the conservative
+branch), the stack, and the widened clamp.
+
+19 teams move in 2026, roughly −6 each: Utah (#7 → ~#19), Ole Miss,
+Penn State, LSU, Michigan, Kansas State, Florida, Arkansas, Iowa State,
+Kentucky, South Florida, Toledo, Washington State, James Madison, North
+Texas, Memphis, Tulane, UConn, and the boundary case Kentucky at prev +0.2.
+Applied to production via `preseason-refresh` (rebuild + reload + verify)
+before the Thursday freeze; the frozen Week-0/1 receipts grade the call from
+Saturday. Known residual, recorded rather than hidden: the backtest's main
+report chains priors WITHOUT the coaching term (it always has — moot while
+the params were identity zeros), so the report now slightly understates the
+shipped model until the chain learns the term; the tuner that earned the
+value measured the exact term it shipped.
 
 ### Aug 26 — the widened split: every gate passes, and the install cost has a number
 
