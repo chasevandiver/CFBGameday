@@ -71,6 +71,7 @@ describe("isNavItemActive", () => {
       "/game/401",
       "/streak",
       "/guess-lines",
+      "/model",
     ]) {
       const active = NAV_ITEMS.filter((i) => isNavItemActive(i, pathname));
       expect(active.map((i) => i.label)).toHaveLength(1);
@@ -125,6 +126,14 @@ describe("nav slots", () => {
     // carries it and the slate still links to it.
     expect(NAV_ITEMS.some((i) => i.href === "/edges")).toBe(true);
     expect(DESKTOP_ITEMS.map((i) => i.label)).not.toContain("Edges");
+  });
+
+  it("keeps /model in the More sheet only (NAV-1)", () => {
+    // Owner report 2026-08-26: no way to reach the model page from the PWA.
+    // Reference material, not a daily destination — same demotion-not-deletion
+    // shape as Edges: a More row, no desktop tab (the header is full at nine).
+    expect(NAV_ITEMS.some((i) => i.href === "/model")).toBe(true);
+    expect(DESKTOP_ITEMS.map((i) => i.label)).not.toContain("Model");
   });
 
   it("keeps /jumbotron in the More sheet only (R5-A)", () => {

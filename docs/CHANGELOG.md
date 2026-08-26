@@ -226,6 +226,16 @@ shipping it.
 
 ## Log
 
+### Aug 26 — NAV-1: the model page joins the nav it was never in
+
+Owner report: *"I don't see a model tab on the pwa."* `/model` had never been
+in `nav-items.ts` — only a receipts-footer link and the welcome tour reached
+it. Added as an `overflowOnly` More-sheet row beside Ratings (the page it
+explains): no bottom-bar slot, no desktop tab, the same shape as Edges and
+Jumbotron, because the header is full at nine tabs and methodology is
+reference rather than destination. Named test added per `nav-items.test.ts`'s
+rule that slot changes must say what changed.
+
 ### Aug 26 — two more owner questions, two rejections, both informative
 
 The board review that shipped 2026.6.0 raised two follow-ups, run the same
