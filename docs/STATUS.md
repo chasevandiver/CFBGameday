@@ -2701,7 +2701,7 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       twice-earned 0.70 carryover. **Still open in this row — UX-32:** eyeball
       the matchup cards with real names (owner: needs your signed-in group
       view).
-- [ ] **Aug 26** — 🔴 **HARD CHECKPOINT (`04:DQ-1` / P0-3), and since
+- [x] **Aug 26** — 🔴 **HARD CHECKPOINT (`04:DQ-1` / P0-3), and since
       2026-08-18 it is a verification rather than a decision.** The question was
       "is `preseason-refresh` green, and if not, what ships?"; Q1 answered the
       second half and dated it to the 22nd, so what is left is: **did the load
@@ -2716,6 +2716,19 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       `predictions` still freezable. The emergency it was written to catch —
       "the escalation itself failed" — cannot happen now, because the load did
       not wait for the escalation.
+      **Re-verified 2026-08-26, direct DB read — pass, at a NEWER version than
+      this row expected.** The 04:00 UTC `preseason-refresh` (run
+      `32928546431`, green) loaded **2026.6.0** — the gated, tuned
+      healthy-succession coaching term shipped by PR #148 the night before —
+      so 2026.5.0 was already superseded by the time this checkpoint fired.
+      The facts the checkpoint actually guards, all clean: 138 rating rows at
+      week 0, **one** distinct `model_version` (2026.6.0, no mixed load), 138
+      `preseason_components` with `talent_stale` 0, `team_hfa` at 1 distinct
+      `blended_hfa`, `predictions` **0** (freezable), and all 8 week-0 games
+      with non-null spread and total in snapshots. *(The `verify-preseason`
+      Actions dispatches sat in GitHub's runner queue for 10+ minutes — the
+      read above is the same queries run directly; the queued runs are
+      read-only and harmless whenever they land.)*
 - [ ] **Aug 27** — Last refresh cron day. Verify `ratings` shows 2026.5.0 and
       `/ratings` renders the Off/Def columns (the `splitInformative` tell).
       Create Week 0 group weeks, invite the crew, confirm each person signs in.
