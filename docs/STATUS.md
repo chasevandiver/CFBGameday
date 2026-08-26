@@ -1409,11 +1409,54 @@ deliberate deferrals, each recorded below with what it would take.
       per-game, and `freeze-dry-run` means the change can be rehearsed against
       real weeks before it ever writes a row: run the dry-run daily for a week
       in September and diff what it would have frozen against what Thursday did.
-      **Build in early September.** First midweek CFB game is Tuesday Oct 6
+      ~~**Build in early September.** First midweek CFB game is Tuesday Oct 6
       (week 6), so there are ~5 weeks of runway after launch, and the Aug 28
-      freeze ships unchanged. Sibling of SLATE-3 below — one is when receipts
-      are stamped, the other is what shows before stamping. · **scheduled
-      early Sep** · M
+      freeze ships unchanged.~~
+      **The runway was 8 days, not 5 weeks — owner intel 2026-08-26.** The Oct
+      6 date counted Tue/Wed games and missed that *Thursday* games break the
+      Thursday-10pm freeze too: `freezeJob` takes `status = 'scheduled'` only,
+      so a game that kicked before the cron is silently skipped, not badly
+      priced — no receipt, ever, and nothing reports it per-game. Measured
+      against the live schedule: **week 1 has 11 games on Thu Sep 3 (first
+      kick 22:00 UTC / 5pm CT) and 8 on Fri Sep 4**. The Fri 03:00 UTC freeze
+      lands with all 11 Thursday games in progress — 11 missing receipts in
+      the model's second week. (Friday's 8 are still scheduled at that moment
+      and freeze fine. This week is unaffected: all 8 week-0 games are
+      Saturday.)
+      **So: live before Thu Sep 3 22:00 UTC.** Build the decided per-game
+      ~40h-lead daily job over the Aug 30–Sep 1 window, rehearsed against
+      week 1 with `freeze-dry-run` diffs. **Fallback if the weekend eats the
+      time:** shift the one weekly cron from Fri 03:00 UTC to **Thu 09:00
+      UTC** for a week — every Thursday game is still `scheduled` at 4am CT,
+      receipts land ~13h before the Thursday kicks and ~2.5 days before
+      Saturday's, and the change is one line in `jobs.yml`. Owner picks the
+      path after Week 0. Sibling of SLATE-3 below — one is when receipts
+      are stamped, the other is what shows before stamping. · **deadline Sep
+      3** · M
+- [ ] **LIVE-8 — CFBD says only `/scoreboard` and `/live/plays` are live;
+      audit of what that touches.** Owner intel 2026-08-26 (CFBD Discord).
+      Audited every CFBD call against it:
+      **Safe — the whole live layer.** Scores, clock, period and situation on
+      cards, ticker, hub, jumbotron and group boards all read our DB, fed by
+      the 30-second `scoreboard-loop` on `/scoreboard` — live by CFBD's own
+      list, and the layer Week 0's `observe-scoreboard` validates. Finals →
+      grading rides the same loop. `/games` (daily sync), `/lines`,
+      `/rankings`, ratings endpoints: none are read during a game expecting
+      live data. There is no CFBD box score on the game page — it renders from
+      our DB.
+      **Exposed — one feature:** `cfbScoringJob` (scoring timelines) calls
+      week-scoped **`/plays` for `in_progress` games**, which per this intel
+      is NOT live — so during games the timeline rows may simply not arrive,
+      filling in whenever CFBD populates `/plays`. Degradation, not breakage:
+      the job tracks coverage and self-heals post-game, and the card renders
+      without the timeline. **Owner to ask on Discord:** (1) does week-scoped
+      `/plays` populate at all during games, or only after final — and with
+      what delay? (2) what tier is `/live/plays` on, and is it per-game or
+      slate-wide per call? Then decide: accept post-game timelines (zero
+      work), or switch the in-progress branch to `/live/plays` if Tier 2
+      covers it (S). While asking: (3) what scale is CORE's `overall` on for
+      mapping to a game margin (CORE-1 needs it). · **decision after Discord
+      answers** · S
 - [ ] **SLATE-2 — 391 games sit on the wrong day tab, and the card knows better
       than the tab does.** Found 2026-08-21. CFBD gives an unscheduled game a
       placeholder kickoff of **04:00 UTC** — midnight Eastern on game day — which
