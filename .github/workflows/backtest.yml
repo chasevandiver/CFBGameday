@@ -27,6 +27,7 @@ on:
           - tune-sigma
           - tune-preseason-tilts
           - tune-coaching
+          - tune-coaching-split
           - tune-anchors
           - tune-sp-blend
           - tune-prior

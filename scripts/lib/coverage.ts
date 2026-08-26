@@ -69,6 +69,7 @@ export const FEED_REQUIREMENTS: Record<string, FeedKey[]> = {
   "tune-sp-blend": ["ratings/sp", "talent"],
   "tune-preseason-tilts": ["ratings/sp"],
   "tune-coaching": ["ratings/sp", "talent"],
+  "tune-coaching-split": ["ratings/sp", "talent"],
   "tune-churn": ["ratings/sp", "talent", "player/returning"],
   "tune-anchors": ["ratings/sp", "talent", "ratings/elo@wk1", "rankings@wk1"],
   "tune-ensemble": ["ratings/sp", "ratings/elo@weekly"],
