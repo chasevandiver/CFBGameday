@@ -4077,7 +4077,25 @@ viewer's own bets, not the whole sheet.
       storing to `team_news` (migration 0079), rendered pregame on the game
       page and fresh-only on team pages (`src/lib/team-news.ts`, tested on
       verbatim feed fixtures). $0/season against the ~$20 budgeted.
-- [x] **F3b — the classify layer, shipped 2026-08-25 as pregame notes.**
+- [x] **F3b — pregame notes, shipped 2026-08-25; LLM for one dispatch, then
+      deterministic by owner call ("I don't want to have to use api credits
+      for this").** The LLM version below shipped, ran once, and wrote
+      nothing — the `ANTHROPIC_API_KEY` secret does not exist in the repo,
+      which the dispatch log finally proved (and which means questions/
+      verdicts/drop have been green no-ops all season). The replacement costs
+      nothing and covers both motivating cases exactly: an availability/
+      roster/coaching note IS a stored headline that matches a rule (nothing
+      generated, so nothing can be hallucinated — the TTU-QB-banned case),
+      and a market note is poll-vs-model dissent arithmetic printed with the
+      churn/coaching components as the cause (the Utah case; same math shape
+      as the Drop's `dissents`). `scripts/lib/notes.ts` (`rules-v1`, tested,
+      thresholds named), run as a plain `notes` run-job task — so it gets a
+      `job_runs` row, which the LLM path never did. What the rules can't do
+      that the LLM could: synthesize across headlines or catch an event no
+      pattern names; the repair channel is adding a rule, and the LLM path
+      stays one `git revert` away if reading ever justifies the spend.
+      *(The original entry, kept as what was true for a few hours:)*
+      **the classify layer, shipped 2026-08-25 as pregame notes.**
       Reading the raw F3 feed stopped scaling the same day it shipped: the
       owner's read of the Week 0 board was that per-team headline lists miss
       the point, which is *per-game* relevance — the projected QB who is

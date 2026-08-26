@@ -24,6 +24,7 @@ import {
 } from "./lib/jobs-core";
 import { backfillGamesJob, backfillLinesJob, backfillRankingsJob } from "./lib/backfill";
 import { guessLinesJob, streakJob } from "./lib/daily-games";
+import { gameNotesJob } from "./lib/notes";
 import { teamNewsJob } from "./lib/team-news";
 import { dailyPuzzlesJob } from "./lib/daily-puzzles";
 import { sixPackJob } from "./lib/six-pack";
@@ -65,6 +66,10 @@ async function main() {
     // calls. Scoped to teams playing in the next 7 days; upserts, so a re-run
     // or a missed day costs freshness, never duplicates.
     "team-news": teamNewsJob,
+    // F3b: pregame notes, deterministic (owner call: no standing API spend).
+    // Matched headlines + poll-vs-model dissent over our own tables; zero
+    // external calls. Regenerates the window, so re-runs never duplicate.
+    notes: gameNotesJob,
     // The daily game layer (R2-C1/C2). Selection is idempotent per week/day;
     // grading sweeps anything the last run left pending.
     "guess-lines": guessLinesJob,

@@ -134,7 +134,7 @@ Preseason pages freeze at kickoff of week 1 (receipts!) and a live version conti
 # 4. Regular Season Features
 
 - **Weekly rating updates** (Sunday morning job) with movement tracking.
-- **Injury/news tracker:** **[amended 2026-08-25, F3]** ESPN's team news feed scans the news — the LLM turned out to be needed for discovery nowhere and for classification only maybe (`F3b`). Scoped to teams playing that week as specced; flagged items proposed as rating adjustments with one-tap admin confirm stay the `F3b` layer.
+- **Injury/news tracker:** **[amended 2026-08-25, F3/F3b]** ESPN's team news feed scans the news, and deterministic rules classify it into per-game pregame notes (matched headlines + poll-vs-model dissent) — the LLM turned out to be needed nowhere, by owner call on API spend. Scoped to teams playing that week as specced; proposing rating adjustments stays a human's call.
 - **Model report card:** weekly ATS record of edge flags, calibration stats, cumulative CLV of model-flagged plays.
 - **Pick'em league:** see **[v2] League Rules** below.
 - **Rooting guide:** per user's favorite teams — what needs to happen this week.
@@ -229,7 +229,7 @@ Weights tuned by feel; displayed as a 0–100 score.
 | Push notifications | Picks-due before each kickoff wave; log-your-bets for betting groups; bad beats live from the scoreboard job; watchdog alerts to admins. Timing and copy live in `notification_settings`, editable from `/admin` |
 | Backup | Sunday 15:00 UTC — `pg_dump` of the append-only tables |
 | Watchdog | 3×/day plus mid-Saturday — absence check on the data jobs |
-| Team news pull | **[Amended 2026-08-25, F3]** Daily, ESPN's team-scoped news feed — no LLM. The spec's LLM scan assumed discovery needed Claude + web search; the feed already carries team-tagged headlines free, so the scan's budget line is now $0 and the LLM survives only as the optional classify layer (`F3b` in `docs/STATUS.md` §4). Same scoping as specced: teams playing that week, not all 136. |
+| Team news pull | **[Amended 2026-08-25, F3]** Daily, ESPN's team-scoped news feed — no LLM. The spec's LLM scan assumed discovery needed Claude + web search; the feed already carries team-tagged headlines free, so the scan's budget line is now $0 — and the classify layer shipped deterministic too (`F3b` in `docs/STATUS.md` §4, owner call on API spend), so the whole tracker runs without a key. Same scoping as specced: teams playing that week, not all 136. |
 | ~~Calibration report~~ | **Not built.** Tracked as `07:OPS-8b` in `docs/STATUS.md` §4 — it needs a season of graded data before it can say anything. |
 
 **The cron expressions themselves are not reproduced here.** `.github/workflows/jobs.yml` is the only place they live, with the reasoning for each beside it. This table restating them is what let three rows in it go stale for months — a document that copies a fact the code already states will drift away from it, and the copy is the one people read.
