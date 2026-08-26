@@ -1849,6 +1849,18 @@ deliberate deferrals, each recorded below with what it would take.
       systems disagree and the flags say so). Shipping as honest model output:
       the receipts page exists to record exactly this. Nothing held back,
       nothing overridden. Thursday's freeze stamps them as-is.
+      **Addendum 2026-08-26: 2026.6.0 retires one of the three on its own.**
+      Of the 16 week-0 teams, exactly one carries the new healthy-succession
+      term — Memphis, at the fitted −6 (`preseason_components` read directly;
+      every other pairing shifts 0.00). That moves Memphis @ UNLV from model
+      Memphis −1.4 / edge 6.9 / BIG_EDGE to ≈ UNLV −4.6 against a −5.5 line —
+      edge ≈ 0.9, **no flag**. Not an override: the owner's own gated model
+      change repriced it, which is the system working. Thursday stamps **two**
+      bold calls (JaxSt +7 at NDSU, SacSt +9.5 at EMU — both untouched), not
+      three. Exact numbers confirm via the queued `freeze-dry-run` when
+      GitHub's runner queue recovers (dispatches sat queued 45+ min on
+      2026-08-26 — an Actions-side delay, watch that tonight's crons and
+      Thursday's freeze cron clear it).
 - [x] **GRP-6 — the betting group sheet is CFB-only while its own standings are
       not.** Owner report 2026-08-22 with a screenshot: *"on this it doesn't
       show nfl picks on the group it looks like it just has cfb picks."*
