@@ -1463,6 +1463,32 @@ deliberate deferrals, each recorded below with what it would take.
       methodology is reference, not a daily destination, and the desktop
       header is full at nine tabs. Pinned by a named test in
       `nav-items.test.ts` per that file's no-counting rule.
+- [ ] **CORE-1 — CFBD shipped a new rating system ("CORE"), including
+      inaugural 2026 preseason numbers. Evaluate after Week 0, not before.**
+      Owner flag 2026-08-26 off CFBD's Twitter push. Verified: CORE = Context
+      & Opponent-Relative Efficiency, opponent-adjusted play-level PPA, served
+      at `GET /ratings/core`; scale is points above average **per 100
+      qualifying plays** (offense/defense/overall), not points per game. It is
+      a *fourth external system* alongside SP+/FPI/Elo — it is **not** the
+      talent composite and does not change our recruiting-class substitute
+      (CFBD-5), which stays inert-when-talent-publishes as designed.
+      Two possible uses, opposite postures:
+      1. **Third live consensus system** (SYS-1 architecture — feeds no
+         price, `MODEL_VERSION` unmoved, denominator counts present systems
+         so it composes). Legitimate, but **not before Thursday's freeze**:
+         FREEZE-2's bold calls were approved with `agreed/available` on the
+         2-system denominator, and changing the receipts' consensus counts
+         the day before they're stamped re-opens a decided question. Also
+         needs the per-100-plays scale mapped to a margin before the
+         `sign(system − vegas)` comparison means anything.
+      2. **Into the rating itself** — presumptively rejected without a tuner:
+         the decisions table already carries `--tune-epa` (PPA margin: best
+         case 0.010 MAE, NLL monotonically worse) and `--tune-ensemble`
+         (external-system blend: worse than the model alone, the gain was an
+         intercept). CORE is precisely the idea those rows exist to meet at
+         the door. A `--tune-core` run with the standard gates is the only
+         path in.
+      · **post-Week 0** · S (consensus) / M (tuner)
 
 - [x] **AUTH-4 — the magic link cannot sign anyone in to the installed app, and
       that is where the crew will be on the 27th.** Owner question, 2026-08-22:
