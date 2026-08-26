@@ -73,7 +73,12 @@
 // applied HFA equal the fitted baseHfa while keeping the between-team spread.
 // The per-team component itself is still unvalidated by any replay (audit
 // 03/M-1); the tuner for it can only run once CFBD publishes 2026 data.
-export const MODEL_VERSION = "2026.5.0";
+// 2026.6.0: the healthy-succession coaching term (newHcHealthyIntercept −6)
+// ships after --tune-coaching-split passed every pre-registered gate on both
+// windows — see the decisions table. Owner call 2026-08-26, three days before
+// Week 0, over the alternative of hand adjustments ("I don't like the idea of
+// manually adjusting the model at all").
+export const MODEL_VERSION = "2026.6.0";
 
 /**
  * Did this model version price totals for real? Rows frozen before 2026.3.0
@@ -136,6 +141,15 @@ export interface ModelParams {
    */
   newHcIntercept: number;
   newHcSlope: number;
+  /**
+   * Year-one install cost for a new head coach inheriting a HEALTHY program
+   * (pre-coaching preseason rating ≥ 0) — the succession class the pooled
+   * intercept could never see past the fired-after-a-bad-season majority.
+   * Fit by `backtest.ts --tune-coaching-split`; added to the pooled term for
+   * healthy transitions, so the pooled identity zeros leave this the only
+   * live coaching signal.
+   */
+  newHcHealthyIntercept: number;
   /**
    * Points of churn per unit of returning production above/below the FBS
    * average. Replaces the old implicit weight of 10 (two ×5 terms that were
@@ -255,6 +269,13 @@ export const DEFAULT_PARAMS: ModelParams = {
   priorSigmaExtra: 0,
   newHcIntercept: 0,
   newHcSlope: 0,
+  // Fitted --tune-coaching-split, 2026-08-26 (runs 32927283304 wide /
+  // 32927284706 E4): interior optimum at −6 on BOTH windows (−7 ties, −8/−10
+  // worse), fit ΔNLL 0.0055 with holdout Δ 0.0041 (2024–25, same sign, >
+  // half), weeks-5+ NLL improved. Healthy-only (−6, 0) clears every bar, so
+  // the pooled intercept stays at its rejected identity 0 — its optimum still
+  // rides a grid edge, and the double-count diagnosis holds for that class.
+  newHcHealthyIntercept: -6,
   // Identity until --tune-epa earns it: 0 reproduces the score-only model.
   epaWeight: 0,
   // --tune-churn, NOT the argmin — a deliberate choice, recorded as such.
@@ -391,6 +412,13 @@ export interface CoachTransitionInputs {
    * signal. Built by scripts/lib/coaching.ts from CFBD /coaches.
    */
   overPerf: number | null;
+  /**
+   * The team's preseason rating BEFORE the coaching term — the class boundary
+   * for newHcHealthyIntercept (healthy = ≥ 0), matching the pre-adjustment
+   * chained prior --tune-coaching-split fit on. null = unknown, which takes
+   * the conservative branch: no healthy term.
+   */
+  priorRating: number | null;
 }
 
 /**
@@ -415,7 +443,14 @@ export function coachingAdjustmentContinuous(
   // Clamp the quality signal before it is scaled: one outlier tenure (a coach
   // who lapped a bad program) must not swing a preseason rating on its own.
   const quality = c.overPerf === null ? 0 : clamp(c.overPerf, -8, 8);
-  return clamp(p.newHcIntercept + p.newHcSlope * quality, -4, 3);
+  const healthy = c.priorRating !== null && c.priorRating >= 0;
+  // Outer clamp widened −4 → −8 with the healthy term: a floor inside the
+  // fitted −6 would silently re-reject the parameter the gate just passed.
+  return clamp(
+    (healthy ? p.newHcHealthyIntercept : 0) + p.newHcIntercept + p.newHcSlope * quality,
+    -8,
+    3,
+  );
 }
 
 export interface LuckInputs {

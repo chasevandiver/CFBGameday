@@ -420,40 +420,70 @@ describe("paramsForWeek (early-season uncertainty)", () => {
 
 describe("coachingAdjustmentContinuous", () => {
   const fitted = { ...DEFAULT_PARAMS, newHcIntercept: -1.5, newHcSlope: 0.3 };
+  // A struggling program: the healthy term must never touch these.
+  const bad = { priorRating: -5 };
 
-  it("is zero for everyone until the tuner fits the params", () => {
-    expect(coachingAdjustmentContinuous({ newHc: true, overPerf: 5 })).toBe(0);
-    expect(coachingAdjustmentContinuous({ newHc: true, overPerf: null })).toBe(0);
+  it("pooled params sit at identity: a struggling-program change costs nothing", () => {
+    expect(coachingAdjustmentContinuous({ newHc: true, overPerf: 5, ...bad })).toBe(0);
+    expect(coachingAdjustmentContinuous({ newHc: true, overPerf: null, ...bad })).toBe(0);
   });
 
-  it("leaves an intact staff alone regardless of params", () => {
-    expect(coachingAdjustmentContinuous({ newHc: false, overPerf: 6 }, fitted)).toBe(0);
-    expect(coachingAdjustmentContinuous({ newHc: false, overPerf: null }, fitted)).toBe(0);
+  it("charges −6 to a healthy-program succession at DEFAULT_PARAMS (2026.6.0)", () => {
+    // The shipped parameter: --tune-coaching-split's interior optimum on both
+    // windows. Boundary is prior ≥ 0; unknown prior takes the conservative
+    // branch and charges nothing.
+    expect(
+      coachingAdjustmentContinuous({ newHc: true, overPerf: null, priorRating: 22.4 }),
+    ).toBe(-6);
+    expect(coachingAdjustmentContinuous({ newHc: true, overPerf: null, priorRating: 0 })).toBe(-6);
+    expect(
+      coachingAdjustmentContinuous({ newHc: true, overPerf: null, priorRating: -0.01 }),
+    ).toBe(0);
+    expect(
+      coachingAdjustmentContinuous({ newHc: true, overPerf: null, priorRating: null }),
+    ).toBe(0);
   });
 
-  it("charges the install cost to a first-time HC (no quality signal)", () => {
-    expect(coachingAdjustmentContinuous({ newHc: true, overPerf: null }, fitted)).toBeCloseTo(-1.5, 10);
+  it("leaves an intact staff alone regardless of params or prior", () => {
+    expect(coachingAdjustmentContinuous({ newHc: false, overPerf: 6, ...bad }, fitted)).toBe(0);
+    expect(
+      coachingAdjustmentContinuous({ newHc: false, overPerf: null, priorRating: 20 }, fitted),
+    ).toBe(0);
+  });
+
+  it("charges the pooled install cost to a first-time HC (no quality signal)", () => {
+    expect(coachingAdjustmentContinuous({ newHc: true, overPerf: null, ...bad }, fitted)).toBeCloseTo(-1.5, 10);
+  });
+
+  it("stacks the healthy term on top of the pooled term", () => {
+    expect(
+      coachingAdjustmentContinuous({ newHc: true, overPerf: null, priorRating: 10 }, fitted),
+    ).toBeCloseTo(-6 - 1.5, 10);
   });
 
   it("credits a proven hire and penalizes an underperformer", () => {
-    const proven = coachingAdjustmentContinuous({ newHc: true, overPerf: 6 }, fitted);
-    const reach = coachingAdjustmentContinuous({ newHc: true, overPerf: -6 }, fitted);
+    const proven = coachingAdjustmentContinuous({ newHc: true, overPerf: 6, ...bad }, fitted);
+    const reach = coachingAdjustmentContinuous({ newHc: true, overPerf: -6, ...bad }, fitted);
     expect(proven).toBeCloseTo(-1.5 + 0.3 * 6, 10);
     expect(reach).toBeCloseTo(-1.5 + 0.3 * -6, 10);
     expect(proven).toBeGreaterThan(reach);
   });
 
   it("clamps the quality signal so one outlier tenure can't run away", () => {
-    const huge = coachingAdjustmentContinuous({ newHc: true, overPerf: 40 }, fitted);
-    const atCap = coachingAdjustmentContinuous({ newHc: true, overPerf: 8 }, fitted);
+    const huge = coachingAdjustmentContinuous({ newHc: true, overPerf: 40, ...bad }, fitted);
+    const atCap = coachingAdjustmentContinuous({ newHc: true, overPerf: 8, ...bad }, fitted);
     expect(huge).toBeCloseTo(atCap, 10);
   });
 
-  it("clamps the output to [-4, 3]", () => {
-    const extreme = { ...DEFAULT_PARAMS, newHcIntercept: -10, newHcSlope: 0 };
-    expect(coachingAdjustmentContinuous({ newHc: true, overPerf: null }, extreme)).toBe(-4);
-    const generous = { ...DEFAULT_PARAMS, newHcIntercept: 5, newHcSlope: 1 };
-    expect(coachingAdjustmentContinuous({ newHc: true, overPerf: 8 }, generous)).toBe(3);
+  it("clamps the output to [-8, 3] — the floor must admit the fitted −6", () => {
+    const extreme = { ...DEFAULT_PARAMS, newHcIntercept: -20, newHcSlope: 0 };
+    expect(coachingAdjustmentContinuous({ newHc: true, overPerf: null, ...bad }, extreme)).toBe(-8);
+    // Healthy stack (−6 + −20) hits the same floor rather than escaping it.
+    expect(
+      coachingAdjustmentContinuous({ newHc: true, overPerf: null, priorRating: 5 }, extreme),
+    ).toBe(-8);
+    const generous = { ...DEFAULT_PARAMS, newHcIntercept: 5, newHcSlope: 1, newHcHealthyIntercept: 5 };
+    expect(coachingAdjustmentContinuous({ newHc: true, overPerf: 8, priorRating: 5 }, generous)).toBe(3);
   });
 });
 

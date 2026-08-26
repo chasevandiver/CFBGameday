@@ -245,7 +245,10 @@ async function main() {
       : 0;
     const transition = transitions.get(team.school);
     const coaching = coachingAdjustmentContinuous(
-      { newHc: transition?.newHc ?? false, overPerf: transition?.overPerf ?? null },
+      // null prior on purpose: this diagnostic's findings were recorded before
+      // the class-aware term (2026.6.0) and the conservative branch reproduces
+      // the numbers its decisions-table rows carry.
+      { newHc: transition?.newHc ?? false, overPerf: transition?.overPerf ?? null, priorRating: null },
       DEFAULT_PARAMS,
     );
     return { tal, churn, luckCorr, coaching };

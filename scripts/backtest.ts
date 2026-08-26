@@ -1315,7 +1315,10 @@ async function tuneCoaching(seasons: SeasonData[], teamIdsByName: Map<string, nu
     for (const [teamId, rating] of priors) {
       const t = trans.get(schoolById.get(teamId) ?? "");
       const adj = coachingAdjustmentContinuous(
-        { newHc: t?.newHc ?? false, overPerf: t?.overPerf ?? null },
+        // priorRating = the pre-adjustment chained prior, same boundary the
+        // split tuner fit — so this pooled tuner now fits residual on top of
+        // the shipped healthy term rather than re-litigating it.
+        { newHc: t?.newHc ?? false, overPerf: t?.overPerf ?? null, priorRating: rating },
         p,
       );
       out.set(teamId, rating + adj);
@@ -1392,7 +1395,8 @@ async function tuneCoaching(seasons: SeasonData[], teamIdsByName: Map<string, nu
     console.log("\nLargest coach-quality signals (sanity check):");
     for (const t of top) {
       const adj = coachingAdjustmentContinuous(
-        { newHc: true, overPerf: t.overPerf },
+        // null prior: this table maps overPerf → pooled adjustment only.
+        { newHc: true, overPerf: t.overPerf, priorRating: null },
         { ...DEFAULT_PARAMS, newHcIntercept: best.i, newHcSlope: best.s },
       );
       console.log(
