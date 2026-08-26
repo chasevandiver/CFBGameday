@@ -113,6 +113,8 @@ and must say so. See "The window changed" below.
 | `--tune-coaching` | Optimum pinned at the grid edge (−2.5, then −5 after widening). Slope inert: NLL flat across 0/0.15/0.30/0.45. | Rejected — unconverged. A new HC almost always follows a bad season, which the prior already encodes, so the penalty double-counts. |
 | `--tune-coaching-split` (owner hypothesis off Utah's Whittingham→Scalley; healthy prior ≥ 0 vs struggling, slope 0) | **Gate 0 passes hard in both windows — the effect is real.** Healthy-succession teams underperform the identity model in wks 1–4: wide `2015-2025/warmup1/covid-chain` mean **−3.51** (t −3.95, n 426; struggling −3.62, t −4.20); E4 `2023-2025` mean **−6.31** (t −3.33, n 90; struggling −1.88, t −1.24, ns). But **Gate 1 fails in both**: best cells (−5, −3) wide / (−5, −2) E4, pinned at the −5 edge with NLL still falling (Δ 0.0049 / 0.0042, both past the 0.003 bar) — the same unconverged pathology as the pooled fit, at a boundary twice as wide as the one that killed it. Runs 32925804195 / 32925806206. | **Rejected — the zero stands, and the finding is sharpened.** New-HC teams get overrated early and it is NOT explained by the bad-season confound (the healthy class shows it strongest, exactly the owner's read). But a constant intercept cannot be the mechanism: an optimizer that wants −5-and-beyond for a quarter of a point of rating is absorbing something correlated (roster upheaval, scheme install, regression) rather than measuring an install cost, and shipping an edge-pinned value is the exact mistake the first rejection refused. The supported response to a specific case (Utah) is an admin adjustment with the Gate 0 number as its argument; the modelling response, if ever, is a mechanism with a shape — not a bigger grid. |
 | `--tune-coaching-split`, widened grid + holdout + late guard (amended before the widened numbers were seen — the first grid's −5 edge sat INSIDE Gate 0's −6.31 E4 estimate, so its Gate 1 failure was the grid's, not the fit's) | **All gates pass, both windows, same interior optimum.** Wide `2015-2025/warmup1/covid-chain`, selection on fit seasons 2016–2023: best (healthy −6, struggling −3), fit ΔNLL **0.0055**, holdout (2024–25) Δ **0.0041** (same sign, > half), weeks-5+ Δ **+0.0020** (late got better); −6 interior (−7 ties, −8/−10 worse). E4 `2023-2025`: best (−6, −1), Δ **0.0042**, late Δ +0.0028, interior again. Healthy-only (−6, 0) also clears every bar on both windows: wide fit Δ 0.0041 / holdout Δ 0.0034; E4 Δ 0.0038. Struggling's own cell sits at its −3 edge — that half stays unconverged, consistent with the original double-count diagnosis. Runs 32927283304 / 32927284706. | **The healthy-succession install cost is real, fitted, and interior: −6 points, year one, for a new HC inheriting a prior ≥ 0 program.** Struggling-class stays 0 (its optimum is still an edge; the pooled rejection's diagnosis holds there). **Shipped (2026.6.0), owner call 2026-08-26** — the same session, after the pending row landed: class-aware term at the fitted −6, clamp −4 → −8, preseason rebuild dispatched before the Week-0 freeze. The owner's constraint was the point: no manual adjustments — either the parameter ships through the gate or the zero stands. |
+| `--tune-qb-exit` (owner question off Vanderbilt #12/Iowa #10 vs SP+ #30/#22 — both career-year teams whose QB left; class = passing-PPA share < 0.5 entering AND prior ≥ 0, churn included in the baseline so the fit is residual) | **Gate 0 fails both windows.** Wide: mean −0.62, t −1.03, n 760 — with churn in the chain, qb-exit teams do not underperform, and every grid dock is monotonically worse (−1 already costs fit NLL). E4: mean **+1.95** (t 1.50, n 179) — in the portal era the class if anything *out*performs, and the grid agrees (0 is the argmin, late weeks indifferent). Runs 32930376388 / 32930383223. | **Rejected — no QB-exit dock exists beyond churn.** The returning-production term already prices the exit on average, and portal-era replacements have erased the residual (a −8 dock costs 0.014 NLL in E4). The Vandy/Iowa board positions are the carryover philosophy — thrice-validated by `--tune-prior`/`--tune-sp-blend`/`--tune-ensemble` — not a missing input, and the Week 1–4 receipts grade that philosophy directly. DQ-6 (better `qbReturns` facts) stays open as data quality, now known not to be hiding rating points. |
+| `--tune-coaching-quality` (owner question off LSU: the −6 charges Kiffin like a first-timer; Gate 0 = proven hires, overPerf ≥ +2, must underperform the shipped-−6 identity ≥ 1.5 pts LESS than the rest of the healthy class, then a `newHcSlope` grid) | **Split verdict that nets to no.** E4 Gate 0 PASSES — proven +4.27 vs rest −3.91, difference **8.18 ± 3.67, t 2.23** (n 10 vs 16 teams) — the owner's read is visible in the current era. But the wide window fails Gate 0 (diff 1.15, t 0.63, n 36 vs 87), and on BOTH windows the slope grid is flat: best Δ 0.0001 against the 0.003 bar. A 26-team-season class over two scored years cannot move a season-level likelihood. Runs 32930388478 / 32930396656. | **Rejected — the slope stays 0, with the finding recorded rather than lost:** in E4 the unproven half of the healthy class still underperforms even after −6 while proven hires beat the docked model, so the −6 may be misallocated *within* the class — but era-inconsistent and NLL-inert is two gates down, and shipping on a t from 26 team-seasons is how noise gets a parameter. Re-run with 2026 in sample after the season; Kiffin's LSU is literally in the test set. |
 | `--tune-epa` | Best case **0.010** MAE; NLL degraded monotonically (0.5005 → 0.5095) and early MAE got worse. PPA coverage was fine (1492/1606/1658 games). | Rejected. Swapping the scoreboard margin for a PPA margin still feeds one noisy per-game number into an Elo that already averages a dozen games. |
 | `--tune-ensemble` | Pure 50/50 with weekly Elo is **worse than our model alone (−0.069)**. Fitted weights: true holdout 0.138 vs bar 0.15. Prior-season SP+ t=0.43. | Rejected. The apparent gain was an intercept, not information — which is how the home bias was found. |
 | `--diagnose-edges` | b₁ = **0.035 (t=0.84)** for our model vs **0.987 (t=22.81)** for the market, n=2611. All five pre-registered tier tests failed (totals, thin/thick market, conference/non-). | Rejected → **edges demoted to information.** `stakeForPrediction` replaced by `modelSideOf`; ¼-Kelly stake removed from the UI. |
@@ -223,6 +225,33 @@ shipping it.
 ---
 
 ## Log
+
+### Aug 26 — two more owner questions, two rejections, both informative
+
+The board review that shipped 2026.6.0 raised two follow-ups, run the same
+night with the full gate family (decisions table carries the numbers):
+
+**Vanderbilt/Iowa (`--tune-qb-exit`)** — is there a missing dock for a
+career-year team that loses its QB? **No, cleanly.** With churn in the
+baseline the class shows no early underperformance on the wide window and
+actually *out*performs in the portal era (+1.95); every grid dock makes fit
+worse from the first step. The board's high read on those two is the
+carryover philosophy, already validated three times, and the receipts grade
+it from Week 1. One incidental finding worth keeping: this tuner's chain is
+the first to exercise the QB channel at all — the churn tuner passes
+`qbReturns: null` — and the answer is that the channel carries no unpriced
+rating points.
+
+**LSU (`--tune-coaching-quality`)** — should Kiffin's résumé claw back part
+of the −6? **Not yet, and honestly close.** In the current era the owner's
+read is visible with a t-stat: proven hires beat the shipped-−6 model while
+the unproven half still underperforms it, difference 8.18 (t 2.23) — but on
+ten proven teams over two seasons, and the wide window shows nothing (t
+0.63), and the slope cannot move NLL on either window (Δ 0.0001 vs the
+0.003 bar). Era-inconsistent and likelihood-inert ships nothing. The re-run
+belongs after this season, when Kiffin's LSU, Campbell's Penn State and
+Golding's Ole Miss are IN the sample — the 2026 receipts are literally the
+next data points this experiment needs.
 
 ### Aug 26 — 2026.6.0: the healthy-succession term ships, by owner call
 
