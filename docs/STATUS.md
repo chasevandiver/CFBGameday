@@ -1916,10 +1916,18 @@ deliberate deferrals, each recorded below with what it would take.
       edge ≈ 0.9, **no flag**. Not an override: the owner's own gated model
       change repriced it, which is the system working. Thursday stamps **two**
       bold calls (JaxSt +7 at NDSU, SacSt +9.5 at EMU — both untouched), not
-      three. Exact numbers confirm via the queued `freeze-dry-run` when
-      GitHub's runner queue recovers (dispatches sat queued 45+ min on
-      2026-08-26 — an Actions-side delay, watch that tonight's crons and
-      Thursday's freeze cron clear it).
+      three.
+      **Confirmed same evening by a real dry-run** (run `33023670814`, 23:32
+      UTC, after the Actions queue recovered): JaxSt +3.6 vs −7 (edge 10.6,
+      BIG_EDGE) and EMU −0.7 vs −10 (edge 9.3, BIG_EDGE) both hold; Memphis @
+      UNLV printed **−4.6 vs −4.5, edge −0.1, no flag, consensus 2/2** — the
+      analytical delta exactly, and Vegas moved a point toward Memphis during
+      the day (−5.5 → −4.5), converging on the model's old number. Summary
+      clean: would_freeze 8, 0 missing, 0 wrong version, all 2026.6.0.
+      *(The three afternoon dispatches never entered GitHub's queue at all —
+      the API refuses to cancel them as "not queued yet" — and are harmless
+      read-only zombies if they ever wake. Scheduled crons ran throughout;
+      only dispatch events were affected.)*
 - [x] **GRP-6 — the betting group sheet is CFB-only while its own standings are
       not.** Owner report 2026-08-22 with a screenshot: *"on this it doesn't
       show nfl picks on the group it looks like it just has cfb picks."*
