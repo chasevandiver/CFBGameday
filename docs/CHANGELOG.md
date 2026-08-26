@@ -226,6 +226,23 @@ shipping it.
 
 ## Log
 
+### Aug 26 — FREEZE-1 stopgap: the freeze moves to Thursday 4am CT, the old slot becomes a sweeper
+
+Owner intel (CFBD Discord) and owner call the same day. `freezeJob` takes
+`status='scheduled'` only, so a game that kicked before the cron is silently
+skipped — no receipt, nothing reported. Week 1 has **11 games kicking Thu Sep
+3 at 22:00 UTC**, and the Fri 03:00 UTC freeze would have landed with all of
+them live. The "first midweek game is Oct 6" runway assumption counted
+Tue/Wed and missed Thursdays.
+
+Shipped: a second freeze cron at **Thu 09:00 UTC**, with Fri 03:00 UTC kept
+as an idempotent sweeper (already-frozen skip makes the second run free; it
+catches TBD kickoffs that firm up late). Wiring pinned by
+`jobs-yml.test.ts`'s cron→task parser, 20/20. Accepted side effect: Week 0
+freezes ~57h pre-kick instead of ~39h, on lines re-priced clean the same day.
+Both slots retire when the per-game ~40h daily freeze ships — **due before
+Sep 3**, built Mon–Wed with SLATE-3 and the CORE consensus decision.
+
 ### Aug 26 — NAV-1: the model page joins the nav it was never in
 
 Owner report: *"I don't see a model tab on the pwa."* `/model` had never been

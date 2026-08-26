@@ -331,7 +331,15 @@ on:
     # of repo inactivity, and Dec→Jul is exactly that. A monthly no-op run
     # resets the clock so the season doesn't open to a dead scheduler.
     - cron: "0 6 1 * *"
-    # Thursday-night prediction freeze (10pm CT)
+    # Prediction freeze. Thursday 09:00 UTC (4am CT) is the run that matters:
+    # week 1 has 11 games kicking Thursday 22:00 UTC, and freezeJob takes
+    # status='scheduled' only — the old 10pm-CT slot (Fri 03:00 UTC) landed
+    # with those games live and silently skipped them, no receipt ever
+    # (FREEZE-1 stopgap, owner call 2026-08-26). The Fri 03:00 slot stays as
+    # an idempotent sweeper: already-frozen games skip, so it costs nothing
+    # and catches a TBD kickoff that firmed up after Thursday morning. Both
+    # slots retire when the per-game ~40h daily freeze ships (due Sep 3).
+    - cron: "0 9 * * 4"
     - cron: "0 3 * * 5"
     # Three Questions per game, Friday morning after the freeze (LLM; green
     # no-op until the ANTHROPIC_API_KEY secret exists)
@@ -475,7 +483,7 @@ jobs:
             "0 8,14,20 * * *"|"30 21 * * 6") echo "task=watchdog" >> "$GITHUB_OUTPUT" ;;
             "0 15 * * 0") echo "task=backup" >> "$GITHUB_OUTPUT" ;;
             "0 6 1 * *") echo "task=keepalive" >> "$GITHUB_OUTPUT" ;;
-            "0 3 * * 5") echo "task=freeze" >> "$GITHUB_OUTPUT" ;;
+            "0 9 * * 4"|"0 3 * * 5") echo "task=freeze" >> "$GITHUB_OUTPUT" ;;
             "0 9 * * 5") echo "task=questions" >> "$GITHUB_OUTPUT" ;;
             "30 11 * * *") echo "task=team-news" >> "$GITHUB_OUTPUT" ;;
             "45 11 * * *") echo "task=notes" >> "$GITHUB_OUTPUT" ;;
