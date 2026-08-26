@@ -11,6 +11,8 @@
  *   npx tsx scripts/backtest.ts --tune-preseason-tilts       # should preseason off/def carry a shape?
  *   npx tsx scripts/backtest.ts --tune-coaching              # fit newHcIntercept / newHcSlope
  *   npx tsx scripts/backtest.ts --tune-coaching-split        # the rejection re-asked: healthy-program successions split from post-struggle hires
+ *   npx tsx scripts/backtest.ts --tune-qb-exit               # career-year team loses its QB: a dock beyond churn?
+ *   npx tsx scripts/backtest.ts --tune-coaching-quality      # within the healthy class: does a proven hire claw back?
  *   npx tsx scripts/backtest.ts --tune-churn                 # fit returning-production weight + talent reload
  *   npx tsx scripts/backtest.ts --tune-epa                   # ratings from per-play efficiency vs the scoreboard
  *   npx tsx scripts/backtest.ts --tune-ensemble              # blend weekly Elo + prior SP+ into our margin
@@ -1654,6 +1656,351 @@ async function tuneCoachingSplit(seasons: SeasonData[], teamIdsByName: Map<strin
 }
 
 /**
+ * --tune-qb-exit: the Vanderbilt/Iowa question (owner, 2026-08-26) — does a
+ * career-year team that loses its quarterback deserve its own dock beyond
+ * what churn already charges? Both boards' loudest system disagreements
+ * (ours #10/#12 vs SP+ #22/#30) are prev-rating carryover cases whose QB
+ * left, DQ-6's proxy prices the exit at ~−2 where the systems price ~−8, and
+ * the churn tuner's own chain has never exercised qbReturns at all (it
+ * passes null).
+ *
+ * Class, pre-registered: qbExit = share of passing PPA RETURNING for the
+ * entering season < 0.5 (the model's own standing qbReturns boundary,
+ * src/model/ratings.ts — reused, not invented here) AND pre-adjustment
+ * chained prior ≥ 0 (a season worth losing; mirrors the healthy boundary).
+ *
+ * Baseline chain is production-shaped: prior-year blend + talent + the
+ * CHURN term at DEFAULT_PARAMS (returning production included, so the fit is
+ * residual beyond what production already charges) + the shipped
+ * healthy-succession coaching term. Gates as in --tune-coaching-split:
+ * Gate 0 (oriented residual mean ≤ −1.0, |t| ≥ 2, else nothing is fit),
+ * interior optimum, fit ΔNLL ≥ 0.003, holdout same-sign-≥-half,
+ * weeks-5+ not worse by > 0.001, sign agreement on 2023-2025.
+ */
+async function tuneQbExit(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
+  const { cfbd } = await import("../src/lib/cfbd");
+  const { cached } = await import("./lib/replay");
+  const coachRows = await cached(
+    "coaches-history",
+    () => cfbd.coaches({ minYear: 2001, maxYear: SEASONS[SEASONS.length - 1] }),
+    true,
+  );
+  const transitions = new Map<number, Map<string, CoachTransition>>();
+  for (const s of SEASONS) transitions.set(s, buildCoachTransitions(coachRows, s));
+  const schoolById = new Map([...teamIdsByName].map(([school, id]) => [id, school]));
+  const { talentBySeason, spFinalBySeason } = await loadPriorInputs(teamIdsByName);
+
+  // Returning production per entering season: overall share (for the churn
+  // baseline) and passing share (the class boundary).
+  const retBySeason = new Map<number, Map<number, { overall: number; passing: number | null }>>();
+  for (const season of SEASONS) {
+    const rows = await cached(`returning-${season}`, () => cfbd.returningProduction(season), true);
+    const map = new Map<number, { overall: number; passing: number | null }>();
+    for (const r of rows) {
+      const id = teamIdsByName.get(r.team);
+      if (id !== undefined && r.percentPPA !== null) {
+        map.set(id, { overall: r.percentPPA, passing: r.percentPassingPPA ?? null });
+      }
+    }
+    retBySeason.set(season, map);
+  }
+
+  const QB_RETURNS_CUT = 0.5; // the model's own qbReturns boundary, reused
+
+  /** year → teamId in the qb-exit class, recorded as priors are applied. */
+  const classOf = new Map<number, Set<number>>();
+
+  const replayAt = (qbExitIntercept: number): ReplayPrediction[] => {
+    let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
+    const scored: ReplayPrediction[] = [];
+    for (const season of seasons) {
+      const { predictions, finalRatings } = replaySeason(season, priors, DEFAULT_PARAMS);
+      if (SCORED.includes(season.season)) scored.push(...predictions);
+      const next = season.season + 1;
+      const spFinal = spFinalBySeason.get(season.season)!;
+      const talent = talentBySeason.get(season.season)!;
+      const ret = retBySeason.get(next) ?? retBySeason.get(season.season)!;
+      const trans = transitions.get(next);
+      const members = new Set<number>();
+      const out = new Map<number, number>();
+      for (const [teamId, rating] of finalRatings) {
+        const sp = spFinal.get(teamId);
+        const base = sp !== undefined ? 0.5 * rating + 0.5 * sp : rating;
+        const tal = talent.get(teamId) ?? -8;
+        const r = ret.get(teamId);
+        const churn = churnAdjustment(
+          {
+            returningProduction: r?.overall ?? 0.6,
+            qbReturns: null, // the production proxy the class exists to test past
+            olReturningShare: 0.5,
+            netPortalPoints: 0,
+            blueChipFreshmen: 0,
+            talentBaseline: tal,
+          },
+          DEFAULT_PARAMS,
+        );
+        const preCoaching = 0.7 * base + 0.3 * tal + churn;
+        const t = trans?.get(schoolById.get(teamId) ?? "");
+        const coaching = coachingAdjustmentContinuous(
+          { newHc: t?.newHc ?? false, overPerf: t?.overPerf ?? null, priorRating: preCoaching },
+          DEFAULT_PARAMS,
+        );
+        const prior = preCoaching + coaching;
+        const qbExit =
+          prior >= 0 && r !== null && r !== undefined && r.passing !== null && r.passing < QB_RETURNS_CUT;
+        if (qbExit) members.add(teamId);
+        out.set(teamId, prior + (qbExit ? qbExitIntercept : 0));
+      }
+      classOf.set(next, members);
+      priors = out;
+    }
+    return scored;
+  };
+
+  const identityAll = replayAt(0);
+  const identity = identityAll.filter((p) => p.week <= 4);
+  let classN = 0;
+  for (const s of SCORED) classN += classOf.get(s)?.size ?? 0;
+  const passingCoverage = [...retBySeason.entries()]
+    .map(([s, m]) => `${s}: ${[...m.values()].filter((v) => v.passing !== null).length}`)
+    .join("  ");
+  console.log(
+    `\n== --tune-qb-exit == class: passing PPA share < ${QB_RETURNS_CUT} entering the season AND prior ≥ 0.\n` +
+      `Passing-share coverage per season — ${passingCoverage}\n` +
+      `Class team-seasons across ${SCORED.join(", ")}: ${classN}.`,
+  );
+
+  const oriented: number[] = [];
+  for (const p of identity) {
+    const members = classOf.get(p.season);
+    if (!members) continue;
+    const homeIn = members.has(p.homeId);
+    const awayIn = members.has(p.awayId);
+    if (homeIn === awayIn) continue;
+    const residual = p.actualMargin - p.margin;
+    oriented.push(homeIn ? residual : -residual);
+  }
+  const g0m = mean(oriented);
+  const g0sd = Math.sqrt(
+    mean(oriented.map((v) => (v - g0m) ** 2)) * (oriented.length / (oriented.length - 1)),
+  );
+  const g0t = g0m / (g0sd / Math.sqrt(oriented.length));
+  console.log(
+    `Gate 0 (identity, wks 1–4, residual oriented toward the qb-exit side): ` +
+      `mean ${g0m.toFixed(2)}  t ${g0t.toFixed(2)}  n ${oriented.length} — needs mean ≤ −1.0, |t| ≥ 2.`,
+  );
+  const gate0 = g0m <= -1.0 && Math.abs(g0t) >= 2;
+  console.log(gate0 ? "Gate 0 PASSES — fitting." : "Gate 0 FAILS — nothing to fit; grid below is informational only.");
+
+  const HOLDOUT_FROM = 2024;
+  const fitSeasons = SCORED.filter((s) => s < HOLDOUT_FROM);
+  const holdSeasons = SCORED.filter((s) => s >= HOLDOUT_FROM);
+  const useHoldout = fitSeasons.length >= 3 && holdSeasons.length >= 1;
+  const earlyOf = (preds: ReplayPrediction[], set: number[]) =>
+    preds.filter((p) => p.week <= 4 && set.includes(p.season));
+  const lateOf = (preds: ReplayPrediction[]) => preds.filter((p) => p.week >= 5);
+  console.log(
+    useHoldout
+      ? `Selection on FIT early NLL (${fitSeasons.join(", ")}); holdout ${holdSeasons.join(", ")}.`
+      : `No pre-${HOLDOUT_FROM} scored seasons — selection on all early NLL, Gate H n/a here.`,
+  );
+  console.log("\nqbExit    fit NLL   hold NLL   late NLL   early MAE");
+  const idFit = nll(useHoldout ? earlyOf(identityAll, fitSeasons) : identity);
+  const idHold = useHoldout ? nll(earlyOf(identityAll, holdSeasons)) : NaN;
+  const idLate = nll(lateOf(identityAll));
+  let best: { q: number; fit: number; hold: number; late: number } | null = null;
+  for (const q of [0, -1, -2, -3, -4, -5, -6, -8]) {
+    const all = q === 0 ? identityAll : replayAt(q);
+    const early = all.filter((p) => p.week <= 4);
+    const fit = useHoldout ? nll(earlyOf(all, fitSeasons)) : nll(early);
+    const hold = useHoldout ? nll(earlyOf(all, holdSeasons)) : NaN;
+    const late = nll(lateOf(all));
+    console.log(
+      `${q.toFixed(1).padStart(6)}    ${fit.toFixed(4)}     ${useHoldout ? hold.toFixed(4) : "  n/a "}     ${late.toFixed(4)}     ` +
+        maeOf(early.map((p) => p.actualMargin - p.margin)).toFixed(2),
+    );
+    if (!best || fit < best.fit) best = { q, fit, hold, late };
+  }
+  if (!best) return;
+  const fitDelta = idFit - best.fit;
+  const holdDelta = useHoldout ? idHold - best.hold : NaN;
+  const lateDelta = idLate - best.late;
+  const gate1 = best.q > -8;
+  const gate2 = fitDelta >= 0.003;
+  const gateH = !useHoldout || (holdDelta > 0 && holdDelta >= fitDelta / 2);
+  const gateL = lateDelta >= -0.001;
+  console.log(
+    `\nBest: qbExit=${best.q} (fit Δ ${fitDelta.toFixed(4)}${useHoldout ? `; holdout Δ ${holdDelta.toFixed(4)}` : ""}; late Δ ${lateDelta.toFixed(4)})\n` +
+      `Gate 1 (interior): ${gate1 ? "PASSES" : "FAILS — pinned at −8"}\n` +
+      `Gate 2 (fit ΔNLL ≥ 0.003): ${gate2 ? "PASSES" : "FAILS"}\n` +
+      `Gate H: ${useHoldout ? (gateH ? "PASSES" : "FAILS") : "n/a"}\n` +
+      `Gate L (weeks 5+): ${gateL ? "PASSES" : "FAILS"}\n` +
+      `Gate 3: re-run with --seasons=2023-2025; same sign required.`,
+  );
+  console.log(
+    gate0 && gate1 && gate2 && gateH && gateL
+      ? "→ All local gates pass. Shipping is an owner decision: a qbExitIntercept param + rebuild, on this row plus Gate 3."
+      : "→ Rejected on the gates above. Record the row.",
+  );
+}
+
+/**
+ * --tune-coaching-quality: the LSU question (owner, 2026-08-26) — within the
+ * healthy-succession class the shipped −6 charges Lane Kiffin the same as a
+ * first-time coordinator. The pooled run found the overPerf slope inert, but
+ * that was measured WITHOUT the class split; on top of the shipped intercept
+ * the question is new: does a proven hire claw part of the install cost back?
+ *
+ * Gate 0, pre-registered: within healthy-class new-HC team-seasons, the
+ * proven subgroup (overPerf ≥ +2 — a coach who beat his programs by a field
+ * goal historically) must underperform the identity-with-−6 model LESS than
+ * the rest of the class by ≥ 1.5 points with |t| ≥ 2 on the difference, else
+ * there is no quality signal to fit. Then the slope grid on the shipped
+ * function (slope also touches struggling-class hires through the pooled
+ * term's zero — reported, not hidden), same remaining gates as the split.
+ */
+async function tuneCoachingQuality(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
+  const { cfbd } = await import("../src/lib/cfbd");
+  const { cached } = await import("./lib/replay");
+  const coachRows = await cached(
+    "coaches-history",
+    () => cfbd.coaches({ minYear: 2001, maxYear: SEASONS[SEASONS.length - 1] }),
+    true,
+  );
+  const transitions = new Map<number, Map<string, CoachTransition>>();
+  for (const s of SEASONS) transitions.set(s, buildCoachTransitions(coachRows, s));
+  const schoolById = new Map([...teamIdsByName].map(([school, id]) => [id, school]));
+  const { talentBySeason, spFinalBySeason } = await loadPriorInputs(teamIdsByName);
+
+  const PROVEN_CUT = 2;
+  /** year → teamId → {healthy, proven} for healthy-class new-HC teams. */
+  const classOf = new Map<number, Map<number, boolean>>(); // value = proven
+
+  const replayAt = (newHcSlope: number): ReplayPrediction[] => {
+    const params: ModelParams = { ...DEFAULT_PARAMS, newHcSlope };
+    let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
+    const scored: ReplayPrediction[] = [];
+    for (const season of seasons) {
+      const { predictions, finalRatings } = replaySeason(season, priors, DEFAULT_PARAMS);
+      if (SCORED.includes(season.season)) scored.push(...predictions);
+      const next = season.season + 1;
+      const spFinal = spFinalBySeason.get(season.season)!;
+      const talent = talentBySeason.get(season.season)!;
+      const trans = transitions.get(next);
+      const members = new Map<number, boolean>();
+      const out = new Map<number, number>();
+      for (const [teamId, rating] of finalRatings) {
+        const sp = spFinal.get(teamId);
+        const base = sp !== undefined ? 0.5 * rating + 0.5 * sp : rating;
+        const prior = 0.7 * base + 0.3 * (talent.get(teamId) ?? -8);
+        const t = trans?.get(schoolById.get(teamId) ?? "");
+        const adj = coachingAdjustmentContinuous(
+          { newHc: t?.newHc ?? false, overPerf: t?.overPerf ?? null, priorRating: prior },
+          params,
+        );
+        if (t?.newHc && prior >= 0) {
+          members.set(teamId, t.overPerf !== null && t.overPerf >= PROVEN_CUT);
+        }
+        out.set(teamId, prior + adj);
+      }
+      classOf.set(next, members);
+      priors = out;
+    }
+    return scored;
+  };
+
+  const identityAll = replayAt(0); // slope 0 = the shipped model
+  const identity = identityAll.filter((p) => p.week <= 4);
+  let proven = 0;
+  let rest = 0;
+  for (const s of SCORED) {
+    for (const isProven of classOf.get(s)?.values() ?? []) (isProven ? proven++ : rest++);
+  }
+  console.log(
+    `\n== --tune-coaching-quality == healthy-class new-HC team-seasons across ${SCORED.join(", ")}: ` +
+      `${proven} proven (overPerf ≥ +${PROVEN_CUT}), ${rest} rest.`,
+  );
+
+  const orientedFor = (wantProven: boolean): number[] => {
+    const vals: number[] = [];
+    for (const p of identity) {
+      const members = classOf.get(p.season);
+      if (!members) continue;
+      const homeIn = members.has(p.homeId) && members.get(p.homeId) === wantProven;
+      const awayIn = members.has(p.awayId) && members.get(p.awayId) === wantProven;
+      if (homeIn === awayIn) continue;
+      const residual = p.actualMargin - p.margin;
+      vals.push(homeIn ? residual : -residual);
+    }
+    return vals;
+  };
+  const stat = (vals: number[]) => {
+    const m = mean(vals);
+    const sd = Math.sqrt(mean(vals.map((v) => (v - m) ** 2)) * (vals.length / (vals.length - 1)));
+    return { m, sd, n: vals.length };
+  };
+  const a = stat(orientedFor(true));
+  const b = stat(orientedFor(false));
+  const diff = a.m - b.m;
+  const diffSe = Math.sqrt((a.sd ** 2) / a.n + (b.sd ** 2) / b.n);
+  const diffT = diff / diffSe;
+  console.log(
+    `Gate 0 (identity incl. the shipped −6, wks 1–4, oriented residuals):\n` +
+      `  proven  mean ${a.m.toFixed(2)}  n ${a.n}\n` +
+      `  rest    mean ${b.m.toFixed(2)}  n ${b.n}\n` +
+      `  difference ${diff.toFixed(2)} ± ${diffSe.toFixed(2)}  t ${diffT.toFixed(2)} — needs ≥ +1.5 with |t| ≥ 2.`,
+  );
+  const gate0 = diff >= 1.5 && Math.abs(diffT) >= 2;
+  console.log(gate0 ? "Gate 0 PASSES — fitting the slope." : "Gate 0 FAILS — no quality signal within the class; grid below is informational only.");
+
+  const HOLDOUT_FROM = 2024;
+  const fitSeasons = SCORED.filter((s) => s < HOLDOUT_FROM);
+  const holdSeasons = SCORED.filter((s) => s >= HOLDOUT_FROM);
+  const useHoldout = fitSeasons.length >= 3 && holdSeasons.length >= 1;
+  const earlyOf = (preds: ReplayPrediction[], set: number[]) =>
+    preds.filter((p) => p.week <= 4 && set.includes(p.season));
+  const lateOf = (preds: ReplayPrediction[]) => preds.filter((p) => p.week >= 5);
+  console.log("\nslope    fit NLL   hold NLL   late NLL   early MAE");
+  const idFit = nll(useHoldout ? earlyOf(identityAll, fitSeasons) : identity);
+  const idHold = useHoldout ? nll(earlyOf(identityAll, holdSeasons)) : NaN;
+  const idLate = nll(lateOf(identityAll));
+  let best: { s: number; fit: number; hold: number; late: number } | null = null;
+  for (const s of [0, 0.1, 0.2, 0.3, 0.45, 0.6, 0.8]) {
+    const all = s === 0 ? identityAll : replayAt(s);
+    const early = all.filter((p) => p.week <= 4);
+    const fit = useHoldout ? nll(earlyOf(all, fitSeasons)) : nll(early);
+    const hold = useHoldout ? nll(earlyOf(all, holdSeasons)) : NaN;
+    const late = nll(lateOf(all));
+    console.log(
+      `${s.toFixed(2).padStart(5)}    ${fit.toFixed(4)}     ${useHoldout ? hold.toFixed(4) : "  n/a "}     ${late.toFixed(4)}     ` +
+        maeOf(early.map((p) => p.actualMargin - p.margin)).toFixed(2),
+    );
+    if (!best || fit < best.fit) best = { s, fit, hold, late };
+  }
+  if (!best) return;
+  const fitDelta = idFit - best.fit;
+  const holdDelta = useHoldout ? idHold - best.hold : NaN;
+  const lateDelta = idLate - best.late;
+  const gate1 = best.s < 0.8;
+  const gate2 = fitDelta >= 0.003;
+  const gateH = !useHoldout || (holdDelta > 0 && holdDelta >= fitDelta / 2);
+  const gateL = lateDelta >= -0.001;
+  console.log(
+    `\nBest: newHcSlope=${best.s} (fit Δ ${fitDelta.toFixed(4)}${useHoldout ? `; holdout Δ ${holdDelta.toFixed(4)}` : ""}; late Δ ${lateDelta.toFixed(4)})\n` +
+      `Gate 1 (interior): ${gate1 ? "PASSES" : "FAILS — pinned at 0.8"}\n` +
+      `Gate 2 (fit ΔNLL ≥ 0.003): ${gate2 ? "PASSES" : "FAILS"}\n` +
+      `Gate H: ${useHoldout ? (gateH ? "PASSES" : "FAILS") : "n/a"}\n` +
+      `Gate L (weeks 5+): ${gateL ? "PASSES" : "FAILS"}\n` +
+      `Gate 3: re-run with --seasons=2023-2025; same sign required.`,
+  );
+  console.log(
+    gate0 && gate1 && gate2 && gateH && gateL
+      ? "→ All local gates pass. Shipping is an owner decision: newHcSlope moves off 0, on this row plus Gate 3."
+      : "→ Rejected on the gates above. Record the row; the slope stays 0.",
+  );
+}
+
+/**
  * --tune-team-hfa: is a per-team home-field advantage real, and does 0.5 earn
  * its place? (02:M-05 / 03:M-1v)
  *
@@ -2943,6 +3290,8 @@ async function main() {
   const tuneSigmaFlag = process.argv.includes("--tune-sigma");
   const tuneCoachingFlag = process.argv.includes("--tune-coaching");
   const tuneCoachingSplitFlag = process.argv.includes("--tune-coaching-split");
+  const tuneQbExitFlag = process.argv.includes("--tune-qb-exit");
+  const tuneCoachingQualityFlag = process.argv.includes("--tune-coaching-quality");
   const tuneAnchorsFlag = process.argv.includes("--tune-anchors");
   const diagnose = process.argv.includes("--diagnose-edges");
   const diagnoseTiersFlag = process.argv.includes("--diagnose-tiers");
@@ -2977,6 +3326,8 @@ async function main() {
       ["tune-sigma", tuneSigmaFlag],
       ["tune-coaching", tuneCoachingFlag],
       ["tune-coaching-split", tuneCoachingSplitFlag],
+      ["tune-qb-exit", tuneQbExitFlag],
+      ["tune-coaching-quality", tuneCoachingQualityFlag],
       ["tune-anchors", tuneAnchorsFlag],
       ["tune-churn", tuneChurnFlag],
       ["tune-epa", tuneEpaFlag],
@@ -3091,6 +3442,14 @@ async function main() {
   }
   if (tuneCoachingSplitFlag) {
     await tuneCoachingSplit(seasons, teamIdsByName);
+    return;
+  }
+  if (tuneQbExitFlag) {
+    await tuneQbExit(seasons, teamIdsByName);
+    return;
+  }
+  if (tuneCoachingQualityFlag) {
+    await tuneCoachingQuality(seasons, teamIdsByName);
     return;
   }
   if (tuneAnchorsFlag) {
