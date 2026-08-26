@@ -3406,7 +3406,17 @@ rather than absorbed silently.*
       would then silently swap in the arm that measured slightly worse. Ship it
       as designed if that happens — re-deciding a model parameter inside launch
       week is the worse trade, and §1's verdict stands that no model-accuracy
-      work belongs before Aug 29. · **S** · decision · after launch
+      work belongs before Aug 29.
+      **The exception died 2026-08-26 — owner intel:** CFBD has said the 2026
+      talent composite won't publish until about a week into the season, i.e.
+      after the Aug 27 final automatic load, and `load-preseason` refuses a
+      season with completed games after that. So the 2026 board rides the
+      recruiting substitute all season, permanently — which is the arm that
+      measured *better* (MAE 13.162 vs 13.221) — and the composite's eventual
+      arrival changes nothing this year. What this row asks for (its own
+      pre-registered rule for recruiting-vs-fresh-composite) becomes a 2027
+      preseason question with a full season of slack to answer it.
+      · **S** · decision · after launch
 - [ ] **02:M-13 / 03:M-4** Real per-team tempo + `--tune-tempo` · M
 - [ ] **03:M-6/M-7/M-8b/M-9a** Decay-knot grid, heteroscedastic σ, smooth cap,
       rest/travel tuner · S each
