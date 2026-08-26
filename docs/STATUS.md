@@ -1452,6 +1452,17 @@ deliberate deferrals, each recorded below with what it would take.
       launch week. Sibling of FREEZE-1 above: one is when receipts are stamped,
       the other is what shows before stamping. Build together in early
       September. · **scheduled early Sep** · M
+- [x] **NAV-1 — `/model` was unreachable from the PWA's navigation.** Owner
+      report 2026-08-26: *"I don't see a model tab on the pwa."* Correct: the
+      page existed since the beginning but was never added to `nav-items.ts` —
+      reachable only through the receipts footer link and the welcome tour, an
+      accident rather than a decision (Ratings made the list; the page that
+      explains Ratings didn't). **Fixed same day:** `overflowOnly` entry beside
+      Ratings — a More-sheet row, no bottom-bar slot and no desktop tab, the
+      same demotion-shape as Edges (UX-33) and Jumbotron (R5-A), because
+      methodology is reference, not a daily destination, and the desktop
+      header is full at nine tabs. Pinned by a named test in
+      `nav-items.test.ts` per that file's no-counting rule.
 
 - [x] **AUTH-4 — the magic link cannot sign anyone in to the installed app, and
       that is where the crew will be on the 27th.** Owner question, 2026-08-22:

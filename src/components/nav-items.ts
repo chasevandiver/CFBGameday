@@ -1,4 +1,13 @@
-import { BarChart3, Gamepad2, Home, MonitorPlay, Receipt, TrendingUp, Users } from "lucide-react";
+import {
+  BarChart3,
+  FlaskConical,
+  Gamepad2,
+  Home,
+  MonitorPlay,
+  Receipt,
+  TrendingUp,
+  Users,
+} from "lucide-react";
 import type { ComponentType } from "react";
 
 export interface NavItem {
@@ -56,6 +65,13 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Jumbotron", href: "/jumbotron", overflowOnly: true, icon: MonitorPlay },
   { label: "Rankings", href: "/rankings" },
   { label: "Ratings", href: "/ratings" },
+  /* NAV-1, owner report 2026-08-26: "I don't see a model tab on the pwa."
+     Correct — /model was reachable only through the receipts footer and the
+     welcome tour, an accident of history rather than a decision. Same shape
+     as Edges: the methodology page is reference, not a daily destination, so
+     it takes a More-sheet row, not one of the nine desktop tabs the header
+     is already full at. Sits by Ratings because that's the page it explains. */
+  { label: "Model", href: "/model", overflowOnly: true, icon: FlaskConical },
   { label: "Standings", href: "/standings" },
   { label: "Teams", href: "/teams", also: ["/team"] },
   { label: "Ledger", href: "/ledger", primary: true, icon: Receipt },
