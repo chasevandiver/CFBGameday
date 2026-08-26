@@ -123,6 +123,10 @@ on:
           # F3 v1: the morning team-news pull (ESPN, free + unauthenticated,
           # no LLM). Upserts, so a mistap costs nothing.
           - team-news
+          # F3b: pregame notes over the stored headlines + model numbers
+          # (LLM; green no-op until ANTHROPIC_API_KEY). Regenerates the
+          # window, so a mistap costs tokens, never duplicates.
+          - notes
           # Read-only preview: builds the preseason ratings and prints the
           # ranking table to the log. Writes JSON to a scratch dir that is
           # thrown away with the runner — nothing reaches the database.
@@ -338,6 +342,11 @@ on:
     # preseason-refresh slot. Free and unauthenticated; a missed run costs
     # freshness only, the next day's upsert catches up.
     - cron: "30 11 * * *"
+    # Pregame notes (F3b), 15 minutes behind the team-news pull it reads from
+    # — enough slack for a ~30s job even with Actions' usual cron lag, and a
+    # missed or beaten run only means notes grounded in yesterday's pull.
+    # LLM; green no-op until the ANTHROPIC_API_KEY secret exists.
+    - cron: "45 11 * * *"
     # The Tuesday Drop (R2-B2): the ratings-update paragraph, Monday 15:00 UTC
     # — two hours after Sunday's ratings land would be Sunday; Monday gives the
     # grading chain a full day of slack, and the hub features it Tuesday. The
@@ -469,6 +478,7 @@ jobs:
             "0 3 * * 5") echo "task=freeze" >> "$GITHUB_OUTPUT" ;;
             "0 9 * * 5") echo "task=questions" >> "$GITHUB_OUTPUT" ;;
             "30 11 * * *") echo "task=team-news" >> "$GITHUB_OUTPUT" ;;
+            "45 11 * * *") echo "task=notes" >> "$GITHUB_OUTPUT" ;;
             "0 15 * * 1") echo "task=drop" >> "$GITHUB_OUTPUT" ;;
             "30 16 * * 1,2,3") echo "task=guess-lines" >> "$GITHUB_OUTPUT" ;;
             "0 14 * * *") echo "task=streak" >> "$GITHUB_OUTPUT" ;;
@@ -689,13 +699,15 @@ jobs:
               # a declined refresh exits 0 above, so this cannot go red on the
               # days the gate is correctly saying "not yet".
               npx tsx scripts/verify-preseason.ts ;;
-            questions|verdicts|drop)
+            questions|verdicts|drop|notes)
               if [ -z "$ANTHROPIC_API_KEY" ]; then
                 echo "ANTHROPIC_API_KEY not set — skipping LLM generation"
               elif [ "${{ steps.task.outputs.task }}" = "questions" ]; then
                 npx tsx scripts/generate-questions.ts
               elif [ "${{ steps.task.outputs.task }}" = "drop" ]; then
                 npx tsx scripts/generate-drop.ts
+              elif [ "${{ steps.task.outputs.task }}" = "notes" ]; then
+                npx tsx scripts/generate-notes.ts
               else
                 npx tsx scripts/generate-verdicts.ts
               fi ;;

@@ -215,6 +215,37 @@ shipping it.
 
 ## Log
 
+### Aug 25 — F3b: pregame notes — the LLM comes back, for the one job it's needed for
+
+The F3 feed shipped and the owner's first read of it found the real
+requirement: not "what happened to this team" but "what about THIS game" —
+the projected QB who is suddenly gone, the coach-and-roster exodus a poll rank
+hasn't priced. Per-team headline lists make the reader do that synthesis, and
+half the Week 0 teams had no headlines at all, so the raw feed reads as
+patchy even when nothing was missed.
+
+Shipped `game_notes` (migration 0080) + `scripts/generate-notes.ts`: for every
+CFB game in the next 7 days, the LLM gets ONLY what we already store — the F3
+headlines plus the model's own numbers (rating and model rank vs poll rank,
+churn/coaching preseason components, the frozen line, market consensus;
+assembled by `scripts/lib/notes.ts`, which vitest owns) — and returns 0–3
+typed notes (`availability | coaching | roster | market | context`), with
+zero instructed as the normal case and every claim required to ground in a
+supplied headline or number. That input design is the point: the exodus case
+needs churn + coaching + the poll-vs-model gap in the same prompt, and the
+QB case needs the stored headline, so a note can never be better informed
+than what the tables hold — and never hallucinated past them either.
+
+Cost shape survives F3's rewrite: discovery is still the free feed; this is
+~1–2KB of our own text per game at `LLM_MODEL` (SPEC §21's editorial-layer
+choice), pennies a day. Daily `notes` task at 11:45 UTC, 15 minutes behind
+the pull it reads, regenerating the window each run (news changes daily;
+upsert per game, so re-runs never duplicate) and green-no-op until the
+`ANTHROPIC_API_KEY` secret exists, same gate as questions/verdicts/drop.
+Rendered as a "Pregame notes" card above the headlines on the game page,
+pregame only. Turning a note into a rating adjustment stays a human's call —
+the model is gated, and nothing yet shows reading the notes doesn't suffice.
+
 ### Aug 25 — F3: the injury/news scan ships without the LLM it was specced around
 
 The specced producer was Claude + web search finding the week's team news,
