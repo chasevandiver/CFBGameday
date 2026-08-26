@@ -89,6 +89,15 @@ describe("marketNote", () => {
     );
   });
 
+  it("fires on the board's own loudest case — TTU at an 11-spot gap", () => {
+    // The gap that set MARKET_GAP to 10: model #1 vs AP #12 must not be the
+    // disagreement the notes stay quiet about.
+    expect(
+      marketNote({ school: "Texas Tech", modelRank: 1, pollRank: 12, churn: null, coaching: null })
+        ?.note,
+    ).toBe("Our model has Texas Tech #1, well ahead of their #12 poll rank.");
+  });
+
   it("writes the model-high and unranked directions too", () => {
     expect(
       marketNote({ school: "Tulane", modelRank: 8, pollRank: 24, churn: null, coaching: null })

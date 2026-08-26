@@ -215,6 +215,42 @@ shipping it.
 
 ## Log
 
+### Aug 25 — the Utah smell test: the inputs were right, the zero is a decision
+
+The owner's standing unease with the board ("I haven't felt like our ratings
+are right") arrived with a concrete case: Utah at model **#7** while, in the
+owner's read, they lost their head coach and a chunk of the roster. Chased to
+the stored inputs rather than argued:
+
+- **The coaching change was ingested, not missed.** Utah's
+  `preseason_components.detail` reads `coach: "Morgan Scalley", new_hc: true,
+  coach_over_perf: null` — the build knew Whittingham was gone. The 0.00 is
+  `coachingAdjustmentContinuous` at its identity parameters, and that zero is
+  **evidence, not absence**: `--tune-coaching` ran and was rejected as
+  unconverged (decisions table above — optimum pinned at the grid edge, slope
+  inert, and the diagnosis that a new HC usually follows a bad season the
+  prior already encodes). All 33 new-HC teams price at 0, Utah included.
+  Worth naming for the next time this itches: Utah is the transition class
+  the rejected tuner had least to say about — succession at a *healthy*
+  program — but re-opening that is a pre-registered `--tune-coaching` run
+  with a class split, not a hand edit.
+- **The churn number believes the roster, not the vibe.** +0.90 — slightly
+  above-average returning production plus net-positive portal stars from the
+  feeds. If that is wrong, the known suspects are already on the books:
+  DQ-6's `qbReturns` proxy and the headcount-dominated portal signal
+  (`scripts/lib/portal.ts` caveat). Nothing new to file.
+- **The supported lever for disagreeing is the adjustments panel**, not the
+  build: `addAdjustment` (SPEC §2.2) — admin docks/credits ±14 with a
+  required reason before the Thursday freeze, feeding the replay. And from
+  Week 1 the prior decays fast (0.5 by wk 4), so whichever of the model or
+  the feel is right, the receipts grade it within weeks.
+
+One editorial cut moved on the same review: **`MARKET_GAP` 12 → 10** in the
+pregame notes. Day one's threshold missed the board's own loudest
+disagreement by one spot — Texas Tech at model #1 vs AP #12 (gap 11) drew no
+note, and that is the wrong game to be quiet about. Display layer only;
+nothing feeds the model. Test pins the TTU sentence.
+
 ### Aug 25 — F3b, take two: the LLM lasted one dispatch; the rules do it for free
 
 The entry below shipped, and its first dispatch settled two things at once.
