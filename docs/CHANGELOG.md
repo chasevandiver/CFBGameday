@@ -215,7 +215,41 @@ shipping it.
 
 ## Log
 
-### Aug 24 — 04:§5: the seven preseason smell tests, on the first real table
+### Aug 25 — F3: the injury/news scan ships without the LLM it was specced around
+
+The specced producer was Claude + web search finding the week's team news,
+budgeted at ~$20/season. Probing what already exists first — the step the spec
+skipped — found ESPN's unauthenticated site API serves a **team-scoped news
+feed** (`…/college-football/news?team={id}`) with team-tagged, typed, timestamped
+articles; the live test case on the day of the probe was Alabama's QB1
+announcement arriving as a tagged `HeadlineNews`. Discovery, the expensive part,
+was never an LLM problem. Two findings decided the shape:
+
+- **CFBD team ids are ESPN team ids.** Every seed-fixture team's id resolves to
+  the same school on ESPN (333 Alabama, 61 Georgia, 194 Ohio State, …), so the
+  feed is queried by `teams.id` with **no name-mapping layer** — the class of
+  code `alt_names` exists to repair is never entered. The guard for the day an
+  id stops holding: `parseTeamNews` refuses any article that doesn't tag the
+  requested team, so drift reads as a zero-row team in the job output, not
+  another team's news stored under ours.
+- **Structured CFB injury data does not exist to load, from anyone.** ESPN's
+  injuries endpoint answers `count: 0` for CFB teams while the NFL one answers
+  75 rows — college has no league-mandated injury report; SEC/Big Ten
+  availability lands as game-day web pages, CFBD has no injuries endpoint, and
+  the feeds that do carry it are paid. So v1 stores headlines, and the
+  classify-into-proposed-adjustment layer is `F3b`, open by evidence rather
+  than deferred by mood.
+
+Shipped: `team_news` (migration 0079, read-public/service-writes posture of
+0005/0056), `src/lib/team-news.ts` (parse + display filters, tested on verbatim
+live fixtures — the filters that matter: `Media` clips dropped because every
+reportable event also arrives as text, articles tagging >6 teams dropped
+because a league listicle tags 68, and off-window rows hidden so an off-week
+team's page shows nothing rather than three-week-old "news"), the daily
+`team-news` job at 11:30 UTC scoped to teams playing in the next 7 days
+(~30–60 free requests, zero CFBD calls, no key), and pregame "Team news"
+sections on the game page (both teams, deduped, pregame only) and team page
+(fresh only). LLM cost of the feature as specced: ~$20/season; as shipped: $0.
 
 Dispatched `preseason-preview` (run `32764813658`) and applied the seven tests
 from `audit/04-data-quality.md §5` to the printed `--top 40` table, with the

@@ -24,6 +24,7 @@ import {
 } from "./lib/jobs-core";
 import { backfillGamesJob, backfillLinesJob, backfillRankingsJob } from "./lib/backfill";
 import { guessLinesJob, streakJob } from "./lib/daily-games";
+import { teamNewsJob } from "./lib/team-news";
 import { dailyPuzzlesJob } from "./lib/daily-puzzles";
 import { sixPackJob } from "./lib/six-pack";
 import { NFL_SEASON } from "./lib/nfl";
@@ -60,6 +61,10 @@ async function main() {
     // gated on the score having moved, so an idle run costs no external call.
     "nfl-scoring": (db: Parameters<typeof nflScoringJob>[0]) => nflScoringJob(db, NFL_SEASON),
     "cfb-scoring": (db: Parameters<typeof cfbScoringJob>[0]) => cfbScoringJob(db, SEASON),
+    // F3 v1: the morning news pull off ESPN's team feed — no LLM, no CFBD
+    // calls. Scoped to teams playing in the next 7 days; upserts, so a re-run
+    // or a missed day costs freshness, never duplicates.
+    "team-news": teamNewsJob,
     // The daily game layer (R2-C1/C2). Selection is idempotent per week/day;
     // grading sweeps anything the last run left pending.
     "guess-lines": guessLinesJob,

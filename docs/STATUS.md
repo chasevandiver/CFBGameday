@@ -4062,7 +4062,30 @@ viewer's own bets, not the whole sheet.
 - [ ] **G7/G8/G11** Crew disagreement roll-up; fade-the-crew; pick nudge — need
       a *sample* of graded picks before they say anything true; pre-register n
       before building
-- [ ] **F3** Injury/news LLM scan producer · M–L
+- [x] **F3 — the news producer, shipped 2026-08-25 without the LLM.** The
+      spec assumed Claude-with-web-search was the only way to *find* the news;
+      probing ESPN's unauthenticated site API on Aug 25 showed the team-scoped
+      news feed already carries it (the day's live test case: "Sources: Alabama
+      names Keelon Russell QB1 for opener vs. ECU", team-tagged, free). And
+      CFBD team ids **are** ESPN team ids — verified against every
+      seed-fixture team plus live article tags — so there is no name-mapping
+      layer at all; `parseTeamNews` refuses articles that don't tag the
+      requested team, which turns any id drift into visible zero-row teams
+      instead of silently stored wrong news. Daily `team-news` job
+      (`scripts/lib/team-news.ts`, 11:30 UTC), scoped exactly as the spec
+      scoped the LLM scan — teams playing in the next 7 days, not all 136 —
+      storing to `team_news` (migration 0079), rendered pregame on the game
+      page and fresh-only on team pages (`src/lib/team-news.ts`, tested on
+      verbatim feed fixtures). $0/season against the ~$20 budgeted.
+- [ ] **F3b** The half of F3 no free feed covers: classify stored headlines
+      into proposed rating adjustments with the SPEC §4 admin-confirm tap.
+      Structured CFB injury data does not exist to load — ESPN's injuries
+      endpoint answers `count: 0` for CFB (checked live Aug 25) while the NFL
+      one answers 75, because college has no league-mandated injury report —
+      so this layer is either the admin reading the F3 feed (works today), or
+      one cheap batch classification call over stored headline text
+      (~kilobytes, no web search) if reading stops scaling. · S–M · after
+      launch
 - [ ] **F4/F5/F6** Rooting guide; playoff race tracker; homepage-by-day · M each
 - [ ] **F9** Ratings sparklines — needs weekly rating history
 - [x] **F11 — §5.1 soft-market taxonomy on `/edges`, shipped 2026-08-17.**

@@ -22,8 +22,10 @@ import type {
   PickRow,
   PredictionRow,
   ProfileRow,
+  TeamNewsRow,
   TeamRow,
 } from "../../../lib/db-types";
+import { agoLabel, recentTeamNews } from "../../../lib/team-news";
 import {
   ACTIVE_GROUP_COOKIE,
   fetchGroupWeek,
@@ -131,7 +133,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     .maybeSingle<GameRow>();
   if (!game) notFound();
 
-  const [teamsRes, linesRes, predRes, picksRes, scoringRes, betsRes, crewBetsRes, profilesRes, weatherRes, questionsRes, pollsRes, systemsRes, rivalryRes] = await Promise.all([
+  const [teamsRes, linesRes, predRes, picksRes, scoringRes, betsRes, crewBetsRes, profilesRes, weatherRes, questionsRes, pollsRes, systemsRes, rivalryRes, newsRes] = await Promise.all([
     supabase.from("teams").select("*").in("id", [game.home_team_id, game.away_team_id]),
     supabase.from("line_snapshots").select("*").eq("game_id", gameId),
     supabase
@@ -189,6 +191,14 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
         `and(team_a_id.eq.${game.home_team_id},team_b_id.eq.${game.away_team_id}),and(team_a_id.eq.${game.away_team_id},team_b_id.eq.${game.home_team_id})`,
       )
       .maybeSingle(),
+    // F3 v1: both teams' stored headlines; recentTeamNews dedupes a preview
+    // stored under both sides and hides anything older than its window.
+    supabase
+      .from("team_news")
+      .select("*")
+      .in("team_id", [game.home_team_id, game.away_team_id])
+      .order("published_at", { ascending: false })
+      .limit(40),
   ]);
 
   const teams = new Map(((teamsRes.data ?? []) as TeamRow[]).map((t) => [t.id, t]));
@@ -232,6 +242,11 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   const questions =
     (questionsRes.data as { questions: { question: string; why_it_matters: string }[] } | null)
       ?.questions ?? null;
+  // Pregame intel only: once the game kicks, the scoreboard is the news.
+  const teamNews =
+    game.status === "scheduled"
+      ? recentTeamNews((newsRes.data ?? []) as TeamNewsRow[], new Date())
+      : [];
 
   const trends = await fetchTeamAtsSeason(supabase, game.season_id, [
     game.home_team_id,
@@ -967,6 +982,51 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                 </li>
               ))}
             </ol>
+          </section>
+        )}
+
+        {/* Team news (F3 v1) — ESPN headlines for both sides, pregame only */}
+        {teamNews.length > 0 && (
+          <section className="card mt-4 px-4 py-4">
+            <h2 className="mb-3 text-sm text-accent">Team news</h2>
+            <ul className="flex flex-col">
+              {teamNews.map((n) => {
+                const abbr = n.team_id === home.id ? home.abbr : away.abbr;
+                const meta = (
+                  <p className="mt-0.5 text-xs text-dim">
+                    {abbr} · {agoLabel(n.published_at, new Date())}
+                    {n.premium ? " · ESPN+" : ""}
+                  </p>
+                );
+                return (
+                  <li
+                    key={`${n.team_id}-${n.article_id}`}
+                    className="min-w-0 border-b border-chalk/5 last:border-0"
+                  >
+                    {n.url ? (
+                      // 44px tap target: the whole item is the link, not the line.
+                      <a
+                        href={n.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block py-2.5 hover:bg-elev/50"
+                      >
+                        <p className="text-sm font-medium text-chalk">{n.headline}</p>
+                        {meta}
+                      </a>
+                    ) : (
+                      <div className="py-2.5">
+                        <p className="text-sm font-medium text-chalk">{n.headline}</p>
+                        {meta}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="mt-2 text-[10.5px] text-dim">
+              From ESPN&apos;s team feeds — headlines, not the model&apos;s opinion.
+            </p>
           </section>
         )}
 

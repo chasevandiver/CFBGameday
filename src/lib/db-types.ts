@@ -45,6 +45,19 @@ export interface GameRow {
   tv: string | null;
 }
 
+/** ESPN team-scoped news, one row per (team, article) — see migration 0079. */
+export interface TeamNewsRow {
+  team_id: number;
+  article_id: number;
+  type: string;
+  headline: string;
+  description: string | null;
+  url: string | null;
+  premium: boolean;
+  published_at: string;
+  fetched_at: string;
+}
+
 export interface LineSnapshotRow {
   id: number;
   game_id: number;
