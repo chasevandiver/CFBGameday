@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { TeamNewsRow } from "../../src/lib/db-types";
-import { buildNotesPrompt, selectNewsForPrompt, type NotesGameCtx } from "./notes";
+import { headlineNotes, marketNote, notesForGame, type MarketTeamCtx } from "./notes";
 
 const row = (
   article_id: number,
   team_id: number,
-  published_at: string,
-  headline = `h${article_id}`,
+  headline: string,
+  published_at = "2026-08-25T12:00:00Z",
 ): TeamNewsRow => ({
   team_id,
   article_id,
@@ -19,66 +19,132 @@ const row = (
   fetched_at: published_at,
 });
 
-describe("selectNewsForPrompt", () => {
-  const now = new Date("2026-08-26T12:00:00Z");
+const now = new Date("2026-08-26T12:00:00Z");
 
-  it("keeps only the requested team, fresh, newest first, capped", () => {
-    const rows = [
-      row(1, 333, "2026-08-25T12:00:00Z"),
-      row(2, 61, "2026-08-25T12:00:00Z"), // other team
-      row(3, 333, "2026-08-10T12:00:00Z"), // stale
-      row(4, 333, "2026-08-26T09:00:00Z"),
+describe("headlineNotes", () => {
+  // Headlines are verbatim from the live feed the day the rules were written.
+  it("flags the availability class: QB naming, season loss, dismissal, ban", () => {
+    const news = [
+      row(1, 333, "Sources: Alabama names Keelon Russell QB1 for opener vs. ECU"),
+      row(2, 30, "USC loses starting center Kilian O'Connor for season"),
+      row(3, 2628, "TCU dismisses transfer safety Fields over violation of team rules"),
+      row(4, 2641, "Texas Tech QB banned by NCAA for betting on games"),
     ];
-    expect(selectNewsForPrompt(rows, 333, now).map((r) => r.article_id)).toEqual([4, 1]);
-    expect(selectNewsForPrompt(rows, 333, now, { maxItems: 1 }).map((r) => r.article_id)).toEqual([
-      4,
-    ]);
+    for (const [teamId, school] of [
+      [333, "Alabama"],
+      [30, "USC"],
+      [2628, "TCU"],
+      [2641, "Texas Tech"],
+    ] as const) {
+      const notes = headlineNotes(news, teamId, school, now);
+      expect(notes).toHaveLength(1);
+      expect(notes[0]!.kind).toBe("availability");
+      expect(notes[0]!.note.startsWith(`${school}: `)).toBe(true);
+    }
+  });
+
+  it("does not flag ordinary stories, and 'season' alone is not a match", () => {
+    const news = [
+      row(1, 333, "Ryan Coleman-Williams is looking to shake off his sophomore slump"),
+      row(2, 2628, "College football 2026: How to get the most fun out of the season"),
+      // The observed false-positive class, deliberately unmatched: an NFL
+      // alum story tagged to his college. No "retires" rule exists for it.
+      row(3, 61, "Former Browns, Texans RB Nick Chubb announces retirement"),
+    ];
+    expect(headlineNotes(news, 333, "Alabama", now)).toEqual([]);
+    expect(headlineNotes(news, 2628, "TCU", now)).toEqual([]);
+    expect(headlineNotes(news, 61, "Georgia", now)).toEqual([]);
+  });
+
+  it("classifies portal moves as roster and coach headlines as coaching", () => {
+    const news = [
+      row(1, 254, "Utah head coach steps down two weeks before the opener"),
+      row(2, 254, "Starting Utah corner enters the portal"),
+    ];
+    const kinds = headlineNotes(news, 254, "Utah", now).map((n) => n.kind);
+    expect(kinds).toContain("coaching");
+    expect(kinds).toContain("roster");
+  });
+
+  it("drops stale headlines", () => {
+    const news = [row(1, 333, "Alabama names X QB1", "2026-08-10T12:00:00Z")];
+    expect(headlineNotes(news, 333, "Alabama", now)).toEqual([]);
   });
 });
 
-describe("buildNotesPrompt", () => {
-  const ctx: NotesGameCtx = {
-    label: "Texas Tech at Utah",
-    week: 1,
-    neutralSite: false,
-    away: {
-      school: "Texas Tech",
-      rating: 12.3,
-      modelRank: 1,
-      pollRank: 9,
-      churn: -0.1,
-      coaching: null,
-    },
-    // The motivating case: ranked in the poll, while the model's own churn and
-    // coaching numbers already carry the exodus — the prompt must put all
-    // three in front of the LLM or the note it exists for cannot be written.
-    home: {
+describe("marketNote", () => {
+  // The motivating case: still ranked #11 while the model's own churn and
+  // coaching numbers already carry the exodus.
+  const utah: MarketTeamCtx = {
+    school: "Utah",
+    modelRank: 38,
+    pollRank: 11,
+    churn: -5.2,
+    coaching: -1.5,
+  };
+
+  it("writes the poll-high note with the components as the printed cause", () => {
+    expect(marketNote(utah)?.note).toBe(
+      "Utah is #11 in the poll but #38 in our model — the preseason build already docks 5.2 pts of roster churn and 1.5 for the coaching change.",
+    );
+  });
+
+  it("writes the model-high and unranked directions too", () => {
+    expect(
+      marketNote({ school: "Tulane", modelRank: 8, pollRank: 24, churn: null, coaching: null })
+        ?.note,
+    ).toBe("Our model has Tulane #8, well ahead of their #24 poll rank.");
+    expect(
+      marketNote({ school: "Memphis", modelRank: 9, pollRank: null, churn: null, coaching: null })
+        ?.note,
+    ).toBe("Memphis is unranked in the polls, but our model has them #9.");
+  });
+
+  it("stays silent inside the gap, and on unrated teams", () => {
+    expect(
+      marketNote({ school: "Georgia", modelRank: 3, pollRank: 1, churn: -2, coaching: null }),
+    ).toBeNull();
+    expect(
+      marketNote({ school: "An FCS team", modelRank: null, pollRank: null, churn: null, coaching: null }),
+    ).toBeNull();
+  });
+});
+
+describe("notesForGame", () => {
+  const quiet: MarketTeamCtx = {
+    school: "Q",
+    modelRank: 40,
+    pollRank: null,
+    churn: null,
+    coaching: null,
+  };
+
+  it("zero notes is the normal case", () => {
+    expect(notesForGame([], quiet, quiet)).toEqual([]);
+  });
+
+  it("availability outranks market at the cap", () => {
+    const headline = headlineNotes(
+      [
+        row(1, 1, "Team A names X QB1", "2026-08-25T12:00:00Z"),
+        row(2, 1, "Team A loses Y for season", "2026-08-25T13:00:00Z"),
+        row(3, 2, "Team B QB suspended", "2026-08-25T14:00:00Z"),
+      ],
+      1,
+      "Team A",
+      now,
+    ).concat(headlineNotes([row(3, 2, "Team B QB suspended", "2026-08-25T14:00:00Z")], 2, "Team B", now));
+    const utah: MarketTeamCtx = {
       school: "Utah",
-      rating: 2.1,
       modelRank: 38,
       pollRank: 11,
       churn: -5.2,
       coaching: -1.5,
-    },
-    modelSpread: 4.5,
-    marketSpread: 2.5,
-  };
-
-  it("carries the poll-vs-model gap and the components", () => {
-    const p = buildNotesPrompt(ctx, [], [], 2026);
-    expect(p).toContain("Utah: model +2.1, model rank #38, poll rank #11.");
-    expect(p).toContain("roster churn -5.2, coaching change -1.5");
-    expect(p).toContain("our frozen model line +4.5 (home), market consensus +2.5 (home)");
-  });
-
-  it("says when a team has no headlines rather than omitting the section", () => {
-    const p = buildNotesPrompt(ctx, [], [row(1, 2641, "2026-08-25T12:00:00Z", "QB banned")], 2026);
-    expect(p).toContain("No stored headlines this week.");
-    expect(p).toContain("- [2026-08-25] QB banned");
-  });
-
-  it("degrades to 'none posted yet' before lines exist", () => {
-    const p = buildNotesPrompt({ ...ctx, modelSpread: null, marketSpread: null }, [], [], 2026);
-    expect(p).toContain("Lines: none posted yet.");
+    };
+    const notes = notesForGame(headline, utah, quiet);
+    expect(notes).toHaveLength(3);
+    expect(notes.every((n) => n.kind !== "market")).toBe(true);
+    // Newest headline leads.
+    expect(notes[0]!.note).toBe("Team B: Team B QB suspended");
   });
 });

@@ -215,6 +215,46 @@ shipping it.
 
 ## Log
 
+### Aug 25 — F3b, take two: the LLM lasted one dispatch; the rules do it for free
+
+The entry below shipped, and its first dispatch settled two things at once.
+The run went green and wrote nothing, and the log showed why: the
+`ANTHROPIC_API_KEY` secret **does not exist in the repo** — every secret in
+the env block renders `***` except that one, blank. That also closes a
+season-long open question nobody had asked: questions, verdicts and the drop
+have never written a row because they have been skipping on the same gate,
+not because their preconditions hadn't fired. And the owner's call on funding
+it was no: "I don't want to have to use api credits for this."
+
+So the producer is now deterministic (`scripts/lib/notes.ts`, `rules-v1`),
+and the pivot cost nothing that mattered, because both motivating cases never
+needed generation:
+
+- **The TTU case** (projected QB banned): an availability/roster/coaching
+  note is a stored headline matching a named rule, prefixed with the school.
+  Nothing is written by a model, so nothing can be hallucinated; the failure
+  mode is a pattern matching a tagged NFL-alum story, which surfaces a real
+  headline verbatim — noise, not fiction. ("retires" is deliberately not a
+  rule: the one retirement in the live feed was exactly that false positive,
+  and the test pins it staying unmatched.)
+- **The Utah case** (ranked despite the exodus): pure arithmetic the Drop
+  already does — poll rank vs model rank at a ±12-spot gap, printed with the
+  churn/coaching components when they are the visible cause: "Utah is #11 in
+  the poll but #38 in our model — the preseason build already docks 5.2 pts
+  of roster churn and 1.5 for the coaching change."
+
+Thresholds (`MARKET_GAP` 12, `UNRANKED_MODEL_RANK` 10, `COMPONENT_FLOOR` 1,
+`MAX_NOTES` 3, availability outranking market at the cap) are display-layer
+editorial cuts with named constants, not model parameters — nothing feeds
+back into ratings or lines. The task moved out of the ANTHROPIC gate into
+run-job proper, so it now records a `job_runs` row and the watchdog could
+own it — which the LLM path never did. `generate-notes.ts` is deleted; the
+schema, UI card and 11:45 cron are unchanged, and `game_notes.model` says
+`rules-v1` so a row states which author wrote it. What the rules give up —
+cross-headline synthesis, events no pattern names — is recorded here as the
+price; the repair channel is adding a rule, and the LLM producer is one
+`git revert` away if reading the notes ever justifies the spend.
+
 ### Aug 25 — F3b: pregame notes — the LLM comes back, for the one job it's needed for
 
 The F3 feed shipped and the owner's first read of it found the real
