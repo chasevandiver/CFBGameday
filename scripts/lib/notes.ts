@@ -34,8 +34,11 @@ export interface GameNote {
   note: string;
 }
 
-/** Poll-vs-model gap (in rank spots) before the disagreement is a note. */
-export const MARKET_GAP = 12;
+/** Poll-vs-model gap (in rank spots) before the disagreement is a note.
+ *  12 on day one missed the board's own loudest disagreement by one spot
+ *  (Texas Tech: model #1, AP #12), which is the wrong game to be quiet
+ *  about — lowered to 10 on owner review of the first real output. */
+export const MARKET_GAP = 10;
 /** Model rank at or above which being poll-unranked is itself the note. */
 export const UNRANKED_MODEL_RANK = 10;
 /** Component size (points) worth naming as the cause of a market note. */
