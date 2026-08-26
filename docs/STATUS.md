@@ -1425,14 +1425,20 @@ deliberate deferrals, each recorded below with what it would take.
       Saturday.)
       **So: live before Thu Sep 3 22:00 UTC.** Build the decided per-game
       ~40h-lead daily job over the Aug 30–Sep 1 window, rehearsed against
-      week 1 with `freeze-dry-run` diffs. **Fallback if the weekend eats the
-      time:** shift the one weekly cron from Fri 03:00 UTC to **Thu 09:00
-      UTC** for a week — every Thursday game is still `scheduled` at 4am CT,
-      receipts land ~13h before the Thursday kicks and ~2.5 days before
-      Saturday's, and the change is one line in `jobs.yml`. Owner picks the
-      path after Week 0. Sibling of SLATE-3 below — one is when receipts
-      are stamped, the other is what shows before stamping. · **deadline Sep
-      3** · M
+      week 1 with `freeze-dry-run` diffs.
+      **Stopgap shipped 2026-08-26, owner call ("do all of those changes"):**
+      a second freeze cron at **Thu 09:00 UTC** (4am CT), with the old Fri
+      03:00 UTC slot kept as an idempotent sweeper — already-frozen games
+      skip, so it costs nothing and catches a TBD kickoff that firms up after
+      Thursday morning. Week 1's 11 Thursday games are all `scheduled` at 4am
+      CT, so every game gets a receipt whatever happens to the permanent
+      build. Side effect accepted: **Week 0 now freezes Thu Aug 27 09:00 UTC
+      (~57h pre-kick) instead of Fri 03:00 (~39h)** — lines are stable and
+      the FREEZE-2 calls were re-priced on current lines this same day. Both
+      cron slots retire when the per-game daily freeze ships. Sibling of
+      SLATE-3 below — one is when receipts are stamped, the other is what
+      shows before stamping; build together Mon–Wed with the CORE consensus
+      decision. · **stopgap live; permanent build due Sep 3** · M
 - [ ] **LIVE-8 — CFBD says only `/scoreboard` and `/live/plays` are live;
       audit of what that touches.** Owner intel 2026-08-26 (CFBD Discord).
       Audited every CFBD call against it:
@@ -1455,8 +1461,18 @@ deliberate deferrals, each recorded below with what it would take.
       slate-wide per call? Then decide: accept post-game timelines (zero
       work), or switch the in-progress branch to `/live/plays` if Tier 2
       covers it (S). While asking: (3) what scale is CORE's `overall` on for
-      mapping to a game margin (CORE-1 needs it). · **decision after Discord
-      answers** · S
+      mapping to a game margin (CORE-1 needs it).
+      **Owner call 2026-08-26: keep the feature — he really likes it — accept
+      the launch-week risk, observe Saturday, and if `/plays` isn't live,
+      source the CFB timeline from ESPN.** Two things make that cheap:
+      Saturday's observation is free — the timeline rides the scoreboard
+      loop, which logs `[cfb scoring]` with plays-written counts every pass
+      and books calls to `api_call_log` under `cfb-scoring`, so the Sunday
+      read shows exactly how far behind live `/plays` ran. And the ESPN path
+      has in-repo precedent: **`nfl-scoring` already builds its timeline from
+      ESPN's feed** on the same loop, so a CFB adapter reuses that shape
+      (ESPN's college-football summary carries `scoringPlays`). Build next
+      week with the FREEZE-1 batch if Saturday shows `/plays` lagging. · S–M
 - [ ] **SLATE-2 — 391 games sit on the wrong day tab, and the card knows better
       than the tab does.** Found 2026-08-21. CFBD gives an unscheduled game a
       placeholder kickoff of **04:00 UTC** — midnight Eastern on game day — which
