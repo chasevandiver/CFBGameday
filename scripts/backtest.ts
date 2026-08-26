@@ -10,6 +10,7 @@
  *   npx tsx scripts/backtest.ts --tune-sigma                 # fit priorSigmaExtra (early-week uncertainty)
  *   npx tsx scripts/backtest.ts --tune-preseason-tilts       # should preseason off/def carry a shape?
  *   npx tsx scripts/backtest.ts --tune-coaching              # fit newHcIntercept / newHcSlope
+ *   npx tsx scripts/backtest.ts --tune-coaching-split        # the rejection re-asked: healthy-program successions split from post-struggle hires
  *   npx tsx scripts/backtest.ts --tune-churn                 # fit returning-production weight + talent reload
  *   npx tsx scripts/backtest.ts --tune-epa                   # ratings from per-play efficiency vs the scoreboard
  *   npx tsx scripts/backtest.ts --tune-ensemble              # blend weekly Elo + prior SP+ into our margin
@@ -1402,6 +1403,209 @@ async function tuneCoaching(seasons: SeasonData[], teamIdsByName: Map<string, nu
 }
 
 /**
+ * --tune-coaching-split: the pooled --tune-coaching rejection, re-asked with
+ * the confound split out (owner hypothesis, 2026-08-25, raised off Utah's
+ * Whittingham → Scalley succession at model #7).
+ *
+ * The pooled fit was rejected as unconverged with the diagnosis that a new HC
+ * almost always follows a bad season the carried prior already encodes, so a
+ * blanket penalty double-counts. That diagnosis, if right, predicts the
+ * penalty was swamped by the majority class — and says nothing about the
+ * minority class it had least data on: a coaching change at a HEALTHY program
+ * (retirement, promotion, poaching), where the prior carries success and a
+ * year-one install cost would be unconfounded. 2024 Alabama (Saban → DeBoer)
+ * and 2022 Oklahoma (Riley → Venables) are the historical shape; Utah 2026 is
+ * the live one.
+ *
+ * Class boundary, point-in-time safe: the replay's own chained prior entering
+ * the season, BEFORE any coaching term — healthy ≥ 0 (better than the average
+ * FBS team), struggling < 0. A borderline team can flip class between grid
+ * cells because the chain itself shifts; the boundary is pre-registered, the
+ * flips are noise, and moving the boundary after seeing results would be the
+ * garden of forking paths this header exists to prevent.
+ *
+ * PRE-REGISTERED, fixed before the first number is printed:
+ *
+ *   Gate 0 — the effect must exist at identity, and it runs FIRST. Weeks 1–4
+ *   games with exactly ONE healthy-new-HC side, residual oriented toward that
+ *   side (positive = they beat the model): mean ≤ −1.0 points with |t| ≥ 2.
+ *   If healthy-succession teams do not underperform the identity model, there
+ *   is no install cost to fit and no grid can rescue one. The struggling
+ *   class prints beside it, informational — the pooled rejection already
+ *   answered it.
+ *
+ *   Gate 1 — the healthy intercept's optimum must be interior, not pinned at
+ *   the −5 edge. The pooled fit died exactly here; an edge optimum is the
+ *   same artifact again and ships nothing.
+ *
+ *   Gate 2 — early NLL at the best cell must beat identity (0, 0) by ≥ 0.003,
+ *   the standing bar every tuner in the decisions table is held to.
+ *
+ *   Gate 3 — stated now, run separately: the direction must agree on the E4
+ *   window (--seasons=2023-2025). A sign that era-flips ships nothing, per
+ *   the --tune-prior precedent.
+ *
+ * Slope is held at 0 throughout: the pooled run showed NLL flat across slope
+ * values, and re-fitting a parameter already shown inert would only add cells.
+ * Passing all four gates still ships nothing by itself — DEFAULT_PARAMS has
+ * one intercept, so shipping means a params change + preseason rebuild days
+ * before Week 0, which is an owner decision made on these numbers.
+ */
+async function tuneCoachingSplit(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
+  const { cfbd } = await import("../src/lib/cfbd");
+  const { cached } = await import("./lib/replay");
+
+  const coachRows = await cached(
+    "coaches-history",
+    () => cfbd.coaches({ minYear: 2001, maxYear: SEASONS[SEASONS.length - 1] }),
+    true,
+  );
+  const transitions = new Map<number, Map<string, CoachTransition>>();
+  for (const s of SEASONS) transitions.set(s, buildCoachTransitions(coachRows, s));
+  const schoolById = new Map([...teamIdsByName].map(([school, id]) => [id, school]));
+  const { talentBySeason, spFinalBySeason } = await loadPriorInputs(teamIdsByName);
+
+  const HEALTHY_CUT = 0; // prior rating vs average FBS, before the coaching term
+
+  /** year → teamId → class, recorded as priors are applied (point-in-time). */
+  const classOf = new Map<number, Map<number, "healthy" | "struggling">>();
+
+  const applySplit = (
+    priors: Map<number, number>,
+    year: number,
+    iHealthy: number,
+    iStruggling: number,
+  ) => {
+    const trans = transitions.get(year);
+    if (!trans) return priors;
+    const classes = new Map<number, "healthy" | "struggling">();
+    const out = new Map<number, number>();
+    for (const [teamId, rating] of priors) {
+      const t = trans.get(schoolById.get(teamId) ?? "");
+      if (t?.newHc) {
+        const cls = rating >= HEALTHY_CUT ? "healthy" : "struggling";
+        classes.set(teamId, cls);
+        out.set(teamId, rating + (cls === "healthy" ? iHealthy : iStruggling));
+      } else {
+        out.set(teamId, rating);
+      }
+    }
+    classOf.set(year, classes);
+    return out;
+  };
+
+  const replayAt = (iHealthy: number, iStruggling: number): ReplayPrediction[] => {
+    let priors = applySplit(
+      priorsFromSp(seasons[0].prevSp, teamIdsByName),
+      SEASONS[0],
+      iHealthy,
+      iStruggling,
+    );
+    const early: ReplayPrediction[] = [];
+    for (const season of seasons) {
+      const { predictions, finalRatings } = replaySeason(season, priors, DEFAULT_PARAMS);
+      if (SCORED.includes(season.season)) early.push(...predictions.filter((p) => p.week <= 4));
+      const spFinal = spFinalBySeason.get(season.season)!;
+      const talent = talentBySeason.get(season.season)!;
+      const next = new Map<number, number>();
+      for (const [teamId, rating] of finalRatings) {
+        const sp = spFinal.get(teamId);
+        const base = sp !== undefined ? 0.5 * rating + 0.5 * sp : rating;
+        next.set(teamId, 0.7 * base + 0.3 * (talent.get(teamId) ?? -8));
+      }
+      priors = applySplit(next, season.season + 1, iHealthy, iStruggling);
+    }
+    return early;
+  };
+
+  // ---- Gate 0: identity replay, oriented residuals per class -------------
+  const identity = replayAt(0, 0);
+  const counts = { healthy: 0, struggling: 0 };
+  for (const s of SCORED) {
+    for (const cls of classOf.get(s)?.values() ?? []) counts[cls] += 1;
+  }
+  console.log(
+    `\n== --tune-coaching-split == boundary: prior ≥ ${HEALTHY_CUT} = healthy succession.\n` +
+      `New-HC team-seasons across ${SCORED.join(", ")}: ${counts.healthy} healthy, ${counts.struggling} struggling.`,
+  );
+  const oriented = (cls: "healthy" | "struggling"): number[] => {
+    const vals: number[] = [];
+    for (const p of identity) {
+      const classes = classOf.get(p.season);
+      if (!classes) continue;
+      const homeIn = classes.get(p.homeId) === cls;
+      const awayIn = classes.get(p.awayId) === cls;
+      if (homeIn === awayIn) continue; // neither, or both (unattributable)
+      const residual = p.actualMargin - p.margin; // home-perspective
+      vals.push(homeIn ? residual : -residual);
+    }
+    return vals;
+  };
+  const tOf = (vals: number[]) => {
+    const m = mean(vals);
+    const sd = Math.sqrt(mean(vals.map((v) => (v - m) ** 2)) * (vals.length / (vals.length - 1)));
+    return { m, t: m / (sd / Math.sqrt(vals.length)), n: vals.length };
+  };
+  const gh = tOf(oriented("healthy"));
+  const gs = tOf(oriented("struggling"));
+  console.log(
+    `Gate 0 (identity, wks 1–4, residual oriented toward the new-HC side; negative = they underperform the model):\n` +
+      `  healthy    mean ${gh.m.toFixed(2)}  t ${gh.t.toFixed(2)}  n ${gh.n}   ← the gate: needs mean ≤ −1.0, |t| ≥ 2\n` +
+      `  struggling mean ${gs.m.toFixed(2)}  t ${gs.t.toFixed(2)}  n ${gs.n}   (informational)`,
+  );
+  const gate0 = gh.m <= -1.0 && Math.abs(gh.t) >= 2;
+  console.log(gate0 ? "Gate 0 PASSES — fitting the split." : "Gate 0 FAILS — nothing to fit; grid below is informational only.");
+
+  // ---- Grid: healthy × struggling intercepts, slope held 0 ---------------
+  console.log("\nhealthy  struggling   early NLL   early MAE");
+  const identityNll = nll(identity);
+  let best: { h: number; s: number; nllV: number } | null = null;
+  for (const iHealthy of [0, -0.5, -1, -1.5, -2, -2.5, -3, -4, -5]) {
+    for (const iStruggling of [0, -1, -2, -3]) {
+      const early = iHealthy === 0 && iStruggling === 0 ? identity : replayAt(iHealthy, iStruggling);
+      const n = nll(early);
+      console.log(
+        `${iHealthy.toFixed(1).padStart(6)}   ${iStruggling.toFixed(1).padStart(6)}       ${n.toFixed(4)}      ` +
+          maeOf(early.map((p) => p.actualMargin - p.margin)).toFixed(2),
+      );
+      if (!best || n < best.nllV) best = { h: iHealthy, s: iStruggling, nllV: n };
+    }
+  }
+  if (!best) return;
+  const delta = identityNll - best.nllV;
+  const gate1 = best.h > -5;
+  const gate2 = delta >= 0.003;
+  console.log(
+    `\nBest: healthy=${best.h} struggling=${best.s} (NLL ${best.nllV.toFixed(4)}; identity ${identityNll.toFixed(4)}; Δ ${delta.toFixed(4)})\n` +
+      `Gate 1 (interior optimum): ${gate1 ? "PASSES" : "FAILS — pinned at the −5 edge, unconverged again"}\n` +
+      `Gate 2 (ΔNLL ≥ 0.003): ${gate2 ? "PASSES" : "FAILS"}\n` +
+      `Gate 3: re-run with --seasons=2023-2025 and require the same sign before believing any of this.`,
+  );
+  console.log(
+    gate0 && gate1 && gate2
+      ? "→ All local gates pass. This still ships NOTHING by itself: DEFAULT_PARAMS has one intercept, so shipping is a params + rebuild decision for the owner, on this row plus Gate 3."
+      : "→ Rejected on the gates above. Record the row; the zero stands.",
+  );
+
+  // Sanity check: the healthy class should read like successions, not firings.
+  console.log("\nHealthy-class transitions (newest seasons first, sanity check):");
+  const rows: Array<{ year: number; school: string; coach: string }> = [];
+  for (const s of [...SCORED].sort((a, b) => b - a)) {
+    const classes = classOf.get(s);
+    if (!classes) continue;
+    for (const [teamId, cls] of classes) {
+      if (cls !== "healthy") continue;
+      const school = schoolById.get(teamId) ?? `team ${teamId}`;
+      const coach = transitions.get(s)?.get(school)?.coach ?? "?";
+      rows.push({ year: s, school, coach });
+    }
+  }
+  for (const r of rows.slice(0, 20)) {
+    console.log(`  ${r.year}  ${r.school.padEnd(24)} ${r.coach}`);
+  }
+}
+
+/**
  * --tune-team-hfa: is a per-team home-field advantage real, and does 0.5 earn
  * its place? (02:M-05 / 03:M-1v)
  *
@@ -2690,6 +2894,7 @@ async function main() {
   const tuneTilts = process.argv.includes("--tune-preseason-tilts");
   const tuneSigmaFlag = process.argv.includes("--tune-sigma");
   const tuneCoachingFlag = process.argv.includes("--tune-coaching");
+  const tuneCoachingSplitFlag = process.argv.includes("--tune-coaching-split");
   const tuneAnchorsFlag = process.argv.includes("--tune-anchors");
   const diagnose = process.argv.includes("--diagnose-edges");
   const diagnoseTiersFlag = process.argv.includes("--diagnose-tiers");
@@ -2723,6 +2928,7 @@ async function main() {
       ["tune-preseason-tilts", tuneTilts],
       ["tune-sigma", tuneSigmaFlag],
       ["tune-coaching", tuneCoachingFlag],
+      ["tune-coaching-split", tuneCoachingSplitFlag],
       ["tune-anchors", tuneAnchorsFlag],
       ["tune-churn", tuneChurnFlag],
       ["tune-epa", tuneEpaFlag],
@@ -2833,6 +3039,10 @@ async function main() {
   }
   if (tuneCoachingFlag) {
     await tuneCoaching(seasons, teamIdsByName);
+    return;
+  }
+  if (tuneCoachingSplitFlag) {
+    await tuneCoachingSplit(seasons, teamIdsByName);
     return;
   }
   if (tuneAnchorsFlag) {

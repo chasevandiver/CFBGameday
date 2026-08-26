@@ -104,6 +104,7 @@ and must say so. See "The window changed" below.
 | `--tune-sigma` | Flat sigma won. Widening made wks 1–4 NLL **worse**, 0.3972 → 0.3992. | Rejected. Early σ is inflated by cupcake blowouts — huge residuals, near-certain winners. That is not directional uncertainty. |
 | `--tune-anchors` | ΔNLL **0.0026** vs a pre-registered bar of 0.003. | Rejected, by 0.0004. (Also ran on contaminated week-1 Elo — see below — so it failed *with* an unfair advantage.) |
 | `--tune-coaching` | Optimum pinned at the grid edge (−2.5, then −5 after widening). Slope inert: NLL flat across 0/0.15/0.30/0.45. | Rejected — unconverged. A new HC almost always follows a bad season, which the prior already encodes, so the penalty double-counts. |
+| `--tune-coaching-split` (owner hypothesis off Utah's Whittingham→Scalley; healthy prior ≥ 0 vs struggling, slope 0) | **Gate 0 passes hard in both windows — the effect is real.** Healthy-succession teams underperform the identity model in wks 1–4: wide `2015-2025/warmup1/covid-chain` mean **−3.51** (t −3.95, n 426; struggling −3.62, t −4.20); E4 `2023-2025` mean **−6.31** (t −3.33, n 90; struggling −1.88, t −1.24, ns). But **Gate 1 fails in both**: best cells (−5, −3) wide / (−5, −2) E4, pinned at the −5 edge with NLL still falling (Δ 0.0049 / 0.0042, both past the 0.003 bar) — the same unconverged pathology as the pooled fit, at a boundary twice as wide as the one that killed it. Runs 32925804195 / 32925806206. | **Rejected — the zero stands, and the finding is sharpened.** New-HC teams get overrated early and it is NOT explained by the bad-season confound (the healthy class shows it strongest, exactly the owner's read). But a constant intercept cannot be the mechanism: an optimizer that wants −5-and-beyond for a quarter of a point of rating is absorbing something correlated (roster upheaval, scheme install, regression) rather than measuring an install cost, and shipping an edge-pinned value is the exact mistake the first rejection refused. The supported response to a specific case (Utah) is an admin adjustment with the Gate 0 number as its argument; the modelling response, if ever, is a mechanism with a shape — not a bigger grid. |
 | `--tune-epa` | Best case **0.010** MAE; NLL degraded monotonically (0.5005 → 0.5095) and early MAE got worse. PPA coverage was fine (1492/1606/1658 games). | Rejected. Swapping the scoreboard margin for a PPA margin still feeds one noisy per-game number into an Elo that already averages a dozen games. |
 | `--tune-ensemble` | Pure 50/50 with weekly Elo is **worse than our model alone (−0.069)**. Fitted weights: true holdout 0.138 vs bar 0.15. Prior-season SP+ t=0.43. | Rejected. The apparent gain was an intercept, not information — which is how the home bias was found. |
 | `--diagnose-edges` | b₁ = **0.035 (t=0.84)** for our model vs **0.987 (t=22.81)** for the market, n=2611. All five pre-registered tier tests failed (totals, thin/thick market, conference/non-). | Rejected → **edges demoted to information.** `stakeForPrediction` replaced by `modelSideOf`; ¼-Kelly stake removed from the UI. |
@@ -214,6 +215,38 @@ shipping it.
 ---
 
 ## Log
+
+### Aug 26 — --tune-coaching-split: the effect is real, the parameter still isn't
+
+The Utah entry below said re-opening the coaching zero meant a pre-registered
+run with the transition classes split. It ran the same night, both windows,
+gates fixed before any number printed (runs 32925804195 wide, 32925806206 E4).
+
+**What the split found that the pooled run couldn't see:** the bad-season
+confound does NOT explain the new-coach effect. Teams whose new coach
+inherited a HEALTHY program (prior ≥ 0 — the Saban→DeBoer, Riley→Venables,
+Whittingham→Scalley class) underperform the identity model in weeks 1–4 by
+**−3.51 points** (t −3.95, n 426) on the wide window and **−6.31** (t −3.33,
+n 90) on 2023–2025 — bigger in the portal era, and in E4 the struggling class
+isn't even significant (−1.88, t −1.24). The owner's read of Utah is
+directionally right, with a t-stat.
+
+**Why nothing ships anyway:** Gate 1 failed in both windows, the same way it
+killed the pooled fit. The best cells — (−5, −3) wide, (−5, −2) E4 — sit at
+the −5 edge with NLL still falling, on a grid twice as wide as the one whose
+edge-pin was the original rejection. ΔNLL clears the 0.003 bar (0.0049 /
+0.0042), but an optimizer that keeps wanting a bigger constant is absorbing
+correlated upheaval, not measuring an install cost, and an edge value is
+unshippable by standing rule. The zero stands; the decisions table carries
+the full row.
+
+**What this leaves the owner:** for the live case, the supported lever — an
+admin adjustment on Utah, now with an evidence-sized argument (the healthy
+class runs −3.5 to −6 early, so a −2…−3 manual dock is defensible, and the
+receipts grade it from Week 1). For the model, the door is closed to constant
+intercepts and open to a mechanism with a shape (a penalty that decays inside
+the season, or one keyed to concurrent roster churn) — a different experiment,
+pre-registered like this one, not a wider grid.
 
 ### Aug 25 — the Utah smell test: the inputs were right, the zero is a decision
 
