@@ -2849,9 +2849,21 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       `/ratings` renders the Off/Def columns (the `splitInformative` tell).
       Create Week 0 group weeks, invite the crew, confirm each person signs in.
       **`/scoreboard`'s first-ever real call lands today** as `idleSkip` opens.
-- [ ] **Aug 28** — 🔴 The Thursday freeze fires 03:00 UTC Fri = 10 pm CT Thu.
+- [x] **Aug 28** — 🔴 The Thursday freeze fires 03:00 UTC Fri = 10 pm CT Thu.
       Verify one frozen row per Aug 29 game, correct `model_version`, non-null
       `vegas_spread` and `total`. **Nothing else ships this day.**
+      **Done a day early, 2026-08-27 09:46 UTC — `freeze {"week":0,"frozen":8}`**
+      (run `33060071361`). The FREEZE-1 stopgap moved the slot to Thu 09:00
+      UTC, but the freshly added cron did not fire at 09:00 (GitHub registers
+      new crons with lag, sometimes most of a day) — the scheduled 09:45
+      self-check caught the zero rows and ran the manual dispatch per its own
+      contingency, green in 29s. Content was pre-verified by the previous
+      evening's dry-run on identical inputs (8/8 at 2026.6.0, two BIG_EDGEs,
+      Memphis near-market). **Tonight's Fri 03:00 UTC sweeper is now the
+      independent read-back**: expect `frozen: 0, already_frozen: 8` — that
+      output doubling as confirmation the receipts are in. Next Thursday the
+      09:00 cron will be a week old and should fire on its own; the per-game
+      daily freeze (due Sep 3) replaces both slots regardless.
 - [ ] **Aug 29** — 🏈 Week 0. Supervised watch: close passes, scoreboard loop,
       cover-flip detector, `observe-scoreboard`.
 - [ ] **Aug 30** — **F17** Supervised watch of the first freeze → grade → CLV
