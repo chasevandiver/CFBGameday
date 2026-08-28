@@ -263,6 +263,17 @@ export async function SurvivorHome({
         </section>
       )}
 
+      {/* Said loudly, not inferred from a chip: whose entry the taps run is
+          the one fact an admin working through several seats must never lose
+          track of. Same banner the pick'em board carries. */}
+      {actingFor && (
+        <p className="card mb-6 border-accent/40 bg-accent/10 px-4 py-3 text-sm text-chalk">
+          You&rsquo;re picking for <span className="font-semibold">{actingFor.name}</span> —
+          every tap below lands on their entry. The highlights show{" "}
+          <span className="font-semibold">their</span> picks, not yours.
+        </p>
+      )}
+
       {/* ---- this week ---- */}
       <section className="mb-7" aria-labelledby="board-heading">
         <div className="mb-2.5 flex items-baseline gap-2">
@@ -289,6 +300,15 @@ export async function SurvivorHome({
           </p>
         ) : (
           <SurvivorPicker
+            /* The picker's selected-team state is seeded from the server on
+               mount and then moved by taps. Switching whose entry this is (or
+               which week) only changes props, and React keeps the instance
+               across a same-route navigation — so one seat's highlights were
+               still painted over the next seat's board (owner report
+               2026-08-28, same defect as the pick'em board's). The key makes
+               a different subject or week a different board: full remount,
+               reseeded from the entry actually being run. */
+            key={`${weekRef.seasonType}:${weekRef.week}:${actingFor?.userId ?? "me"}`}
             groupId={group.id}
             week={weekRef.week}
             seasonType={weekRef.seasonType}

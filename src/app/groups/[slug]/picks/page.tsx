@@ -228,6 +228,17 @@ export default async function GroupPicksPage({
           </nav>
         )}
 
+        {/* Said loudly, not inferred from a chip: whose card the taps land on
+            is the one fact an admin working through four people must never
+            lose track of. */}
+        {actingFor && (
+          <p className="card mb-4 border-accent/40 bg-accent/10 px-4 py-3 text-sm text-chalk">
+            You&rsquo;re picking for <span className="font-semibold">{actingFor.name}</span> —
+            every tap below lands on their card. The highlights show{" "}
+            <span className="font-semibold">their</span> picks, not yours.
+          </p>
+        )}
+
         {!user && groupWeek !== null && boardGames.length > 0 && (
           <p className="card mb-3 px-4 py-3 text-sm text-dim">
             <Link
@@ -268,6 +279,15 @@ export default async function GroupPicksPage({
           </section>
         ) : (
           <PickBoard
+            /* The board's highlights and running count are client state seeded
+               from the server's rows on mount. Switching whose board this is
+               (or which week) only changes the props — React keeps the
+               component instance across a same-route navigation, so Jeff's
+               optimistic highlights were still painted over John's board
+               (owner report 2026-08-28). The key makes a different subject or
+               week a different BOARD: full remount, state reseeded from the
+               person actually being picked for. */
+            key={`${seasonType}:${week}:${actingFor?.userId ?? "me"}`}
             groupId={active.id}
             slug={slug}
             week={week}

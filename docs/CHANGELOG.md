@@ -226,6 +226,24 @@ shipping it.
 
 ## Log
 
+### Aug 28 — SEAT-5: switching seats left the last seat's highlights behind
+
+Owner report minutes into using seats: switching through the "Picking for"
+names left the previous person's highlighted picks painted over the next
+person's board — "it looks like it's saving the picks, but not staying
+highlighted per person." The writes were right (every tap carried `p_for`);
+the display was stale. PickBoard's count and PickButtons' optimistic overlays
+seed from the server rows on MOUNT, the switcher is a same-route navigation,
+and React keeps the instance across it — so mount-seeded state never followed
+the subject, and an optimistic guess only retires when the server row agrees,
+which the next seat's (absent) row never does. Fix: key PickBoard and
+SurvivorPicker on `(seasonType, week, subject)` so a different person or week
+is a different board — remounted, reseeded — which also closes the identical
+latent staleness across the week chevrons; and a banner on both boards while
+acting, since the chip alone wasn't carrying whose board it is. Source-scan
+test on both usage sites (the groups.test.ts pattern), checked failing
+against the pre-fix pages. vitest 1,985 across 132 files; no schema change.
+
 ### Aug 28 — seats and the extreme survivor race (SEAT-1…4, SURV-5)
 
 Owner request, both halves: *"add people to a group that don't have logins at
