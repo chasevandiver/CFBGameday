@@ -22,6 +22,7 @@ export function CreateGroupForm({ conferences = [] }: { conferences?: string[] }
      the kind is not survivor, instead of being present and ignored. */
   const [kind, setKind] = useState<GroupKind>("pickem");
   const [sport, setSport] = useState<"cfb" | "nfl">("cfb");
+  const [format, setFormat] = useState<"classic" | "extreme">("classic");
 
   return (
     <form
@@ -167,25 +168,79 @@ export function CreateGroupForm({ conferences = [] }: { conferences?: string[] }
             </label>
           )}
 
-          <label className="flex flex-col gap-1 text-xs text-dim">
-            Strikes before you&rsquo;re out
-            <select
-              name="strikes"
-              defaultValue="1"
-              className="min-h-11 rounded-lg border border-chalk/25 bg-elev px-3 text-sm text-chalk"
-            >
-              <option value="1">1 — classic, one loss and you&rsquo;re done</option>
-              <option value="2">2 — one mulligan</option>
-              <option value="3">3</option>
-            </select>
-          </label>
+          {/* Two survivor games, one schema: classic is the format everyone
+              knows, extreme is a race — as many teams a week as you dare,
+              first to the target, one loss and out. */}
+          <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Format">
+            <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-chalk/15 p-2.5 text-sm has-[:checked]:border-accent/60 has-[:checked]:bg-accent/8">
+              <input
+                type="radio"
+                name="format"
+                value="classic"
+                defaultChecked
+                onChange={() => setFormat("classic")}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="text-chalk">Classic</span>
+                <span className="block text-[11px] leading-snug text-dim">
+                  One team a week. A loss is a strike; run out of strikes and you&rsquo;re out.
+                </span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-chalk/15 p-2.5 text-sm has-[:checked]:border-accent/60 has-[:checked]:bg-accent/8">
+              <input
+                type="radio"
+                name="format"
+                value="extreme"
+                onChange={() => setFormat("extreme")}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="text-chalk">Extreme</span>
+                <span className="block text-[11px] leading-snug text-dim">
+                  Pick as many teams a week as you dare — first to the win target takes it, but
+                  one loss and you&rsquo;re out.
+                </span>
+              </span>
+            </label>
+          </div>
+
+          {format === "classic" ? (
+            <label className="flex flex-col gap-1 text-xs text-dim">
+              Strikes before you&rsquo;re out
+              <select
+                name="strikes"
+                defaultValue="1"
+                className="min-h-11 rounded-lg border border-chalk/25 bg-elev px-3 text-sm text-chalk"
+              >
+                <option value="1">1 — classic, one loss and you&rsquo;re done</option>
+                <option value="2">2 — one mulligan</option>
+                <option value="3">3</option>
+              </select>
+            </label>
+          ) : (
+            <label className="flex flex-col gap-1 text-xs text-dim">
+              First to how many wins
+              <input
+                type="number"
+                name="target"
+                defaultValue={100}
+                min={5}
+                max={500}
+                inputMode="numeric"
+                className="min-h-11 rounded-lg border border-chalk/25 bg-elev px-3 text-sm text-chalk"
+              />
+            </label>
+          )}
 
           <label className="flex items-center gap-2 text-sm text-chalk">
             <input type="checkbox" name="reuse" /> Teams may be used more than once
           </label>
           <p className="text-[11px] leading-snug text-dim">
-            A tie counts against you, and a week you don&rsquo;t pick counts as a loss once every
-            game in it has kicked off.
+            {format === "classic"
+              ? "A tie counts against you, and a week you don’t pick counts as a loss once every game in it has kicked off."
+              : "A tie counts against you. A week you sit out costs no strike — it just wins you nothing."}
           </p>
         </fieldset>
       )}

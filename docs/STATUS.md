@@ -61,7 +61,7 @@ rows were decided by reading code, not by reading commit messages.
 | | |
 |---|---|
 | **Ships Aug 29?** | Yes. `audit/KICKOFF_READINESS.md` §1, unhedged, after two revisions. |
-| **Build** | **1,914 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after HUB-3's third pass. Previously: **1,907 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after HUB-3's affordance fix. Previously: **1,903 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after HUB-3. Previously: **1,892 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after HUB-2's visual pass. Previously: **1,890 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after HUB-2. Previously: **1,881 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after HUB-1. Previously: **1,875 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after AUTH-4's eight-digit correction. Previously: **1,873 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after AUTH-4 (§2.1j). Eleven are new and seven of them drive the real component under jsdom rather than a pure function, because the defect AUTH-4 was most likely to ship — verifying a signup code as type `email` — lives in the wiring, not in any function worth unit-testing. Both mutations were checked failing. Previously: **1,862 tests across 126 files**, all green in-session 2026-08-21 along with `npm run typecheck` and lint — run after WEEK0-1 (§2.1j); eight of them are new and the source scan among them was checked failing against the pre-fix file. `next build` was NOT re-run for that batch and did not need to be: it changes one `scripts/` emit and one test, no route, no component, no migration. Previously: **1,773 tests across 124 files**, all green in-session 2026-08-20 along with `npm run typecheck`, lint and `next build` — run after OPS-4b (§2.1h); seven of them are new and cover the cancelled-run path. The kill was also reproduced outside vitest, since that is the half a unit test cannot reach: a real `npx tsx` process under `bash -c`, SIGTERM to the shell and SIGKILL to the tree, and the id file still readable afterwards — which is exactly what the `if: cancelled()` step depends on. Previously: **1,316 tests across 98 files**, all green in-session 2026-08-18 along with `tsc` and lint, and `next build` compiles clean — run after the SURV-1…SURV-4 batch in §2.1g. The DB suite was **not** re-run for that batch and did not need to be: it changes no migration, no RPC and no policy, and `supabase/tests/survivor.sql`'s 27 assertions cover rules the UI now merely reports. *(**Superseded 2026-08-19.** This said the one `tsc` complaint, `LayoutProps` in `src/app/layout.tsx`, was Next's generated route types being absent until a build has run. True, and it made a bare `tsc --noEmit` look permanently dirty — so a REAL type error hid in the noise and reached a Vercel deploy on 08-19 after `npm test` and `npm run lint` both passed. `npx next typegen` generates those types in about a second without a build, and the check is now **`npm run typecheck`** (`next typegen && tsc --noEmit`), which is clean. Run it before pushing; CI has always run both steps and would have caught it, but not before a red deploy.)* Previously: **975 tests across 71 files**, all green in-session 2026-08-15 along with `tsc`, lint and `next build`, after the owner-report batch in §2.1e and the AUTH-2 proxy change. **257 DB assertions** against a real Postgres 16 cluster, 0 failed — 27 of them new in `supabase/tests/survivor.sql`, and three of those were rewritten after they passed for the wrong reason (the `raises` helper accepts any error, and the seed was refusing the pick on start-week rather than on the rule under test). Previously: **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
+| **Build** | **1,983 tests across 131 files**, all green in-session 2026-08-28 along with `npm run typecheck`, lint and `next build` — run after the SEAT-1…3/SURV-5 batch (§4). **DB suite: 367 passed, 0 failed** against a real Postgres 16 cluster — 40 new assertions (`managed-members.sql`, new, plus the extreme section of `survivor.sql`), and a night-shift defect fixed in `daily-games.sql` on the way: its "today" seeds used bare `current_date` (UTC) while the reveal policies gate on America/Chicago — the exact seam its own +30 assertions test from the other side — so between 00:00 and 06:00 UTC the three "today is readable" assertions failed and, worse, a downstream FK violation aborted the suite midway (66 assertions now run where ~30 did). Verified failing identically on the parent commit with this batch stashed, so the red was the suite's, not this change's. Previously: **1,914 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after HUB-3's third pass. Previously: **1,907 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after HUB-3's affordance fix. Previously: **1,903 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after HUB-3. Previously: **1,892 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after HUB-2's visual pass. Previously: **1,890 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after HUB-2. Previously: **1,881 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after HUB-1. Previously: **1,875 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after AUTH-4's eight-digit correction. Previously: **1,873 tests across 127 files**, all green in-session 2026-08-22 along with `npm run typecheck`, lint and `next build` — run after AUTH-4 (§2.1j). Eleven are new and seven of them drive the real component under jsdom rather than a pure function, because the defect AUTH-4 was most likely to ship — verifying a signup code as type `email` — lives in the wiring, not in any function worth unit-testing. Both mutations were checked failing. Previously: **1,862 tests across 126 files**, all green in-session 2026-08-21 along with `npm run typecheck` and lint — run after WEEK0-1 (§2.1j); eight of them are new and the source scan among them was checked failing against the pre-fix file. `next build` was NOT re-run for that batch and did not need to be: it changes one `scripts/` emit and one test, no route, no component, no migration. Previously: **1,773 tests across 124 files**, all green in-session 2026-08-20 along with `npm run typecheck`, lint and `next build` — run after OPS-4b (§2.1h); seven of them are new and cover the cancelled-run path. The kill was also reproduced outside vitest, since that is the half a unit test cannot reach: a real `npx tsx` process under `bash -c`, SIGTERM to the shell and SIGKILL to the tree, and the id file still readable afterwards — which is exactly what the `if: cancelled()` step depends on. Previously: **1,316 tests across 98 files**, all green in-session 2026-08-18 along with `tsc` and lint, and `next build` compiles clean — run after the SURV-1…SURV-4 batch in §2.1g. The DB suite was **not** re-run for that batch and did not need to be: it changes no migration, no RPC and no policy, and `supabase/tests/survivor.sql`'s 27 assertions cover rules the UI now merely reports. *(**Superseded 2026-08-19.** This said the one `tsc` complaint, `LayoutProps` in `src/app/layout.tsx`, was Next's generated route types being absent until a build has run. True, and it made a bare `tsc --noEmit` look permanently dirty — so a REAL type error hid in the noise and reached a Vercel deploy on 08-19 after `npm test` and `npm run lint` both passed. `npx next typegen` generates those types in about a second without a build, and the check is now **`npm run typecheck`** (`next typegen && tsc --noEmit`), which is clean. Run it before pushing; CI has always run both steps and would have caught it, but not before a red deploy.)* Previously: **975 tests across 71 files**, all green in-session 2026-08-15 along with `tsc`, lint and `next build`, after the owner-report batch in §2.1e and the AUTH-2 proxy change. **257 DB assertions** against a real Postgres 16 cluster, 0 failed — 27 of them new in `supabase/tests/survivor.sql`, and three of those were rewritten after they passed for the wrong reason (the `raises` helper accepts any error, and the seed was refusing the pick on start-week rather than on the rule under test). Previously: **861 tests across 63 files**, all green in-session 2026-08-14 after the NFL and betting batches (the "659 across 47" here was 08-13's number and is superseded). Previously: **659 tests across 47 files**, `tsc`, lint and `next build` clean — all run in-session 2026-08-13 after the §4 pull-forward below, and green on CI for PRs #58/#59/#60. **155 DB assertions** (was 129), run in-session against a real Postgres 16 cluster rather than carried from CI; the 26 new ones were each checked to fail against the pre-fix schema. *(Run `npm ci` first: a stale `node_modules` fails two suites on missing deps and looks like a regression.)* |
 | **Scheduler** | 111 completed runs. Reds to date: one watchdog firing correctly on a cold `job_runs` table, and runs #107–109 — the backup verification sequence, each a real defect, all closed. |
 | **Regressions** | 0. Nothing correct was later undone (`KICKOFF_READINESS` §5). |
 | **CFBD** | Tier 2, 30,000 calls/month, confirmed against ~10k of use. All 11 endpoints probed live and reachable, including `/scoreboard`. |
@@ -6103,6 +6103,58 @@ model untouched (read-only `liveWinProb`/`fractionRemaining` imports).
       layout. A teaser card appears on `/me` once bowl finals exist.
       **Fixture-verified only until January**, stated plainly.
 
+**Seats and the extreme survivor race** — owner request 2026-08-28: "add
+people to a group that don't have logins at the moment and pick for them as an
+admin and then have me assign the alias of the name … I do a pickem with my
+dad and uncles, Jeff, John, Greg and may take them a week to get on board",
+and "toggle an option to pick multiple teams per week, but if one loses you're
+out … a fun version of first to 100 without getting one wrong … maybe make
+another group format called extreme survivor." Full reasoning and numbers in
+the changelog's Aug 28 entry.
+
+- [x] **SEAT-1** A member without a login. Migration **0081**: a seat is a
+      real `profiles` row under the admin's alias, backed by an `auth.users`
+      row that can never sign in — no password, an `@managed.invalid` address,
+      and the invite allowlist opened for exactly one statement inside
+      `create_managed_member` rather than a bypass flag a signup could set.
+      `managed_members` records whose group each seat is; the candidate search
+      and `add_group_member` both refuse unclaimed seats, so a seat never
+      leaks into another group. Rename is `rename_managed_member`, admin-only.
+- [x] **SEAT-2** The admin picks for the seat. `p_for` on `make_pick`,
+      `remove_pick`, `make_survivor_pick`, `remove_survivor_pick`, resolved in
+      one place (`acting_user`): null is yourself, non-null is admin-only and
+      must name an unclaimed seat still on the roster. Every other rule binds
+      the seat as it would anyone. Two RLS policies let admins read a seat's
+      pregame picks under the blind — the admin entered them, and a board that
+      hides them reports the tap as failed. UI: "Picking for" switcher
+      (`?for=`, resolved server-side against the roster) on the pick'em board
+      and the survivor home; share sheet withheld while acting, since it
+      speaks as "me".
+- [x] **SEAT-3** The hand-over. `claim_managed_member` moves the membership
+      row and every pick to the real account and marks the seat claimed;
+      refuses an account already in the group, another seat, or an account
+      with picks from an earlier membership in this group — merging two pick
+      histories has no right answer a function should invent. The claimed
+      seat's profile and auth row remain as an inert husk, recorded in §6.
+- [ ] **SEAT-4** Apply **0081/0082** to the live project **before** the deploy
+      carrying this code. Ordering is not free in that direction: the new
+      actions name `p_for`/`p_format` arguments that do not exist until the
+      migrations run, while the old build's 4-argument named calls still match
+      the recreated functions (defaults fill the new parameters) — so
+      migrations first is safe and deploy first is not.
+- [x] **SURV-5** Extreme survivor. Migration **0082**: `survivor_pools.format`
+      ('classic'|'extreme') + `target_wins` (5–500; the house game is 100),
+      `survivor_picks` key widened to include `team_id`, classic's
+      one-per-week rule restated explicitly in the RPC's classic branch — all
+      27 pre-existing survivor assertions pass unchanged, which is the
+      regression test that matters. Extreme: any number of picks a week, each
+      locking at its own kickoff; a loss or tie eliminates (strikes pinned to
+      1 at creation); a missed week is NOT a strike — classic needs that rule
+      or stalling is a strategy, a race punishes sitting out by itself; both
+      sides of one game refused. Wins and "finished" are derived in
+      `survivorStandings` the way elimination always was — recomputed, never
+      stored.
+
 ## 5. Not built, by choice
 
 Additive features, no defect behind any of them. Verified still open 2026-08-12.
@@ -6128,6 +6180,21 @@ close passes.
 
 Things that are true, understood, and deliberately not being fixed. They are
 here so they aren't rediscovered as bugs.
+
+- **A claimed seat leaves a husk** (SEAT-3, 2026-08-28). After
+  `claim_managed_member`, the seat's `profiles` and `auth.users` rows remain —
+  claimed in `managed_members`, on no roster, holding no picks, unable to sign
+  in, refused by every seat RPC and excluded from the candidate search. They
+  will also appear in the Supabase auth dashboard as unconfirmable
+  `@managed.invalid` users. Deleting them from a security-definer RPC is how a
+  cascade eats the pick history that was just handed over, so they stay.
+  **Recorded rather than queued.**
+- **The survivor week switcher drops `?for=`** (SEAT-2, 2026-08-28). On the
+  survivor home, jumping weeks through `WeekJump` returns the admin to picking
+  for themselves; the pick'em board's own week chevrons carry it. The switcher
+  is one tap away and clearly labelled, and threading an extra query through
+  `WeekJump` touches every group surface the day before Week 0. **Recorded
+  rather than queued.**
 
 - **`preseason-refresh` is invisible to `job_runs` and therefore to `/admin`.**
   Noticed 2026-08-20 while watching the dated row for that day: nothing has

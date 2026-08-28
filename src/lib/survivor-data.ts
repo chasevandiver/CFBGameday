@@ -26,6 +26,8 @@ interface PoolRow {
   strikes: number;
   reuse_teams: boolean;
   start_week: number;
+  format: "classic" | "extreme";
+  target_wins: number | null;
 }
 
 export async function fetchSurvivorPool(
@@ -34,7 +36,7 @@ export async function fetchSurvivorPool(
 ): Promise<SurvivorPool | null> {
   const { data } = await db
     .from("survivor_pools")
-    .select("group_id, season_id, conference, strikes, reuse_teams, start_week")
+    .select("group_id, season_id, conference, strikes, reuse_teams, start_week, format, target_wins")
     .eq("group_id", groupId)
     .maybeSingle();
   if (!data) return null;
@@ -46,6 +48,8 @@ export async function fetchSurvivorPool(
     strikes: row.strikes,
     reuseTeams: row.reuse_teams,
     startWeek: row.start_week,
+    format: row.format === "extreme" ? "extreme" : "classic",
+    targetWins: row.target_wins,
   };
 }
 

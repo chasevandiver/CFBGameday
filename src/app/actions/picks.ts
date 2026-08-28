@@ -25,6 +25,8 @@ export async function makePick(
   gameId: number,
   market: PickMarket,
   side: "home" | "away" | "over" | "under",
+  /** A seat to pick for (0081). Admin-gated in the RPC, not here. */
+  forUser?: string | null,
 ): Promise<PickResult> {
   const supabase = await createClient();
   const {
@@ -37,6 +39,7 @@ export async function makePick(
     p_game_id: gameId,
     p_market: market,
     p_side: side,
+    p_for: forUser ?? null,
   });
 
   if (error) {
@@ -64,6 +67,8 @@ export async function removePick(
   groupId: string,
   gameId: number,
   market: PickMarket,
+  /** A seat to clear for (0081). Admin-gated in the RPC, not here. */
+  forUser?: string | null,
 ): Promise<PickResult> {
   const supabase = await createClient();
   const {
@@ -75,6 +80,7 @@ export async function removePick(
     p_group_id: groupId,
     p_game_id: gameId,
     p_market: market,
+    p_for: forUser ?? null,
   });
 
   if (error) return { ok: false, message: error.message };

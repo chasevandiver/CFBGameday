@@ -232,3 +232,100 @@ begin;
   select pg_temp.raises('truncate survivor_picks', $$truncate survivor_picks$$);
   select pg_temp.raises('truncate survivor_pools', $$truncate survivor_pools$$);
 rollback;
+
+-- ---------------------------------------------------------------------------
+-- Extreme survivor (0082): many picks a week, first to the target, one loss
+-- and out. The classic assertions above all still passed with the widened key,
+-- which is the point — 'classic' reproduces the old behaviour exactly.
+-- ---------------------------------------------------------------------------
+
+\echo '# extreme: creating the race'
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.raises('a classic pool takes no win target',
+    $$select create_survivor_group('Nope', 'private', 'cfb', null, 1, false, 'classic', 50)$$);
+  select pg_temp.raises('extreme is one loss and out — strikes are refused',
+    $$select create_survivor_group('Nope', 'private', 'cfb', null, 2, false, 'extreme', 50)$$);
+  select pg_temp.raises('the target has bounds',
+    $$select create_survivor_group('Nope', 'private', 'cfb', null, 1, false, 'extreme', 2)$$);
+rollback;
+\o /dev/null
+begin;
+  select test_as(:ann::uuid);
+  select create_survivor_group('First To 100', 'private', 'cfb', null, 1, false, 'extreme', 100)
+    as xgrp \gset
+commit;
+\o
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.chk('the pool row carries the format and the finish line',
+    (select format = 'extreme' and target_wins = 100
+     from survivor_pools where group_id = :'xgrp'::uuid));
+rollback;
+
+\echo '# extreme: as many teams a week as you dare'
+\o /dev/null
+begin;
+  select test_as(:ann::uuid);
+  select make_survivor_pick(:'xgrp'::uuid, 201, 1);  -- Georgia, week 2
+  select make_survivor_pick(:'xgrp'::uuid, 202, 2);  -- Alabama, same week
+commit;
+\o
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.chk('two picks stand in one week',
+    (select count(*) from survivor_picks
+     where group_id = :'xgrp'::uuid and user_id = :ann::uuid and week = 2) = 2);
+rollback;
+\o /dev/null
+begin;
+  select test_as(:ann::uuid);
+  select make_survivor_pick(:'xgrp'::uuid, 201, 1);  -- the re-tap
+commit;
+\o
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.chk('re-picking a held team is the no-op it looks like',
+    (select count(*) from survivor_picks
+     where group_id = :'xgrp'::uuid and user_id = :ann::uuid and week = 2) = 2);
+  select pg_temp.raises('both sides of one game is a guaranteed loss, refused',
+    format($$select make_survivor_pick(%L, 201, 4)$$, :'xgrp'));
+  select pg_temp.raises('the no-repeat rule still spans the season',
+    format($$select make_survivor_pick(%L, 302, 2)$$, :'xgrp'));
+rollback;
+
+\echo '# extreme: clearing names the team'
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.raises('a team-less clear on a multi-pick week is refused',
+    format($$select remove_survivor_pick(%L, 2, 'regular')$$, :'xgrp'));
+rollback;
+\o /dev/null
+begin;
+  select test_as(:ann::uuid);
+  select remove_survivor_pick(:'xgrp'::uuid, 2, 'regular', 2);
+commit;
+\o
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.chk('the named pick is gone, the other stands',
+    (select array_agg(team_id) from survivor_picks
+     where group_id = :'xgrp'::uuid and user_id = :ann::uuid and week = 2) = array[1]);
+rollback;
+
+\echo '# a seat''s survivor entry is the admin''s to run (0081)'
+\o /dev/null
+begin;
+  select test_as(:ann::uuid);
+  select create_managed_member(:'xgrp'::uuid, 'Greg') as greg \gset
+  select make_survivor_pick(:'xgrp'::uuid, 202, 2, :'greg'::uuid);
+commit;
+\o
+begin;
+  select test_as(:ann::uuid);
+  select pg_temp.chk('the pick belongs to the seat',
+    (select user_id from survivor_picks
+     where group_id = :'xgrp'::uuid and team_id = 2 and week = 2) = :'greg'::uuid);
+  select pg_temp.raises('an admin cannot pick for a real account',
+    format($$select make_survivor_pick(%L, 202, 5, %L)$$, :'xgrp', :bob));
+rollback;

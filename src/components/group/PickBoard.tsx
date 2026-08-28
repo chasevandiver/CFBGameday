@@ -38,6 +38,8 @@ export function PickBoard({
   minPicks,
   signedIn,
   shareContext,
+  forUser = null,
+  forName = null,
 }: {
   groupId: string;
   slug: string;
@@ -49,6 +51,10 @@ export function PickBoard({
   signedIn: boolean;
   /** Everything the share sheet needs except `justPlaced`, which is client-only. */
   shareContext: Omit<ShareContext, "justPlaced"> | null;
+  /** A seat the board is picking for instead of the viewer (0081). */
+  forUser?: string | null;
+  /** The seat's name, for the bar — "Jeff's picks", not a silent identity swap. */
+  forName?: string | null;
 }) {
   // Seeded from the server, then moved by taps. `${gameId}:${market}` → side.
   const [held, setHeld] = useState<Map<string, string>>(
@@ -96,6 +102,7 @@ export function PickBoard({
             markets={markets}
             signedIn={signedIn}
             onPickChange={onPickChange}
+            forUser={forUser}
           />
         ))}
       </ul>
@@ -128,6 +135,7 @@ export function PickBoard({
                     : ""}
               </span>
               <span className="block text-[10.5px] text-chalk/45">
+                {forName ? `for ${forName} · ` : ""}
                 {gamesPicked} of {entries.length} games
                 {openGames < entries.length ? ` · ${entries.length - openGames} locked` : ""} ·
                 saved as you tap
@@ -159,6 +167,7 @@ function BoardCard({
   markets,
   signedIn,
   onPickChange,
+  forUser,
 }: {
   game: GameView;
   myPicks: MyPickView[];
@@ -167,6 +176,7 @@ function BoardCard({
   markets: PickMarket[];
   signedIn: boolean;
   onPickChange: (gameId: number, market: PickMarket, side: string | null) => void;
+  forUser: string | null;
 }) {
   const kick = game.startTs === null ? null : kickParts(game.startTs, DEFAULT_TZ);
   const live = game.status === "in_progress";
@@ -241,6 +251,7 @@ function BoardCard({
             signedIn={signedIn}
             onPickChange={onPickChange}
             quiet
+            forUser={forUser}
           />
         </div>
 

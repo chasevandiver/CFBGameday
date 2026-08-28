@@ -256,6 +256,53 @@ export async function addGroupMemberByName(groupId: string, name: string): Promi
   return { ok: true };
 }
 
+/**
+ * Add a seat: a member with no login yet (0081). The admin names them, picks
+ * for them, and hands the seat over once the person signs up. No notification
+ * — there is nobody to notify, which is the entire premise.
+ */
+export async function createManagedMember(groupId: string, alias: string): Promise<ActionResult> {
+  return rpc("create_managed_member", { p_group: groupId, p_alias: alias });
+}
+
+/** "Have me assign the alias of the name" — the seat's name is the admin's. */
+export async function renameManagedMember(
+  groupId: string,
+  seatId: string,
+  alias: string,
+): Promise<ActionResult> {
+  return rpc("rename_managed_member", { p_group: groupId, p_seat: seatId, p_alias: alias });
+}
+
+/**
+ * Hand a seat to a real account: membership and every pick made on their
+ * behalf move over, history intact (0081). The person is told the same way an
+ * ordinary add tells them — from their side, this IS being added, just with a
+ * season already in progress.
+ */
+export async function claimManagedMember(
+  groupId: string,
+  seatId: string,
+  userId: string,
+): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Sign in first" };
+
+  const { error } = await supabase.rpc("claim_managed_member", {
+    p_group: groupId,
+    p_seat: seatId,
+    p_user: userId,
+  });
+  if (error) return { ok: false, message: error.message };
+
+  notifyAdded(groupId, userId, user.id);
+  revalidatePath("/groups", "layout");
+  return { ok: true };
+}
+
 // Each of these has to be a declared async function, not an arrow const: in a
 // "use server" module the compiler only recognises function declarations as
 // actions, and an arrow export fails at build time with "export was not found"
