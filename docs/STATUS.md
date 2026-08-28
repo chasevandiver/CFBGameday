@@ -6168,6 +6168,24 @@ the changelog's Aug 28 entry.
       `remove_survivor_pick` 5-arg with exactly one `create_survivor_group`;
       both "admins read seat …" policies present; ledger carries both rows —
       80 files, 80 rows, counted.
+- [x] **SEAT-5** Switching seats left the last seat's highlights on the board.
+      Owner report 2026-08-28, minutes into using seats: "the highlighted
+      picks don't go away if I try to switch through names and make picks on
+      the same game … it looks like it's saving the picks, but not staying
+      highlighted per person." The writes were correct — `p_for` rode every
+      tap — but PickBoard's running count and PickButtons' optimistic
+      overlays are client state seeded on MOUNT, and the "Picking for"
+      switcher is a same-route navigation: React keeps the instance, props
+      change, mount-seeded state does not. An optimistic guess only retires
+      when the server row agrees with it, and the next seat's row is usually
+      absent, so the previous seat's highlight survived indefinitely. Fixed
+      by keying PickBoard and SurvivorPicker on `(seasonType, week, subject)`
+      — a different person or week is a different board, remounted and
+      reseeded — which also closes the same latent staleness across week
+      chevrons. Plus a banner on both boards while acting ("You're picking
+      for Jeff — the highlights show *their* picks"), because the chip alone
+      was not carrying it. Source-scan test on both usage sites, the
+      groups.test.ts pattern, checked failing against the pre-fix pages.
 - [x] **SURV-5** Extreme survivor. Migration **0082**: `survivor_pools.format`
       ('classic'|'extreme') + `target_wins` (5–500; the house game is 100),
       `survivor_picks` key widened to include `team_id`, classic's
