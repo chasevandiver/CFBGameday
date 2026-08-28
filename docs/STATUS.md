@@ -2864,6 +2864,21 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       output doubling as confirmation the receipts are in. Next Thursday the
       09:00 cron will be a week old and should fire on its own; the per-game
       daily freeze (due Sep 3) replaces both slots regardless.
+      **Read-back confirmed 2026-08-28 03:30 UTC, from the delayed cron
+      itself.** GitHub's scheduler ran 8–10 hours behind all Thursday — every
+      cron slot fired, in order, hours late; the 09:00 freeze cron landed at
+      19:19 (run `33107897803`) and printed exactly the idempotent skip:
+      `freeze {"week":0,"frozen":0,"scheduled":8,"already_frozen":8}`. No
+      duplicates. The Fri 03:00 sweeper is still in the backlog and will be a
+      third no-op whenever it lands. The Thursday-evening **watchdog red**
+      (run `33106035193`, "sync-games: no successful run in 33h") was a true
+      alarm with the same external cause — sync-games ran green 29 minutes
+      after it fired.
+      **Launch-day exposure**: if the cron lag persists into Saturday, the
+      scoreboard-loop windows start hours late and live scores are dark at
+      the 16:00 UTC opener. **Mitigation armed**: a Sat 15:20 UTC self-check
+      verifies a loop is running and manually dispatches `scoreboard-loop`
+      if not — dispatches execute instantly, proven repeatedly this week.
 - [ ] **Aug 29** — 🏈 Week 0. Supervised watch: close passes, scoreboard loop,
       cover-flip detector, `observe-scoreboard`.
 - [ ] **Aug 30** — **F17** Supervised watch of the first freeze → grade → CLV
