@@ -3,7 +3,6 @@ import { EMPTY_TALLY, type Tally } from "./records";
 import {
   betSlipText,
   boardShareText,
-  favoredLine,
   formatPick,
   shareText,
   type BoardShare,
@@ -253,80 +252,76 @@ describe("betSlipText", () => {
 
 describe("boardShareText", () => {
   const game = (over: Partial<BoardShareGame> = {}): BoardShareGame => ({
-    awaySchool: "Ohio State",
-    homeSchool: "Texas",
-    awayAbbr: "OSU",
-    homeAbbr: "TEX",
-    spread: -2.5,
-    total: 47.5,
-    kickTs: "2026-08-30T16:00:00Z",
-    kickLabel: "Sat 11:00 AM CT",
+    awaySchool: "North Carolina",
+    homeSchool: "TCU",
+    spread: -9.5,
+    total: 47,
+    kickTs: "2026-08-29T16:00:00Z",
     ...over,
   });
   const board = (over: Partial<BoardShare> = {}): BoardShare => ({
     groupName: "Vandiver Pick'em",
-    weekLabel: "Week 1",
+    weekLabel: "Week 0",
     markets: ["spread", "total"],
-    minPicks: 5,
+    minPicks: 0,
     games: [game()],
     boardUrl: "https://slate.example/groups/vandiver-pickem/picks",
     ...over,
   });
 
-  it("renders the matchup with the favourite named and the total, under its kickoff", () => {
+  it("renders the crew's table: matchup, home line, total, tab-separated", () => {
+    // Tabs, not prose — pasted into an email this reads as columns, pasted
+    // into Excel or Sheets it lands as cells, which is how this board has
+    // always travelled.
     expect(boardShareText(board())).toBe(
       [
-        "THE CFB SLATE — VANDIVER PICK'EM",
-        "Week 1 board · 1 game · spreads & totals · minimum 5 picks",
+        "Vandiver Pick'em — Week 0",
         "",
-        "Sat 11:00 AM CT",
-        "Ohio State at Texas — TEX -2.5, O/U 47.5",
+        "Game\tHome line\tO/U",
+        "North Carolina at TCU\t-9.5\t47",
         "",
         "Make your picks: https://slate.example/groups/vandiver-pickem/picks",
       ].join("\n"),
     );
   });
 
-  it("names the away favourite from the home-perspective number", () => {
-    // spread is stored from the HOME side, so +10.5 means the road team lays it.
-    expect(favoredLine({ spread: 10.5, homeAbbr: "FSU", awayAbbr: "BAMA" })).toBe("BAMA -10.5");
-    expect(favoredLine({ spread: -2.5, homeAbbr: "TEX", awayAbbr: "OSU" })).toBe("TEX -2.5");
-    expect(favoredLine({ spread: 0, homeAbbr: "A", awayAbbr: "B" })).toBe("pick'em");
-    expect(favoredLine({ spread: null, homeAbbr: "A", awayAbbr: "B" })).toBe("no line yet");
+  it("keeps the home number as stored — a home dog shows plus", () => {
+    const text = boardShareText(
+      board({ games: [game({ spread: 10.5, awaySchool: "Alabama", homeSchool: "Florida State" })] }),
+    );
+    expect(text).toContain("Alabama at Florida State\t+10.5\t47");
   });
 
-  it("groups games under their kickoff and sinks TBD to the bottom", () => {
+  it("orders rows by kickoff with TBD last, and dashes a missing line", () => {
     const text = boardShareText(
       board({
         games: [
-          game({ kickTs: null, kickLabel: null, awaySchool: "Rice", homeSchool: "Houston" }),
-          game({
-            kickTs: "2026-08-30T23:30:00Z",
-            kickLabel: "Sat 6:30 PM CT",
-            awaySchool: "Alabama",
-            homeSchool: "Florida State",
-            spread: 10.5,
-            awayAbbr: "BAMA",
-            homeAbbr: "FSU",
-            total: 55.5,
-          }),
+          game({ kickTs: null, awaySchool: "Rice", homeSchool: "Houston", spread: null }),
+          game({ kickTs: "2026-08-29T23:30:00Z", awaySchool: "Memphis", homeSchool: "UNLV", spread: -4.5, total: 56.5 }),
           game(),
         ],
       }),
     );
     const lines = text.split("\n");
-    expect(lines.indexOf("Sat 11:00 AM CT")).toBeLessThan(lines.indexOf("Sat 6:30 PM CT"));
-    expect(lines.indexOf("Sat 6:30 PM CT")).toBeLessThan(lines.indexOf("KICKOFF TBD"));
-    expect(text).toContain("Alabama at Florida State — BAMA -10.5, O/U 55.5");
+    expect(lines.indexOf("North Carolina at TCU\t-9.5\t47")).toBeLessThan(
+      lines.indexOf("Memphis at UNLV\t-4.5\t56.5"),
+    );
+    expect(lines.indexOf("Memphis at UNLV\t-4.5\t56.5")).toBeLessThan(
+      lines.indexOf("Rice at Houston\t\u2013\t47"),
+    );
   });
 
-  it("shows bare matchups for a winners-only week — there is no number to share", () => {
-    const text = boardShareText(board({ markets: ["straight_up"], minPicks: 0 }));
-    expect(text).toContain("winners straight up");
-    expect(text).toContain("Ohio State at Texas");
-    expect(text).not.toContain("TEX -2.5");
-    expect(text).not.toContain("O/U");
-    expect(text).not.toContain("minimum");
+  it("notes the pick minimum on the title line when the group sets one", () => {
+    expect(boardShareText(board({ minPicks: 5 }))).toContain(
+      "Vandiver Pick'em — Week 0 · minimum 5 picks",
+    );
+  });
+
+  it("drops to bare matchups for a winners-only week — no numbers, no header", () => {
+    const text = boardShareText(board({ markets: ["straight_up"] }));
+    expect(text).toContain("North Carolina at TCU");
+    expect(text).not.toContain("\t");
+    expect(text).not.toContain("Home line");
   });
 
   it("says so when the board is empty, and skips the CTA without a site url", () => {

@@ -177,25 +177,30 @@ export function betSlipText(
 }
 
 /**
- * The week's board itself, as a text message — the games, the lines, the
- * totals. This is the admin's "here's what we're picking this week" text
- * to the family thread (owner request 2026-08-28), so it is about the WEEK,
- * not about anyone's picks: full school names rather than abbreviations,
- * because Jeff reading it in iMessage has no roster of abbreviations to
- * decode, and the favourite named next to its number the way people actually
- * say a line out loud ("Texas -2.5").
+ * The week's board itself, as rows — the games, the lines, the totals.
+ *
+ * The shape is the one this crew has always mailed around: an Excel
+ * copy-paste of cells, one game a row, the HOME team's spread and the total
+ * beside the matchup. So the body is TAB-separated — pasted into an email it
+ * reads as columns, pasted into Excel or Sheets it lands as actual cells —
+ * with no kickoff groupings, no market blurb, no chrome between the reader
+ * and the rows. (The first version narrated each game in a sentence under a
+ * kickoff heading; owner verdict 2026-08-28: "clunky and cumbersome. We
+ * usually do match up, spread of home team and total next to it.")
+ *
+ * The spread column is the home number AS STORED — negative means the home
+ * team lays it — because "spread of the home team" is the convention this
+ * table has carried for years and a favourite-named rendering is exactly the
+ * clutter that got rejected.
  */
 export interface BoardShareGame {
   awaySchool: string;
   homeSchool: string;
-  awayAbbr: string;
-  homeAbbr: string;
   /** Consensus spread from the HOME side, the way the slate stores it. */
   spread: number | null;
   total: number | null;
+  /** ISO kickoff, for row order. Null = TBD, sorted last. */
   kickTs: string | null;
-  /** Rendered kickoff, e.g. "SAT 11:00 AM CT". Null = TBD. */
-  kickLabel: string | null;
 }
 
 export interface BoardShare {
@@ -210,39 +215,16 @@ export interface BoardShare {
   boardUrl: string | null;
 }
 
-/** "Texas -2.5" — the favourite by name, from the home-perspective number. */
-export function favoredLine(g: Pick<BoardShareGame, "spread" | "homeAbbr" | "awayAbbr">): string {
-  if (g.spread === null) return "no line yet";
-  if (g.spread === 0) return "pick'em";
-  return g.spread < 0
-    ? `${g.homeAbbr} ${fmtSpread(g.spread)}`
-    : `${g.awayAbbr} ${fmtSpread(-g.spread)}`;
-}
-
-const MARKET_WORD: Record<PickMarket, string> = {
-  spread: "spreads",
-  total: "totals",
-  straight_up: "winners straight up",
-};
-
 export function boardShareText(b: BoardShare): string {
-  const head = [
-    `${HEADER} — ${b.groupName.toUpperCase()}`,
-    [
-      `${b.weekLabel} board`,
-      `${b.games.length} ${b.games.length === 1 ? "game" : "games"}`,
-      b.markets.map((m) => MARKET_WORD[m]).join(" & "),
-      ...(b.minPicks > 0 ? [`minimum ${b.minPicks} picks`] : []),
-    ].join(" · "),
-    "",
-  ];
+  const title = `${b.groupName} — ${b.weekLabel}${
+    b.minPicks > 0 ? ` · minimum ${b.minPicks} picks` : ""
+  }`;
   if (b.games.length === 0) {
-    return [...head, "No games on the board yet."].join("\n");
+    return [title, "", "No games on the board yet."].join("\n");
   }
 
-  // Kickoff order, grouped under the time they kick — same shape the pick
-  // slips use, and for the same reason: the reader's question is "what's on
-  // when", not the order the admin clicked. TBD kickoffs sink to the bottom.
+  // Kickoff order, TBD last — the row order the weekend plays in, without
+  // burning rows on time headings.
   const sorted = [...b.games].sort((a, z) => {
     if (a.kickTs === z.kickTs) return 0;
     if (a.kickTs === null) return 1;
@@ -250,28 +232,24 @@ export function boardShareText(b: BoardShare): string {
     return a.kickTs.localeCompare(z.kickTs);
   });
 
-  const line = (g: BoardShareGame): string => {
-    const parts: string[] = [];
-    if (b.markets.includes("spread")) parts.push(favoredLine(g));
-    if (b.markets.includes("total") && g.total !== null) parts.push(`O/U ${fmtTotal(g.total)}`);
-    const matchup = `${g.awaySchool} at ${g.homeSchool}`;
-    return parts.length > 0 ? `${matchup} — ${parts.join(", ")}` : matchup;
-  };
+  const spreads = b.markets.includes("spread");
+  const totals = b.markets.includes("total");
+  const cells = (g: BoardShareGame): string[] => [
+    `${g.awaySchool} at ${g.homeSchool}`,
+    ...(spreads ? [g.spread === null ? "–" : fmtSpread(g.spread)] : []),
+    ...(totals ? [fmtTotal(g.total)] : []),
+  ];
 
-  const body: string[] = [];
-  let lastLabel: string | undefined;
-  for (const g of sorted) {
-    const label = g.kickLabel ?? "KICKOFF TBD";
-    if (label !== lastLabel) {
-      if (body.length > 0) body.push("");
-      body.push(label);
-      lastLabel = label;
-    }
-    body.push(line(g));
-  }
+  const header = ["Game", ...(spreads ? ["Home line"] : []), ...(totals ? ["O/U"] : [])];
+  const body =
+    // A winners-only board is one column, and a one-column table with a
+    // header row is a list wearing a hat.
+    header.length > 1
+      ? [header.join("\t"), ...sorted.map((g) => cells(g).join("\t"))]
+      : sorted.map((g) => cells(g).join("\t"));
 
   const foot = b.boardUrl ? ["", `Make your picks: ${b.boardUrl}`] : [];
-  return [...head, ...body, ...foot].join("\n");
+  return [title, "", ...body, ...foot].join("\n");
 }
 
 export function shareText(mode: ShareMode, c: ShareContext): string {

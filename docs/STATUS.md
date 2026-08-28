@@ -6189,12 +6189,15 @@ the changelog's Aug 28 entry.
 - [x] **BRD-1** Text the board. Owner request 2026-08-28: "share the board
       into a text or email so that it'd have the match ups selected with the
       teams, line, and totals." A "Share the board" button on the group picks
-      page: `boardShareText` (share-text.ts) renders the WEEK as plain text —
-      full school names, the favourite named next to its number from the
-      home-perspective spread ("Texas -2.5"), O/U totals, kickoff-grouped
-      with TBD last, market mix + minimum in the header, one CTA link —
-      through `shareOrCopy`, the same sheet-or-clipboard dance as every other
-      share point. Built server-side from the rows the board renders.
+      page: `boardShareText` (share-text.ts) through `shareOrCopy`, the same
+      sheet-or-clipboard dance as every other share point, built server-side
+      from the rows the board renders. **BRD-1b, same day:** the first
+      rendering — sentences under kickoff headings — came back "clunky and
+      cumbersome"; it is now the table this crew has always mailed: one game
+      a row, TAB-separated so it pastes into email as columns and into
+      Excel/Sheets as cells, the HOME team's spread as stored and the total
+      beside the matchup, `Game / Home line / O/U` header, kickoff row-order
+      with TBD last, title line and CTA link only.
 - [x] **HUB-4** The hub owed picks from deleted groups. Owner report
       2026-08-28 with a screenshot: two live groups, "26 picks still to
       make". `fetchOpenPickCount` read `group_members` unfiltered — no
