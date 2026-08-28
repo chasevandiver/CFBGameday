@@ -281,12 +281,12 @@ failed and a downstream FK violation aborted the suite midway. The seeds now
 use Chicago's today (server-side inside dollar-quoted blocks, where psql
 does not interpolate variables). Verified failing identically on the parent
 commit, so the red was the suite's, not this batch's. `npm run typecheck`,
-lint and `next build` clean. **0081/0082 are NOT
-yet applied to the live project** — tracked as SEAT-4 in STATUS §4; ordering
-is free (new table, new columns, recreated RPCs whose old signatures nothing
-in the old build calls with new arguments), but the deploy carrying this code
-must not go first, since the new actions call five-argument RPCs that do not
-exist until 0081/0082 run.
+lint and `next build` clean. **0081/0082 applied to the live project
+2026-08-28, in order, ahead of PR #160's merge** — the ordering that matters,
+since the new actions name arguments only these migrations create while the
+old build's calls still match the recreated functions. Verified by reading
+the schema back (SEAT-4 in STATUS §4 has the read-back list); ledger at 80
+files, 80 rows.
 
 ### Aug 26 — FREEZE-1 stopgap: the freeze moves to Thursday 4am CT, the old slot becomes a sweeper
 
