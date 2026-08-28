@@ -26,8 +26,8 @@ vi.mock("../../app/actions/groups", () => ({
 const base = {
   groupId: "g-1",
   members: [
-    { userId: "u-1", name: "ann", role: "admin" as const, joinedAt: "2026-08-01T12:00:00Z" },
-    { userId: "u-2", name: "bob", role: "member" as const, joinedAt: "2026-08-02T12:00:00Z" },
+    { userId: "u-1", name: "ann", role: "admin" as const, joinedAt: "2026-08-01T12:00:00Z", managed: false },
+    { userId: "u-2", name: "bob", role: "member" as const, joinedAt: "2026-08-02T12:00:00Z", managed: false },
   ],
   viewerId: "u-1",
   viewerIsAdmin: true,

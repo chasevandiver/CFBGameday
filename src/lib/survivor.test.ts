@@ -22,7 +22,12 @@ const pool: SurvivorPool = {
   strikes: 1,
   reuseTeams: false,
   startWeek: 1,
+  format: "classic",
+  targetWins: null,
 };
+
+/** The friend's version, at a target small enough to test. */
+const extreme: SurvivorPool = { ...pool, format: "extreme", targetWins: 3 };
 
 const game = (
   id: number,
@@ -173,6 +178,99 @@ describe("survivorStandings", () => {
   });
 });
 
+describe("survivorStandings — extreme", () => {
+  const games = [
+    game(101, 1, 10, 20, { homePoints: 30, awayPoints: 3 }), // 10 wins
+    game(102, 1, 30, 40, { homePoints: 7, awayPoints: 21 }), // 40 wins
+    game(103, 1, 50, 60, { homePoints: 28, awayPoints: 10 }), // 50 wins
+    game(201, 2, 10, 40, { homePoints: 14, awayPoints: 17 }), // 40 wins
+  ];
+  const pick = (
+    userId: string,
+    week: number,
+    gameId: number,
+    teamId: number,
+  ): SurvivorPickRowView => ({ userId, week, seasonType: "regular", gameId, teamId });
+  const viewing = { week: 2, seasonType: "regular" as const };
+
+  it("counts every won pick in a multi-pick week", () => {
+    const s = survivorStandings(
+      [{ userId: "u1", name: "Ann" }],
+      [pick("u1", 1, 101, 10), pick("u1", 1, 102, 40), pick("u1", 1, 103, 50)],
+      games,
+      extreme,
+      viewing,
+      NOW,
+    );
+    expect(s[0].wins).toBe(3);
+    expect(s[0].eliminated).toBe(false);
+    expect(s[0].finished).toBe(true); // target is 3
+  });
+
+  it("eliminates on one losing pick, wins in the same week notwithstanding", () => {
+    const s = survivorStandings(
+      [{ userId: "u1", name: "Ann" }],
+      [pick("u1", 1, 101, 10), pick("u1", 1, 102, 30)], // 10 won, 30 lost
+      games,
+      extreme,
+      viewing,
+      NOW,
+    );
+    expect(s[0].eliminated).toBe(true);
+    expect(s[0].eliminatedIn).toEqual({ week: 1, seasonType: "regular" });
+    expect(s[0].finished).toBe(false);
+  });
+
+  it("does not strike a missed week — sitting out just wins nothing", () => {
+    const s = survivorStandings(
+      [{ userId: "u1", name: "Ann" }],
+      [pick("u1", 2, 201, 40)], // nothing at all in week 1, which has closed
+      games,
+      extreme,
+      viewing,
+      NOW,
+    );
+    expect(s[0].eliminated).toBe(false);
+    expect(s[0].strikes).toBe(0);
+    expect(s[0].wins).toBe(1);
+    // And the log holds only real picks — no "missed" rows in a race.
+    expect(s[0].weeks).toHaveLength(1);
+  });
+
+  it("ranks the race by wins, alive above out", () => {
+    const s = survivorStandings(
+      [
+        { userId: "u1", name: "Ann" },
+        { userId: "u2", name: "Bob" },
+        { userId: "u3", name: "Cal" },
+      ],
+      [
+        pick("u1", 1, 101, 10), // 1 win
+        pick("u2", 1, 101, 20), // out, 0 wins
+        pick("u3", 1, 102, 40), // 1 win...
+        pick("u3", 1, 103, 50), // ...and another: 2 wins
+      ],
+      games,
+      extreme,
+      viewing,
+      NOW,
+    );
+    expect(s.map((e) => e.name)).toEqual(["Cal", "Ann", "Bob"]);
+  });
+
+  it("lists all of the viewed week's picks", () => {
+    const s = survivorStandings(
+      [{ userId: "u1", name: "Ann" }],
+      [pick("u1", 1, 101, 10), pick("u1", 1, 102, 40)],
+      games,
+      extreme,
+      { week: 1, seasonType: "regular" },
+      NOW,
+    );
+    expect(s[0].currentPicks.map((p) => p.teamId)).toEqual([10, 40]);
+  });
+});
+
 describe("blockReason", () => {
   const g = game(1, 2, 10, 20, { startTs: future(2), status: "scheduled" });
 
@@ -196,6 +294,12 @@ describe("poolRulesLine", () => {
     expect(poolRulesLine(pool, "cfb")).toBe("SEC · one strike and out · each team once");
     expect(poolRulesLine({ ...pool, conference: null, strikes: 2 }, "nfl")).toBe(
       "NFL · 2 strikes and out · each team once",
+    );
+  });
+
+  it("states the race for an extreme pool", () => {
+    expect(poolRulesLine({ ...extreme, targetWins: 100 }, "cfb")).toBe(
+      "SEC · first to 100 wins · one loss and out · each team once",
     );
   });
 });

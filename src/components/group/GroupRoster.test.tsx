@@ -12,8 +12,8 @@ vi.mock("next/link", () => ({
 afterEach(cleanup);
 
 const members = [
-  { userId: "u-1", name: "chasevandiver", role: "admin" as const, joinedAt: "2026-08-01T14:00:00Z" },
-  { userId: "u-2", name: "hayden.vinz", role: "member" as const, joinedAt: new Date().toISOString() },
+  { userId: "u-1", name: "chasevandiver", role: "admin" as const, joinedAt: "2026-08-01T14:00:00Z", managed: false },
+  { userId: "u-2", name: "hayden.vinz", role: "member" as const, joinedAt: new Date().toISOString(), managed: false },
 ];
 
 /**

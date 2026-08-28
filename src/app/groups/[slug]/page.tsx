@@ -56,10 +56,10 @@ export default async function GroupHomePage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ week?: string; st?: string; league?: string }>;
+  searchParams: Promise<{ week?: string; st?: string; league?: string; for?: string }>;
 }) {
   const { slug } = await params;
-  const { week: weekParam, st: stRaw, league: leagueParam } = await searchParams;
+  const { week: weekParam, st: stRaw, league: leagueParam, for: forParam } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -117,6 +117,7 @@ export default async function GroupHomePage({
             userId={user?.id ?? null}
             weekRef={ref}
             weeks={weeks}
+            forParam={forParam ?? null}
           />
         </>
       );

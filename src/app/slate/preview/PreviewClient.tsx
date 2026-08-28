@@ -82,6 +82,7 @@ const SAMPLE_SOURCE: SheetMember = {
   name: "Chase",
   role: "admin",
   joinedAt: "2026-08-01T00:00:00Z",
+  managed: false,
   stats: memberStats(
     "chase",
     sampleTally(31, 22, 1, 6.4, 0.31),
@@ -99,6 +100,7 @@ const SAMPLE_SOURCE_2: SheetMember = {
   name: "Sam",
   role: "member",
   joinedAt: "2026-08-03T00:00:00Z",
+  managed: false,
   stats: memberStats(
     "sam",
     sampleTally(19, 26, 0, -8.1, -0.12),

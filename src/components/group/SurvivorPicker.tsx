@@ -63,15 +63,21 @@ export function SurvivorPicker({
   week,
   seasonType,
   games,
-  currentTeamId,
+  format,
+  currentTeamIds,
   eliminated,
   reviewHref,
+  forUser = null,
+  forName = null,
 }: {
   groupId: string;
   week: number;
   seasonType: string;
   games: PickableGame[];
-  currentTeamId: number | null;
+  /** Classic replaces the week's one pick on each tap; extreme accumulates. */
+  format: "classic" | "extreme";
+  /** This week's picks — at most one in classic, any number in extreme. */
+  currentTeamIds: number[];
   /** Out of the pool: the board is history now, not a control. */
   eliminated: boolean;
   /**
@@ -80,10 +86,14 @@ export function SurvivorPicker({
    * button that scrolls nowhere.
    */
   reviewHref: string | null;
+  /** A seat these taps pick for instead of the viewer (0081). */
+  forUser?: string | null;
+  /** The seat's name, so the bar says whose picks these are. */
+  forName?: string | null;
 }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [picked, setPicked] = useState<number | null>(currentTeamId);
+  const [picked, setPicked] = useState<ReadonlySet<number>>(new Set(currentTeamIds));
   // Which team the in-flight write is about, so one slow round-trip cannot make
   // the other twenty-nine buttons look broken.
   const [inFlight, setInFlight] = useState<number | null>(null);
@@ -91,11 +101,13 @@ export function SurvivorPicker({
   // "saved" — the sentence the owner report was actually asking for.
   const [confirmed, setConfirmed] = useState(false);
   const busy = pending ? inFlight : null;
+  const extreme = format === "extreme";
 
   if (eliminated) {
     return (
       <p className="card px-4 py-5 text-center text-sm text-dim">
-        You&rsquo;re out of this pool — the board below is everyone else&rsquo;s.
+        {forName ? `${forName} is` : "You’re"} out of this pool — the board below is everyone
+        else&rsquo;s.
       </p>
     );
   }
@@ -108,36 +120,47 @@ export function SurvivorPicker({
     );
   }
 
-  const held = games
+  const heldSides = games
     .flatMap((g) => [
       { game: g, side: g.away },
       { game: g, side: g.home },
     ])
-    .find(({ side }) => side.team.id === picked);
+    .filter(({ side }) => picked.has(side.team.id));
+  const held = heldSides[0] ?? null;
   const openGames = games.filter((g) => !g.locked);
 
   const choose = (gameId: number, teamId: number) => {
     setInFlight(teamId);
     start(async () => {
       setError(null);
-      if (picked === teamId) {
-        setPicked(null);
+      if (picked.has(teamId)) {
+        const next = new Set(picked);
+        next.delete(teamId);
+        setPicked(next);
         setConfirmed(false);
-        const res = await removeSurvivorPick(groupId, week, seasonType);
+        // Extreme names the team — a multi-pick week has several to choose
+        // from; classic keeps the old call shape.
+        const res = await removeSurvivorPick(
+          groupId,
+          week,
+          seasonType,
+          extreme ? teamId : null,
+          forUser,
+        );
         if (!res.ok) {
-          setPicked(teamId);
+          setPicked(new Set([...next, teamId]));
           setConfirmed(true);
           setError(res.message ?? "Could not clear that pick");
         }
         return;
       }
       const before = picked;
-      setPicked(teamId);
+      setPicked(extreme ? new Set([...picked, teamId]) : new Set([teamId]));
       setConfirmed(false);
-      const res = await makeSurvivorPick(groupId, gameId, teamId);
+      const res = await makeSurvivorPick(groupId, gameId, teamId, forUser);
       if (!res.ok) {
         setPicked(before);
-        setConfirmed(before !== null);
+        setConfirmed(before.size > 0);
         setError(res.message ?? "Could not save that pick");
         return;
       }
@@ -154,7 +177,7 @@ export function SurvivorPicker({
       )}
       <ul className="flex flex-col gap-2">
         {games.map((g) => {
-          const mine = [g.away, g.home].find((s) => s.team.id === picked) ?? null;
+          const mine = [g.away, g.home].find((s) => picked.has(s.team.id)) ?? null;
           return (
             <li
               key={g.gameId}
@@ -168,7 +191,7 @@ export function SurvivorPicker({
                   <TeamButton
                     key={side.team.id}
                     option={side}
-                    chosen={picked === side.team.id}
+                    chosen={picked.has(side.team.id)}
                     locked={g.locked}
                     busy={busy === side.team.id}
                     onChoose={() => choose(g.gameId, side.team.id)}
@@ -181,9 +204,9 @@ export function SurvivorPicker({
                   <Check size={12} strokeWidth={3} aria-hidden className="shrink-0" />
                   {g.locked
                     ? `${mine.team.school} is locked in for this week`
-                    : busy !== null
+                    : busy === mine.team.id || (!extreme && busy !== null)
                       ? `Saving ${mine.team.school}…`
-                      : `${mine.team.school} is your pick${confirmed ? " · saved" : ""}`}
+                      : `${mine.team.school} is ${forName ? `${forName}’s` : "your"} pick${confirmed ? " · saved" : ""}`}
                   {!g.locked && busy === null && (
                     <span className="text-chalk/45 normal-case tracking-normal">
                       tap again to clear
@@ -208,28 +231,49 @@ export function SurvivorPicker({
         }}
       >
         <div className="mx-auto flex max-w-3xl items-center gap-3">
-          {held && <TeamMark team={held.side.team} size={26} />}
+          {extreme ? (
+            heldSides.length > 0 && (
+              <span className="flex shrink-0 items-center -space-x-1.5">
+                {heldSides.slice(0, 4).map(({ side }) => (
+                  <TeamMark key={side.team.id} team={side.team} size={24} />
+                ))}
+              </span>
+            )
+          ) : (
+            held && <TeamMark team={held.side.team} size={26} />
+          )}
           <p role="status" aria-live="polite" className="stat min-w-0 flex-1 text-xs leading-tight">
             <span className="block truncate text-base font-semibold text-chalk">
-              {held
+              {extreme
                 ? busy !== null
-                  ? `Saving ${held.side.team.school}…`
-                  : held.side.team.school
-                : "No pick in yet"}
+                  ? "Saving…"
+                  : heldSides.length === 0
+                    ? "No picks in yet"
+                    : `${heldSides.length} ${heldSides.length === 1 ? "team" : "teams"} in`
+                : held
+                  ? busy !== null
+                    ? `Saving ${held.side.team.school}…`
+                    : held.side.team.school
+                  : "No pick in yet"}
             </span>
             {/* Short by design: this column is a crest and a button wide on a
                 phone, and a sub-line that truncates is a sub-line nobody reads.
                 "Tap again to clear" lives on the card, where the tap is. */}
             <span className="block truncate text-[10.5px] text-chalk/45">
-              {held
-                ? held.game.locked
-                  ? `Locked in · ${held.game.kick}`
-                  : busy !== null
-                    ? "Sending it to the pool"
-                    : `${confirmed ? "Saved" : "In"} · ${held.game.kick}`
-                : openGames.length > 0
-                  ? `${openGames.length} of ${games.length} games open`
-                  : "Every game has kicked off"}
+              {forName ? `for ${forName} · ` : ""}
+              {extreme
+                ? openGames.length > 0
+                  ? `pick as many as you dare · ${openGames.length} of ${games.length} games open`
+                  : "Every game has kicked off"
+                : held
+                  ? held.game.locked
+                    ? `Locked in · ${held.game.kick}`
+                    : busy !== null
+                      ? "Sending it to the pool"
+                      : `${confirmed ? "Saved" : "In"} · ${held.game.kick}`
+                  : openGames.length > 0
+                    ? `${openGames.length} of ${games.length} games open`
+                    : "Every game has kicked off"}
             </span>
           </p>
           {reviewHref && (

@@ -36,8 +36,12 @@ describe("the roster query", () => {
   });
 
   it("does not swallow the error that reported it", () => {
-    // `const { data } = await …` is how a PGRST201 became "0 members".
-    expect(source).toMatch(/const \{ data, error \} = await supabase\s*\n\s*\.from\("group_members"\)/);
+    // `const { data } = await …` is how a PGRST201 became "0 members". The
+    // roster read now travels with the seat lookup (0081), but the members
+    // query's error must still be caught by name and thrown.
+    expect(source).toMatch(
+      /const \[\{ data, error \}, \{ data: seatRows \}\] = await Promise\.all\(\[\s*\n\s*supabase\s*\n\s*\.from\("group_members"\)/,
+    );
     expect(source).toContain("if (error) throw new Error(`group roster:");
   });
 });

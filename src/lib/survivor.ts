@@ -23,6 +23,15 @@
 
 import type { SeasonType } from "./season";
 
+/**
+ * `classic` is one pick a week, strikes and you're out. `extreme` (0082) is
+ * any number of picks a week racing to `targetWins`, one losing pick and
+ * you're out — and a missed week is NOT a strike there: classic needs that
+ * rule or stalling would be a strategy, while in a race sitting a week out is
+ * its own punishment.
+ */
+export type SurvivorFormat = "classic" | "extreme";
+
 export interface SurvivorPool {
   groupId: string;
   seasonId: number;
@@ -32,6 +41,9 @@ export interface SurvivorPool {
   strikes: number;
   reuseTeams: boolean;
   startWeek: number;
+  format: SurvivorFormat;
+  /** The finish line of an extreme pool ("first to 100"). Null for classic. */
+  targetWins: number | null;
 }
 
 export interface SurvivorPickRowView {
@@ -72,15 +84,26 @@ export interface SurvivorWeekResult {
 export interface SurvivorEntry {
   userId: string;
   name: string;
+  /**
+   * One row per pick (classic also logs pickless weeks as `missed`/`pending`
+   * rows; extreme logs only actual picks, since an empty week is not an event
+   * there). An extreme week can therefore contribute several rows.
+   */
   weeks: SurvivorWeekResult[];
   strikes: number;
+  /** Won picks. Classic reads it nowhere; extreme races on it. */
+  wins: number;
   eliminated: boolean;
   /** The week the last strike landed in — what "Out (Week 4)" reads from. */
   eliminatedIn: { week: number; seasonType: SeasonType } | null;
+  /** Crossed the extreme finish line (`targetWins`) without a strike. */
+  finished: boolean;
   /** Teams already spent, in the order they were used. */
   usedTeamIds: number[];
-  /** The pick for the week being viewed, if any. */
+  /** The first pick for the week being viewed, if any. */
   current: SurvivorWeekResult | null;
+  /** Every pick for the week being viewed — extreme can hold several. */
+  currentPicks: SurvivorWeekResult[];
 }
 
 /** How the picked team's game finished. `pending` until the game is final. */
@@ -145,62 +168,111 @@ export function survivorStandings(
 ): SurvivorEntry[] {
   const gameById = new Map(games.map((g) => [g.id, g]));
   const weeks = poolWeeks(pool, games, now);
-  const byUser = new Map<string, SurvivorPickRowView[]>();
+  const byUserWeek = new Map<string, Map<string, SurvivorPickRowView[]>>();
   for (const p of picks) {
-    const arr = byUser.get(p.userId) ?? [];
+    const mine = byUserWeek.get(p.userId) ?? new Map<string, SurvivorPickRowView[]>();
+    const arr = mine.get(key(p)) ?? [];
     arr.push(p);
-    byUser.set(p.userId, arr);
+    mine.set(key(p), arr);
+    byUserWeek.set(p.userId, mine);
   }
 
   const entries = members.map(({ userId, name }) => {
-    const mine = new Map((byUser.get(userId) ?? []).map((p) => [key(p), p]));
+    const mine = byUserWeek.get(userId) ?? new Map<string, SurvivorPickRowView[]>();
     const results: SurvivorWeekResult[] = [];
     let strikes = 0;
+    let wins = 0;
     let eliminatedIn: { week: number; seasonType: SeasonType } | null = null;
 
     for (const w of weeks) {
-      const pick = mine.get(key(w));
-      const outcome: SurvivorOutcome = pick
-        ? pickOutcome(pick, gameById.get(pick.gameId))
-        : w.closed
-          ? "missed"
-          : "pending";
-      results.push({
-        week: w.week,
-        seasonType: w.seasonType,
-        outcome,
-        teamId: pick?.teamId ?? null,
-        gameId: pick?.gameId ?? null,
-      });
-      // Strikes stop accruing at elimination. Weeks after it are still
-      // recorded — the history is the point — but an entrant who went out in
-      // week 3 of a fifteen-week season should read "out (week 3)", not
-      // "13 strikes", which is what counting every unpicked week afterwards
-      // would produce.
-      if (isStrike(outcome) && eliminatedIn === null) {
-        strikes++;
-        if (strikes >= pool.strikes) {
-          eliminatedIn = { week: w.week, seasonType: w.seasonType };
+      // Classic holds one pick a week by rule; extreme any number. Ordered by
+      // kickoff so an extreme week's log reads the way the weekend played out.
+      const weekPicks = [...(mine.get(key(w)) ?? [])].sort((a, b) =>
+        (gameById.get(a.gameId)?.startTs ?? "9999").localeCompare(
+          gameById.get(b.gameId)?.startTs ?? "9999",
+        ),
+      );
+
+      if (weekPicks.length === 0) {
+        // A pickless week: a strike in classic once it closes, a non-event in
+        // extreme — the race just goes on without you. The classic log records
+        // it; the extreme log has nothing to record.
+        if (pool.format === "classic") {
+          const outcome: SurvivorOutcome = w.closed ? "missed" : "pending";
+          results.push({
+            week: w.week,
+            seasonType: w.seasonType,
+            outcome,
+            teamId: null,
+            gameId: null,
+          });
+          if (isStrike(outcome) && eliminatedIn === null) {
+            strikes++;
+            if (strikes >= pool.strikes) {
+              eliminatedIn = { week: w.week, seasonType: w.seasonType };
+            }
+          }
+        }
+        continue;
+      }
+
+      for (const pick of weekPicks) {
+        const outcome = pickOutcome(pick, gameById.get(pick.gameId));
+        results.push({
+          week: w.week,
+          seasonType: w.seasonType,
+          outcome,
+          teamId: pick.teamId,
+          gameId: pick.gameId,
+        });
+        // Strikes (and wins) stop accruing at elimination. Weeks after it are
+        // still recorded — the history is the point — but an entrant who went
+        // out in week 3 of a fifteen-week season should read "out (week 3)",
+        // not "13 strikes", which is what counting every unpicked week
+        // afterwards would produce.
+        if (eliminatedIn === null) {
+          if (outcome === "won") wins++;
+          if (isStrike(outcome)) {
+            strikes++;
+            if (strikes >= pool.strikes) {
+              eliminatedIn = { week: w.week, seasonType: w.seasonType };
+            }
+          }
         }
       }
     }
 
+    const currentPicks = results.filter(
+      (r) =>
+        r.week === viewing.week && r.seasonType === viewing.seasonType && r.teamId !== null,
+    );
     return {
       userId,
       name,
       weeks: results,
       strikes,
+      wins,
       eliminated: eliminatedIn !== null,
       eliminatedIn,
+      finished:
+        pool.format === "extreme" &&
+        pool.targetWins !== null &&
+        eliminatedIn === null &&
+        wins >= pool.targetWins,
       usedTeamIds: results.map((r) => r.teamId).filter((t): t is number => t !== null),
-      current: results.find((r) => r.week === viewing.week && r.seasonType === viewing.seasonType)
-        ?? null,
+      current:
+        results.find((r) => r.week === viewing.week && r.seasonType === viewing.seasonType) ??
+        null,
+      currentPicks,
     };
   });
 
+  // Alive above out in both formats; inside that, extreme is a race and ranks
+  // on wins, classic ranks on fewest strikes.
   return entries.sort(
     (a, b) =>
       Number(a.eliminated) - Number(b.eliminated) ||
+      (pool.format === "extreme" ? b.wins - a.wins : 0) ||
       a.strikes - b.strikes ||
       a.name.localeCompare(b.name),
   );
@@ -233,8 +305,11 @@ export function blockReason(
 /** "SEC · one strike" — the pool's rules in a caption. */
 export function poolRulesLine(pool: SurvivorPool, sport: "cfb" | "nfl"): string {
   const scope = pool.conference ?? (sport === "nfl" ? "NFL" : "all of college football");
-  const strikes = pool.strikes === 1 ? "one strike and out" : `${pool.strikes} strikes and out`;
   const reuse = pool.reuseTeams ? "teams may repeat" : "each team once";
+  if (pool.format === "extreme") {
+    return `${scope} · first to ${pool.targetWins ?? "?"} wins · one loss and out · ${reuse}`;
+  }
+  const strikes = pool.strikes === 1 ? "one strike and out" : `${pool.strikes} strikes and out`;
   return `${scope} · ${strikes} · ${reuse}`;
 }
 

@@ -7,7 +7,7 @@ import { GroupRoster } from "../../../components/group/GroupRoster";
 import { SurvivorPicker, type PickableGame } from "../../../components/group/SurvivorPicker";
 import { WeekJump } from "../../../components/group/WeekJump";
 import { TeamMark } from "../../../components/slate/TeamMark";
-import { weekLabel, type WeekRef } from "../../../lib/group-weeks";
+import { weekLabel, weekQuery, type WeekRef } from "../../../lib/group-weeks";
 import { fetchGroupMembers, type GroupSummary } from "../../../lib/groups";
 import { DEFAULT_TZ, kickParts, tzLabel } from "../../../lib/kick";
 import {
@@ -41,6 +41,7 @@ export async function SurvivorHome({
   userId,
   weekRef,
   weeks,
+  forParam,
 }: {
   supabase: SupabaseClient;
   group: GroupSummary;
@@ -49,6 +50,8 @@ export async function SurvivorHome({
   userId: string | null;
   weekRef: WeekRef;
   weeks: WeekRef[];
+  /** `?for=` — a seat the admin is standing in for (0081). */
+  forParam?: string | null;
 }) {
   const sport = group.leagues.includes("nfl") ? ("nfl" as const) : ("cfb" as const);
   const [members, scope, picks, joinRes] = await Promise.all([
@@ -61,9 +64,19 @@ export async function SurvivorHome({
   ]);
 
   const standings = survivorStandings(members, picks, scope.games, pool, weekRef);
-  const me = userId ? (standings.find((s) => s.userId === userId) ?? null) : null;
+
+  /* Whose entry the board below works on. Normally the viewer's; an admin can
+     stand in for one of the group's seats (0081) via `?for=`, resolved against
+     the roster so a stale or hostile id falls back to "yourself" — the
+     database refuses the writes anyway, this refuses the lie on screen. */
+  const seats = group.role === "admin" ? members.filter((m) => m.managed) : [];
+  const actingFor = forParam ? (seats.find((s) => s.userId === forParam) ?? null) : null;
+  const subjectId = actingFor?.userId ?? userId;
+
+  const me = subjectId ? (standings.find((s) => s.userId === subjectId) ?? null) : null;
   const alive = standings.filter((s) => !s.eliminated);
   const out = standings.filter((s) => s.eliminated);
+  const extreme = pool.format === "extreme";
   const joinCode = (joinRes.data as { join_code: string } | null)?.join_code ?? null;
 
   // This week's board, in kickoff order.
@@ -154,6 +167,41 @@ export async function SurvivorHome({
         {joinCode && <JoinCode code={joinCode} />}
       </div>
 
+      {/* The seat switcher (0081): whose entry the board below runs. Only for
+          admins of pools that actually hold seats. */}
+      {userId && seats.length > 0 && (
+        <nav aria-label="Picking for" className="-mt-3 mb-6 flex flex-wrap items-center gap-1.5">
+          <span className="stat text-[11px] uppercase tracking-wider text-chalk/45">
+            Picking for
+          </span>
+          <Link
+            href={`/groups/${group.slug}${weekQuery(weekRef)}`}
+            aria-current={actingFor === null ? "page" : undefined}
+            className={`stat flex min-h-11 items-center rounded-full border px-3 text-xs font-semibold ${
+              actingFor === null
+                ? "border-accent bg-accent/15 text-accent"
+                : "border-chalk/20 text-dim hover:border-chalk/50"
+            }`}
+          >
+            Me
+          </Link>
+          {seats.map((s) => (
+            <Link
+              key={s.userId}
+              href={`/groups/${group.slug}${weekQuery(weekRef, { for: s.userId })}`}
+              aria-current={actingFor?.userId === s.userId ? "page" : undefined}
+              className={`stat flex min-h-11 items-center rounded-full border px-3 text-xs font-semibold ${
+                actingFor?.userId === s.userId
+                  ? "border-accent bg-accent/15 text-accent"
+                  : "border-chalk/20 text-dim hover:border-chalk/50"
+              }`}
+            >
+              {s.name}
+            </Link>
+          ))}
+        </nav>
+      )}
+
       {/* ---- where you stand ---- */}
       {me && (
         <section
@@ -174,7 +222,7 @@ export async function SurvivorHome({
           </div>
           <div className="card relative overflow-hidden p-4">
             <h2 id="my-status" className="sr-only">
-              Your standing
+              {actingFor ? `${actingFor.name}’s standing` : "Your standing"}
             </h2>
             <p className="leading-none">
               <span
@@ -182,12 +230,21 @@ export async function SurvivorHome({
                   me.eliminated ? "text-loss" : "text-win"
                 }`}
               >
-                {me.eliminated ? "Eliminated" : "Still alive"}
+                {me.finished ? "Winner" : me.eliminated ? "Eliminated" : "Still alive"}
+                {actingFor && (
+                  <span className="ml-2 text-base not-italic text-chalk/55">
+                    — {actingFor.name}
+                  </span>
+                )}
               </span>
               <span className="stat mt-1.5 block text-[11px] text-chalk/55">
-                {me.eliminated && me.eliminatedIn
-                  ? `Out in ${weekLabel(me.eliminatedIn, sport).toLowerCase()} · ${me.usedTeamIds.length} teams used`
-                  : `${me.strikes} of ${pool.strikes} ${pool.strikes === 1 ? "strike" : "strikes"} used · ${me.usedTeamIds.length} teams spent`}
+                {extreme
+                  ? me.eliminated && me.eliminatedIn
+                    ? `Out in ${weekLabel(me.eliminatedIn, sport).toLowerCase()} · ${me.wins} wins banked`
+                    : `${me.wins} of ${pool.targetWins} wins · ${me.usedTeamIds.length} teams spent`
+                  : me.eliminated && me.eliminatedIn
+                    ? `Out in ${weekLabel(me.eliminatedIn, sport).toLowerCase()} · ${me.usedTeamIds.length} teams used`
+                    : `${me.strikes} of ${pool.strikes} ${pool.strikes === 1 ? "strike" : "strikes"} used · ${me.usedTeamIds.length} teams spent`}
               </span>
             </p>
             {me.usedTeamIds.length > 0 && (
@@ -210,13 +267,17 @@ export async function SurvivorHome({
       <section className="mb-7" aria-labelledby="board-heading">
         <div className="mb-2.5 flex items-baseline gap-2">
           <h2 id="board-heading" className="text-sm text-accent">
-            {weekLabel(weekRef, sport)} pick
+            {weekLabel(weekRef, sport)} {extreme ? "picks" : "pick"}
           </h2>
           <span className="h-px flex-1 bg-chalk/10" aria-hidden />
           <span className="stat text-[11px] text-dim">
-            {me?.current?.teamId
-              ? (scope.teams.get(me.current.teamId)?.school ?? "picked")
-              : "nothing in yet"}
+            {extreme
+              ? (me?.currentPicks.length ?? 0) > 0
+                ? `${me?.currentPicks.length} in`
+                : "nothing in yet"
+              : me?.current?.teamId
+                ? (scope.teams.get(me.current.teamId)?.school ?? "picked")
+                : "nothing in yet"}
           </span>
         </div>
         {!userId ? (
@@ -232,9 +293,14 @@ export async function SurvivorHome({
             week={weekRef.week}
             seasonType={weekRef.seasonType}
             games={board}
-            currentTeamId={me?.current?.teamId ?? null}
+            format={pool.format}
+            currentTeamIds={(me?.currentPicks ?? [])
+              .map((p) => p.teamId)
+              .filter((t): t is number => t !== null)}
             eliminated={me?.eliminated ?? false}
             reviewHref={me ? "#my-picks" : null}
+            forUser={actingFor?.userId ?? null}
+            forName={actingFor?.name ?? null}
           />
         )}
       </section>
@@ -244,17 +310,21 @@ export async function SurvivorHome({
         <section className="mb-7 scroll-mt-16" id="my-picks" aria-labelledby="my-picks-heading">
           <div className="mb-2.5 flex items-baseline gap-2">
             <h2 id="my-picks-heading" className="text-sm text-accent">
-              Your picks
+              {actingFor ? `${actingFor.name}’s picks` : "Your picks"}
             </h2>
             <span className="h-px flex-1 bg-chalk/10" aria-hidden />
             <span className="stat text-[11px] text-dim">
-              {me.usedTeamIds.length} of {me.weeks.length} weeks in
+              {extreme
+                ? `${me.usedTeamIds.length} picks · ${me.wins} won`
+                : `${me.usedTeamIds.length} of ${me.weeks.length} weeks in`}
             </span>
           </div>
           <ul className="flex flex-col gap-1.5">
             {me.weeks.map((w) => (
               <PickLogRow
-                key={`${w.seasonType}:${w.week}`}
+                // Extreme logs several picks per week, so the week alone is
+                // not a key there.
+                key={`${w.seasonType}:${w.week}:${w.teamId ?? "none"}`}
                 result={w}
                 team={w.teamId === null ? null : (scope.teams.get(w.teamId) ?? null)}
                 sport={sport}
@@ -263,7 +333,7 @@ export async function SurvivorHome({
             ))}
             {me.weeks.length === 0 && (
               <li className="card px-6 py-8 text-center text-sm text-dim">
-                The pool has no weeks yet.
+                {extreme ? "No picks in yet." : "The pool has no weeks yet."}
               </li>
             )}
           </ul>
@@ -449,10 +519,16 @@ function EntryCard({
           }`}
         >
           {entry.eliminated && entry.eliminatedIn
-            ? `out · ${weekLabel(entry.eliminatedIn, sport).toLowerCase()}`
-            : pool.strikes > 1
-              ? `${pool.strikes - entry.strikes} left`
-              : "alive"}
+            ? `out · ${weekLabel(entry.eliminatedIn, sport).toLowerCase()}${
+                pool.format === "extreme" ? ` · ${entry.wins} wins` : ""
+              }`
+            : pool.format === "extreme"
+              ? entry.finished
+                ? `won · first to ${pool.targetWins}`
+                : `${entry.wins} of ${pool.targetWins}`
+              : pool.strikes > 1
+                ? `${pool.strikes - entry.strikes} left`
+                : "alive"}
         </span>
       </div>
       {entry.usedTeamIds.length > 0 && (

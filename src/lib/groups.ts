@@ -179,6 +179,11 @@ export interface GroupMemberView {
   role: "admin" | "member";
   /** When this membership began. Restored memberships keep their first date. */
   joinedAt: string;
+  /**
+   * An unclaimed seat (0081): a member with no login yet, added by an admin
+   * who picks on their behalf until the real person claims the seat.
+   */
+  managed: boolean;
 }
 
 /**
@@ -226,11 +231,21 @@ export async function fetchGroupMembers(
   supabase: SupabaseClient,
   groupId: string,
 ): Promise<GroupMemberView[]> {
-  const { data, error } = await supabase
-    .from("group_members")
-    .select("user_id, role, joined_at, profiles!group_members_user_id_fkey(id, display_name)")
-    .eq("group_id", groupId)
-    .is("removed_at", null);
+  const [{ data, error }, { data: seatRows }] = await Promise.all([
+    supabase
+      .from("group_members")
+      .select("user_id, role, joined_at, profiles!group_members_user_id_fkey(id, display_name)")
+      .eq("group_id", groupId)
+      .is("removed_at", null),
+    supabase
+      .from("managed_members")
+      .select("profile_id")
+      .eq("group_id", groupId)
+      .is("claimed_at", null),
+  ]);
+  const seats = new Set(
+    ((seatRows ?? []) as Array<{ profile_id: string }>).map((r) => r.profile_id),
+  );
 
   // Loud on purpose. A group always has at least one member — the deferred
   // keep-admin trigger (0020) guarantees it — so "no rows" is never a truthful
@@ -248,6 +263,7 @@ export async function fetchGroupMembers(
       name: r.profiles.display_name,
       role: r.role,
       joinedAt: r.joined_at,
+      managed: seats.has(r.user_id),
     }))
     .sort((a, b) => (a.role === b.role ? a.name.localeCompare(b.name) : a.role === "admin" ? -1 : 1));
 }

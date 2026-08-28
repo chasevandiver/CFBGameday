@@ -166,11 +166,18 @@ select public.expect_denied('anon cannot execute the leaderboard', null,
 -- ---------------------------------------------------------------------------
 
 \echo '# the tape: the answer key is not readable'
+-- "Today" here has to be Chicago's today, not the session's. The reveal
+-- policies gate on `America/Chicago` (that is what the +30 assertions below
+-- verify), so a row seeded with bare `current_date` between 00:00 and 06:00
+-- UTC is TOMORROW's fixture and correctly hidden — which failed the three
+-- "today is readable" assertions in this file six hours a night. Same seam,
+-- other side: the policy was right and the seed was naive.
+select (now() at time zone 'America/Chicago')::date as ct_today \gset
 \o /dev/null
-insert into tape_puzzles (day, game_id) values (current_date, 404);
+insert into tape_puzzles (day, game_id) values (:'ct_today', 404);
 insert into tape_questions (day, idx, kind, prompt, choices, answer) values
-  (current_date, 0, 'winner', 'Who won?', array['Alabama','Michigan'], 'Alabama'),
-  (current_date, 1, 'total',  'Over or under 51.5?', array['Over','Under'], 'Under');
+  (:'ct_today', 0, 'winner', 'Who won?', array['Alabama','Michigan'], 'Alabama'),
+  (:'ct_today', 1, 'total',  'Over or under 51.5?', array['Over','Under'], 'Under');
 \o
 begin;
   select test_as(:ann::uuid);
@@ -180,9 +187,9 @@ begin;
   -- omitting it, and a row also has to hide questions you have not reached,
   -- which no column grant can express.
   select pg_temp.chk('a member cannot read the answer key at all',
-    not exists (select 1 from tape_questions where day = current_date));
+    not exists (select 1 from tape_questions where day = :'ct_today'));
   select pg_temp.chk('but the fixture itself is readable — it is the hook',
-    exists (select 1 from tape_puzzles where day = current_date));
+    exists (select 1 from tape_puzzles where day = :'ct_today'));
 rollback;
 
 \echo '# the tape: the queue does not leak tomorrow'
@@ -208,7 +215,7 @@ rollback;
 \echo '# the tape: own-row containment'
 \o /dev/null
 insert into tape_entries (user_id, day, answers, correct, completed_at)
-values (:ann::uuid, current_date,
+values (:ann::uuid, :'ct_today',
         '[{"idx":0,"choice":"Alabama","correct":true}]', 1, now());
 \o
 begin;
@@ -220,11 +227,11 @@ begin;
 rollback;
 select public.expect_denied('direct tape entry insert -> denied', :bob::uuid,
   $q$insert into tape_entries (user_id, day)
-     values ('22222222-2222-2222-2222-222222222222', current_date)$q$,
+     values ('22222222-2222-2222-2222-222222222222', (now() at time zone 'America/Chicago')::date)$q$,
   'permission denied');
 select public.expect_denied('a member cannot write the answer key', :bob::uuid,
   $q$insert into tape_questions (day, idx, kind, prompt, choices, answer)
-     values (current_date, 4, 'winner', 'x', array['a','b'], 'a')$q$,
+     values ((now() at time zone 'America/Chicago')::date, 4, 'winner', 'x', array['a','b'], 'a')$q$,
   'permission denied');
 select public.expect_denied('anon cannot execute the tape board', null,
   $q$select * from tape_leaderboard()$q$,
@@ -237,22 +244,23 @@ select public.expect_denied('anon cannot execute the tape board', null,
 -- ---------------------------------------------------------------------------
 
 \echo '# chains: the deck is not readable'
+-- Chicago's today, for the reason the tape section states.
 \o /dev/null
-insert into chains_puzzles (day, deck_size) values (current_date, 2);
+insert into chains_puzzles (day, deck_size) values (:'ct_today', 2);
 insert into chains_cards
   (day, idx, kind, prompt, left_label, right_label, left_value, right_value, answer)
 values
-  (current_date, 0, 'total_points', 'Which game had more points?',
+  (:'ct_today', 0, 'total_points', 'Which game had more points?',
    'Alabama at Auburn', 'Texas at Oklahoma', 62, 93, 'right'),
-  (current_date, 1, 'margin', 'Which was won by more?',
+  (:'ct_today', 1, 'margin', 'Which was won by more?',
    'Georgia at Florida', 'Michigan at Ohio State', 28, 3, 'left');
 \o
 begin;
   select test_as(:ann::uuid);
   select pg_temp.chk('a member cannot read the deck at all',
-    not exists (select 1 from chains_cards where day = current_date));
+    not exists (select 1 from chains_cards where day = :'ct_today'));
   select pg_temp.chk('but the day itself is readable',
-    exists (select 1 from chains_puzzles where day = current_date));
+    exists (select 1 from chains_puzzles where day = :'ct_today'));
 rollback;
 
 \echo '# chains: the queue does not leak tomorrow'
@@ -277,7 +285,7 @@ begin;
   begin
     insert into chains_cards
       (day, idx, kind, prompt, left_label, right_label, left_value, right_value, answer)
-    values (current_date, 9, 'margin', 'x', 'a', 'b', 21, 21, 'left');
+    values ((now() at time zone 'America/Chicago')::date, 9, 'margin', 'x', 'a', 'b', 21, 21, 'left');
     raise notice 'FAIL  a tie is refused at the database (no error raised)';
   exception
     when check_violation then
@@ -290,7 +298,7 @@ rollback;
 \echo '# chains: own-row containment'
 \o /dev/null
 insert into chains_runs (user_id, day, length, busted, ended_at)
-values (:ann::uuid, current_date, 1, true, now());
+values (:ann::uuid, :'ct_today', 1, true, now());
 \o
 begin;
   select test_as(:bob::uuid);
@@ -301,12 +309,12 @@ begin;
 rollback;
 select public.expect_denied('direct chains run insert -> denied', :bob::uuid,
   $q$insert into chains_runs (user_id, day)
-     values ('22222222-2222-2222-2222-222222222222', current_date)$q$,
+     values ('22222222-2222-2222-2222-222222222222', (now() at time zone 'America/Chicago')::date)$q$,
   'permission denied');
 select public.expect_denied('a member cannot write the deck', :bob::uuid,
   $q$insert into chains_cards
        (day, idx, kind, prompt, left_label, right_label, left_value, right_value, answer)
-     values (current_date, 8, 'margin', 'x', 'a', 'b', 1, 2, 'right')$q$,
+     values ((now() at time zone 'America/Chicago')::date, 8, 'margin', 'x', 'a', 'b', 1, 2, 'right')$q$,
   'permission denied');
 select public.expect_denied('anon cannot execute the chains board', null,
   $q$select * from chains_leaderboard()$q$,
@@ -320,19 +328,20 @@ select public.expect_denied('anon cannot execute the chains board', null,
 
 \echo '# depth chart: the grouping is hidden, the tiles are not'
 \o /dev/null
-insert into dc_puzzles (day, traps) values (current_date, 3);
+-- Chicago's today, for the reason the tape section states.
+insert into dc_puzzles (day, traps) values (:'ct_today', 3);
 insert into dc_puzzle_groups (day, gidx, group_id, label, team_ids) values
-  (current_date, 0, 'a', 'Lost to Georgia in 2022', array[1,2,3,4]),
-  (current_date, 1, 'b', 'Play their home games indoors', array[1,2,3,4]);
+  (:'ct_today', 0, 'a', 'Lost to Georgia in 2022', array[1,2,3,4]),
+  (:'ct_today', 1, 'b', 'Play their home games indoors', array[1,2,3,4]);
 insert into dc_puzzle_tiles (day, tidx, team_id) values
-  (current_date, 0, 1), (current_date, 1, 2), (current_date, 2, 3), (current_date, 3, 4);
+  (:'ct_today', 0, 1), (:'ct_today', 1, 2), (:'ct_today', 2, 3), (:'ct_today', 3, 4);
 \o
 begin;
   select test_as(:ann::uuid);
   select pg_temp.chk('a member cannot read the grouping',
-    not exists (select 1 from dc_puzzle_groups where day = current_date));
+    not exists (select 1 from dc_puzzle_groups where day = :'ct_today'));
   select pg_temp.chk('but the tiles render — sixteen names narrow nothing',
-    exists (select 1 from dc_puzzle_tiles where day = current_date));
+    exists (select 1 from dc_puzzle_tiles where day = :'ct_today'));
   select pg_temp.chk('and the fact index is internal',
     not exists (select 1 from dc_facts));
 rollback;
@@ -358,7 +367,7 @@ rollback;
 \echo '# depth chart: own-row containment'
 \o /dev/null
 insert into dc_entries (user_id, day, solved, mistakes, completed_at)
-values (:ann::uuid, current_date, '["a","b","c","d"]', 1, now());
+values (:ann::uuid, :'ct_today', '["a","b","c","d"]', 1, now());
 \o
 begin;
   select test_as(:bob::uuid);
@@ -369,11 +378,11 @@ begin;
 rollback;
 select public.expect_denied('direct dc entry insert -> denied', :bob::uuid,
   $q$insert into dc_entries (user_id, day)
-     values ('22222222-2222-2222-2222-222222222222', current_date)$q$,
+     values ('22222222-2222-2222-2222-222222222222', (now() at time zone 'America/Chicago')::date)$q$,
   'permission denied');
 select public.expect_denied('a member cannot write the grouping', :bob::uuid,
   $q$insert into dc_puzzle_groups (day, gidx, group_id, label, team_ids)
-     values (current_date, 3, 'x', 'x', array[1,2,3,4])$q$,
+     values ((now() at time zone 'America/Chicago')::date, 3, 'x', 'x', array[1,2,3,4])$q$,
   'permission denied');
 select public.expect_denied('anon cannot execute the dc board', null,
   $q$select * from dc_leaderboard()$q$,

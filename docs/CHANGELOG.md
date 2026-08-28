@@ -226,6 +226,68 @@ shipping it.
 
 ## Log
 
+### Aug 28 — seats and the extreme survivor race (SEAT-1…4, SURV-5)
+
+Owner request, both halves: *"add people to a group that don't have logins at
+the moment and pick for them as an admin and then have me assign the alias of
+the name"* (the pick'em with Jeff, John and Greg, who may take a week to get
+on board), and *"toggle an option to pick multiple teams per week, but if one
+loses you're out … a fun version of first to 100 without getting one wrong."*
+
+**Seats (migration 0081).** A seat is a real `profiles` row under the alias
+the admin typed, backed by an `auth.users` row that can never sign in (no
+password, an `@managed.invalid` address, and the invite allowlist opened for
+exactly one statement inside `create_managed_member` — no bypass flag a signup
+could set). Chosen over a parallel ghost table because every read in the
+product hangs off `profiles.id`; a second identity type would have taught the
+union to every roster join and standings pass. `managed_members` records
+whose group each seat is and who eventually claimed it. Admin proxy:
+`make_pick` / `remove_pick` / `make_survivor_pick` / `remove_survivor_pick`
+gain `p_for`, resolved by `acting_user` — null is yourself, non-null is
+admin-only and must name an unclaimed seat still on the roster; every other
+rule (kickoff locks, markets, no-repeat) applies to the seat unchanged. Two
+new RLS policies let the group's admins read a seat's pregame picks under the
+blind — the admin entered them; a board that hides them says the tap failed.
+The hand-over (`claim_managed_member`) moves the membership row and every
+pick to the real account, refuses an account already in the group or one with
+picks from an earlier membership (merging two histories has no right answer),
+and leaves the claimed seat profile behind as an inert husk. UI: an "Add
+someone without a login" form and per-seat rename/hand-over on the roster, a
+"Picking for" switcher on the pick'em board and the survivor home (`?for=`,
+resolved server-side against the roster).
+
+**Extreme survivor (migration 0082).** `survivor_pools.format`
+'classic'|'extreme' + `target_wins` (5–500, the friend's version is 100), one
+`check` tying them together. The `survivor_picks` key widens to include
+`team_id`; classic's one-per-week rule moves into the RPC's classic branch,
+which now states explicitly what its `ON CONFLICT … WHERE` used to imply
+(replace until the game you *hold* kicks off) — all 27 pre-existing survivor
+assertions still pass, which is the regression test that matters. Extreme:
+any number of picks a week, each locking and clearing at its own kickoff, a
+loss or a tie eliminates (strikes pinned to 1 at creation), a missed week is
+NOT a strike (classic needs that rule or stalling is a strategy; in a race,
+sitting out is its own punishment), both sides of one game refused as the
+mistake it can only be. Standings (`survivorStandings`) count wins, rank the
+race by them, and derive "finished" the same way elimination has always been
+derived — recomputed from picks and finals, never stored.
+
+Numbers: vitest 1,983 across 131 files (was 1,914/127), all green; DB suite
+**367 passed, 0 failed** — 40 new across `managed-members.sql` (new) and
+`survivor.sql`, plus a night-shift defect fixed in `daily-games.sql`: its
+"today" seeds used bare `current_date` (UTC) while the reveal policies gate
+on America/Chicago — the seam its own +30 assertions test from the other
+side — so between 00:00 and 06:00 UTC three "today is readable" assertions
+failed and a downstream FK violation aborted the suite midway. The seeds now
+use Chicago's today (server-side inside dollar-quoted blocks, where psql
+does not interpolate variables). Verified failing identically on the parent
+commit, so the red was the suite's, not this batch's. `npm run typecheck`,
+lint and `next build` clean. **0081/0082 applied to the live project
+2026-08-28, in order, ahead of PR #160's merge** — the ordering that matters,
+since the new actions name arguments only these migrations create while the
+old build's calls still match the recreated functions. Verified by reading
+the schema back (SEAT-4 in STATUS §4 has the read-back list); ledger at 80
+files, 80 rows.
+
 ### Aug 26 — FREEZE-1 stopgap: the freeze moves to Thursday 4am CT, the old slot becomes a sweeper
 
 Owner intel (CFBD Discord) and owner call the same day. `freezeJob` takes

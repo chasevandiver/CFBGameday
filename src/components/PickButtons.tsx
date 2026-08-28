@@ -44,6 +44,11 @@ interface Props {
   onPickChange?: (gameId: number, market: PickMarket, side: string | null) => void;
   /** Hides the "tap again to remove" explainer where a board already says it. */
   quiet?: boolean;
+  /**
+   * A seat these taps pick for instead of the viewer (0081). Admin-gated in
+   * the database; this only says who the writes are about.
+   */
+  forUser?: string | null;
 }
 
 /**
@@ -86,6 +91,7 @@ export function PickButtons({
   signedIn,
   onPickChange,
   quiet = false,
+  forUser = null,
 }: Props) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -155,8 +161,8 @@ export function PickButtons({
       let res: { ok: boolean; message?: string };
       try {
         res = removing
-          ? await removePick(groupId, gameId, market)
-          : await makePick(groupId, gameId, market, side);
+          ? await removePick(groupId, gameId, market, forUser)
+          : await makePick(groupId, gameId, market, side, forUser);
       } catch {
         res = { ok: false, message: "Couldn’t reach the server — tap to try again" };
       }

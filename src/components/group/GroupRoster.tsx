@@ -55,6 +55,14 @@ export function GroupRoster({
                   admin
                 </span>
               )}
+              {/* A seat (0081): on the board, no login yet, admin picks for
+                  them. Said plainly so "is Jeff actually in?" reads as "yes,
+                  and here's why he never posts". */}
+              {m.managed && (
+                <span className="stat ml-1.5 text-[10px] uppercase tracking-wider text-chalk/40">
+                  no login yet
+                </span>
+              )}
             </span>
             <span className="stat shrink-0 text-[11px] text-chalk/45">
               {joinedLabel(m.joinedAt)}

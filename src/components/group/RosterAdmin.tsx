@@ -5,8 +5,11 @@ import { useEffect, useState, useTransition } from "react";
 import {
   addGroupMember,
   addGroupMemberByName,
+  claimManagedMember,
+  createManagedMember,
   leaveGroup,
   removeGroupMember,
+  renameManagedMember,
   searchGroupCandidates,
   setGroupRole,
   type GroupCandidate,
@@ -33,6 +36,8 @@ export function RosterAdmin({
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  /** Which seat's rename/hand-over controls are unfolded, if any. */
+  const [seatOpen, setSeatOpen] = useState<string | null>(null);
 
   const run = (fn: () => Promise<{ ok: boolean; message?: string }>) =>
     start(async () => {
@@ -56,6 +61,11 @@ export function RosterAdmin({
               <span className="ml-1.5 text-[10px] uppercase tracking-wider text-chalk/40">
                 {m.role}
               </span>
+              {m.managed && (
+                <span className="stat ml-1.5 text-[10px] uppercase tracking-wider text-accent">
+                  no login yet
+                </span>
+              )}
               {/* Said here as well as on the group page: this is the screen the
                   admin is standing on when they add somebody, so it is where
                   "it worked" has to be legible. */}
@@ -63,17 +73,31 @@ export function RosterAdmin({
             </span>
             {viewerIsAdmin && (
               <span className="flex shrink-0 gap-1.5">
-                <button
-                  disabled={pending}
-                  onClick={() =>
-                    run(() =>
-                      setGroupRole(groupId, m.userId, m.role === "admin" ? "member" : "admin"),
-                    )
-                  }
-                  className="stat min-h-11 rounded-lg border border-chalk/20 px-2.5 text-xs text-chalk hover:border-chalk/50 disabled:opacity-50"
-                >
-                  {m.role === "admin" ? "Make member" : "Make admin"}
-                </button>
+                {/* A seat cannot sign in, so it cannot act as an admin; it gets
+                    the seat controls instead of the role toggle. */}
+                {!m.managed && (
+                  <button
+                    disabled={pending}
+                    onClick={() =>
+                      run(() =>
+                        setGroupRole(groupId, m.userId, m.role === "admin" ? "member" : "admin"),
+                      )
+                    }
+                    className="stat min-h-11 rounded-lg border border-chalk/20 px-2.5 text-xs text-chalk hover:border-chalk/50 disabled:opacity-50"
+                  >
+                    {m.role === "admin" ? "Make member" : "Make admin"}
+                  </button>
+                )}
+                {m.managed && (
+                  <button
+                    disabled={pending}
+                    onClick={() => setSeatOpen(seatOpen === m.userId ? null : m.userId)}
+                    aria-expanded={seatOpen === m.userId}
+                    className="stat min-h-11 rounded-lg border border-chalk/20 px-2.5 text-xs text-chalk hover:border-chalk/50 disabled:opacity-50"
+                  >
+                    Seat…
+                  </button>
+                )}
                 {m.userId !== viewerId && (
                   <button
                     disabled={pending}
@@ -85,11 +109,23 @@ export function RosterAdmin({
                 )}
               </span>
             )}
+            {m.managed && seatOpen === m.userId && (
+              <SeatControls
+                groupId={groupId}
+                seatId={m.userId}
+                seatName={m.name}
+                onDone={() => {
+                  setSeatOpen(null);
+                  router.refresh();
+                }}
+              />
+            )}
           </li>
         ))}
       </ul>
 
       {viewerIsAdmin && <AddByName groupId={groupId} onDone={() => router.refresh()} />}
+      {viewerIsAdmin && <AddSeat groupId={groupId} onDone={() => router.refresh()} />}
 
       <div className="flex items-center gap-3 pt-1">
         <button
@@ -236,6 +272,196 @@ function AddByName({ groupId, onDone }: { groupId: string; onDone: () => void })
         {note && <span className="stat text-win">{note}</span>}
         {error && <span className="text-loss">{error}</span>}
       </p>
+    </div>
+  );
+}
+
+/**
+ * The third way in (0081): a seat for someone with no account at all. The
+ * admin names them, picks for them from the board, and hands the seat over
+ * with "Seat…" on their row once they finally sign up.
+ */
+function AddSeat({ groupId, onDone }: { groupId: string; onDone: () => void }) {
+  const [pending, start] = useTransition();
+  const [alias, setAlias] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        const name = alias.trim();
+        if (name === "") return;
+        start(async () => {
+          setError(null);
+          setNote(null);
+          const res = await createManagedMember(groupId, name);
+          if (!res.ok) {
+            setError(res.message ?? "Could not add the seat");
+            return;
+          }
+          setNote(`${name} is in — you make their picks until they sign up`);
+          setAlias("");
+          onDone();
+        });
+      }}
+      className="border-t border-chalk/8 pt-3"
+    >
+      <label className="text-xs text-dim" htmlFor="add-seat">
+        Add someone without a login
+      </label>
+      <div className="mt-1.5 flex flex-wrap gap-2">
+        <input
+          id="add-seat"
+          value={alias}
+          onChange={(e) => setAlias(e.target.value)}
+          autoComplete="off"
+          spellCheck={false}
+          maxLength={40}
+          placeholder="Jeff…"
+          aria-describedby="add-seat-hint"
+          className="min-h-11 min-w-0 flex-1 rounded-lg border border-chalk/25 bg-elev px-3 text-sm text-chalk"
+        />
+        <button
+          type="submit"
+          disabled={pending || alias.trim() === ""}
+          className="stat min-h-11 rounded-lg border border-chalk/20 px-3 text-xs text-chalk hover:border-chalk/50 disabled:opacity-50"
+        >
+          {pending ? "Adding…" : "Add seat"}
+        </button>
+      </div>
+      <p id="add-seat-hint" className="mt-1.5 text-[11px] leading-snug text-dim">
+        They go on the roster under the name you type, and you make their picks for them. When
+        they get an account, hand the seat over from their row — their picks come with it.
+      </p>
+      <p aria-live="polite" className="text-xs">
+        {note && <span className="stat text-win">{note}</span>}
+        {error && <span className="text-loss">{error}</span>}
+      </p>
+    </form>
+  );
+}
+
+/**
+ * A seat's two controls: rename it, or hand it to a real account. Hand-over
+ * reuses the candidate search that ordinary adds use, so it resolves to an id
+ * and never guesses between two Daves.
+ */
+function SeatControls({
+  groupId,
+  seatId,
+  seatName,
+  onDone,
+}: {
+  groupId: string;
+  seatId: string;
+  seatName: string;
+  onDone: () => void;
+}) {
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [alias, setAlias] = useState(seatName);
+  const [query, setQuery] = useState("");
+  const [found, setFound] = useState<{ term: string; people: GroupCandidate[] }>({
+    term: "",
+    people: [],
+  });
+
+  const term = query.trim();
+  const people = found.term === term ? found.people : [];
+
+  useEffect(() => {
+    if (term.length < 2) return;
+    const timer = setTimeout(async () => {
+      const res = await searchGroupCandidates(groupId, term);
+      if (res.ok) setFound({ term, people: res.people });
+      else setError(res.message ?? "Could not search");
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [term, groupId]);
+
+  const run = (fn: () => Promise<{ ok: boolean; message?: string }>) =>
+    start(async () => {
+      setError(null);
+      const res = await fn();
+      if (!res.ok) setError(res.message ?? "Could not do that");
+      else onDone();
+    });
+
+  return (
+    <div className="w-full rounded-lg border border-chalk/10 bg-elev/50 p-2.5">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (alias.trim() === "" || alias.trim() === seatName) return;
+          run(() => renameManagedMember(groupId, seatId, alias.trim()));
+        }}
+        className="flex flex-wrap gap-2"
+      >
+        <label htmlFor={`seat-name-${seatId}`} className="sr-only">
+          Rename {seatName}
+        </label>
+        <input
+          id={`seat-name-${seatId}`}
+          value={alias}
+          onChange={(e) => setAlias(e.target.value)}
+          maxLength={40}
+          autoComplete="off"
+          spellCheck={false}
+          className="min-h-11 min-w-0 flex-1 rounded-lg border border-chalk/25 bg-elev px-3 text-sm text-chalk"
+        />
+        <button
+          type="submit"
+          disabled={pending || alias.trim() === "" || alias.trim() === seatName}
+          className="stat min-h-11 rounded-lg border border-chalk/20 px-2.5 text-xs text-chalk hover:border-chalk/50 disabled:opacity-50"
+        >
+          Rename
+        </button>
+      </form>
+
+      <label htmlFor={`seat-claim-${seatId}`} className="mt-2.5 block text-[11px] text-dim">
+        Signed up now? Hand {seatName}&rsquo;s seat — picks and all — to their account:
+      </label>
+      <input
+        id={`seat-claim-${seatId}`}
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        autoComplete="off"
+        spellCheck={false}
+        placeholder="Their account name…"
+        className="mt-1 min-h-11 w-full rounded-lg border border-chalk/25 bg-elev px-3 text-sm text-chalk"
+      />
+      {people.length > 0 && (
+        <ul aria-label="Matching accounts" className="mt-1 flex flex-col">
+          {people.map((p) => (
+            <li
+              key={p.id}
+              className="flex min-h-11 items-center justify-between gap-2 border-b border-chalk/5 py-1 last:border-0"
+            >
+              <span className="min-w-0 truncate text-sm text-chalk">{p.name}</span>
+              {p.membership === "member" ? (
+                <span className="stat shrink-0 text-[11px] text-dim">already in</span>
+              ) : (
+                <button
+                  type="button"
+                  disabled={pending}
+                  aria-label={`Hand the seat to ${p.name}`}
+                  onClick={() => run(() => claimManagedMember(groupId, seatId, p.id))}
+                  className="stat min-h-11 shrink-0 rounded-lg border border-chalk/20 px-2.5 text-xs text-chalk hover:border-chalk/50 disabled:opacity-50"
+                >
+                  Hand over
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {error && (
+        <p aria-live="polite" className="mt-1 text-xs text-loss">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

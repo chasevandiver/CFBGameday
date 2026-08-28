@@ -37,10 +37,10 @@ export default async function GroupPicksPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ week?: string; st?: string; league?: string }>;
+  searchParams: Promise<{ week?: string; st?: string; league?: string; for?: string }>;
 }) {
   const { slug } = await params;
-  const { week: weekParam, st: stRaw, league: leagueParam } = await searchParams;
+  const { week: weekParam, st: stRaw, league: leagueParam, for: forParam } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -89,6 +89,15 @@ export default async function GroupPicksPage({
       : Promise.resolve({ data: [] }),
   ]);
 
+  /* Whose board this is. Normally the viewer's; an admin can stand in for one
+     of the group's seats (0081) via `?for=`, and every pick made while it is
+     set is the seat's. Resolved against the roster so a stale or hostile id in
+     the URL falls back to "yourself" — the database would refuse the writes
+     anyway, this just refuses the lie on screen. */
+  const seats = active.role === "admin" ? members.filter((m) => m.managed) : [];
+  const actingFor = forParam ? (seats.find((s) => s.userId === forParam) ?? null) : null;
+  const subjectId = actingFor?.userId ?? user?.id ?? null;
+
   const inPlay = new Set(groupWeek?.gameIds ?? []);
   // Kickoff order: the board is worked top to bottom on a Saturday morning,
   // and the games that lock first are the ones that need picking first.
@@ -103,7 +112,7 @@ export default async function GroupPicksPage({
     .eq("group_id", active.id)
     .in("game_id", boardGames.length > 0 ? boardGames.map((g) => g.id) : [-1]);
   const weekPicks = (weekPickRows ?? []) as PickRow[];
-  const myWeekPicks = weekPicks.filter((p) => p.user_id === user?.id);
+  const myWeekPicks = weekPicks.filter((p) => p.user_id === subjectId);
 
   const minePerGame = new Map<number, PickRow[]>();
   for (const p of myWeekPicks) {
@@ -127,7 +136,10 @@ export default async function GroupPicksPage({
       : weekPicks.filter((p) => p.game_id === game.id).length,
   }));
 
-  const shareContext = user
+  // The share sheet speaks as "me" — while standing in for a seat the picks on
+  // screen are the seat's, and sharing them under the admin's name would be a
+  // small lie with a screenshot attached.
+  const shareContext = user && !actingFor
     ? buildGroupShareContext({
         groupName: active.name,
         userName: members.find((m) => m.userId === user.id)?.name ?? "Me",
@@ -147,7 +159,7 @@ export default async function GroupPicksPage({
           <span className="flex items-center gap-1">
             {prevWeek && (
               <Link
-                href={`/groups/${slug}/picks${weekQuery(prevWeek)}`}
+                href={`/groups/${slug}/picks${weekQuery(prevWeek, { for: actingFor?.userId ?? null })}`}
                 aria-label={weekLabel(prevWeek, league)}
                 className="stat inline-flex min-h-11 min-w-8 items-center justify-center text-sm text-accent hover:underline"
               >
@@ -157,7 +169,7 @@ export default async function GroupPicksPage({
             <h1 className="text-2xl">{weekLabel(ref, league)} board</h1>
             {nextWeek && (
               <Link
-                href={`/groups/${slug}/picks${weekQuery(nextWeek)}`}
+                href={`/groups/${slug}/picks${weekQuery(nextWeek, { for: actingFor?.userId ?? null })}`}
                 aria-label={weekLabel(nextWeek, league)}
                 className="stat inline-flex min-h-11 min-w-8 items-center justify-center text-sm text-accent hover:underline"
               >
@@ -179,6 +191,42 @@ export default async function GroupPicksPage({
                 groupWeek.minPicks > 0 ? ` · ${groupWeek.minPicks} pick minimum` : ""
               }. Your pick takes the line at the moment you tap it.`}
         </p>
+
+        {/* The seat switcher (0081): whose picks the taps below are. Rendered
+            only for admins of groups that actually hold seats, and it says who
+            is selected rather than trusting the reader to notice a URL. */}
+        {user && seats.length > 0 && (
+          <nav aria-label="Picking for" className="mb-4 flex flex-wrap items-center gap-1.5">
+            <span className="stat text-[11px] uppercase tracking-wider text-chalk/45">
+              Picking for
+            </span>
+            <Link
+              href={`/groups/${slug}/picks${weekQuery(ref)}`}
+              aria-current={actingFor === null ? "page" : undefined}
+              className={`stat flex min-h-11 items-center rounded-full border px-3 text-xs font-semibold ${
+                actingFor === null
+                  ? "border-accent bg-accent/15 text-accent"
+                  : "border-chalk/20 text-dim hover:border-chalk/50"
+              }`}
+            >
+              Me
+            </Link>
+            {seats.map((s) => (
+              <Link
+                key={s.userId}
+                href={`/groups/${slug}/picks${weekQuery(ref, { for: s.userId })}`}
+                aria-current={actingFor?.userId === s.userId ? "page" : undefined}
+                className={`stat flex min-h-11 items-center rounded-full border px-3 text-xs font-semibold ${
+                  actingFor?.userId === s.userId
+                    ? "border-accent bg-accent/15 text-accent"
+                    : "border-chalk/20 text-dim hover:border-chalk/50"
+                }`}
+              >
+                {s.name}
+              </Link>
+            ))}
+          </nav>
+        )}
 
         {!user && groupWeek !== null && boardGames.length > 0 && (
           <p className="card mb-3 px-4 py-3 text-sm text-dim">
@@ -228,6 +276,8 @@ export default async function GroupPicksPage({
             minPicks={groupWeek.minPicks}
             signedIn={!!user}
             shareContext={shareContext}
+            forUser={actingFor?.userId ?? null}
+            forName={actingFor?.name ?? null}
           />
         )}
       </main>
