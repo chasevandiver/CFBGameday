@@ -6,7 +6,6 @@ import { PickBoard, type BoardEntry } from "../../../../components/group/PickBoa
 import type { PickRow } from "../../../../lib/db-types";
 import { buildGroupShareContext } from "../../../../lib/group-share";
 import { fetchGroupMembers, fetchGroupWeek, groupLeague, resolveActiveGroup } from "../../../../lib/groups";
-import { DEFAULT_TZ, kickParts, tzLabel } from "../../../../lib/kick";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../../lib/queries";
 import { boardShareText } from "../../../../lib/share-text";
 import { createClient } from "../../../../lib/supabase/server";
@@ -153,10 +152,11 @@ export default async function GroupPicksPage({
       })
     : null;
 
-  /* The week's board as a text message — matchups, lines, totals — built from
-     the same rows the cards below render, so what lands in iMessage is what is
-     on screen. For anyone in the group, not just the admin: "what are we
-     picking this week" is the group's most-asked question. */
+  /* The week's board as rows — matchup, home line, total, tab-separated so it
+     pastes into an email or a spreadsheet as columns — built from the same
+     rows the cards below render, so what lands in the email is what is on
+     screen. For anyone in the group, not just the admin: "what are we picking
+     this week" is the group's most-asked question. */
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? null;
   const boardText =
     groupWeek !== null && boardGames.length > 0
@@ -165,19 +165,13 @@ export default async function GroupPicksPage({
           weekLabel: weekLabel(ref, league),
           markets: groupWeek.markets,
           minPicks: groupWeek.minPicks,
-          games: boardGames.map((g) => {
-            const kick = g.startTs ? kickParts(g.startTs, DEFAULT_TZ) : null;
-            return {
-              awaySchool: g.away.school,
-              homeSchool: g.home.school,
-              awayAbbr: g.away.abbr,
-              homeAbbr: g.home.abbr,
-              spread: g.lines.spread,
-              total: g.lines.total,
-              kickTs: g.startTs,
-              kickLabel: kick ? `${kick.day} ${kick.time} ${tzLabel(DEFAULT_TZ)}` : null,
-            };
-          }),
+          games: boardGames.map((g) => ({
+            awaySchool: g.away.school,
+            homeSchool: g.home.school,
+            spread: g.lines.spread,
+            total: g.lines.total,
+            kickTs: g.startTs,
+          })),
           boardUrl:
             siteUrl === null ? null : `${siteUrl.replace(/\/$/, "")}/groups/${slug}/picks`,
         })

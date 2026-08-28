@@ -226,6 +226,22 @@ shipping it.
 
 ## Log
 
+### Aug 28 — BRD-1b: the board share becomes the crew's table
+
+Owner verdict on BRD-1's first output, same day: "It looks clunky and
+cumbersome. We usually do match up, spread of home team and total next to
+it. It's usually sent in an excel copy paste of cells via email." The first
+version narrated each game in a sentence under a kickoff heading — designed
+for iMessage, rejected for email. `boardShareText` is now that table: one
+game a row, TAB-separated (pasted into email it reads as columns, into
+Excel/Sheets it lands as cells), the HOME team's spread as stored (negative
+= home lays it, a home dog shows plus) and the total beside the matchup, a
+`Game / Home line / O/U` header row, kickoff row-order with TBD last, no
+time headings, no market blurb, no brand shouting — title line and CTA link
+only. The favourite-named rendering (`favoredLine`) is gone with the format
+that wanted it. Exact-string tests rewritten (25 in the suite); vitest 1,993
+across 132 files, typecheck and lint green.
+
 ### Aug 28 — BRD-1: text the board · HUB-4: deleted groups stop owing picks
 
 Two owner asks, one batch.
