@@ -62,10 +62,18 @@ export async function fetchOpenPickCount(
   userId: string | null,
 ): Promise<number> {
   if (!userId) return 0;
+  /* Live memberships in live groups only. This read used to take every
+     membership row the viewer ever held — groups they left, groups they were
+     removed from, and groups since ARCHIVED — so a deleted test group's board
+     kept counting against them forever: "26 picks still to make" on a hub
+     with two groups (owner report 2026-08-28). A pick you cannot navigate to
+     is not a pick you owe, exactly the kicked-off-game rule above. */
   const { data: memberships } = await supabase
     .from("group_members")
-    .select("group_id")
-    .eq("user_id", userId);
+    .select("group_id, groups!inner(archived_at)")
+    .eq("user_id", userId)
+    .is("removed_at", null)
+    .is("groups.archived_at", null);
   const groupIds = (memberships ?? []).map((m: { group_id: string }) => m.group_id);
   if (groupIds.length === 0) return 0;
 

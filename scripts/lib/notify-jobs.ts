@@ -30,10 +30,14 @@ export async function notifyPicksDueJob(db: SupabaseClient): Promise<Json> {
   const windowEnd = new Date(now + settings.lead_minutes * 60_000).toISOString();
   const nowIso = new Date(now).toISOString();
 
-  // Every group-week whose earliest un-started game kicks off inside the window.
+  // Every group-week whose earliest un-started game kicks off inside the
+  // window. Archived groups are out: their boards linger in group_week_games,
+  // and a nag about a group nobody can reach is the same defect the hub's
+  // counter had (picks-due.ts, owner report 2026-08-28) wearing a push.
   const { data: rows, error } = await db
     .from("group_week_games")
-    .select("group_id, season_id, week, games!inner(id, start_ts)")
+    .select("group_id, season_id, week, games!inner(id, start_ts), groups!inner(archived_at)")
+    .is("groups.archived_at", null)
     .gte("games.start_ts", nowIso)
     .lte("games.start_ts", windowEnd);
   if (error) return { error: error.message };
@@ -67,7 +71,12 @@ export async function notifyPicksDueJob(db: SupabaseClient): Promise<Json> {
   for (const [, wk] of weeks) {
     const [{ data: group }, { data: members }, { data: games }] = await Promise.all([
       db.from("groups").select("name, slug").eq("id", wk.group_id).maybeSingle(),
-      db.from("group_members").select("user_id").eq("group_id", wk.group_id),
+      // Active members only — someone removed from the group owes it nothing.
+      db
+        .from("group_members")
+        .select("user_id")
+        .eq("group_id", wk.group_id)
+        .is("removed_at", null),
       db
         .from("group_week_games")
         .select("game_id")
@@ -164,8 +173,11 @@ export async function notifyLogBetsJob(db: SupabaseClient): Promise<Json> {
 
   const { data: rows, error } = await db
     .from("group_week_games")
-    .select("group_id, season_id, week, games!inner(start_ts), groups!inner(name, slug, kind)")
+    .select(
+      "group_id, season_id, week, games!inner(start_ts), groups!inner(name, slug, kind, archived_at)",
+    )
     .eq("groups.kind", "betting")
+    .is("groups.archived_at", null)
     .gte("games.start_ts", nowIso)
     .lte("games.start_ts", windowEnd);
   if (error) return { error: error.message };
@@ -204,10 +216,12 @@ export async function notifyLogBetsJob(db: SupabaseClient): Promise<Json> {
   const problems: string[] = [];
 
   for (const [, wave] of waves) {
+    // Active members only — same rule as the picks-due nudge above.
     const { data: members } = await db
       .from("group_members")
       .select("user_id")
-      .eq("group_id", wave.group_id);
+      .eq("group_id", wave.group_id)
+      .is("removed_at", null);
 
     const kickoff = new Date(wave.kickoff).toLocaleString("en-US", {
       timeZone: "America/Chicago",

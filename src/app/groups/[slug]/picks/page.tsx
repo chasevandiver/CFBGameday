@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { AppNav } from "../../../../components/AppNav";
+import { BoardShare } from "../../../../components/group/BoardShare";
 import { PickBoard, type BoardEntry } from "../../../../components/group/PickBoard";
 import type { PickRow } from "../../../../lib/db-types";
 import { buildGroupShareContext } from "../../../../lib/group-share";
 import { fetchGroupMembers, fetchGroupWeek, groupLeague, resolveActiveGroup } from "../../../../lib/groups";
+import { DEFAULT_TZ, kickParts, tzLabel } from "../../../../lib/kick";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../../lib/queries";
+import { boardShareText } from "../../../../lib/share-text";
 import { createClient } from "../../../../lib/supabase/server";
 import {
   boardRunsIn,
@@ -150,6 +153,36 @@ export default async function GroupPicksPage({
       })
     : null;
 
+  /* The week's board as a text message — matchups, lines, totals — built from
+     the same rows the cards below render, so what lands in iMessage is what is
+     on screen. For anyone in the group, not just the admin: "what are we
+     picking this week" is the group's most-asked question. */
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? null;
+  const boardText =
+    groupWeek !== null && boardGames.length > 0
+      ? boardShareText({
+          groupName: active.name,
+          weekLabel: weekLabel(ref, league),
+          markets: groupWeek.markets,
+          minPicks: groupWeek.minPicks,
+          games: boardGames.map((g) => {
+            const kick = g.startTs ? kickParts(g.startTs, DEFAULT_TZ) : null;
+            return {
+              awaySchool: g.away.school,
+              homeSchool: g.home.school,
+              awayAbbr: g.away.abbr,
+              homeAbbr: g.home.abbr,
+              spread: g.lines.spread,
+              total: g.lines.total,
+              kickTs: g.startTs,
+              kickLabel: kick ? `${kick.day} ${kick.time} ${tzLabel(DEFAULT_TZ)}` : null,
+            };
+          }),
+          boardUrl:
+            siteUrl === null ? null : `${siteUrl.replace(/\/$/, "")}/groups/${slug}/picks`,
+        })
+      : null;
+
   return (
     <>
       <AppNav />
@@ -177,12 +210,15 @@ export default async function GroupPicksPage({
               </Link>
             )}
           </span>
-          <Link
-            href={`/groups/${slug}`}
-            className="stat -my-2 inline-flex min-h-11 items-center text-xs text-accent hover:underline"
-          >
-            {active.name} →
-          </Link>
+          <span className="-my-2 flex items-center gap-2">
+            {boardText && <BoardShare text={boardText} />}
+            <Link
+              href={`/groups/${slug}`}
+              className="stat inline-flex min-h-11 items-center text-xs text-accent hover:underline"
+            >
+              {active.name} →
+            </Link>
+          </span>
         </div>
         <p className="mb-5 text-sm text-dim">
           {groupWeek === null

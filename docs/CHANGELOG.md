@@ -226,6 +226,36 @@ shipping it.
 
 ## Log
 
+### Aug 28 — BRD-1: text the board · HUB-4: deleted groups stop owing picks
+
+Two owner asks, one batch.
+
+**BRD-1 — share the board as text.** "I want to be able to share the board
+into a text or email so that it'd have the match ups selected with the teams,
+line, and totals." A "Share the board" button on the group picks page hands
+`boardShareText` to the OS share sheet (clipboard fallback via `shareOrCopy`,
+the same dance every share point uses). The text is the WEEK, not anyone's
+picks: full school names (the reader in iMessage has no abbreviation roster),
+the favourite named next to its number the way a line is said out loud
+("Texas -2.5" from the home-perspective spread), `O/U` totals, grouped under
+kickoff times with TBD sinking last, the group's market mix and minimum in
+the header, and one CTA link to the board. Winners-only weeks share bare
+matchups — there is no number to share. Built server-side from the same rows
+the board renders. 5 exact-string tests.
+
+**HUB-4 — "26 picks still to make" from deleted groups.** Owner report with
+a screenshot: two live groups, 26 owed. `fetchOpenPickCount` read
+`group_members` with no `removed_at` filter and no archived-group filter, so
+every board from every group the viewer EVER touched counted forever — the
+archived test groups' boards included. A pick you cannot navigate to is not
+a pick you owe (the kicked-off-game rule, unapplied to groups). Fixed with
+`removed_at is null` + `groups!inner … archived_at is null`; same defect
+fixed in both push jobs (`notifyPicksDueJob`, `notifyLogBetsJob`), which
+would have nagged removed members and archived groups' rosters on push.
+Source-scan guards on all three reads, checked failing pre-fix (2/2).
+
+vitest 1,992 across 132 files; typecheck, lint green. No schema change.
+
 ### Aug 28 — SEAT-5: switching seats left the last seat's highlights behind
 
 Owner report minutes into using seats: switching through the "Picking for"

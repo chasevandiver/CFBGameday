@@ -14,7 +14,7 @@
 import type { PickMarket } from "./grade";
 import type { Tally } from "./records";
 import { formatRecord } from "./records";
-import { pickSideLabel } from "./slate";
+import { fmtSpread, fmtTotal, pickSideLabel } from "./slate";
 
 export type ShareMode = "just-placed" | "today" | "day-record" | "lifetime";
 
@@ -174,6 +174,104 @@ export function betSlipText(
     "",
     `${bets.length} ${bets.length === 1 ? "bet" : "bets"} · ${unitLabel}u`,
   ].join("\n");
+}
+
+/**
+ * The week's board itself, as a text message — the games, the lines, the
+ * totals. This is the admin's "here's what we're picking this week" text
+ * to the family thread (owner request 2026-08-28), so it is about the WEEK,
+ * not about anyone's picks: full school names rather than abbreviations,
+ * because Jeff reading it in iMessage has no roster of abbreviations to
+ * decode, and the favourite named next to its number the way people actually
+ * say a line out loud ("Texas -2.5").
+ */
+export interface BoardShareGame {
+  awaySchool: string;
+  homeSchool: string;
+  awayAbbr: string;
+  homeAbbr: string;
+  /** Consensus spread from the HOME side, the way the slate stores it. */
+  spread: number | null;
+  total: number | null;
+  kickTs: string | null;
+  /** Rendered kickoff, e.g. "SAT 11:00 AM CT". Null = TBD. */
+  kickLabel: string | null;
+}
+
+export interface BoardShare {
+  groupName: string;
+  /** "Week 1", "Bowls & CFP" — group-weeks' own label. */
+  weekLabel: string;
+  markets: PickMarket[];
+  /** 0 = the group sets no minimum. */
+  minPicks: number;
+  games: BoardShareGame[];
+  /** Absolute URL to the picks board. Null = no CTA line. */
+  boardUrl: string | null;
+}
+
+/** "Texas -2.5" — the favourite by name, from the home-perspective number. */
+export function favoredLine(g: Pick<BoardShareGame, "spread" | "homeAbbr" | "awayAbbr">): string {
+  if (g.spread === null) return "no line yet";
+  if (g.spread === 0) return "pick'em";
+  return g.spread < 0
+    ? `${g.homeAbbr} ${fmtSpread(g.spread)}`
+    : `${g.awayAbbr} ${fmtSpread(-g.spread)}`;
+}
+
+const MARKET_WORD: Record<PickMarket, string> = {
+  spread: "spreads",
+  total: "totals",
+  straight_up: "winners straight up",
+};
+
+export function boardShareText(b: BoardShare): string {
+  const head = [
+    `${HEADER} — ${b.groupName.toUpperCase()}`,
+    [
+      `${b.weekLabel} board`,
+      `${b.games.length} ${b.games.length === 1 ? "game" : "games"}`,
+      b.markets.map((m) => MARKET_WORD[m]).join(" & "),
+      ...(b.minPicks > 0 ? [`minimum ${b.minPicks} picks`] : []),
+    ].join(" · "),
+    "",
+  ];
+  if (b.games.length === 0) {
+    return [...head, "No games on the board yet."].join("\n");
+  }
+
+  // Kickoff order, grouped under the time they kick — same shape the pick
+  // slips use, and for the same reason: the reader's question is "what's on
+  // when", not the order the admin clicked. TBD kickoffs sink to the bottom.
+  const sorted = [...b.games].sort((a, z) => {
+    if (a.kickTs === z.kickTs) return 0;
+    if (a.kickTs === null) return 1;
+    if (z.kickTs === null) return -1;
+    return a.kickTs.localeCompare(z.kickTs);
+  });
+
+  const line = (g: BoardShareGame): string => {
+    const parts: string[] = [];
+    if (b.markets.includes("spread")) parts.push(favoredLine(g));
+    if (b.markets.includes("total") && g.total !== null) parts.push(`O/U ${fmtTotal(g.total)}`);
+    const matchup = `${g.awaySchool} at ${g.homeSchool}`;
+    return parts.length > 0 ? `${matchup} — ${parts.join(", ")}` : matchup;
+  };
+
+  const body: string[] = [];
+  let lastLabel: string | undefined;
+  for (const g of sorted) {
+    const label = g.kickLabel ?? "KICKOFF TBD";
+    if (label !== lastLabel) {
+      if (body.length > 0) body.push("");
+      body.push(label);
+      lastLabel = label;
+    }
+    body.push(line(g));
+  }
+
+  const foot = b.boardUrl ? ["", `Make your picks: ${b.boardUrl}`] : [];
+  return [...head, ...body, ...foot].join("\n");
 }
 
 export function shareText(mode: ShareMode, c: ShareContext): string {

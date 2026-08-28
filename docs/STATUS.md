@@ -6186,6 +6186,25 @@ the changelog's Aug 28 entry.
       for Jeff — the highlights show *their* picks"), because the chip alone
       was not carrying it. Source-scan test on both usage sites, the
       groups.test.ts pattern, checked failing against the pre-fix pages.
+- [x] **BRD-1** Text the board. Owner request 2026-08-28: "share the board
+      into a text or email so that it'd have the match ups selected with the
+      teams, line, and totals." A "Share the board" button on the group picks
+      page: `boardShareText` (share-text.ts) renders the WEEK as plain text —
+      full school names, the favourite named next to its number from the
+      home-perspective spread ("Texas -2.5"), O/U totals, kickoff-grouped
+      with TBD last, market mix + minimum in the header, one CTA link —
+      through `shareOrCopy`, the same sheet-or-clipboard dance as every other
+      share point. Built server-side from the rows the board renders.
+- [x] **HUB-4** The hub owed picks from deleted groups. Owner report
+      2026-08-28 with a screenshot: two live groups, "26 picks still to
+      make". `fetchOpenPickCount` read `group_members` unfiltered — no
+      `removed_at`, no archived-group check — so every board from every group
+      the viewer ever touched counted forever, archived test groups included.
+      Fixed with `removed_at is null` + `groups!inner(archived_at)` filtered
+      null; the same unfiltered reads in `notifyPicksDueJob` and
+      `notifyLogBetsJob` fixed with it, since they share the definition and
+      would have nagged removed members and archived rosters by push.
+      Source-scan guards on all three reads, checked failing pre-fix.
 - [x] **SURV-5** Extreme survivor. Migration **0082**: `survivor_pools.format`
       ('classic'|'extreme') + `target_wins` (5–500; the house game is 100),
       `survivor_picks` key widened to include `team_id`, classic's
