@@ -431,7 +431,17 @@ jobs:
     # the loop now exits after 20 idle minutes (LIVE-2, scripts/lib/idle.ts)
     # rather than holding a runner to a deadline with no football left.
     # Everything else keeps the old 75-minute ceiling.
-    timeout-minutes: ${{ contains(fromJSON('["0 15-23 * * 6","0 0-5 * * 0","0 0-4 * * 5,6","0 16-23 * * 0,1","0 0-5 * * 1,2","0 0-4 * * 3,4","0 10-14 * * 6","0 20-23 * * 4,5"]'), github.event.schedule) && 245 || 75 }}
+    # A DISPATCHED loop needs the same ceiling as a scheduled one. This read
+    # `github.event.schedule` alone, which is empty on workflow_dispatch — so a
+    # hand-started scoreboard-loop asked for `--minutes 240` and was killed at
+    # 75. That happened live on 2026-08-29: run 33261695069, dispatched at
+    # 15:58 to cover the Week 0 opener, cancelled at 17:14 exactly 75 minutes
+    # later, and the TCU/UNC clock froze at 6:21 in the 2nd until the owner
+    # noticed. The concurrency group above already reads `inputs.task` for
+    # exactly this reason; the timeout never learned the same lesson.
+    timeout-minutes: ${{ (contains(fromJSON('["0 15-23 * * 6","0 0-5 * * 0","0 0-4 * * 5,6","0 16-23 * * 0,1","0 0-5 * * 1,2","0 0-4 * * 3,4","0 10-14 * * 6","0 20-23 * * 4,5"]'), github.event.schedule)
+      || inputs.task == 'scoreboard-loop' || inputs.task_override == 'scoreboard-loop')
+      && 245 || 75 }}
     env:
       CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

@@ -293,6 +293,29 @@ describe("the live loop's lifetime and its concurrency group (LIVE-2)", () => {
     expect(cronsInExpression(line)).toEqual(loopCrons());
   });
 
+  /**
+   * The hole the cron-list pinning above could not see. `timeout-minutes` read
+   * `github.event.schedule` ONLY, which is empty on workflow_dispatch — so a
+   * hand-started loop asked for `--minutes 240` and GitHub killed it at 75.
+   * Live on 2026-08-29: run 33261695069, dispatched 15:58 to cover the Week 0
+   * opener, cancelled 17:14 to the minute, and the TCU/UNC clock sat frozen at
+   * 6:21 in the 2nd until the owner said so. The concurrency group two blocks
+   * up already reads `inputs.task`; the timeout never learned it.
+   */
+  it("gives a DISPATCHED scoreboard-loop the long timeout too", () => {
+    const line = YML.split("timeout-minutes:")[1].split("&& 245")[0];
+    // Checked failing against the pre-fix line, which named neither input.
+    expect(line).toMatch(/inputs\.task == 'scoreboard-loop'/);
+    expect(line).toMatch(/inputs\.task_override == 'scoreboard-loop'/);
+  });
+
+  it("still keys the long timeout off the schedule for cron launches", () => {
+    // The dispatch clause must be an ADDITION, not a replacement: the eight
+    // crons are how the loop normally starts.
+    const line = YML.split("timeout-minutes:")[1].split("&& 245")[0];
+    expect(line).toContain("github.event.schedule");
+  });
+
   it("keeps the run's deadline inside the job's timeout", () => {
     const minutes = Number(YML.match(/scoreboard-loop\.ts --minutes (\d+)/)![1]);
     const timeout = Number(YML.match(/&& (\d+) \|\| 75/)![1]);
