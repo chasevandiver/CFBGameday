@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { pickKey } from "./pick-key";
 
 /**
  * The picks made since this page was opened.
@@ -25,7 +26,10 @@ const emit = () => {
   listeners.forEach((l) => l());
 };
 
-export const pickKey = (gameId: number, market: string): string => `${gameId}:${market}`;
+/* Re-exported for the client callers that already import it from here. The
+   definition moved to ./pick-key so the server can call it too — see that
+   file. */
+export { pickKey };
 
 export function rememberPick(gameId: number, market: string): void {
   keys.add(pickKey(gameId, market));
