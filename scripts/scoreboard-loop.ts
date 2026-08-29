@@ -24,7 +24,7 @@ import { cfbdCallCount } from "../src/lib/cfbd";
 import { espnCallCount } from "../src/lib/espn";
 import { createServiceClient } from "../src/lib/supabase/service";
 import { envNum } from "./lib/env-num";
-import { idleSkip, envDays, idleExhausted, IDLE_EXIT_MS } from "./lib/idle";
+import { idleSkip, envDays, idleExhausted, scheduledState, IDLE_EXIT_MS } from "./lib/idle";
 import {
   SEASON,
   beat,
@@ -62,7 +62,16 @@ function argNum(flag: string, fallback: number): number {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-type Activity = "live" | "imminent" | "idle";
+/**
+ * `kicked` is separate from `live` on purpose. Both poll at the live cadence,
+ * but `live` still means "our status says in_progress" — the NFL edge pager
+ * below keys off that exact fact, and widening it would page for a game we
+ * only *believe* has started.
+ */
+type Activity = "live" | "kicked" | "imminent" | "idle";
+
+/** The two states that deserve the fast poll. */
+const fastCadence = (s: Activity): boolean => s === "live" || s === "kicked";
 
 async function activity(
   db: ReturnType<typeof createServiceClient>,
@@ -77,17 +86,23 @@ async function activity(
     .limit(1);
   if ((live ?? []).length > 0) return "live";
 
-  // scheduled games that kick soon — or already kicked but our status hasn't
-  // flipped yet (that transition is exactly what we're polling to catch)
+  /* Scheduled games that kick soon — or already kicked but our status hasn't
+     flipped yet (that transition is exactly what we're polling to catch).
+     Ordered, so the one row we take is the EARLIEST: if it has already kicked
+     something is underway, and if it has not then nothing in the window has.
+     The ordering is what lets `scheduledState` tell those apart — before it,
+     both answered "imminent" and a kicked-off game was polled every 120s. */
   const { data: soon } = await db
     .from("games")
-    .select("id")
+    .select("start_ts")
     .eq("season_id", season)
     .eq("status", "scheduled")
     .gte("start_ts", new Date(now - 4 * 3600_000).toISOString())
     .lte("start_ts", new Date(now + 15 * 60_000).toISOString())
+    .order("start_ts")
     .limit(1);
-  return (soon ?? []).length > 0 ? "imminent" : "idle";
+  const earliest = ((soon ?? []) as Array<{ start_ts: string | null }>)[0]?.start_ts ?? null;
+  return scheduledState(earliest, now);
 }
 
 /**
@@ -314,14 +329,13 @@ async function main() {
         cfbWasActive = cfbState !== "idle";
         nflWasActive = nflState !== "idle";
 
-        const state =
-          cfbState === "live" || nflState === "live"
-            ? "live"
-            : cfbState === "imminent" || nflState === "imminent"
-              ? "imminent"
-              : "idle";
-        if (state !== "idle") waitMs = state === "live" ? liveMs : 120_000;
-        idleSince = state === "idle" ? (idleSince ?? Date.now()) : null;
+        /* A kicked-off game polls as fast as a confirmed-live one: the status
+           write we are waiting for is the whole point of the tick. */
+        const fast = fastCadence(cfbState) || fastCadence(nflState);
+        const imminent = cfbState === "imminent" || nflState === "imminent";
+        if (fast) waitMs = liveMs;
+        else if (imminent) waitMs = 120_000;
+        idleSince = fast || imminent ? null : (idleSince ?? Date.now());
       } catch (err) {
         // one bad tick never kills the hour
         console.error("tick failed:", err instanceof Error ? err.message : err);

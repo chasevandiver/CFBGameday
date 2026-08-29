@@ -118,6 +118,38 @@ export function idleExhausted(
   return idleSince !== null && now - idleSince >= limitMs;
 }
 
+/**
+ * What a league's earliest still-`scheduled` kickoff means for poll cadence.
+ *
+ * `kicked` is the state this function exists to name: the clock has passed a
+ * game's kickoff and our `status` still says `scheduled`. That is not "a game
+ * is coming" — it is *the transition we are polling to catch*, and it wants
+ * the live cadence, not the slow one.
+ *
+ * **Measured on launch day, 2026-08-29.** The loop classified a kicked-off
+ * game as merely `imminent` and polled it every **120s** instead of 30s: real
+ * gaps of 122–127 seconds from 15:59 until the status finally flipped at
+ * 16:09, then a clean 30–31s for the rest of the game. Owner report while it
+ * was happening: *"it seems to be a few minutes behind."* 120s of poll plus
+ * the client's own 30s refresh is exactly that. The minute after kickoff is
+ * when the scoreboard is watched hardest, and it was the one minute the app
+ * slowed down.
+ *
+ * The caller passes the EARLIEST scheduled kickoff inside its window, so one
+ * row answers both questions: if the earliest has passed, something is
+ * underway; if it has not, nothing has.
+ */
+export type ScheduledState = "kicked" | "imminent" | "idle";
+
+export function scheduledState(earliestKick: string | null, now: number): ScheduledState {
+  if (earliestKick === null) return "idle";
+  const kick = Date.parse(earliestKick);
+  // An unparseable timestamp is not evidence a game started; treat it as the
+  // conservative "something is coming" rather than promoting the cadence.
+  if (Number.isNaN(kick)) return "imminent";
+  return kick <= now ? "kicked" : "imminent";
+}
+
 export interface IdleOptions {
   job: string;
   season: number;
