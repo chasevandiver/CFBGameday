@@ -185,7 +185,7 @@ describe("idleExhausted — when a long run gives up (LIVE-2)", () => {
 });
 
 /**
- * SCORE-2, launch day 2026-08-29. The loop polled a game that had ALREADY
+ * SCORE-4, launch day 2026-08-29. The loop polled a game that had ALREADY
  * KICKED every 120 seconds, because "kicked off but our status still says
  * scheduled" was classified `imminent` — the same bucket as a game an hour
  * out. Measured gaps: 122–127s from 15:59 until the status flipped at 16:09,

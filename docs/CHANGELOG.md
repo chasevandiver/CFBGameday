@@ -226,6 +226,72 @@ shipping it.
 
 ## Log
 
+### Aug 29 — SCORE-5: a hand-started scoreboard loop was killed at 75 minutes
+
+Owner, mid-game: *"it's halftime in TCU/UNC but the site says there's 6:21 left
+in the second quarter."* The clock had not lagged — it had **stopped**.
+`job_runs` was unambiguous: `scoreboard-loop` started 15:59:04, **canceled**
+17:13:57, seventy-five minutes to the second, then not one `scoreboard` call
+for 28 minutes.
+
+`timeout-minutes` granted the loop's 245-minute ceiling only when one of eight
+cron strings matched `github.event.schedule` — **empty on
+`workflow_dispatch`**. So a hand-started loop ran `--minutes 240` against a
+75-minute ceiling and GitHub cancelled it 165 minutes early. The concurrency
+`group` in the same file already reads `inputs.task` for exactly this reason;
+the timeout never learned it. The three assertions pinning that cron list
+across three places could not see the hole, because every one of them is about
+the *list*, not the dispatch *path*. Fixed by extending the 245 branch to
+`inputs.task` / `task_override`; two tests, mutation-checked.
+
+The run that died was one this session dispatched — and SCORE-4 that morning
+had made the system *more* reliant on hand-started loops, which walked
+straight into it.
+
+### Aug 29 — SCORE-4: the minute after kickoff was the one minute we slowed down
+
+Owner: *"what's our refresh time — it seems to be a few minutes behind."*
+Measured rather than assumed, from `api_call_log`: poll gaps of **122–127 s**
+from 15:59 until the game's status flipped at 16:09, then a clean **30–31 s**.
+Not the throttle (4% of budget), not the config (30 s).
+
+`activity()` called a game `live` only once our *status* already read
+`in_progress`. A game that had kicked but had not been written yet fell into
+`imminent` — the same bucket as a game an hour out — which waits 120 s. The
+transition the loop exists to catch was polled at a quarter of the intended
+rate. `scheduledState()` now names that state `kicked` and spends the live
+cadence on it, kept distinct from `live` so the NFL edge pager still keys off a
+*confirmed* live game.
+
+Checked against ESPN at the same instant before shipping: our board and theirs
+both read UNC 3, TCU 0. Once a game is properly live we were already current.
+
+### Aug 29 — GRP-11: `pickKey` crossed the client boundary and took every pick'em hub down
+
+Owner: *"I'm not able to click on the Vandiver Pickem group — it just says
+fumble on the play."* Vercel's log, 18 times on that route: *"Attempted to call
+pickKey() from the server but pickKey is on the client."*
+
+`group-share.ts` — built on the server by both the group hub and the pick board
+— imported `pickKey` from `session-picks.ts`, which carries `"use client"`
+because it is a `useSyncExternalStore` store. Next.js compiles every export of a
+client module into a server-side reference stub, so the call threw and the error
+boundary took the page. Four characters of template literal; the boundary, not
+the logic, was the defect. Betting and survivor groups return before that line,
+which is why only pick'em broke and why it survived to a Saturday: the import is
+valid TypeScript, lint has no opinion, and vitest has no client/server split —
+2,000 tests passed over a page that could not render.
+
+The helper moved to a boundary-free `lib/pick-key.ts`; `lib/client-boundary.ts`
+now source-scans for the whole class, allowing `import type` (which is erased,
+and which `share-card-build.ts` does correctly).
+
+**Bookkeeping, corrected the same day:** these two scoreboard rows were first
+filed as SCORE-2 and SCORE-3, both of which were already taken — SCORE-2 is the
+shipped line score, SCORE-3 an *open* `game_team_stats` item — which briefly put
+a checked and an unchecked box under one ID in `docs/STATUS.md`. Renumbered to
+SCORE-4 and SCORE-5.
+
 ### Aug 29 — LINE-1: launch morning, and 45 FCS games CFBD never mentioned
 
 Found by the 15:20 UTC pre-kickoff self-check: `refresh-lines` red since

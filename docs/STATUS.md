@@ -2931,7 +2931,7 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       a lazy regex that grew past a failed match and mis-attributed a later
       relative import, and prose in a header comment containing the word
       "import". The scanner reads code, not commentary about it.)*
-- [x] **SCORE-2 — a game that had already kicked was polled every 120s, not
+- [x] **SCORE-4 — a game that had already kicked was polled every 120s, not
       30s.** Owner report during the Week 0 opener: *"what's our refresh time
       on the scores from CFBD — it seems to be a few minutes behind."*
       **Measured, not assumed.** `api_call_log` gaps for `scoreboard`:
@@ -2965,7 +2965,7 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       134 files green.
       **Remaining latency, stated honestly:** CFBD's own publishing lag (not
       ours, unmeasured) + up to 30 s poll + up to 30 s client refresh.
-- [x] **SCORE-3 — a hand-dispatched scoreboard loop is killed at 75 minutes,
+- [x] **SCORE-5 — a hand-dispatched scoreboard loop is killed at 75 minutes,
       and the live clock freezes where it stood.** Owner report mid-game:
       *"it's halftime in TCU/UNC but the site says there's 6:21 left in the
       second quarter."*
