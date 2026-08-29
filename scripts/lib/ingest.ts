@@ -50,3 +50,27 @@ export function chunk<T>(arr: T[], size: number): T[][] {
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
 }
+
+/**
+ * Keep only rows whose `game_id` we actually carry, and name the ids dropped.
+ *
+ * Exists because one foreign id poisons a whole append batch: on launch
+ * morning 2026-08-29, CFBD's week-0 /lines feed grew a game our sync doesn't
+ * carry (sync-games had run green 50 minutes earlier — the feeds genuinely
+ * disagree, this is not staleness), and the FK on `line_snapshots.game_id`
+ * failed the entire insert. Every snapshot in the batch was lost for a day
+ * over a game we never wanted, and the chained `freeze-groups` never ran.
+ * A feed's extra game is that feed's business; our batch is ours.
+ */
+export function dropUnknownGames<T extends { game_id: number }>(
+  rows: T[],
+  known: ReadonlySet<number>,
+): { kept: T[]; dropped: number[] } {
+  const kept: T[] = [];
+  const droppedSet = new Set<number>();
+  for (const r of rows) {
+    if (known.has(r.game_id)) kept.push(r);
+    else droppedSet.add(r.game_id);
+  }
+  return { kept, dropped: [...droppedSet].sort((a, b) => a - b) };
+}

@@ -2879,6 +2879,22 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       the 16:00 UTC opener. **Mitigation armed**: a Sat 15:20 UTC self-check
       verifies a loop is running and manually dispatches `scoreboard-loop`
       if not — dispatches execute instantly, proven repeatedly this week.
+- [x] **LINE-1 — one foreign game id in CFBD's /lines killed every CFB
+      snapshot batch from Fri 21:34 UTC through launch morning.** Found by the
+      Sat 15:20 UTC self-check: `refresh-lines` failing on the
+      `line_snapshots.game_id` FK. CFBD's week-0 /lines grew a game our
+      `games` table does not carry — and sync-games had run green 50 minutes
+      before the failure, so the two CFBD feeds genuinely disagree and
+      re-syncing cannot heal it. The whole append batch died with the one
+      row, and the chained `freeze-groups` never ran in those chains.
+      **Fixed launch morning:** `dropUnknownGames` in `scripts/lib/ingest.ts`
+      filters the batch to ids the games table carries and names the dropped
+      ids in both the log and `job_runs.detail` (a green run must not eat a
+      feed hole silently — SYS-1's lesson). 5 mutation-checked tests. NFL
+      lines unaffected — that script builds rows from our own games table.
+      Scoreboard/scores were never affected (different path); a manual
+      `scoreboard-loop` dispatch covered kickoff during the ~5h GitHub cron
+      lag the same check found.
 - [ ] **Aug 29** — 🏈 Week 0. Supervised watch: close passes, scoreboard loop,
       cover-flip detector, `observe-scoreboard`.
 - [ ] **Aug 30** — **F17** Supervised watch of the first freeze → grade → CLV

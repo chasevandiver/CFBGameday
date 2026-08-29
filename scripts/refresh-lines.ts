@@ -16,7 +16,7 @@ import { cfbd, cfbdCallCount } from "../src/lib/cfbd";
 import { normalizeProvider } from "../src/lib/providers";
 import { logCfbdCalls, recordJobRun } from "./lib/jobs-core";
 import { idleSkip, envDays } from "./lib/idle";
-import { SEASON, chunk, createSink } from "./lib/ingest";
+import { SEASON, chunk, createSink, dropUnknownGames } from "./lib/ingest";
 
 const BURST_WINDOW_MIN = 100;
 
@@ -85,7 +85,7 @@ async function run(
   }
 
   const capturedAt = new Date().toISOString();
-  const rows = lines
+  let rows = lines
     .filter((game) => !kickWindow || kickWindow.has(game.id))
     .flatMap((game) =>
       game.lines.map((l) => ({
@@ -102,10 +102,37 @@ async function run(
       })),
     );
 
+  /* CFBD's /lines can carry a game our games table does not (launch morning
+     2026-08-29: it grew one overnight while sync-games stayed green — the two
+     CFBD feeds disagree with each other, so re-syncing cannot heal it). The
+     FK on line_snapshots.game_id then fails the WHOLE batch, which is how a
+     day of snapshots and every chained freeze-groups run were lost over one
+     game we never wanted. Keep our batch; report theirs. */
+  let droppedUnknown: number[] = [];
+  if (db && rows.length > 0) {
+    const ids = [...new Set(rows.map((r) => r.game_id))];
+    const known = new Set<number>();
+    for (const batch of chunk(ids, 500)) {
+      const { data } = await db.from("games").select("id").in("id", batch);
+      for (const g of (data ?? []) as Array<{ id: number }>) known.add(g.id);
+    }
+    const filtered = dropUnknownGames(rows, known);
+    rows = filtered.kept;
+    droppedUnknown = filtered.dropped;
+    if (droppedUnknown.length > 0)
+      console.log(`  skipped ${droppedUnknown.length} unknown game id(s): ${droppedUnknown.join(", ")}`);
+  }
+
   for (const batch of chunk(rows, 500)) await sink.insert("line_snapshots", batch);
   if (db) await logCfbdCalls(db, burst ? "refresh-lines-burst" : "refresh-lines", cfbdCallCount());
   console.log(`  ${rows.length} snapshots appended`);
-  return { snapshots: rows.length, week: week ?? null };
+  // The dropped ids go in the run detail, not just the log — a green run that
+  // silently ate a feed hole is the SYS-1 failure shape all over again.
+  return {
+    snapshots: rows.length,
+    week: week ?? null,
+    ...(droppedUnknown.length > 0 ? { unknown_game_ids: droppedUnknown } : {}),
+  };
 }
 
 main().catch((err) => {
