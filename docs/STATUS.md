@@ -2965,6 +2965,35 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       134 files green.
       **Remaining latency, stated honestly:** CFBD's own publishing lag (not
       ours, unmeasured) + up to 30 s poll + up to 30 s client refresh.
+- [x] **SCORE-3 — a hand-dispatched scoreboard loop is killed at 75 minutes,
+      and the live clock freezes where it stood.** Owner report mid-game:
+      *"it's halftime in TCU/UNC but the site says there's 6:21 left in the
+      second quarter."*
+      **Evidence.** `job_runs`: `scoreboard-loop` started 15:59:04, finished
+      17:13:57, status **`canceled`**, **75 minutes** to the second. Zero
+      `scoreboard` calls in `api_call_log` for the 28 minutes after. The clock
+      did not lag — it stopped, at the last value the dead loop wrote.
+      **Cause.** `timeout-minutes` granted the 245-minute ceiling only when
+      `contains(<the eight loop crons>, github.event.schedule)`. On a
+      **workflow_dispatch** that context value is empty, so a hand-started
+      loop fell to the 75-minute fallback while the script itself ran
+      `--minutes 240`. GitHub cancelled it 165 minutes early. Run
+      `33261695069` — dispatched by this session at 15:58 to cover the opener
+      after the previous loop idle-exited pre-kickoff.
+      **The concurrency `group` directly above it already handles dispatch**
+      (`github.event.schedule || inputs.task`) for exactly this reason; the
+      timeout expression never learned the same lesson, and the three-way
+      cron-list pinning in `jobs-yml.test.ts` could not see the gap because
+      every one of those assertions is about the cron list, not the dispatch
+      path.
+      **Fixed**: the 245 branch now also fires on
+      `inputs.task == 'scoreboard-loop'` or the same `task_override`. Two
+      tests, mutation-checked by removing the dispatch clause and watching the
+      first fail. 2,014 tests green, YAML re-parsed.
+      **Service restored before the fix**: a loop dispatched at 17:43 put the
+      board back inside a minute (TCU 10, UNC 12, polling every ~25 s).
+      **Cost**: ~29 minutes of frozen clock during the second quarter of the
+      first game this product ever showed anyone.
 - [ ] **Aug 29** — 🏈 Week 0. Supervised watch: close passes, scoreboard loop,
       cover-flip detector, `observe-scoreboard`.
 - [ ] **Aug 30** — **F17** Supervised watch of the first freeze → grade → CLV
