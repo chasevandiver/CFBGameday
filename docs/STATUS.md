@@ -2931,6 +2931,40 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       a lazy regex that grew past a failed match and mis-attributed a later
       relative import, and prose in a header comment containing the word
       "import". The scanner reads code, not commentary about it.)*
+- [x] **SCORE-2 — a game that had already kicked was polled every 120s, not
+      30s.** Owner report during the Week 0 opener: *"what's our refresh time
+      on the scores from CFBD — it seems to be a few minutes behind."*
+      **Measured, not assumed.** `api_call_log` gaps for `scoreboard`:
+      **122–127 s** from 15:59 to 16:09:24, then **30–31 s** for the rest of
+      the game. Not the throttle (1,301 of 30,000 calls, 4%) and not the
+      config (`SCOREBOARD_INTERVAL_SECONDS` = 30).
+      **Cause.** `activity()` returned `live` only for a game whose *status*
+      already read `in_progress`. A game that had kicked but whose status we
+      had not yet written fell into `imminent` — the same bucket as a game an
+      hour out — and `imminent` waits **120 s**. So the window between the
+      first snap and our first status write, the exact transition the loop
+      exists to catch, ran at a quarter of the intended rate. With the
+      client's own 30 s refresh on top, ~2.5 minutes stale: the owner's "few
+      minutes", exactly. *(The old comment above that query already said
+      "already kicked but our status hasn't flipped yet — that transition is
+      exactly what we're polling to catch". The intent was written down; the
+      cadence never honoured it.)*
+      **Fixed** with a fourth state: `scheduledState()` in `lib/idle.ts` calls
+      an earliest-kickoff-in-the-past `kicked`, and the loop spends the live
+      cadence on `live` **or** `kicked`. `kicked` stays distinct from `live`
+      deliberately — the NFL edge pager keys off a *confirmed* live game and
+      must not fire on one we merely believe started. The query now orders by
+      `start_ts` so the single row it reads is the earliest, which is what
+      makes the split decidable.
+      **Verified against ESPN at the same instant** before shipping: our DB
+      16:15:58 UTC = UNC 3, TCU 0; ESPN 16:15:51 = UNC 3, TCU 0, 10:07 in the
+      1st — so once a game is properly live we were already current, and this
+      fix is about the first minutes of each game. 9 tests (5 on the helper,
+      4 source-scanning the loop's wiring), the wiring guard mutation-checked
+      by narrowing the cadence class back and watching it fail. 2,012 tests /
+      134 files green.
+      **Remaining latency, stated honestly:** CFBD's own publishing lag (not
+      ours, unmeasured) + up to 30 s poll + up to 30 s client refresh.
 - [ ] **Aug 29** — 🏈 Week 0. Supervised watch: close passes, scoreboard loop,
       cover-flip detector, `observe-scoreboard`.
 - [ ] **Aug 30** — **F17** Supervised watch of the first freeze → grade → CLV

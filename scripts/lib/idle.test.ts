@@ -1,6 +1,8 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { DAY_MS, envDays, idleExhausted, IDLE_EXIT_MS, idleOverridden, idleSkip, msUntilNextGame } from "./idle";
+import { DAY_MS, envDays, idleExhausted, IDLE_EXIT_MS, idleOverridden, idleSkip, msUntilNextGame, scheduledState } from "./idle";
 
 /**
  * Minimal PostgREST-shaped stub. Filters chain; `.limit()` is both awaitable
@@ -179,5 +181,74 @@ describe("idleExhausted — when a long run gives up (LIVE-2)", () => {
     // near the old 63-minute run length would end a run mid-game.
     expect(IDLE_EXIT_MS).toBeGreaterThanOrEqual(15 * 60_000);
     expect(IDLE_EXIT_MS).toBeLessThan(63 * 60_000);
+  });
+});
+
+/**
+ * SCORE-2, launch day 2026-08-29. The loop polled a game that had ALREADY
+ * KICKED every 120 seconds, because "kicked off but our status still says
+ * scheduled" was classified `imminent` — the same bucket as a game an hour
+ * out. Measured gaps: 122–127s from 15:59 until the status flipped at 16:09,
+ * then 30–31s for the rest of the game. Owner, watching it happen: "it seems
+ * to be a few minutes behind."
+ */
+describe("scheduledState", () => {
+  const now = Date.parse("2026-08-29T16:05:00Z");
+  const at = (iso: string) => scheduledState(iso, now);
+
+  it("calls a kickoff that has passed `kicked`, not `imminent`", () => {
+    // The regression. Pre-fix this whole case answered "imminent" → 120s.
+    expect(at("2026-08-29T16:00:00Z")).toBe("kicked");
+    expect(at("2026-08-29T13:00:00Z")).toBe("kicked");
+  });
+
+  it("still calls a kickoff in the future `imminent`", () => {
+    expect(at("2026-08-29T16:10:00Z")).toBe("imminent");
+    expect(at("2026-08-29T16:19:00Z")).toBe("imminent");
+  });
+
+  it("treats the exact kickoff instant as kicked", () => {
+    // At t=kick the ball is in the air; a boundary that rounds the other way
+    // spends one more 120s window on the tick that matters most.
+    expect(scheduledState("2026-08-29T16:05:00Z", now)).toBe("kicked");
+  });
+
+  it("is idle when the window held no scheduled game", () => {
+    expect(scheduledState(null, now)).toBe("idle");
+  });
+
+  it("does not promote an unparseable timestamp to kicked", () => {
+    // Garbage is not evidence a game started — stay on the slow cadence.
+    expect(scheduledState("not a date", now)).toBe("imminent");
+  });
+});
+
+/**
+ * The wiring, not just the helper: a pure function returning "kicked" buys
+ * nothing if the loop still maps it to the slow branch. Source-scanned
+ * because the mapping lives in a script the unit tests do not execute.
+ */
+describe("the loop spends the fast cadence on a kicked game", () => {
+  const LOOP = readFileSync(join(__dirname, "..", "scoreboard-loop.ts"), "utf8");
+
+  it("treats kicked and live as one cadence class", () => {
+    // Checked failing against the pre-fix loop, which had neither line.
+    expect(LOOP).toMatch(/const fastCadence = \(s: Activity\): boolean =>\s*s === "live" \|\| s === "kicked"/);
+    expect(LOOP).toMatch(/if \(fast\) waitMs = liveMs;/);
+  });
+
+  it("keeps the 120s branch for genuinely upcoming games only", () => {
+    expect(LOOP).toMatch(/else if \(imminent\) waitMs = 120_000;/);
+  });
+
+  it("still asks the DB for the earliest kickoff, which is what makes the split possible", () => {
+    // Without the ordering the single row is arbitrary and `kicked` would be
+    // a coin flip on a mixed window.
+    expect(LOOP).toMatch(/\.order\("start_ts"\)/);
+  });
+
+  it("leaves the NFL edge pager keyed to a CONFIRMED live game", () => {
+    // Widening this to `kicked` would page on a game we only believe started.
+    expect(LOOP).toMatch(/nflState === "live"/);
   });
 });
