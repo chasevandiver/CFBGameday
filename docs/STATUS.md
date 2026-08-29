@@ -2882,11 +2882,15 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
 - [x] **LINE-1 — one foreign game id in CFBD's /lines killed every CFB
       snapshot batch from Fri 21:34 UTC through launch morning.** Found by the
       Sat 15:20 UTC self-check: `refresh-lines` failing on the
-      `line_snapshots.game_id` FK. CFBD's week-0 /lines grew a game our
-      `games` table does not carry — and sync-games had run green 50 minutes
-      before the failure, so the two CFBD feeds genuinely disagree and
-      re-syncing cannot heal it. The whole append batch died with the one
-      row, and the chained `freeze-groups` never ran in those chains.
+      `line_snapshots.game_id` FK. **The first fixed run revealed the scale:
+      45 unknown game ids, not one** — a consecutive id block, i.e. FCS-vs-FCS
+      week-0 openers whose lines sportsbooks began posting Friday evening.
+      CFBD's /lines covers all divisions; our `games` table is FBS-only by
+      design, and sync-games had run green 50 minutes before the failure —
+      the feeds disagree structurally, re-syncing cannot heal it, and this
+      recurs every week FCS games carry lines. The whole append batch died
+      with the first foreign row, and the chained `freeze-groups` never ran
+      in those chains.
       **Fixed launch morning:** `dropUnknownGames` in `scripts/lib/ingest.ts`
       filters the batch to ids the games table carries and names the dropped
       ids in both the log and `job_runs.detail` (a green run must not eat a

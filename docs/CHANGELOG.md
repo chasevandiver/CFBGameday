@@ -226,6 +226,30 @@ shipping it.
 
 ## Log
 
+### Aug 29 — LINE-1: launch morning, and 45 FCS games CFBD never mentioned
+
+Found by the 15:20 UTC pre-kickoff self-check: `refresh-lines` red since
+**Friday 21:34 UTC** on the `line_snapshots.game_id` FK, taking every chained
+`freeze-groups` run with it. Root cause, revealed at full scale by the first
+fixed run: sportsbooks began posting lines for **45 FCS-vs-FCS week-0
+openers** Friday evening, CFBD's `/lines` serves all divisions, and our games
+table is FBS-only — so the first foreign id killed each whole append batch.
+Not staleness: sync-games ran green 50 minutes before a failure; the two CFBD
+feeds disagree structurally, and they will again every week FCS games carry
+lines.
+
+Fix (`#164`, shipped 34 minutes before kickoff): `dropUnknownGames` filters
+the batch to ids the games table carries and names every dropped id in the
+log and `job_runs.detail` — a green run cannot eat a feed hole silently
+(SYS-1's rule). Five mutation-checked tests. First fixed run: **222 CFB
+snapshots appended, 45 ids skipped by name**, NFL wrote, `freeze-groups` ran,
+dead-man ping green — a fresh close line for the opener at 15:26 UTC.
+
+Same check also found GitHub's cron scheduler ~5h behind for the second time
+in three days; the scoreboard loop covering kickoff was a manual dispatch.
+The receipts were never exposed — the failure window opened Friday evening,
+after Thursday's freeze stamped them on good lines.
+
 ### Aug 28 — BRD-1b: the board share becomes the crew's table
 
 Owner verdict on BRD-1's first output, same day: "It looks clunky and
