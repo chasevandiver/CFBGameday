@@ -2899,6 +2899,38 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       Scoreboard/scores were never affected (different path); a manual
       `scoreboard-loop` dispatch covered kickoff during the ~5h GitHub cron
       lag the same check found.
+- [x] **GRP-11 — every pick'em group hub and pick board rendered "Fumble on
+      the play" in production, during Week 0.** Owner report 2026-08-29
+      mid-afternoon: *"I'm not able to click on the Vandiver Pickem group."*
+      Vercel runtime log, one line, 20+ occurrences on
+      `GET /groups/vandiver-pick-em`:
+      `Attempted to call pickKey() from the server but pickKey is on the
+      client.`
+      **Cause.** `group-share.ts` — built on the server by both
+      `groups/[slug]/page.tsx` and `groups/[slug]/picks/page.tsx` — imported
+      `pickKey` from `session-picks.ts`, which carries `"use client"` because
+      it is a `useSyncExternalStore` store. Next.js compiles every export of a
+      client module into a server-side *reference stub*, so the call threw and
+      the error boundary took the page. `pickKey` is four characters of
+      template literal; the boundary, not the logic, was the defect.
+      **Why it survived to a Saturday.** Betting and survivor groups return
+      before that line — only pick'em reaches it — and the owner's only live
+      pick'em group was created Aug 28, hours before kickoff. Nothing else
+      catches it: the import is valid TypeScript (typecheck green), lint has no
+      opinion, and vitest has no client/server split, so 2,000 tests passed
+      over a page that could not render.
+      **Fixed** by moving the helper to its own boundary-free `lib/pick-key.ts`
+      that both sides import; `session-picks` re-exports it so client callers
+      are untouched. **Guarded** by `lib/client-boundary.test.ts`, a source
+      scan asserting no server-safe `lib` module *value*-imports a `"use
+      client"` one — mutation-checked by reintroducing the exact import, which
+      the scan names. `import type` is deliberately allowed and pinned by its
+      own case (`share-card-build.ts` does it correctly and must keep
+      passing). 2,003 tests / 134 files green, typecheck and build clean.
+      *(Two false positives while writing the scan, both recorded in the file:
+      a lazy regex that grew past a failed match and mis-attributed a later
+      relative import, and prose in a header comment containing the word
+      "import". The scanner reads code, not commentary about it.)*
 - [ ] **Aug 29** — 🏈 Week 0. Supervised watch: close passes, scoreboard loop,
       cover-flip detector, `observe-scoreboard`.
 - [ ] **Aug 30** — **F17** Supervised watch of the first freeze → grade → CLV

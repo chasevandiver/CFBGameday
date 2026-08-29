@@ -11,7 +11,9 @@
 
 import type { PickRow } from "./db-types";
 import { DEFAULT_TZ, kickHeading } from "./kick";
-import { pickKey } from "./session-picks";
+/* ./pick-key, never ./session-picks: this module is built on the server and
+   session-picks is `"use client"`. */
+import { pickKey } from "./pick-key";
 import { tally } from "./records";
 import type { SheetShare, ShareContext, SharePick } from "./share-text";
 import { betSideLabel, type GameView } from "./slate";
