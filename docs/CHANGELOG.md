@@ -226,6 +226,65 @@ shipping it.
 
 ## Log
 
+### Sep 1 — LEDGER-2 / EDGE-1: the Week 0 debrief. Nothing was ungraded; the model really did go 0-8
+
+Owner, the morning after Week 0: *"I don't think it graded my Memphis/UNLV bet
+which I was on UNLV, and it says I went 0-6 when I went 0-7. Also the model was
+absolutely terrible. 0-8 on spreads."* Two claims, read against the live
+database rather than against the code that should have produced it. **One is a
+misread of two products; the other is exactly right, and the interesting part
+is not the record.**
+
+**LEDGER-2 — no defect, and nothing lost.** Project-wide there are **0** bets,
+**0** picks and **0** frozen predictions sitting on a final game without a
+result: the settle pass is current. `bets` holds **zero** rows of any kind on
+game 401862693 (UNLV 21, Memphis 27) and `deleted_wagers` holds none either, so
+no UNLV bet was written and then removed — there was never one to grade. The
+UNLV position is `picks` id **91**, Vandiver Pick'em, UNLV −4.5 home, graded
+**loss** (UNLV lost by 6; −6 + −4.5 = −10.5). So "0-7" is six ledger bets plus
+one pick'em pick, counted across two products that keep separate records by
+design — the ledger's **0-6** is the true record of what the ledger holds.
+Every one of the 6 bets and 8 picks was re-computed by hand rather than trusted
+because its `result` was non-null, including the two rows whose stored
+home-perspective `line_taken` disagrees in sign with their bettor-side
+description (bet 41 "NC State +4" → −4.0, bet 45 "Hawai'i +4.5" → −4.5). No
+sign errors. Filed in `docs/STATUS.md` with the decision it raises: a member
+who both bets the slate and picks in a group now has two Week 0 records and no
+surface says so.
+
+**EDGE-1 — 0-8 confirmed, and worse than that.** All 8 frozen Week 0
+predictions graded against `vegas_spread`: the model's side lost every one, and
+it was individually worse than the market on **all 8** — MAE **17.1** vs
+**13.8**. But only **3** games ever carried a flag (`edgeThreshold` 2), so five
+of those eight are games where model and market sat inside 0.3 of each other
+and the market happened to land right. The flagged record is **0-3**.
+
+**Where it actually went wrong is one line of `preseasonRating`.** The only two
+`BIG_EDGE` rows of the week were `JXST @ NDSU` (edge 10.6) and `SAC @ EMU`
+(9.3) — and North Dakota State and Sacramento State are **the only two teams
+on the 2026 board with `final_prev_rating` null**, the new-FBS-entrant path
+that takes `talentBaseline` alone, with no prior rating and no returning
+production. They were also the week's two worst misses, **29.6** and **10.3**
+points against the market's 19.0 and 1.0. Drop those two and the model's excess
+MAE over the market falls from **3.3** to **1.0** a game: a quarter of the
+slate carrying two-thirds of the gap.
+
+Not a scale bug — `priorRatingWeight` 0.7 + `talentWeight` 0.3 sum to 1, so the
+entrant path is on the same scale as every other team. A **variance** problem:
+a recruiting composite says almost nothing about a program whose playing
+strength has no FBS trace, and the two errors point in **opposite** directions
+(10.6 too low on NDSU, 9.3 too high on Sacramento State), which is what no
+information looks like rather than a bias with a sign to correct.
+
+**Proposed and deliberately not done: n = 2.** Suppressing `edgeFlag` on any
+game with a talent-only prior is the obvious change and it is gated like every
+other model change — it needs its evidence run and a decisions-table row
+recording the answer *even if the answer is no*. Nothing here moves
+`MODEL_VERSION`, and §1's edge verdict is unchanged: these were already
+information rather than bets, at 49.2% ATS over 2023–25. Week 0 is n=8 and
+proves nothing about the model overall; the entrant-prior split is the part
+worth testing.
+
 ### Aug 29 — SCORE-5: a hand-started scoreboard loop was killed at 75 minutes
 
 Owner, mid-game: *"it's halftime in TCU/UNC but the site says there's 6:21 left

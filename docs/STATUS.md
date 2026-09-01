@@ -2994,6 +2994,78 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
       board back inside a minute (TCU 10, UNC 12, polling every ~25 s).
       **Cost**: ~29 minutes of frozen clock during the second quarter of the
       first game this product ever showed anyone.
+- [x] **LEDGER-2 — "it didn't grade my Memphis/UNLV bet; it says 0-6 and I went
+      0-7."** Owner report 2026-09-01. **Not a grading defect, and nothing was
+      lost.** Read against the live database the same day:
+      **Nothing is ungraded, anywhere.** Across the whole project there are
+      **0** bets, **0** picks and **0** frozen predictions sitting on a final
+      game without a result — the settle pass is current.
+      **There is no UNLV bet, and there never was.** `bets` has **zero** rows
+      of any kind on game `401862693` (UNLV 21, Memphis 27), and
+      `deleted_wagers` holds no UNLV row either — so it was not written and
+      then removed. The owner's six Week 0 ledger rows are all graded, all
+      losses, none void, none open: **0-6 is the true record of what the
+      ledger holds.**
+      **The UNLV position is a pick'em pick, not a ledger bet.** `picks` id
+      **91**, Vandiver Pick'em, UNLV −4.5 home, locked 2026-08-28 05:46, result
+      **loss** — graded correctly (UNLV lost by 6, so −6 + −4.5 = −10.5). Its
+      partner total (id 92, over 56.5, actual 48) is graded too. That group
+      carries **8** picks for the owner, all losses. So "I went 0-7" is 6
+      ledger bets + 1 pick'em pick, counted across two products that keep
+      separate records by design.
+      **Spot-checked every settlement by hand** rather than trusting the
+      absence of nulls: all 6 bets and all 8 picks compute to the stored
+      result, including the two whose stored `line_taken` is home-perspective
+      while the description reads from the bettor's side (bet 41 "NC State +4"
+      stored −4.0, bet 45 "Hawai'i +4.5" stored −4.5). No sign errors.
+      **Decision owed (§3):** the two records are separate on purpose, and
+      nothing here argues they should be merged. But a member who bets the
+      slate *and* picks in a group has two Week 0 records and no surface says
+      so — this report is the first evidence that the split reads as a missing
+      bet rather than as two products. Either a line on the ledger pointing at
+      the pick'em record, or nothing. Not decided here.
+      **If the owner did place UNLV at a book**, the ledger is append-only and
+      the row can be logged by hand with its real line, price and stake — that
+      is a write, not a repair, and it is his call.
+- [ ] **EDGE-1 — the model went 0-8 ATS in Week 0, and its two BIG_EDGE flags
+      were both new FBS entrants priced on talent alone.** Owner report
+      2026-09-01: *"the model was absolutely terrible. 0-8 on spreads."*
+      **Confirmed, exactly.** All 8 Week 0 `predictions` rows, frozen at
+      2026.6.0, graded against `vegas_spread`: the model's side lost every
+      one. It was also worse than the market on **all 8** games individually —
+      MAE **17.1** vs the market's **13.8**.
+      **But only 3 of the 8 ever carried a flag** (`edgeThreshold` 2), so
+      "0-8" counts five games where the model and the market were inside 0.3
+      of each other and the market happened to be on the right side. The
+      flagged record is **0-3**.
+      **The finding is in which games got flagged.** The only two `BIG_EDGE`
+      rows (`bigEdgeThreshold` 4) were `JXST @ NDSU` (edge 10.6) and
+      `SAC @ EMU` (edge 9.3) — and North Dakota State and Sacramento State are
+      **the only two teams in the 2026 board with `final_prev_rating` null**,
+      the new-FBS-entrant path in `preseasonRating` that takes
+      `talentBaseline` alone with no prior rating and no returning production.
+      Those two games were also the model's two worst misses of the week:
+      **29.6** and **10.3** points, against the market's 19.0 and 1.0. Drop
+      them and the model's excess MAE over the market falls from **3.3** to
+      **1.0** points a game — two games, a quarter of the slate, carrying
+      two-thirds of the gap.
+      **It is not a scale bug.** `priorRatingWeight` 0.7 + `talentWeight` 0.3
+      sum to 1, so the entrant path is on the same scale as everyone else. It
+      is a *variance* problem: a recruiting composite says almost nothing about
+      a program like NDSU, whose playing strength has no FBS trace, and the two
+      errors point in **opposite** directions (the model was 10.6 too low on
+      NDSU, 9.3 too high on Sacramento State) — which is what no information
+      looks like, not a bias with a sign to correct.
+      **Proposed, not done:** suppress `edgeFlag` for any game involving a team
+      whose prior is talent-only, so a number the model cannot support does not
+      reach `/edges` wearing the same badge as one it can. **n = 2.** Per
+      AGENTS.md the model is gated — this needs its evidence run and a
+      changelog entry recording the answer even if the answer is no, and it is
+      a decision owed rather than a fix to land off one weekend.
+      *(Context, unchanged: §1's edge verdict already says these are
+      information, not bets — 49.2% ATS over 2023–25. Week 0 is n=8 and proves
+      nothing about the model overall. The entrant-prior split is the part
+      worth testing.)*
 - [ ] **Aug 29** — 🏈 Week 0. Supervised watch: close passes, scoreboard loop,
       cover-flip detector, `observe-scoreboard`.
 - [ ] **Aug 30** — **F17** Supervised watch of the first freeze → grade → CLV
