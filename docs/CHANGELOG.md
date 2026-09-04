@@ -268,7 +268,9 @@ the-text-and-parse-it idea is a separate step and was not started.
 **Verified.** DB suite: `log-bets-for.sql` 27 assertions plus `bets.sql` and
 `managed-members.sql` re-run beside it, 99 PASS 0 FAIL against a real
 Postgres 16. Vitest **2,031 across 136 files** (18 new), typecheck and lint
-green. 0083 is **not yet applied** to the live project (LOGF-4).
+green. 0083 **applied to the live project** 2026-09-04 (`20260904003120`)
+ahead of the merge and read back: column, function grants and the four
+`bets` policies as expected, 81 files / 81 rows (LOGF-4).
 
 ### Aug 29 — SCORE-5: a hand-started scoreboard loop was killed at 75 minutes
 
