@@ -6408,6 +6408,22 @@ changelog's Sep 4 entry.
       `lib/bet-form-prefill.ts` (8 tests) and `fetchBetFormOptions` reads
       the consensus in one query beside the teams; 7 jsdom cases on the
       form. Applies to the ledger's own form too — same component.
+- [x] **MSTAT-1** The model had no record page. Owner request 2026-09-04: "I
+      want to be able to view the model's full stats somewhere. It doesn't
+      have its total record, I want to see how it's doing on a bunch of
+      different buckets." Receipts had a four-tile strip and the book;
+      `/model` had the parameters and the decisions. `/model/stats` now
+      grades the season's frozen receipts the way Receipts does (SU, lean ATS
+      vs the freeze line) and adds what nothing computed before — the
+      model's side vs the close, totals vs the closing consensus total, MAE
+      and signed bias — then cuts it by week, edge band (the backtest's
+      disjoint bands), systems consensus, opener→freeze move, lean side,
+      favourite/dog, spread size, tier matchup, conference, site, day,
+      window, totals by lean and size, win-prob calibration, and model
+      version. Every win rate carries ±1 SE and n; thin rows are dimmed; the
+      49.2% verdict leads the page. Pure arithmetic in `lib/model-stats.ts`
+      (26 tests); the page renders, and a render smoke test against a fixture database proves it does (`model/stats/page.test.tsx`). Linked from `/model` and the Receipts
+      calibration header. No migration.
 
 ## 5. Not built, by choice
 

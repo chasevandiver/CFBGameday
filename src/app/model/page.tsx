@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { AppNav } from "../../components/AppNav";
 import { DEFAULT_PARAMS, MODEL_VERSION } from "../../model/ratings";
 import { required } from "../../lib/db-result";
@@ -59,7 +60,15 @@ export default async function ModelPage() {
       <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h1 className="text-2xl">The Model</h1>
-          <span className="stat text-xs text-dim">version {MODEL_VERSION}</span>
+          <span className="flex items-baseline gap-3">
+            <Link
+              href="/model/stats"
+              className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+            >
+              Season record &rarr;
+            </Link>
+            <span className="stat text-xs text-dim">version {MODEL_VERSION}</span>
+          </span>
         </div>
         <p className="mb-6 mt-1 text-sm text-dim">
           What the number on a card is made of, and what we tried that didn&rsquo;t earn a change.
