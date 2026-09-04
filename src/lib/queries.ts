@@ -31,6 +31,7 @@ import type {
 // Consensus math lives in ./consensus (single shared implementation for app +
 // jobs); re-exported here for existing importers.
 import { consensusFromSnapshots, snapToHalf, SNAPSHOT_COLS } from "./consensus";
+import { pageAll } from "./page-all";
 
 export { consensusFromSnapshots, snapToHalf };
 
@@ -844,15 +845,21 @@ export async function fetchTeamAtsSeason(
   // runs per game-page view over every final either team has played, and
   // `select("*")` also drags ml_home/ml_away/source/id along for the ride —
   // ~700 KB a view by November, per the performance audit.
-  const { data: snaps } = await supabase
-    .from("line_snapshots")
-    .select(SNAPSHOT_COLS)
-    .in(
-      "game_id",
-      finals.map((g) => g.id),
-    );
+  // Paged (FREEZE-3): two teams' finals carry ~2,000 snapshots by November
+  // and the unpaged read returned the first 1,000 without a word.
+  const snaps = await pageAll<LineSnapshotRow>((from, to) =>
+    supabase
+      .from("line_snapshots")
+      .select(SNAPSHOT_COLS)
+      .in(
+        "game_id",
+        finals.map((g) => g.id),
+      )
+      .order("id")
+      .range(from, to),
+  );
   const snapsByGame = new Map<number, LineSnapshotRow[]>();
-  for (const s of (snaps ?? []) as LineSnapshotRow[]) {
+  for (const s of snaps) {
     const arr = snapsByGame.get(s.game_id) ?? [];
     arr.push(s);
     snapsByGame.set(s.game_id, arr);

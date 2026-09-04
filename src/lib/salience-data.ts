@@ -24,25 +24,10 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { consensusFromSnapshots, type SnapshotLike } from "./consensus";
+import { pageAll } from "./page-all";
 import { NFL_ID_OFFSET } from "./league";
 import { pollRanksByWeek, pollWeeks } from "./rankings";
 import { rankBySalience, type SalienceGame } from "./salience";
-
-/** PostgREST's ceiling. Read in pages of this and stop on a short one. */
-const PAGE = 1000;
-
-async function pageAll<T>(
-  query: (from: number, to: number) => PromiseLike<{ data: unknown; error: unknown }>,
-): Promise<T[]> {
-  const out: T[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await query(from, from + PAGE - 1);
-    if (error) throw new Error(String((error as { message?: string }).message ?? error));
-    const rows = (data ?? []) as T[];
-    out.push(...rows);
-    if (rows.length < PAGE) return out;
-  }
-}
 
 export interface DeckGame {
   id: number;

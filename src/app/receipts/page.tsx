@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { AppNav } from "../../components/AppNav";
 import { openerClv, summarizeClv } from "../../lib/clv";
+import { lineRecoveredMarker } from "../../lib/freeze-recovery";
+import { pageAll } from "../../lib/page-all";
 import type { GameRow, PredictionRow, TeamRow } from "../../lib/db-types";
 import { DEFAULT_TZ, kickDateLong, kickParts, tzLabel } from "../../lib/kick";
 import { required } from "../../lib/db-result";
@@ -24,6 +26,7 @@ export const metadata = { title: "Receipts" };
  */
 type ReceiptPred = Pick<
   PredictionRow,
+  | "adjustments"
   | "game_id"
   | "clv"
   | "close_spread"
@@ -74,18 +77,24 @@ export default async function ReceiptsPage() {
   // block below actually consume, checked against the file rather than
   // guessed. Pagination itself is a separate question and an owner decision;
   // see 09:P-13 in docs/STATUS.md for why it is not obviously right.
-  const predRes = await supabase
-    .from("predictions")
-    .select(
-      "game_id, clv, close_spread, created_at, edge, edge_flag, home_win_prob, model_version, open_spread, spread, vegas_spread",
-    )
-    .eq("frozen", true)
-    .eq("season_id", seasonId)
-    .order("created_at", { ascending: false });
-  // Receipts ARE the frozen predictions; a failed read rendering as "nothing
-  // frozen yet" would misreport the one thing this page exists to prove
-  // (db-result.ts).
-  const frozen = required<ReceiptPred>(predRes, "frozen predictions");
+  // Paged (FREEZE-3): a season is ~900 frozen rows and PostgREST stops at
+  // 1,000 without saying so. Receipts ARE the frozen predictions; a truncated
+  // read here would quietly drop the oldest weeks from the calibration strip.
+  // `adjustments` rides along for the recovery marker (FREEZE-3).
+  const frozen = await pageAll<ReceiptPred>((from, to) =>
+    supabase
+      .from("predictions")
+      .select(
+        "adjustments, game_id, clv, close_spread, created_at, edge, edge_flag, home_win_prob, model_version, open_spread, spread, vegas_spread",
+      )
+      .eq("frozen", true)
+      .eq("season_id", seasonId)
+      .order("created_at", { ascending: false })
+      .order("id")
+      .range(from, to),
+  ).catch((e: Error) => {
+    throw new Error(`frozen predictions failed to load: ${e.message}`);
+  });
 
   // Newest frozen row per game is the standing prediction; older rows from
   // prior model versions stay in the table as history but don't render.
@@ -333,6 +342,7 @@ export default async function ReceiptsPage() {
         {weeks.map((w) => {
           const rows = byWeek.get(w)!;
           const stamp = rows[0]?.pred.created_at;
+          const recovered = rows.filter((r) => lineRecoveredMarker(r.pred.adjustments) !== null).length;
           return (
             <section key={w} className="card mb-4 overflow-hidden">
               <header className="flex items-baseline justify-between border-b border-chalk/8 px-4 py-2.5">
@@ -363,6 +373,19 @@ export default async function ReceiptsPage() {
                   </tbody>
                 </table>
               </div>
+              {recovered > 0 && (
+                <p className="border-t border-chalk/8 px-4 py-2.5 text-[11px] leading-relaxed text-dim">
+                  &dagger; Market line recovered from the snapshot log on{" "}
+                  {kickDateLong(
+                    lineRecoveredMarker(rows.find((r) => lineRecoveredMarker(r.pred.adjustments))!.pred.adjustments)!.at,
+                    DEFAULT_TZ,
+                  )}
+                  : the freeze read was cut off at 1,000 rows and stamped {recovered} of these
+                  receipts with no line although the books had one. The line, opener, edge and
+                  flag are what the freeze would have written from the same snapshots; the
+                  model&rsquo;s number was never touched.
+                </p>
+              )}
             </section>
           );
         })}
@@ -402,6 +425,9 @@ function ReceiptRow({ r }: { r: Receipt }) {
       </td>
       <td className="py-2 pr-3 text-right text-dim">
         {fmtSpread(pred.vegas_spread === null ? null : Number(pred.vegas_spread))}
+        {lineRecoveredMarker(pred.adjustments) !== null && (
+          <span title="Line recovered from the snapshot log (FREEZE-3)">&dagger;</span>
+        )}
       </td>
       <td className="py-2 pr-3 text-right">
         {edge === null ? (
