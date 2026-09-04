@@ -226,6 +226,34 @@ shipping it.
 
 ## Log
 
+### Sep 4 — LOGF-5/6: the manual form gets a sign button and suggests the closing line
+
+Owner report minutes after LOGF-2 shipped: "I can't log a favorite bet since
+it's -6.5. But if I do a live game or one that happened, I want to be able to
+just click whatever the closing line is for that bet unless I want to change
+it."
+
+**The minus key.** The line and odds inputs asked the phone for its decimal
+and numeric keypads, and neither carries a sign — so "-6.5" and "+145" were
+untypeable on the device the form is used from, which is most of them. The
+sign is now a 44px button beside the number (`SignedInput`), the two halves
+joined into the original field name as a hidden input, so `logBet` reads
+what it always read. Totals show no sign button.
+
+**The suggestion.** `fetchBetFormOptions` now reads `line_consensus` for the
+form's games beside the teams — the same row the slate card renders, so the
+form and the card cannot disagree — and `prefillFor` (pure,
+`lib/bet-form-prefill.ts`) turns game + market + side into a line and a
+price: the stored home spread flipped for the away side, the total as is,
+the moneyline price for the side chosen. Labelled "closing line" when the
+game is in progress or final and "current line" before, because the site
+captures nothing after kickoff. Hand edits survive until the next selection.
+No suggestion for team totals, first halves or futures, where the grader
+captures no closing number either.
+
+**Verified.** Vitest **2,046 across 138 files** (15 new: 8 pure, 7 jsdom),
+typecheck, lint and `next build` green. No migration.
+
 ### Sep 4 — LOGF-1…3: an admin logs bets for a member of the betting group
 
 Owner request: "my friends aren't using the site that much. Can I log their

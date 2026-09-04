@@ -941,12 +941,18 @@ export async function fetchBetFormGames(
   supabase: SupabaseClient,
   seasonId: number,
 ): Promise<{
-  data: Array<{ id: number; start_ts: string | null; home_team_id: number; away_team_id: number }>;
+  data: Array<{
+    id: number;
+    start_ts: string | null;
+    home_team_id: number;
+    away_team_id: number;
+    status: string;
+  }>;
 }> {
   const now = Date.now();
   const { data } = await supabase
     .from("games")
-    .select("id, start_ts, home_team_id, away_team_id")
+    .select("id, start_ts, home_team_id, away_team_id, status")
     // both leagues: the ledger is one book, and this week has games in each
     .in("season_id", seasonIdsForYear(seasonYearOf(seasonId)))
     .gte("start_ts", new Date(now - 3 * 24 * 3600 * 1000).toISOString())

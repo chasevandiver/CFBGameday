@@ -6386,6 +6386,29 @@ changelog's Sep 4 entry.
       `void own bets` — the two rewritten ones under their old names;
       0 rows with a byline yet; ledger at **81 files, 81 rows, counted**.
 
+- [x] **LOGF-5** The favorite could not be typed. Owner report 2026-09-04,
+      minutes into using LOGF-2: "I can't log a favorite bet since it's
+      -6.5." The line field was `inputMode="decimal"` and the odds field
+      `inputMode="numeric"`; a phone's decimal and numeric keypads carry no
+      minus or plus key, so every favorite and every plus-money price was
+      unenterable from the device this form is used on. The sign is now a
+      button beside the magnitude (`SignedInput` in `BetForm`), joined back
+      into the original field name for the action, which reads "-6.5" and
+      "+145" exactly as before. Totals get no sign button. jsdom test.
+- [x] **LOGF-6** The form suggests the number. Same report: "if I do a live
+      game or one that happened, I want to be able to just click whatever
+      the closing line is for that bet unless I want to change it." Picking
+      a game, a market and a side now fills the line (and the price, for a
+      moneyline) from the same `line_consensus` row the slate card shows —
+      labelled **closing line** once the game has started and **current
+      line** before, since nothing is captured after kickoff. Editable; a
+      hand-edited number survives until the next selection, then is
+      re-suggested. Team totals, first halves and futures suggest nothing
+      (the grader captures no closing number for them either). Pure logic in
+      `lib/bet-form-prefill.ts` (8 tests) and `fetchBetFormOptions` reads
+      the consensus in one query beside the teams; 7 jsdom cases on the
+      form. Applies to the ledger's own form too — same component.
+
 ## 5. Not built, by choice
 
 Additive features, no defect behind any of them. Verified still open 2026-08-12.

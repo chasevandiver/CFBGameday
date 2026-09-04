@@ -3,6 +3,14 @@
 import { useRef, useState, useTransition } from "react";
 import { logBet } from "../app/actions/bets";
 import {
+  joinSigned,
+  prefillFor,
+  NO_PREFILL,
+  type BetFormLines,
+  type Prefill,
+  type Sign,
+} from "../lib/bet-form-prefill";
+import {
   BET_TYPES,
   BET_TYPE_LABELS,
   CONFIDENCE_TIERS,
@@ -16,6 +24,8 @@ export interface BetFormGame {
   label: string;
   homeAbbr: string;
   awayAbbr: string;
+  /** The consensus the slate shows for this game, to suggest a number from. */
+  lines?: BetFormLines;
 }
 
 /**
@@ -37,6 +47,32 @@ export function BetForm({
   const [message, setMessage] = useState<string | null>(null);
   const [betType, setBetType] = useState("spread");
   const [gameId, setGameId] = useState("");
+  const [side, setSide] = useState("");
+  /* The line and the odds are held as sign + magnitude rather than one typed
+     string: a phone's decimal keypad has no minus key, so "-6.5" — every
+     favorite — could not be entered at all. The sign is a button; the keypad
+     types the number. Joined back together for the action, which reads them
+     exactly as it always did. */
+  const [fill, setFill] = useState<Prefill>(NO_PREFILL);
+
+  const game = games.find((g) => String(g.id) === gameId) ?? null;
+
+  /* Re-suggest whenever the selection changes: picking a game, a market or a
+     side is the moment the number is wanted, and a hand-edited number survives
+     until the next selection — "just click whatever the closing line is unless
+     I want to change it". */
+  const reselect = (next: { gameId?: string; betType?: string; side?: string }) => {
+    const g = games.find((x) => String(x.id) === (next.gameId ?? gameId)) ?? null;
+    const t = next.betType ?? betType;
+    const sd = next.side ?? side;
+    if (next.gameId !== undefined) setGameId(next.gameId);
+    if (next.betType !== undefined) setBetType(next.betType);
+    if (next.side !== undefined) setSide(next.side);
+    setFill(prefillFor(g?.lines ?? null, t, sd));
+  };
+  const edit = (patch: Partial<Prefill>) => setFill((f) => ({ ...f, ...patch, source: null }));
+  const flip = (which: "lineSign" | "oddsSign") =>
+    edit({ [which]: fill[which] === "-" ? "+" : "-" } as Partial<Prefill>);
 
   function submit(formData: FormData) {
     startTransition(async () => {
@@ -47,6 +83,8 @@ export function BetForm({
         formRef.current?.reset();
         setBetType("spread");
         setGameId("");
+        setSide("");
+        setFill(NO_PREFILL);
         setMessage("Logged ✓");
       }
     });
@@ -55,7 +93,6 @@ export function BetForm({
   const input =
     "w-full rounded-lg border border-chalk/12 bg-elev px-3 py-2 text-sm text-chalk placeholder:text-chalk/35 focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent";
 
-  const game = games.find((g) => String(g.id) === gameId) ?? null;
   const sideOptions: Array<[string, string]> = TEAM_SIDED.has(betType)
     ? [
         ["away", game ? game.awayAbbr : "Away"],
@@ -89,7 +126,7 @@ export function BetForm({
             id="bet-game"
             name="game_id"
             value={gameId}
-            onChange={(e) => setGameId(e.target.value)}
+            onChange={(e) => reselect({ gameId: e.target.value })}
             className={input}
           >
             <option value="">No game — future / other</option>
@@ -108,7 +145,7 @@ export function BetForm({
             id="bet-type"
             name="bet_type"
             value={betType}
-            onChange={(e) => setBetType(e.target.value)}
+            onChange={(e) => reselect({ betType: e.target.value })}
             className={input}
           >
             {BET_TYPES.map((v) => (
@@ -120,7 +157,13 @@ export function BetForm({
         </Field>
         {sideOptions.length > 0 && (
           <Field label="Side" htmlFor="bet-side">
-            <select id="bet-side" name="side" className={input} defaultValue="">
+            <select
+              id="bet-side"
+              name="side"
+              className={input}
+              value={side}
+              onChange={(e) => reselect({ side: e.target.value })}
+            >
               <option value="">Side…</option>
               {sideOptions.map(([v, label]) => (
                 <option key={v} value={v}>
@@ -141,27 +184,41 @@ export function BetForm({
             </select>
           </Field>
         )}
-        <Field label="Line" htmlFor="bet-line" hint="as your ticket reads">
-          <input
+        <Field
+          label="Line"
+          htmlFor="bet-line"
+          hint={fill.source ? `${fill.source} line` : "as your ticket reads"}
+        >
+          <SignedInput
             id="bet-line"
             name="line_taken"
+            sign={fill.lineSign}
+            mag={fill.lineMag}
+            /* Totals have no sign to flip; the button would only confuse. */
+            signed={!TOTAL_SIDED.has(betType)}
             inputMode="decimal"
-            pattern="-?[0-9]+(\.[05])?"
-            title="The number your side holds, half-point increments — e.g. +6.5 for the dog, -3.5 for the favorite, 48.5 for a total"
-            placeholder="-3.5"
+            pattern="[0-9]+(\.[05])?"
+            title="The number your side holds, half-point increments — e.g. 6.5 for the dog, 3.5 for the favorite, 48.5 for a total. Tap the sign to flip it."
+            placeholder="3.5"
             className={input}
+            onSign={() => flip("lineSign")}
+            onMag={(v) => edit({ lineMag: v })}
           />
         </Field>
         <Field label="Odds" htmlFor="bet-odds">
-          <input
+          <SignedInput
             id="bet-odds"
             name="odds"
+            sign={fill.oddsSign}
+            mag={fill.oddsMag}
+            signed
             inputMode="numeric"
-            pattern="[+-]?[0-9]{3,4}"
-            title="American odds, e.g. -110 or +145"
-            placeholder="-110"
-            defaultValue={-110}
+            pattern="[0-9]{3,4}"
+            title="American odds, e.g. 110 with the sign on minus, or 145 with it on plus"
+            placeholder="110"
             className={input}
+            onSign={() => flip("oddsSign")}
+            onMag={(v) => edit({ oddsMag: v })}
           />
         </Field>
       </div>
@@ -219,6 +276,65 @@ export function BetForm({
         <p className={`text-xs ${message === "Logged ✓" ? "text-win" : "text-loss"}`}>{message}</p>
       )}
     </form>
+  );
+}
+
+/**
+ * A number with its sign on a button. The hidden input carries the joined
+ * value under the form's original field name, so the action reads "-6.5" or
+ * "+145" exactly as it did when the sign was typed.
+ */
+function SignedInput({
+  id,
+  name,
+  sign,
+  mag,
+  signed,
+  inputMode,
+  pattern,
+  title,
+  placeholder,
+  className,
+  onSign,
+  onMag,
+}: {
+  id: string;
+  name: string;
+  sign: Sign;
+  mag: string;
+  signed: boolean;
+  inputMode: "decimal" | "numeric";
+  pattern: string;
+  title: string;
+  placeholder: string;
+  className: string;
+  onSign: () => void;
+  onMag: (v: string) => void;
+}) {
+  return (
+    <div className="flex items-stretch gap-1">
+      {signed && (
+        <button
+          type="button"
+          onClick={onSign}
+          aria-label={`Sign: ${sign === "-" ? "minus" : "plus"}. Tap to flip`}
+          className="stat min-h-11 w-11 shrink-0 rounded-lg border border-chalk/12 bg-elev text-base text-chalk hover:border-accent"
+        >
+          {sign === "-" ? "−" : "+"}
+        </button>
+      )}
+      <input
+        id={id}
+        value={mag}
+        onChange={(e) => onMag(e.target.value)}
+        inputMode={inputMode}
+        pattern={pattern}
+        title={title}
+        placeholder={placeholder}
+        className={className}
+      />
+      <input type="hidden" name={name} value={signed ? joinSigned(sign, mag) : mag.trim()} />
+    </div>
   );
 }
 
