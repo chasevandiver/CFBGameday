@@ -22,7 +22,16 @@ export interface BetFormGame {
  * Manual ledger entry with real labels — the old form was placeholder-only
  * (labels vanish the moment you type; classic form a11y failure, audit §17).
  */
-export function BetForm({ seasonId, games = [] }: { seasonId: number; games?: BetFormGame[] }) {
+export function BetForm({
+  seasonId,
+  games = [],
+  forUserId = null,
+}: {
+  seasonId: number;
+  games?: BetFormGame[];
+  /** 0083: log as this member of a betting group you run, not as yourself. */
+  forUserId?: string | null;
+}) {
   const formRef = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
@@ -62,6 +71,7 @@ export function BetForm({ seasonId, games = [] }: { seasonId: number; games?: Be
   return (
     <form ref={formRef} action={submit} className="flex flex-col gap-3">
       <input type="hidden" name="season_id" value={seasonId} />
+      {forUserId && <input type="hidden" name="for_user" value={forUserId} />}
 
       <Field label="Bet" htmlFor="bet-description">
         <input

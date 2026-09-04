@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 import { ACTIVE_GROUP_COOKIE, activeOfKind, resolveActiveGroup } from "../../../lib/groups";
 import { seasonYearOf } from "../../../lib/league";
+import { resolveActingBettor } from "../../../lib/log-for";
 import { fetchCurrentSeasonWeek, fetchLiveSlate, fetchSlateView } from "../../../lib/queries";
 import { createClient } from "../../../lib/supabase/server";
 import { parseWeekParam } from "../../../lib/week-range";
@@ -55,12 +56,21 @@ export async function GET(request: NextRequest) {
     (await cookies()).get(ACTIVE_GROUP_COOKIE)?.value ??
     null;
   const { mine } = await resolveActiveGroup(supabase, user?.id ?? null, remembered);
+  // 0083: the page rendered as a member the admin is logging for; the refresh
+  // has to agree, or the first poll swaps the cards back to the admin's bets.
+  // Same resolver as the page, same grant, same fail-closed answer.
+  const acting = await resolveActingBettor(
+    supabase,
+    user?.id ?? null,
+    request.nextUrl.searchParams.get("for"),
+  );
+  const viewerId = acting?.id ?? user?.id ?? null;
 
   if (liveView) {
     const live = await fetchLiveSlate(
       supabase,
       seasonYearOf(seasonId),
-      user?.id ?? null,
+      viewerId,
       activeOfKind(mine, "pickem", remembered)?.id ?? null,
       activeOfKind(mine, "betting", remembered)?.id ?? null,
     );
@@ -71,7 +81,7 @@ export async function GET(request: NextRequest) {
     supabase,
     seasonId,
     week,
-    user?.id ?? null,
+    viewerId,
     st,
     activeOfKind(mine, "pickem", remembered)?.id ?? null,
     activeOfKind(mine, "betting", remembered)?.id ?? null,
