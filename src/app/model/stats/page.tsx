@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { AppNav } from "../../../components/AppNav";
-import { StatTile } from "../../../components/StatTile";
 import type { GameRow, PredictionRow, TeamRow } from "../../../lib/db-types";
 import { required } from "../../../lib/db-result";
 import {
@@ -10,7 +9,10 @@ import {
   formatRecord3,
   gradeReceipt,
   MATCHUP_CUTS,
-  rowsFor,
+  MIN_BUCKET,
+  MIN_ROW,
+  SPLITS_AFTER,
+  splitRows,
   tallyModel,
   TIMING_CUTS,
   TOTAL_CUTS,
@@ -29,20 +31,22 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Model stats" };
 
 /**
- * The model's season record, and every split of it (owner request,
- * 2026-09-04: "I want to see how it's doing on a bunch of different buckets").
+ * The model's season record, and the splits the season has earned (owner
+ * request, 2026-09-04: "I want to see how it's doing on a bunch of different
+ * buckets"; owner reaction to the first render the same night: "It looks
+ * incredibly confusing").
+ *
+ * The second version is the simple one. One record leads — the leans against
+ * the spread, which is the only record that says anything — with straight-up
+ * and CLV beneath it and the rest of the numbers in a short list. Every table
+ * is two figures wide (record, CLV), and a table appears only once one of its
+ * buckets has MIN_BUCKET graded games; before that the section says so in one
+ * line instead of printing 0% and 100% on n=1. Five splits show by default;
+ * the rest sit behind a fold.
  *
  * This page renders; it does not calculate. `src/lib/model-stats.ts` grades
- * each frozen prediction the way Receipts does and owns every bucket
- * boundary; each table here is `rowsFor(graded, spec)`. Same division as
- * `/ledger/stats` and `bet-cuts.ts`, for the same reason: a second private
- * tally is a second place for "the model was 8-3" to mean something else.
- *
- * Reads the same rows Receipts reads — frozen predictions for the season,
- * newest per game — plus the game and team context the cuts need and one
- * `line_consensus` row per game for the closing total, which Receipts never
- * grades. Whole-season on purpose: these are season numbers, and a paginated
- * read would silently turn them into this page's numbers (09:P-13).
+ * each frozen prediction the way Receipts does and owns every bucket boundary
+ * and the sample-size rule. Whole-season read on purpose (09:P-13).
  */
 
 type PredSlice = Pick<
@@ -93,10 +97,10 @@ const num = (v: number | string | null): number | null => (v === null ? null : N
 
 const fmtPct = (p: number | null, digits = 0): string =>
   p === null ? "–" : `${(p * 100).toFixed(digits)}%`;
-const fmtSigned = (v: number | null, digits = 2): string =>
+const fmtSigned = (v: number | null, digits = 1): string =>
   v === null ? "–" : `${v > 0 ? "+" : ""}${v.toFixed(digits)}`;
-const toneOf = (v: number | null): "gold" | "flag" | undefined =>
-  v === null || v === 0 ? undefined : v > 0 ? "gold" : "flag";
+const clvClass = (v: number | null): string =>
+  v === null ? "text-dim" : v > 0 ? "text-win" : v < 0 ? "text-loss" : "text-push";
 
 export default async function ModelStatsPage({
   searchParams,
@@ -107,8 +111,7 @@ export default async function ModelStatsPage({
   const { seasonId: currentSeason } = await fetchCurrentSeasonWeek(supabase);
 
   // Which seasons have receipts at all. Head-only counts, one per CFB season
-  // row, so the switcher lists only seasons with something to show and the
-  // page stays silent about the three archive seasons that never froze one.
+  // row, so the switcher lists only seasons with something to show.
   const seasonRows = required<{ id: number }>(
     await supabase.from("seasons").select("id").eq("sport", "cfb").order("id", { ascending: false }),
     "seasons",
@@ -217,10 +220,8 @@ export default async function ModelStatsPage({
 
   const overall = tallyModel(graded);
   const flagged = tallyModel(graded.filter((r) => r.edgeFlag !== null));
-  const cal = calibration(graded);
   const versions = new Set(graded.map((r) => r.modelVersion));
   const frozenCount = graded.length;
-
   const seasons = withReceipts.length > 1 ? withReceipts : [];
 
   if (overall.n === 0) {
@@ -241,172 +242,183 @@ export default async function ModelStatsPage({
     );
   }
 
+  // The record is the leans against the spread: every finished game with a
+  // market line produces one. The games without a line (FCS buy games the
+  // books never priced) are counted straight-up only, and said so.
+  const lined = overall.ats.wins + overall.ats.losses + overall.ats.pushes;
+  const unlined = overall.n - lined;
+  const closeDecided = overall.atsClose.wins + overall.atsClose.losses;
+  const ouDecided = overall.ou.wins + overall.ou.losses;
+
+  const defaults: ModelCutSpec[] = [
+    WEEK_CUT,
+    DISAGREEMENT_CUTS[0], // edge size
+    MATCHUP_CUTS[1], // favourite or dog
+    MATCHUP_CUTS[2], // market spread
+    MATCHUP_CUTS[3], // tier
+  ];
+  const more: ModelCutSpec[] = [
+    ...DISAGREEMENT_CUTS.slice(1),
+    MATCHUP_CUTS[0],
+    ...MATCHUP_CUTS.slice(4),
+    ...TIMING_CUTS,
+    ...(versions.size > 1 ? [VERSION_CUT] : []),
+  ];
+  const shownDefaults = defaults.map((s) => [s, splitRows(graded, s)] as const).filter(([, r]) => r.show);
+  const shownMore = more.map((s) => [s, splitRows(graded, s)] as const).filter(([, r]) => r.show);
+  const shownTotals = TOTAL_CUTS.map((s) => [s, splitRows(graded, s)] as const).filter(([, r]) => r.show);
+  const cal = calibration(graded).filter((b) => b.n >= MIN_ROW);
+  const showCal = cal.some((b) => b.n >= MIN_BUCKET);
+
   return (
     <Shell seasonId={seasonId} seasons={seasons}>
-      <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatTile
-          label="Straight up"
-          value={`${overall.su.wins}-${overall.su.n - overall.su.wins}`}
-          sub={`${fmtPct(overall.suPct)} · model favourites`}
-        />
-        <StatTile
-          label="Leans ATS"
-          value={formatRecord3(overall.ats)}
-          sub={`${fmtPct(overall.atsPct, 1)} vs the freeze line`}
-        />
-        <StatTile
-          label="Vs the close"
-          value={formatRecord3(overall.atsClose)}
-          sub={
-            overall.atsClose.wins + overall.atsClose.losses > 0
-              ? `${fmtPct(
-                  overall.atsClose.wins / (overall.atsClose.wins + overall.atsClose.losses),
-                  1,
-                )} · needs 52.4%`
-              : "graded Sunday"
-          }
-        />
-        <StatTile
-          label="Flagged edges"
-          value={formatRecord3(flagged.ats)}
-          sub={
-            flagged.ats.wins + flagged.ats.losses > 0
-              ? `${fmtPct(flagged.atsPct, 1)} · 2023–25 went 49.2%`
-              : "no graded flags yet"
-          }
-        />
-        <StatTile
-          label="Closing line value"
-          value={overall.clv.avg === null ? "–" : `${fmtSigned(overall.clv.avg)} pts`}
-          tone={toneOf(overall.clv.avg)}
-          sub={
-            overall.clv.n === 0
-              ? "graded Sunday after kickoff"
-              : `beat the close ${overall.clv.beat}/${overall.clv.n}`
-          }
-        />
-        <StatTile
-          label="Spread error"
-          value={overall.mae === null ? "–" : overall.mae.toFixed(1)}
-          sub={`MAE · bias ${fmtSigned(overall.bias, 1)} home`}
-        />
-        <StatTile
-          label="Totals"
-          value={overall.ou.wins + overall.ou.losses + overall.ou.pushes > 0 ? formatRecord3(overall.ou) : "–"}
-          sub={
-            overall.ou.wins + overall.ou.losses > 0
-              ? `${fmtPct(overall.ouPct, 1)} vs the closing total`
-              : overall.totalMae === null
-                ? "no totals priced yet"
-                : "no closing totals captured"
-          }
-        />
-        <StatTile
-          label="Graded"
-          value={String(overall.n)}
-          sub={`of ${frozenCount} frozen · ${versions.size === 1 ? [...versions][0] : `${versions.size} versions`}`}
-        />
+      {/* The record. One number, the largest thing on the screen. */}
+      <section className="card p-4">
+        <p className="text-xs uppercase text-chalk/55">Record against the spread</p>
+        <p className="stat mt-1 text-4xl text-chalk">{formatRecord3(overall.ats)}</p>
+        <p className="stat mt-1 text-xs text-dim">
+          {fmtPct(overall.atsPct, 1)} · {lined} {lined === 1 ? "game" : "games"} with a line
+          {unlined > 0 && ` · ${unlined} without`}
+        </p>
       </section>
 
-      <p className="mb-6 text-[11px] leading-relaxed text-dim">
-        Leans are information, not bets: the model&rsquo;s disagreements with the market went 49.2%
-        against the close in the 2023–25 backtest, under the 52.4% a −110 bet needs. Every table
-        below is descriptive. Win rates carry their standard error, and a bucket that clears
-        break-even on a few dozen games is what noise looks like — the backtest&rsquo;s 6–10 band did
-        exactly that and it was nothing.{" "}
+      <section className="mt-3 grid grid-cols-2 gap-3">
+        <div className="card p-3">
+          <p className="text-xs uppercase text-chalk/55">Straight up</p>
+          <p className="stat mt-1 text-xl">{`${overall.su.wins}-${overall.su.n - overall.su.wins}`}</p>
+          <p className="stat text-[10.5px] leading-tight text-dim">
+            {fmtPct(overall.suPct)} of favourites, all {overall.n} games
+          </p>
+        </div>
+        <div className="card p-3">
+          <p className="text-xs uppercase text-chalk/55">Closing line value</p>
+          <p className={`stat mt-1 text-xl ${clvClass(overall.clv.avg)}`}>
+            {overall.clv.avg === null ? "–" : `${fmtSigned(overall.clv.avg, 2)} pts`}
+          </p>
+          <p className="stat text-[10.5px] leading-tight text-dim">
+            {overall.clv.n === 0
+              ? "graded Sunday after kickoff"
+              : `beat the close ${overall.clv.beat} of ${overall.clv.n}`}
+          </p>
+        </div>
+      </section>
+
+      <p className="mb-6 mt-3 text-[11px] leading-relaxed text-dim">
+        Leans are information, not bets: they went 49.2% against the close in the 2023–25
+        backtest, under the 52.4% a −110 bet needs.{" "}
         <Link href="/model" className="text-accent underline-offset-2 hover:underline">
           What was tried →
         </Link>
       </p>
 
-      <Group title="Week by week" single>
-        <CutTable spec={WEEK_CUT} rows={rowsFor(graded, WEEK_CUT)} total={overall.n} />
-      </Group>
-
-      <Group title="The disagreement">
-        {DISAGREEMENT_CUTS.map((spec) => (
-          <CutTable key={spec.label} spec={spec} rows={rowsFor(graded, spec)} total={overall.n} />
-        ))}
-      </Group>
-
-      <Group title="The matchup">
-        {MATCHUP_CUTS.map((spec) => (
-          <CutTable key={spec.label} spec={spec} rows={rowsFor(graded, spec)} total={overall.n} />
-        ))}
-      </Group>
-
-      <Group title="When it kicks">
-        {TIMING_CUTS.map((spec) => (
-          <CutTable key={spec.label} spec={spec} rows={rowsFor(graded, spec)} total={overall.n} />
-        ))}
-      </Group>
-
-      <Group title="Totals">
-        {TOTAL_CUTS.map((spec) => (
-          <TotalTable key={spec.label} spec={spec} rows={rowsFor(graded, spec)} />
-        ))}
-        {TOTAL_CUTS.every((spec) => rowsFor(graded, spec).length === 0) && (
-          <p className="text-xs leading-relaxed text-dim sm:col-span-2">
-            No totals graded yet. The freeze prices a total only once the offense/defense split
-            carries information — not in the preseason weeks — and grades it against the consensus
-            captured at kickoff.
+      {shownDefaults.length === 0 ? (
+        <section className="mb-6">
+          <h2 className="mb-2 text-sm text-accent">Splits</h2>
+          <p className="card px-4 py-5 text-sm text-dim">
+            Splits appear after about {SPLITS_AFTER} graded games, once a bucket has {MIN_BUCKET}{" "}
+            in it. {overall.n} so far.
           </p>
-        )}
-      </Group>
-
-      <Group title="Calibration" single>
-        <CalibrationTable rows={cal} />
-      </Group>
-
-      {versions.size > 1 && (
-        <Group title="By model version" single>
-          <CutTable spec={VERSION_CUT} rows={rowsFor(graded, VERSION_CUT)} total={overall.n} />
-        </Group>
+        </section>
+      ) : (
+        <section className="mb-6">
+          <h2 className="mb-2 text-sm text-accent">Splits</h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {shownDefaults.map(([spec, r]) => (
+              <CutTable key={spec.label} spec={spec} rows={r.rows} total={overall.n} />
+            ))}
+          </div>
+        </section>
       )}
 
-      <p className="mb-8 mt-6 text-[10.5px] leading-relaxed text-dim">
-        Final games only; a postponed or cancelled game grades nothing. ATS is the model&rsquo;s
-        lean against the consensus it was priced against Thursday night — the same line Receipts
-        grades — and a game where the model sat on the number has no lean. Totals grade against
-        the consensus total captured within six hours of kickoff, the grader&rsquo;s rule; the
-        model&rsquo;s own total is only stored once the season has enough results to price one. MAE
-        is the model spread against the actual margin, in points. Rows a cut can&rsquo;t answer are
-        left out, so a table that skips some games will not add to {overall.n}.
+      {(shownMore.length > 0 || shownTotals.length > 0 || showCal) && (
+        <details className="mb-6 group">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm text-accent [&::-webkit-details-marker]:hidden">
+            <span className="display">More splits</span>
+            <span className="text-xs text-dim group-open:hidden">
+              {shownMore.length + shownTotals.length + (showCal ? 1 : 0)} more
+            </span>
+            <span className="h-px flex-1 bg-chalk/10" aria-hidden />
+          </summary>
+          <div className="mt-2 grid gap-3 sm:grid-cols-2">
+            {shownMore.map(([spec, r]) => (
+              <CutTable key={spec.label} spec={spec} rows={r.rows} total={overall.n} />
+            ))}
+            {shownTotals.map(([spec, r]) => (
+              <TotalTable key={`total-${spec.label}`} spec={spec} rows={r.rows} />
+            ))}
+            {showCal && <CalibrationTable rows={cal} />}
+          </div>
+        </details>
+      )}
+
+      <section className="mb-6">
+        <h2 className="mb-2 text-sm text-accent">More numbers</h2>
+        <dl className="card divide-y divide-chalk/10 px-4">
+          <Row
+            label="Vs the closing line"
+            value={closeDecided > 0 ? formatRecord3(overall.atsClose) : "–"}
+            note={
+              closeDecided > 0
+                ? `${fmtPct(overall.atsClose.wins / closeDecided, 1)} · break-even is 52.4%`
+                : "graded Sunday"
+            }
+          />
+          <Row
+            label="Flagged edges"
+            value={flagged.ats.wins + flagged.ats.losses + flagged.ats.pushes > 0 ? formatRecord3(flagged.ats) : "–"}
+            note={
+              flagged.ats.wins + flagged.ats.losses > 0
+                ? `${fmtPct(flagged.atsPct, 1)} · went 49.2% in 2023–25`
+                : "no graded flags yet"
+            }
+          />
+          <Row
+            label="Spread error"
+            value={overall.mae === null ? "–" : `${overall.mae.toFixed(1)} pts`}
+            note={`average miss · home teams ${overall.bias === null ? "–" : fmtSigned(overall.bias)} vs the number`}
+          />
+          <Row
+            label="Totals"
+            value={ouDecided + overall.ou.pushes > 0 ? formatRecord3(overall.ou) : "–"}
+            note={
+              ouDecided > 0
+                ? `${fmtPct(overall.ouPct, 1)} vs the closing total`
+                : overall.totalMae === null
+                  ? "no totals priced yet"
+                  : "no closing totals captured"
+            }
+          />
+          <Row
+            label="Graded"
+            value={`${overall.n} of ${frozenCount}`}
+            note={`frozen predictions · ${versions.size === 1 ? [...versions][0] : `${versions.size} model versions`}`}
+          />
+        </dl>
+      </section>
+
+      <p className="mb-8 text-[10.5px] leading-relaxed text-dim">
+        Final games only. The record is the model&rsquo;s lean against the consensus it was
+        priced against Thursday night, the same line Receipts grades; games the books never
+        priced count straight-up only. Buckets under {MIN_ROW} games fold into
+        &ldquo;Other.&rdquo;
       </p>
     </Shell>
   );
 }
 
-function Group({
-  title,
-  children,
-  single = false,
-}: {
-  title: string;
-  children: React.ReactNode;
-  single?: boolean;
-}) {
+function Row({ label, value, note }: { label: string; value: string; note: string }) {
   return (
-    <section className="mb-6">
-      <h2 className="mb-2 text-sm text-accent">{title}</h2>
-      <div className={single ? "grid gap-3" : "grid gap-3 sm:grid-cols-2"}>{children}</div>
-    </section>
+    <div className="flex items-baseline justify-between gap-3 py-2.5">
+      <dt className="text-sm text-chalk/85">{label}</dt>
+      <dd className="text-right">
+        <span className="stat text-sm text-chalk">{value}</span>
+        <span className="stat block text-[10.5px] leading-tight text-dim">{note}</span>
+      </dd>
+    </div>
   );
 }
 
-/** Dim a row too small to read anything into. */
-const THIN = 10;
-
-const pctClass = (t: ModelTally): string => {
-  if (t.atsPct === null) return "text-dim";
-  if (t.ats.wins + t.ats.losses < THIN) return "text-chalk";
-  return t.atsPct > 0.524 ? "text-win" : t.atsPct < 0.476 ? "text-loss" : "text-chalk";
-};
-
-/**
- * One breakdown: ATS record, win rate with its standard error, CLV and MAE
- * per bucket, with n so a 3-0 cannot be mistaken for a season.
- */
+/** One breakdown: record and CLV per bucket, n on every row. */
 function CutTable({
   spec,
   rows,
@@ -419,50 +431,29 @@ function CutTable({
   if (rows.length === 0) return null;
   const covered = rows.reduce((n, [, t]) => n + t.n, 0);
   return (
-    <div className="card min-w-0 overflow-x-auto p-3">
-      <h3 className="mb-2 text-xs uppercase text-chalk/55">{spec.label}</h3>
+    <div className="card min-w-0 p-3">
+      <h3 className="mb-1 text-xs uppercase text-chalk/55">{spec.label}</h3>
       <table className="stats w-full text-sm">
-        <thead>
-          <tr className="border-b border-chalk/20 text-left text-[10px] uppercase text-chalk/55">
-            <th className="py-1 pr-2 font-normal">{spec.label}</th>
-            <th className="py-1 px-2 text-right font-normal">ATS</th>
-            <th className="py-1 px-2 text-right font-normal">Win%</th>
-            <th className="py-1 px-2 text-right font-normal">CLV</th>
-            <th className="py-1 pl-2 text-right font-normal">MAE</th>
+        <thead className="sr-only">
+          <tr>
+            <th>{spec.label}</th>
+            <th>Record</th>
+            <th>CLV</th>
           </tr>
         </thead>
         <tbody>
           {rows.map(([key, t]) => (
-            <tr
-              key={key}
-              className={`border-b border-chalk/10 last:border-0 ${t.n < THIN ? "text-chalk/60" : ""}`}
-            >
-              <td className="py-1.5 pr-2 font-sans">
+            <tr key={key} className="border-t border-chalk/10">
+              <td className="py-2 pr-2 font-sans">
                 {key}
-                <span className="ml-1.5 text-[10px] text-dim">n={t.n}</span>
+                <span className="ml-1.5 text-[10px] text-dim">{t.n}</span>
               </td>
-              <td className="py-1.5 px-2 text-right">{formatRecord3(t.ats)}</td>
-              <td className={`py-1.5 px-2 text-right ${pctClass(t)}`}>
-                {fmtPct(t.atsPct)}
-                {t.atsSe !== null && (
-                  <span className="text-[10px] text-dim"> ±{(t.atsSe * 100).toFixed(0)}</span>
-                )}
+              <td className="whitespace-nowrap py-2 px-2 text-right">
+                {formatRecord3(t.ats)}
+                <span className="ml-1.5 text-[10px] text-dim">{fmtPct(t.atsPct)}</span>
               </td>
-              <td
-                className={`py-1.5 px-2 text-right ${
-                  t.clv.avg === null
-                    ? "text-dim"
-                    : t.clv.avg > 0
-                      ? "text-win"
-                      : t.clv.avg < 0
-                        ? "text-loss"
-                        : "text-push"
-                }`}
-              >
-                {fmtSigned(t.clv.avg, 1)}
-              </td>
-              <td className="py-1.5 pl-2 text-right text-dim">
-                {t.mae === null ? "–" : t.mae.toFixed(1)}
+              <td className={`whitespace-nowrap py-2 pl-2 text-right ${clvClass(t.clv.avg)}`}>
+                {fmtSigned(t.clv.avg)}
               </td>
             </tr>
           ))}
@@ -472,60 +463,50 @@ function CutTable({
         <p className="mt-1.5 text-[10px] leading-relaxed text-dim">
           {spec.note}
           {spec.note && covered < total ? " " : ""}
-          {covered < total && `${covered} of ${total} graded games; the rest have no ${spec.label.toLowerCase()}.`}
+          {covered < total && `${covered} of ${total} games; the rest have no line.`}
         </p>
       )}
     </div>
   );
 }
 
-/** The totals breakdown: O/U record and total MAE per bucket. */
+/** The totals breakdown: over/under record and average miss per bucket. */
 function TotalTable({ spec, rows }: { spec: ModelCutSpec; rows: Array<[string, ModelTally]> }) {
   if (rows.length === 0) return null;
   return (
-    <div className="card min-w-0 overflow-x-auto p-3">
-      <h3 className="mb-2 text-xs uppercase text-chalk/55">{spec.label}</h3>
+    <div className="card min-w-0 p-3">
+      <h3 className="mb-1 text-xs uppercase text-chalk/55">Totals · {spec.label.toLowerCase()}</h3>
       <table className="stats w-full text-sm">
-        <thead>
-          <tr className="border-b border-chalk/20 text-left text-[10px] uppercase text-chalk/55">
-            <th className="py-1 pr-2 font-normal">{spec.label}</th>
-            <th className="py-1 px-2 text-right font-normal">O/U</th>
-            <th className="py-1 px-2 text-right font-normal">Win%</th>
-            <th className="py-1 pl-2 text-right font-normal">MAE</th>
+        <thead className="sr-only">
+          <tr>
+            <th>{spec.label}</th>
+            <th>Over/under record</th>
+            <th>Average miss</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map(([key, t]) => {
-            const decided = t.ou.wins + t.ou.losses;
-            return (
-              <tr
-                key={key}
-                className={`border-b border-chalk/10 last:border-0 ${decided < THIN ? "text-chalk/60" : ""}`}
-              >
-                <td className="py-1.5 pr-2 font-sans">
-                  {key}
-                  <span className="ml-1.5 text-[10px] text-dim">n={t.ou.wins + t.ou.losses + t.ou.pushes}</span>
-                </td>
-                <td className="py-1.5 px-2 text-right">{formatRecord3(t.ou)}</td>
-                <td className="py-1.5 px-2 text-right">
-                  {fmtPct(t.ouPct)}
-                  {decided > 0 && (
-                    <span className="text-[10px] text-dim"> ±{(Math.sqrt(0.25 / decided) * 100).toFixed(0)}</span>
-                  )}
-                </td>
-                <td className="py-1.5 pl-2 text-right text-dim">
-                  {t.totalMae === null ? "–" : t.totalMae.toFixed(1)}
-                </td>
-              </tr>
-            );
-          })}
+          {rows.map(([key, t]) => (
+            <tr key={key} className="border-t border-chalk/10">
+              <td className="py-2 pr-2 font-sans">
+                {key}
+                <span className="ml-1.5 text-[10px] text-dim">{t.ou.wins + t.ou.losses + t.ou.pushes}</span>
+              </td>
+              <td className="whitespace-nowrap py-2 px-2 text-right">
+                {formatRecord3(t.ou)}
+                <span className="ml-1.5 text-[10px] text-dim">{fmtPct(t.ouPct)}</span>
+              </td>
+              <td className="whitespace-nowrap py-2 pl-2 text-right text-dim">
+                {t.totalMae === null ? "–" : `${t.totalMae.toFixed(1)} pts`}
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
   );
 }
 
-/** SPEC §2.5: do 70% favourites win about 70%? */
+/** SPEC §2.5: do 70% favourites win about 70%? Predicted beside what happened. */
 function CalibrationTable({
   rows,
 }: {
@@ -533,45 +514,31 @@ function CalibrationTable({
 }) {
   if (rows.length === 0) return null;
   return (
-    <div className="card min-w-0 overflow-x-auto p-3">
-      <h3 className="mb-2 text-xs uppercase text-chalk/55">Win probability</h3>
+    <div className="card min-w-0 p-3">
+      <h3 className="mb-1 text-xs uppercase text-chalk/55">Win probability</h3>
       <table className="stats w-full text-sm">
         <thead>
-          <tr className="border-b border-chalk/20 text-left text-[10px] uppercase text-chalk/55">
-            <th className="py-1 pr-2 font-normal">Favourite at</th>
-            <th className="py-1 px-2 text-right font-normal">n</th>
-            <th className="py-1 px-2 text-right font-normal">Predicted</th>
-            <th className="py-1 px-2 text-right font-normal">Won</th>
-            <th className="py-1 pl-2 text-right font-normal">Gap</th>
+          <tr className="text-left text-[10px] uppercase text-chalk/55">
+            <th className="pb-1 pr-2 font-normal">Favourite at</th>
+            <th className="pb-1 px-2 text-right font-normal">Expected</th>
+            <th className="pb-1 pl-2 text-right font-normal">Won</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => {
-            const gap = (r.actual - r.predicted) * 100;
-            return (
-              <tr
-                key={r.label}
-                className={`border-b border-chalk/10 last:border-0 ${r.n < THIN ? "text-chalk/60" : ""}`}
-              >
-                <td className="py-1.5 pr-2">{r.label}</td>
-                <td className="py-1.5 px-2 text-right text-dim">{r.n}</td>
-                <td className="py-1.5 px-2 text-right">{(r.predicted * 100).toFixed(0)}%</td>
-                <td className="py-1.5 px-2 text-right">{(r.actual * 100).toFixed(0)}%</td>
-                <td
-                  className={`py-1.5 pl-2 text-right ${
-                    r.n < THIN ? "text-dim" : Math.abs(gap) <= 3 ? "text-win" : Math.abs(gap) <= 6 ? "text-chalk" : "text-loss"
-                  }`}
-                >
-                  {fmtSigned(gap, 0)}
-                </td>
-              </tr>
-            );
-          })}
+          {rows.map((r) => (
+            <tr key={r.label} className="border-t border-chalk/10">
+              <td className="py-2 pr-2">
+                {r.label}
+                <span className="ml-1.5 text-[10px] text-dim">{r.n}</span>
+              </td>
+              <td className="py-2 px-2 text-right text-dim">{(r.predicted * 100).toFixed(0)}%</td>
+              <td className="py-2 pl-2 text-right">{(r.actual * 100).toFixed(0)}%</td>
+            </tr>
+          ))}
         </tbody>
       </table>
       <p className="mt-1.5 text-[10px] leading-relaxed text-dim">
-        Predicted is the mean win probability the model gave its favourite in the band; Won is
-        how often it did. The backtest&rsquo;s bar is every band within 3 points.
+        Expected is the win probability the model gave its favourite; Won is how often it did.
       </p>
     </div>
   );
@@ -611,9 +578,7 @@ function Shell({
             </Link>
           </span>
         </div>
-        <p className="mb-4 text-sm text-dim">
-          The {seasonId} record, graded off the frozen receipts, and every split of it.
-        </p>
+        <p className="mb-4 text-sm text-dim">The {seasonId} season, graded off the frozen receipts.</p>
         {seasons.length > 0 && (
           <nav aria-label="Season" className="mb-5 flex flex-wrap gap-2">
             {seasons.map((s) => (

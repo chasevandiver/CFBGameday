@@ -4,67 +4,56 @@ import { describe, expect, it, vi } from "vitest";
 /**
  * Render smoke test: the page against a fixture database. The arithmetic is
  * tested in `lib/model-stats.test.ts`; this checks the page reads the right
- * tables, folds them the way it says it does, and renders every section
- * without a runtime error — the thing a typecheck cannot prove.
+ * tables, folds them the way it says it does, gates the splits on sample
+ * size, and renders without a runtime error — the thing a typecheck cannot
+ * prove.
  */
 
 type Row = Record<string, unknown>;
 
-const TABLES: Record<string, Row[]> = {
-  seasons: [
-    { id: 2026, sport: "cfb" },
-    { id: 2025, sport: "cfb" },
-  ],
-  predictions: [
-    // Game 1: model −7 vs market −3, home lean, home won by 14 → ATS win.
-    {
-      id: 1, game_id: 1, season_id: 2026, frozen: true, model_version: "2026.6.0",
-      spread: -7, total: 52, home_win_prob: 0.7, vegas_spread: -3, open_spread: -2.5,
-      close_spread: -4, edge: -4, edge_flag: "EDGE", consensus_flag: true, clv: 1,
-      created_at: "2026-09-10T03:00:00Z",
-    },
-    // Game 2: model −1 vs market −3, away lean, home won by 1 → ATS win; SU win.
-    {
-      id: 2, game_id: 2, season_id: 2026, frozen: true, model_version: "2026.6.0",
-      spread: -1, total: null, home_win_prob: 0.53, vegas_spread: -3, open_spread: -3,
-      close_spread: -3.5, edge: 2, edge_flag: "EDGE", consensus_flag: false, clv: -0.5,
-      created_at: "2026-09-10T03:00:00Z",
-    },
-    // Game 3: not played yet.
-    {
-      id: 3, game_id: 3, season_id: 2026, frozen: true, model_version: "2026.6.0",
-      spread: -10, total: null, home_win_prob: 0.8, vegas_spread: -9, open_spread: -8,
-      close_spread: null, edge: -1, edge_flag: null, consensus_flag: true, clv: null,
-      created_at: "2026-09-17T03:00:00Z",
-    },
-  ],
-  games: [
-    {
-      id: 1, week: 2, season_type: "regular", start_ts: "2026-09-12T19:30:00Z", status: "final",
-      home_points: 31, away_points: 17, home_team_id: 10, away_team_id: 11, neutral_site: false,
-      conference_game: true,
-    },
-    {
-      id: 2, week: 2, season_type: "regular", start_ts: "2026-09-12T23:30:00Z", status: "final",
-      home_points: 21, away_points: 20, home_team_id: 12, away_team_id: 10, neutral_site: true,
-      conference_game: false,
-    },
-    {
-      id: 3, week: 3, season_type: "regular", start_ts: "2026-09-19T16:00:00Z", status: "scheduled",
-      home_points: null, away_points: null, home_team_id: 11, away_team_id: 12, neutral_site: false,
-      conference_game: false,
-    },
-  ],
-  teams: [
-    { id: 10, school: "Georgia", conference: "SEC", classification: "fbs" },
-    { id: 11, school: "Alabama", conference: "SEC", classification: "fbs" },
-    { id: 12, school: "Toledo", conference: "MAC", classification: "fbs" },
-  ],
-  line_consensus: [
-    { game_id: 1, total: 49.5, as_of: "2026-09-12T18:00:00Z" },
-    { game_id: 2, total: 44, as_of: "2026-09-12T22:00:00Z" },
-  ],
-};
+/**
+ * Twelve final week-1 games the model leaned home on at −7 against a −3
+ * market: eight home covers, three misses, one push. One unlined FCS game the
+ * model got right straight-up, and one week-2 game still to play.
+ */
+function fixture(): Record<string, Row[]> {
+  const predictions: Row[] = [];
+  const games: Row[] = [];
+  const pred = (id: number, over: Row): Row => ({
+    id, game_id: id, season_id: 2026, frozen: true, model_version: "2026.6.0",
+    spread: -7, total: null, home_win_prob: 0.7, vegas_spread: -3, open_spread: -2.5,
+    close_spread: -4, edge: -4, edge_flag: "EDGE", consensus_flag: true, clv: 1,
+    created_at: "2026-09-03T03:00:00Z", ...over,
+  });
+  const game = (id: number, over: Row): Row => ({
+    id, week: 1, season_type: "regular", start_ts: "2026-09-05T19:30:00Z", status: "final",
+    home_points: 31, away_points: 17, home_team_id: 10, away_team_id: 11, neutral_site: false,
+    conference_game: true, ...over,
+  });
+  for (let i = 1; i <= 12; i += 1) {
+    predictions.push(pred(i, {}));
+    // margins: 8 cover (+14), 3 miss (+1), 1 push (+3)
+    const margin = i <= 8 ? 14 : i <= 11 ? 1 : 3;
+    games.push(game(i, { home_points: 17 + margin }));
+  }
+  predictions.push(pred(13, { vegas_spread: null, edge: null, edge_flag: null, open_spread: null, close_spread: null, clv: null, home_win_prob: 0.97 }));
+  games.push(game(13, { away_team_id: 12, home_points: 45, away_points: 3 }));
+  predictions.push(pred(14, { created_at: "2026-09-10T03:00:00Z" }));
+  games.push(game(14, { week: 2, status: "scheduled", home_points: null, away_points: null, start_ts: "2026-09-12T19:30:00Z" }));
+  return {
+    seasons: [{ id: 2026, sport: "cfb" }, { id: 2025, sport: "cfb" }],
+    predictions,
+    games,
+    teams: [
+      { id: 10, school: "Georgia", conference: "SEC", classification: "fbs" },
+      { id: 11, school: "Alabama", conference: "SEC", classification: "fbs" },
+      { id: 12, school: "Mercer", conference: "SoCon", classification: "fcs" },
+    ],
+    line_consensus: [],
+  };
+}
+
+let TABLES = fixture();
 
 /** Enough of the PostgREST builder for this page: filters, then a thenable. */
 function fakeFrom(table: string) {
@@ -97,7 +86,7 @@ vi.mock("../../../lib/supabase/server", () => ({
   createClient: async () => ({ from: fakeFrom }),
 }));
 vi.mock("../../../lib/queries", () => ({
-  fetchCurrentSeasonWeek: async () => ({ seasonId: 2026, week: 3, seasonType: "regular", minWeek: 0 }),
+  fetchCurrentSeasonWeek: async () => ({ seasonId: 2026, week: 2, seasonType: "regular", minWeek: 0 }),
 }));
 // The nav needs the router and a ticker; neither is what this test is about.
 vi.mock("../../../components/AppNav", () => ({ AppNav: () => null }));
@@ -109,47 +98,75 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+async function render(): Promise<string> {
+  const { default: Page } = await import("./page");
+  return renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
+}
+
 describe("/model/stats", () => {
-  it("renders the season record and its cuts from the frozen receipts", async () => {
-    const { default: Page } = await import("./page");
-    const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
+  it("leads with the record against the spread and says how many games had a line", async () => {
+    const html = await render();
+    expect(html).toContain("Record against the spread");
+    expect(html).toMatch(/Record against the spread[\s\S]*?8-3-1/);
+    expect(html).toContain("12 games with a line · 1 without");
+    // 13 finals, every favourite won.
+    expect(html).toMatch(/Straight up[\s\S]*?13-0/);
+    expect(html).toContain("13 of 14");
+  });
 
-    // Two final games, one pending: graded 2 of 3, leans 2-0, favourites 2-0.
-    expect(html).toContain("Model stats");
-    expect(html).toContain("2</p><p class=\"stat text-[10.5px] leading-tight text-dim\">of 3 frozen");
-    expect(html).toMatch(/Leans ATS[\s\S]*?2-0/);
-    expect(html).toMatch(/Straight up[\s\S]*?2-0/);
-    // Both flagged; the close: game 1 model −7 vs −4 → home covers (−4 +14);
-    // game 2 model −1 vs −3.5 → away, home won by 1 → away covers. 2-0.
-    expect(html).toMatch(/Vs the close[\s\S]*?2-0/);
-    // Totals: only game 1 priced a total (52 vs close 49.5 → over; 48 scored → loss).
-    expect(html).toMatch(/Totals[\s\S]*?0-1/);
+  it("shows only the splits a bucket has earned, and folds the small ones", async () => {
+    const html = await render();
+    // Week 1 has 13 games: shown. Edge size 4–6 has 12: shown. Tier P4 vs P4
+    // has 12 and FBS vs FCS has 1 → the FCS game folds into Other.
+    expect(html).toContain("Week 1");
+    expect(html).toContain("4–6");
+    // ...and, being the one game with no line, that Other has no record to
+    // print, so the row is dropped: the footnote carries it.
+    expect(html).toContain("P4 vs P4");
+    expect(html).not.toContain("FBS vs FCS");
+    expect(html).not.toContain(">Other<");
+    // Nothing prints 0% on n=1: the per-row percentage rides beside the record.
+    expect(html).not.toContain("±");
+    // The fold exists, with the splits that cleared the bar behind it.
+    expect(html).toContain("More splits");
+    expect(html).toContain("Home field");
+    // No totals were priced, so no totals table; win-prob 90–100% has only one
+    // game and 70–80% has 12, so calibration shows the one band.
+    expect(html).not.toContain("Totals · lean");
+    expect(html).toContain("Win probability");
+    expect(html).toContain("70–80%");
+    expect(html).not.toContain("90–100%");
+  });
 
-    // Every group renders, and the cuts place the games where they belong.
-    for (const title of ["Week by week", "The disagreement", "The matchup", "When it kicks", "Totals", "Calibration"]) {
-      expect(html).toContain(title);
+  it("carries the secondary numbers in one list", async () => {
+    const html = await render();
+    for (const label of ["Vs the closing line", "Flagged edges", "Spread error", "Totals", "Graded"]) {
+      expect(html).toContain(label);
     }
-    expect(html).toContain("Week 2");
-    expect(html).toContain("cross-tier");
-    expect(html).toContain("Neutral site");
-    expect(html).toContain("Came toward the model");
-    // One version only: no version table, and the tile names it.
-    expect(html).not.toContain("By model version");
-    expect(html).toContain("2026.6.0");
-    // Only one season has receipts, so no switcher.
-    expect(html).not.toContain('aria-label="Season"');
+    expect(html).toContain("no totals priced yet");
+  });
+
+  it("says so when the sample is too thin for any split", async () => {
+    const saved = TABLES;
+    TABLES = { ...saved, games: saved.games.map((g, i) => (i < 9 ? { ...g, status: "scheduled", home_points: null, away_points: null } : g)) };
+    try {
+      const html = await render();
+      expect(html).toContain("Splits appear after about 40 graded games");
+      expect(html).not.toContain("More splits");
+    } finally {
+      TABLES = saved;
+    }
   });
 
   it("says so when nothing has graded yet", async () => {
-    const { default: Page } = await import("./page");
-    const saved = TABLES.games;
-    TABLES.games = saved.map((g) => ({ ...g, status: "scheduled", home_points: null, away_points: null }));
+    const saved = TABLES;
+    TABLES = { ...saved, games: saved.games.map((g) => ({ ...g, status: "scheduled", home_points: null, away_points: null })) };
     try {
-      const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
+      const html = await render();
       expect(html).toContain("Nothing has graded yet");
-      expect(html).toContain("3 frozen predictions");
+      expect(html).toContain("14 frozen predictions");
     } finally {
-      TABLES.games = saved;
+      TABLES = saved;
     }
   });
 });

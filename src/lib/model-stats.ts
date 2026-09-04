@@ -517,6 +517,64 @@ export function rowsFor(
   return rows.sort((a, b) => b[1].n - a[1].n || a[0].localeCompare(b[0]));
 }
 
+/* ── What the season has earned ──────────────────────────────────────────── */
+
+/**
+ * A split is shown once one of its buckets has this many graded games.
+ * Owner reaction to the first render (2026-09-04, 18 games in): "It looks
+ * incredibly confusing" — forty rows of 0% and 100% on n=1. A table the
+ * season hasn't earned is noise dressed as a finding.
+ */
+export const MIN_BUCKET = 10;
+/** Buckets under this many games fold into one "Other" row. */
+export const MIN_ROW = 5;
+/** Roughly when the default splits start appearing; printed in the placeholder. */
+export const SPLITS_AFTER = 40;
+
+export const OTHER = "Other";
+
+export interface SplitRows {
+  /** False when no bucket has reached MIN_BUCKET — render a placeholder. */
+  show: boolean;
+  rows: Array<[string, ModelTally]>;
+}
+
+/**
+ * `rowsFor` with the season's sample size applied: hidden until one bucket
+ * has MIN_BUCKET games, and buckets under MIN_ROW folded into "Other" so a
+ * 1-0 never prints as a row. Weeks (`numeric`) are never folded — a week in
+ * progress is a real bucket that is simply not finished yet.
+ */
+export function splitRows(receipts: Iterable<GradedReceipt>, spec: ModelCutSpec): SplitRows {
+  const finals = [...receipts].filter((r) => r.final);
+  const groups = new Map<string, GradedReceipt[]>();
+  for (const r of finals) {
+    const k = spec.cut(r);
+    if (k === null) continue;
+    const arr = groups.get(k);
+    if (arr) arr.push(r);
+    else groups.set(k, [r]);
+  }
+  const show = [...groups.values()].some((g) => g.length >= MIN_BUCKET);
+  if (!show) return { show, rows: [] };
+
+  if (spec.numeric) return { show, rows: rowsFor(finals, spec) };
+
+  const small: GradedReceipt[] = [];
+  const kept: GradedReceipt[] = [];
+  for (const [, g] of groups) (g.length < MIN_ROW ? small : kept).push(...g);
+  const rows = rowsFor(kept, spec);
+  if (small.length > 0) {
+    // An "Other" made only of games with no line (the FCS buy games, in the
+    // tier cut) would print "0-0 –". The table's footnote already says how
+    // many games had no line; the row would say it worse.
+    const other = tallyModel(small);
+    const graded = (r: Record3) => r.wins + r.losses + r.pushes;
+    if (graded(other.ats) + graded(other.ou) > 0) rows.push([OTHER, other]);
+  }
+  return { show, rows };
+}
+
 /* ── Win-probability calibration ─────────────────────────────────────────── */
 
 export interface CalibrationRow {
