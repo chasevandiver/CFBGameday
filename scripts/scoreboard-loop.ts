@@ -24,7 +24,16 @@ import { cfbdCallCount } from "../src/lib/cfbd";
 import { espnCallCount } from "../src/lib/espn";
 import { createServiceClient } from "../src/lib/supabase/service";
 import { envNum } from "./lib/env-num";
-import { idleSkip, envDays, idleExhausted, scheduledState, IDLE_EXIT_MS } from "./lib/idle";
+import {
+  idleSkip,
+  envDays,
+  idleExhausted,
+  scheduledState,
+  IDLE_EXIT_MS,
+  KICKOFF_HOLD_MS,
+  kickoffHold,
+  nextScheduledKickoff,
+} from "./lib/idle";
 import {
   SEASON,
   beat,
@@ -342,11 +351,36 @@ async function main() {
         waitMs = 60_000;
       }
       if (idleExhausted(idleSince, Date.now())) {
-        console.log(
-          `nothing live or imminent for ${IDLE_EXIT_MS / 60_000} min — ending this run early; ` +
-            "the next launch picks it up",
-        );
-        break;
+        /* LIVE-9. Before leaving, ask when the next kickoff is. "The next
+           launch picks it up" assumes the next launch arrives before that
+           kickoff, and on 2026-09-04 it did not: this exit fired a minute
+           before a game entered the imminent window, the following launch had
+           been dropped, and the one after ran 53 minutes late. A league whose
+           feed is switched off is not consulted — holding for a game we would
+           not poll is just a runner doing nothing. */
+        const now = Date.now();
+        const kicks = await Promise.all([
+          cfbdExhausted ? null : nextScheduledKickoff(db, SEASON, now),
+          nextScheduledKickoff(db, NFL_SEASON, now),
+        ]);
+        const kick = kickoffHold(kicks, now, deadline);
+        if (kick !== null) {
+          console.log(
+            `nothing live or imminent for ${IDLE_EXIT_MS / 60_000} min, but a game kicks at ` +
+              `${new Date(kick).toISOString()} (in ${Math.round((kick - now) / 60_000)} min, ` +
+              `hold window ${KICKOFF_HOLD_MS / 3600_000}h) — holding this run for it`,
+          );
+          // Restart the quiet clock rather than asking every tick; the next
+          // look is 20 minutes out, by which time the kickoff is either
+          // imminent (idleSince goes null) or still inside the hold.
+          idleSince = now;
+        } else {
+          console.log(
+            `nothing live or imminent for ${IDLE_EXIT_MS / 60_000} min — ending this run early; ` +
+              "the next launch picks it up",
+          );
+          break;
+        }
       }
       if (Date.now() + waitMs > deadline) break;
       await sleep(waitMs);

@@ -2,7 +2,19 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { DAY_MS, envDays, idleExhausted, IDLE_EXIT_MS, idleOverridden, idleSkip, msUntilNextGame, scheduledState } from "./idle";
+import {
+  DAY_MS,
+  envDays,
+  idleExhausted,
+  IDLE_EXIT_MS,
+  idleOverridden,
+  idleSkip,
+  KICKOFF_HOLD_MS,
+  kickoffHold,
+  msUntilNextGame,
+  nextScheduledKickoff,
+  scheduledState,
+} from "./idle";
 
 /**
  * Minimal PostgREST-shaped stub. Filters chain; `.limit()` is both awaitable
@@ -14,7 +26,7 @@ function stubDb(rows: { live?: unknown[]; next?: { start_ts: string } | null }):
     const state = { status: "" };
     const chain: Record<string, unknown> = {};
     const self = () => chain;
-    for (const m of ["select", "gte", "order", "not", "or"]) chain[m] = self;
+    for (const m of ["select", "gte", "gt", "order", "not", "or"]) chain[m] = self;
     chain.eq = (col: string, val: unknown) => {
       if (col === "status") state.status = String(val);
       return chain;
@@ -181,6 +193,77 @@ describe("idleExhausted — when a long run gives up (LIVE-2)", () => {
     // near the old 63-minute run length would end a run mid-game.
     expect(IDLE_EXIT_MS).toBeGreaterThanOrEqual(15 * 60_000);
     expect(IDLE_EXIT_MS).toBeLessThan(63 * 60_000);
+  });
+});
+
+describe("kickoffHold — an idle run that knows a kickoff is coming (LIVE-9)", () => {
+  /**
+   * 2026-09-04, run 33923110435. The 21:00 launch arrived at 21:53, found the
+   * earliest kickoff 37 minutes out — past the 15-minute imminent window — and
+   * `idleExhausted` ended it at 22:13:57. Eastern Michigan kicked at 22:30.
+   * The 22:00 launch never fired and the 23:00 one had not arrived by 23:12,
+   * so three games kicked into a board nobody was polling. The timestamps
+   * below are that night's.
+   */
+  const launched = Date.parse("2026-09-04T21:53:43Z");
+  const exitTick = Date.parse("2026-09-04T22:13:57Z");
+  const deadline = launched + 240 * 60_000;
+  const emu = "2026-09-04T22:30:00Z";
+
+  it("holds for the Friday opener that the exit fired a minute ahead of", () => {
+    expect(idleExhausted(launched, exitTick)).toBe(true); // the old rule would have left
+    expect(kickoffHold([emu, null], exitTick, deadline)).toBe(Date.parse(emu));
+  });
+
+  it("lets the run end when neither league has a kickoff coming", () => {
+    expect(kickoffHold([null, null], exitTick, deadline)).toBeNull();
+    expect(kickoffHold([], exitTick, deadline)).toBeNull();
+  });
+
+  it("does not hold for a kickoff beyond the window — the launches in between will cover it", () => {
+    const later = new Date(exitTick + KICKOFF_HOLD_MS + 60_000).toISOString();
+    expect(kickoffHold([later], exitTick, deadline)).toBeNull();
+    const edge = new Date(exitTick + KICKOFF_HOLD_MS).toISOString();
+    expect(kickoffHold([edge], exitTick, deadline)).toBe(exitTick + KICKOFF_HOLD_MS);
+  });
+
+  it("does not hold for a kickoff the run's own deadline would cut off anyway", () => {
+    const nearEnd = deadline - 10 * 60_000;
+    const afterDeadline = new Date(deadline + 5 * 60_000).toISOString();
+    expect(kickoffHold([afterDeadline], nearEnd, deadline)).toBeNull();
+    expect(kickoffHold([new Date(deadline).toISOString()], nearEnd, deadline)).toBeNull();
+    // Still inside the deadline is still worth staying for, however briefly.
+    const beforeDeadline = new Date(deadline - 5 * 60_000).toISOString();
+    expect(kickoffHold([beforeDeadline], nearEnd, deadline)).toBe(deadline - 5 * 60_000);
+  });
+
+  it("ignores a kickoff already in the past — that is scheduledState's call, and a stale row is not a reason to stay", () => {
+    expect(kickoffHold(["2026-09-04T22:00:00Z"], exitTick, deadline)).toBeNull();
+    expect(kickoffHold([new Date(exitTick).toISOString()], exitTick, deadline)).toBeNull();
+  });
+
+  it("skips garbage rather than trusting it", () => {
+    expect(kickoffHold(["not a date"], exitTick, deadline)).toBeNull();
+    expect(kickoffHold(["not a date", emu], exitTick, deadline)).toBe(Date.parse(emu));
+  });
+
+  it("returns the earliest of the two leagues", () => {
+    const nfl = "2026-09-04T23:20:00Z";
+    expect(kickoffHold([nfl, emu], exitTick, deadline)).toBe(Date.parse(emu));
+    expect(kickoffHold([emu, nfl], exitTick, deadline)).toBe(Date.parse(emu));
+  });
+
+  it("covers a launch that runs an hour late on top of one that was dropped", () => {
+    // Hourly launches; one dropped and the next 60 minutes late is a 2-hour
+    // gap. Anything shorter would re-open the hole this exists to close.
+    expect(KICKOFF_HOLD_MS).toBeGreaterThanOrEqual(2 * 3600_000);
+    // And it is bounded by the run's own deadline, so it can never outlast it.
+    expect(KICKOFF_HOLD_MS).toBeLessThanOrEqual(240 * 60_000);
+  });
+
+  it("reads the next scheduled kickoff and answers null for an empty slate", async () => {
+    expect(await nextScheduledKickoff(stubDb({ next: { start_ts: emu } }), 2026, exitTick)).toBe(emu);
+    expect(await nextScheduledKickoff(stubDb({ next: null }), 2026, exitTick)).toBeNull();
   });
 });
 

@@ -429,7 +429,9 @@ jobs:
     # running keeps polling, and the next launch replaces it via the group
     # above. Runner minutes are unchanged — one loop at a time either way, and
     # the loop now exits after 20 idle minutes (LIVE-2, scripts/lib/idle.ts)
-    # rather than holding a runner to a deadline with no football left.
+    # rather than holding a runner to a deadline with no football left —
+    # unless a kickoff is inside the next two hours (LIVE-9), because a late
+    # or dropped launch is exactly when "the next launch picks it up" fails.
     # Everything else keeps the old 75-minute ceiling.
     # A DISPATCHED loop needs the same ceiling as a scheduled one. This read
     # `github.event.schedule` alone, which is empty on workflow_dispatch — so a

@@ -119,6 +119,76 @@ export function idleExhausted(
 }
 
 /**
+ * LIVE-9. How far ahead an idle run looks before it gives up.
+ *
+ * `idleExhausted` alone asked only whether anything had been live or within
+ * 15 minutes of kickoff lately. It never asked when the next kickoff WAS. So a
+ * loop that launched 37 minutes before a Friday-night opener sat through 20
+ * quiet minutes and left at 22:13 — sixty seconds before that game would have
+ * entered the imminent window — and the launch that was supposed to "pick it
+ * up" arrived 53 minutes late, after the launch before it had been dropped
+ * outright. Three games kicked into a board nobody was polling
+ * (2026-09-04, run 33923110435). That is the exact dependency on the cron's
+ * punctuality LIVE-2 was built to remove, re-entered through the exit it added.
+ *
+ * Two hours covers a launch that runs an hour late on top of one that never
+ * fires. Holding costs Actions minutes only: an idle tick reads our own
+ * database and nothing else, and the poll cadence is untouched — the run just
+ * declines to leave while a kickoff is close enough that the next launch might
+ * not beat it.
+ */
+export const KICKOFF_HOLD_MS = 2 * 3600_000;
+
+/**
+ * The earliest kickoff worth holding an idle run for, or null to let it end.
+ *
+ * A kickoff counts if it is strictly in the future (a game that has already
+ * kicked belongs to `scheduledState`, and if that says idle the row is stale
+ * rather than imminent), inside the hold window, and before the run's own
+ * deadline — a run that would be killed before kickoff anyway gains nothing by
+ * staying. Unparseable timestamps are skipped rather than trusted.
+ */
+export function kickoffHold(
+  kicks: Array<string | null>,
+  now: number,
+  deadline: number,
+  holdMs: number = KICKOFF_HOLD_MS,
+): number | null {
+  let best: number | null = null;
+  for (const k of kicks) {
+    if (k === null) continue;
+    const t = Date.parse(k);
+    if (Number.isNaN(t)) continue;
+    if (t <= now || t > now + holdMs || t >= deadline) continue;
+    if (best === null || t < best) best = t;
+  }
+  return best;
+}
+
+/**
+ * The next still-`scheduled` kickoff strictly after `now`, for `kickoffHold`.
+ * Past kickoffs are deliberately excluded — `msUntilNextGame`'s 6-hour grace
+ * is right for the launch guard but would let a stale row hold a runner for
+ * the whole deadline.
+ */
+export async function nextScheduledKickoff(
+  db: SupabaseClient,
+  season: number,
+  now: number = Date.now(),
+): Promise<string | null> {
+  const { data } = await db
+    .from("games")
+    .select("start_ts")
+    .eq("season_id", season)
+    .eq("status", "scheduled")
+    .gt("start_ts", new Date(now).toISOString())
+    .order("start_ts", { ascending: true, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+  return (data as { start_ts: string | null } | null)?.start_ts ?? null;
+}
+
+/**
  * What a league's earliest still-`scheduled` kickoff means for poll cadence.
  *
  * `kicked` is the state this function exists to name: the clock has passed a

@@ -226,6 +226,35 @@ shipping it.
 
 ## Log
 
+### Sep 4 — LIVE-9: the idle exit left a minute before a Friday kickoff, and the next launch was late
+
+Owner, 23:10 UTC with three Friday games underway: "Why aren't the games live
+right now?" No scoreboard loop was running. The hourly launch due at 21:00
+arrived at 21:53, found the earliest kickoff 37 minutes out (past the
+15-minute imminent window), sat 20 quiet minutes and ended itself at 22:13:57
+under LIVE-2's idle exit — sixty seconds before that game would have gone
+imminent. The 22:00 launch never fired; the 23:00 one had not arrived by
+23:12. Three games kicked into a board nobody was polling.
+
+**Root cause.** LIVE-2 made the run outlive the gap between launches so a late
+or missing cron would cost nothing, then added an exit whose safety depends on
+the next launch being on time. `idleExhausted` never asked when the next
+kickoff was.
+
+**Fix.** Before the idle exit ends a run, `nextScheduledKickoff` reads each
+league's next `scheduled` kickoff and `kickoffHold` keeps the run alive if one
+is inside two hours and before the run's deadline (`scripts/lib/idle.ts`,
+`scripts/scoreboard-loop.ts`). Two hours covers a launch an hour late on top
+of one that was dropped. Holding reads only our database; the poll cadence and
+the feed budget are untouched. A budget-gated league is not consulted, a
+kickoff already past does not hold, and the quiet clock restarts on a hold.
+
+**Verified.** Tests on tonight's timestamps (launch 21:53:43, exit tick
+22:13:57, kickoff 22:30): the old rule exits, the new one holds; the four
+decline cases are pinned. Tonight itself was covered by a manual dispatch at
+23:15 (run 33928781148); the three games flipped to `in_progress` within two
+minutes. Live minutes 22:30–23:17 are lost; finals and grading are not.
+
 ### Sep 4 — FREEZE-3: the freeze read was cut off at 1,000 rows; 71 Week 1 receipts recovered
 
 Owner, off the new stats page: "We have a ton of games without a line on the
