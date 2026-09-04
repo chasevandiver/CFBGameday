@@ -226,6 +226,45 @@ shipping it.
 
 ## Log
 
+### Sep 4 — MSTAT-2: `/model/stats` rebuilt around one record
+
+Owner, with MSTAT-1 open on the phone at 18 graded games: "It looks
+incredibly confusing." It did. Eight tiles in six different units with no
+hierarchy — the straight-up 13-5 and the ATS 2-9 side by side at the same
+size, telling opposite stories. Fifteen tables, five figures a row, and with
+18 games sliced forty ways nearly every row was n=1–3 printing 0% or 100%
+next to ±35. Honest and unreadable.
+
+**One record leads.** The leans against the spread, in the largest type on
+the page, with "12 games with a line · 7 without" beneath it: the seven are
+FCS buy games the books never priced, so they count straight-up only, and the
+page now says so instead of leaving "11 of 18" as a puzzle. Straight-up and
+CLV sit under it as two smaller tiles. Vs-the-close, flagged edges, spread
+error, totals and graded-of-frozen become one five-row list.
+
+**Tables are two figures wide.** Record (with the rate in small type beside
+it) and CLV. MAE and the ±SE column are gone from the rows — the season's
+MAE is one line in the list.
+
+**The season has to earn a split.** `splitRows` shows a table only once a
+bucket has `MIN_BUCKET` = 10 graded games, folds buckets under `MIN_ROW` = 5
+into "Other" (weeks excepted — a week in progress is a real bucket), and
+until any split clears the bar the section is one line: "Splits appear after
+about 40 graded games. 18 so far." Calibration bands follow the same rule.
+This is the "beware the bucket that clears" stance applied to the layout
+rather than the footnote: a 1-0 never gets a row.
+
+**Five splits by default** (week, edge size, favourite/dog, market spread,
+tier); systems, opener→freeze, lean side, conference, site, day, window,
+totals and calibration behind a native `<details>` fold. Duplicate column
+headers removed, records `whitespace-nowrap` (the "1-" over "6" wrap), the
+two disclaimer paragraphs cut to one sentence and the link.
+
+**Verified.** Vitest **2,081 across 140 files** (35 in the two model-stats
+files: 4 new on `splitRows`, render test grown to 5 cases incl. the
+thin-sample placeholder), typecheck, lint, `next build` green; fixture render
+screenshotted at 390px through Playwright. No migration.
+
 ### Sep 4 — MSTAT-1: the model's season record, cut every way (`/model/stats`)
 
 Owner request: "I want to be able to view the model's full stats somewhere.

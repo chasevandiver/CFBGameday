@@ -6424,6 +6424,23 @@ changelog's Sep 4 entry.
       49.2% verdict leads the page. Pure arithmetic in `lib/model-stats.ts`
       (26 tests); the page renders, and a render smoke test against a fixture database proves it does (`model/stats/page.test.tsx`). Linked from `/model` and the Receipts
       calibration header. No migration.
+- [x] **MSTAT-2** The first render was unreadable. Owner, same night, with
+      the page in hand at 18 graded games: "It looks incredibly confusing."
+      It was: eight tiles in six units with no hierarchy, fifteen tables of
+      five figures each, and nearly every row n=1–3 printing 0% or 100%
+      beside ±35. Rebuilt around one record — the leans against the spread,
+      the only record that says anything, with "12 games with a line · 7
+      without" under it so the straight-up 13-5 stops competing with the ATS
+      2-9. Straight-up and CLV beneath; the other five figures in one list.
+      Tables are two figures wide (record, CLV). A split shows only once one
+      bucket has 10 graded games (`MIN_BUCKET`), buckets under 5 fold into
+      "Other" (`MIN_ROW`), and until then the section says "Splits appear
+      after about 40 graded games" in one line. Five splits by default (week,
+      edge size, favourite/dog, market spread, tier); the rest behind a
+      `<details>` fold. Duplicate column headers gone, records `nowrap`, the
+      two disclaimer paragraphs cut to one sentence. Rule and fold live in
+      `lib/model-stats.ts` (`splitRows`, 4 tests); the render test grew to 5
+      cases including the thin-sample placeholder.
 
 ## 5. Not built, by choice
 

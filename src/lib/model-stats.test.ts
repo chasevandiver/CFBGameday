@@ -13,6 +13,10 @@ import {
   ouLeanOf,
   rowsFor,
   siteOf,
+  splitRows,
+  SPREAD_BANDS,
+  MIN_BUCKET,
+  OTHER,
   spreadSizeOf,
   STALE_CLOSE_MS,
   tallyModel,
@@ -298,5 +302,48 @@ describe("closingTotal", () => {
     expect(closingTotal(49.5, null, kick)).toBeNull();
     expect(closingTotal(49.5, "2026-09-12T18:00:00Z", null)).toBeNull();
     expect(closingTotal(null, "2026-09-12T18:00:00Z", kick)).toBeNull();
+  });
+});
+
+describe("splitRows", () => {
+  const many = (n: number, over: Partial<ModelReceipt>) =>
+    Array.from({ length: n }, (_, i) => gradeReceipt(receipt({ gameId: i, ...over })));
+
+  it("hides a split until one bucket has MIN_BUCKET graded games", () => {
+    const thin = [...many(4, { neutralSite: false }), ...many(3, { neutralSite: true })];
+    expect(splitRows(thin, { label: "Site", cut: siteOf }).show).toBe(false);
+    const enough = [...many(MIN_BUCKET, { neutralSite: false }), ...many(3, { neutralSite: true })];
+    expect(splitRows(enough, { label: "Site", cut: siteOf }).show).toBe(true);
+  });
+
+  it("folds buckets under MIN_ROW into Other, after the ordered rows", () => {
+    const rs = [
+      ...many(MIN_BUCKET, { vegasSpread: -3 }),
+      ...many(2, { vegasSpread: -10 }),
+      ...many(1, { vegasSpread: -24 }),
+    ];
+    const { rows } = splitRows(rs, { label: "Market spread", cut: spreadSizeOf, order: SPREAD_BANDS });
+    expect(rows.map(([k]) => k)).toEqual(["PK–3", OTHER]);
+    expect(rows[1][1].n).toBe(3);
+  });
+
+  it("drops an Other made only of games with no line", () => {
+    const rs = [
+      ...many(MIN_BUCKET, {}),
+      ...many(2, { away: FCS, vegasSpread: null, edge: null, edgeFlag: null, closeSpread: null, total: null }),
+    ];
+    const { rows } = splitRows(rs, { label: "Tier", cut: tierMatchupOf });
+    expect(rows.map(([k]) => k)).toEqual(["P4 vs P4"]);
+  });
+
+  it("never folds weeks, and counts only final games toward the threshold", () => {
+    const rs = [
+      ...many(MIN_BUCKET, { week: 1 }),
+      ...many(2, { week: 2 }),
+      ...many(20, { week: 3, status: "scheduled", homePoints: null, awayPoints: null }),
+    ];
+    const { show, rows } = splitRows(rs, WEEK_CUT);
+    expect(show).toBe(true);
+    expect(rows.map(([k]) => k)).toEqual(["Week 1", "Week 2"]);
   });
 });
