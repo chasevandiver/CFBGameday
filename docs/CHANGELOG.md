@@ -226,6 +226,50 @@ shipping it.
 
 ## Log
 
+### Sep 4 — MSTAT-1: the model's season record, cut every way (`/model/stats`)
+
+Owner request: "I want to be able to view the model's full stats somewhere.
+It doesn't have its total record, I want to see how it's doing on a bunch of
+different buckets." Receipts carried a four-tile calibration strip and the
+row-by-row book; `/model` carried the parameters and the decisions log. The
+season record itself — and any split of it — had no home.
+
+**The page.** `/model/stats`, the `/ledger/stats` shape applied to the model:
+eight headline tiles (SU, leans ATS vs the freeze line, the model's side vs
+the close, flagged edges, CLV, spread MAE with signed bias, totals vs the
+closing total, graded-of-frozen), then every cut as a table with ATS record,
+win rate **±1 SE**, average CLV and MAE per bucket, n on every row. Cuts:
+week; edge size in the backtest's own disjoint bands (plus the unflagged
+under-2 band), systems consensus, opener-to-freeze movement relative to the
+model; lean side, favourite/dog, market spread size, P4/G5/FCS tier matchup,
+conference/non-conference, home/neutral; day and window; totals by lean and
+by closing-total size; the SPEC §2.5 win-probability calibration table; by
+model version once more than one has frozen a receipt. A season switcher
+appears only when more than one season has frozen predictions (head-only
+counts, so the three archive seasons stay silent). Linked from `/model`
+("Season record →") and from the Receipts calibration header ("Every split →").
+
+**The arithmetic.** `src/lib/model-stats.ts`, pure, grades each frozen
+prediction exactly as Receipts does — SU from `home_win_prob`, the lean from
+the sign of `edge`, ATS against `vegas_spread` — and adds three things
+Receipts never computed: the model's side of `close_spread` graded against
+it, the model total against the closing consensus total (`line_consensus`,
+under the grader's six-hour staleness rule, restated in src because the
+dependency runs scripts → src), and the margin error. One tally, one push
+convention (a third outcome, not a coin flip), buckets that cannot place a
+game skip it rather than guess.
+
+**What it deliberately is not.** A strategy finder. The header says the leans
+are information and quotes the 49.2%; every win rate prints its standard
+error; rows under n=10 are dimmed; and the changelog's "beware the bucket
+that clears" is cited in the module header. Nothing here promotes a bucket —
+that door was closed on evidence and stays closed.
+
+**Verified.** Vitest **2,074 across 140 files** (28 new: 26 pure cases on
+grading, tally, every cut, calibration and the staleness rule; 2 rendering the
+page against a fixture database), typecheck, lint and `next build` green. No
+migration.
+
 ### Sep 4 — LOGF-5/6: the manual form gets a sign button and suggests the closing line
 
 Owner report minutes after LOGF-2 shipped: "I can't log a favorite bet since

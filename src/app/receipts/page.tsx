@@ -212,7 +212,15 @@ export default async function ReceiptsPage() {
 
         {graded.length > 0 && (
           <section className="card mb-5 p-4">
-            <h2 className="mb-3 text-sm text-accent">Calibration</h2>
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-sm text-accent">Calibration</h2>
+              <Link
+                href="/model/stats"
+                className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+              >
+                Every split &rarr;
+              </Link>
+            </div>
             <div className="stat grid grid-cols-1 gap-2 text-center text-xs sm:grid-cols-2 lg:grid-cols-4">
               <CalStat
                 label="Model favorites SU"
