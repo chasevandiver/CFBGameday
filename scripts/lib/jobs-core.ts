@@ -24,6 +24,7 @@ import { nflTeamId, seasonIdsForYear, seasonYearOf } from "../../src/lib/league"
 import { cfbdScoringOffense, cfbdScoringPlays } from "../../src/lib/scoring";
 import { modelClv, roundClv, spreadClv, totalClv } from "../../src/lib/clv";
 import { consensusFromSnapshots, SNAPSHOT_COLS } from "../../src/lib/consensus";
+import { pageAll } from "../../src/lib/page-all";
 import { clockToSeconds, coverMargin, spreadCoverSide, totalCoverSide } from "../../src/lib/cover";
 import {
   firstHalfScore,
@@ -1397,12 +1398,14 @@ export async function ratingsUpdateJob(db: SupabaseClient): Promise<Json> {
  * outside a scoreboard window and the dead-game voids, which no live tick does.
  */
 export async function gradeSeasonFinals(db: SupabaseClient, seasonId: number): Promise<Json> {
-  const { data: gameRows, error: gamesErr } = await db
-    .from("games")
-    .select(SETTLE_COLS)
-    .eq("season_id", seasonId);
-  if (gamesErr) throw new Error(`grading: games read failed: ${gamesErr.message}`);
-  return settleGames(db, (gameRows ?? []) as SettleGameRow[]);
+  // Paged (FREEZE-3): a CFB season is ~890 rows and bowls push it past the
+  // 1,000-row ceiling in December, exactly when nothing else would notice.
+  const gameRows = await pageAll<SettleGameRow>((from, to) =>
+    db.from("games").select(SETTLE_COLS).eq("season_id", seasonId).order("id").range(from, to),
+  ).catch((e: Error) => {
+    throw new Error(`grading: games read failed: ${e.message}`);
+  });
+  return settleGames(db, gameRows);
 }
 
 /**
@@ -1511,13 +1514,17 @@ async function settleGames(db: SupabaseClient, allGames: SettleGameRow[]): Promi
       ]),
     ];
     const snapsByGame = new Map<number, Snapshot[]>();
+    // Paged inside each chunk (FREEZE-3): 300 games carry far more than 1,000
+    // snapshots by kickoff, and the unpaged read silently returned the first
+    // 1,000 — which is why Week 1 finals were graded with no close.
     for (let i = 0; i < needClose.length; i += 300) {
-      const { data: snaps, error: snapsErr } = await db
-        .from("line_snapshots")
-        .select(SNAPSHOT_COLS)
-        .in("game_id", needClose.slice(i, i + 300));
-      if (snapsErr) throw new Error(`grading: snapshots read failed: ${snapsErr.message}`);
-      for (const s of (snaps ?? []) as Snapshot[]) {
+      const chunk = needClose.slice(i, i + 300);
+      const snaps = await pageAll<Snapshot>((from, to) =>
+        db.from("line_snapshots").select(SNAPSHOT_COLS).in("game_id", chunk).order("id").range(from, to),
+      ).catch((e: Error) => {
+        throw new Error(`grading: snapshots read failed: ${e.message}`);
+      });
+      for (const s of snaps) {
         const arr = snapsByGame.get(s.game_id) ?? [];
         arr.push(s);
         snapsByGame.set(s.game_id, arr);
@@ -1541,11 +1548,17 @@ async function settleGames(db: SupabaseClient, allGames: SettleGameRow[]): Promi
     const halfByGame = new Map<number, HalfScore>();
     for (let i = 0; i < fhGameIds.length; i += 300) {
       // No .order(): buildBoxScore sorts by sequence itself.
-      const { data: playRows, error: playsErr } = await db
-        .from("scoring_plays")
-        .select("game_id, sequence, period, clock, scoring_team_id, play_type, play_text, home_points, away_points, source")
-        .in("game_id", fhGameIds.slice(i, i + 300));
-      if (playsErr) throw new Error(`grading: scoring_plays read failed: ${playsErr.message}`);
+      const fhChunk = fhGameIds.slice(i, i + 300);
+      const playRows = await pageAll<Parameters<typeof firstHalfScore>[0][number]>((from, to) =>
+        db
+          .from("scoring_plays")
+          .select("game_id, sequence, period, clock, scoring_team_id, play_type, play_text, home_points, away_points, source")
+          .in("game_id", fhChunk)
+          .order("id")
+          .range(from, to),
+      ).catch((e: Error) => {
+        throw new Error(`grading: scoring_plays read failed: ${e.message}`);
+      });
       const byGame = new Map<number, typeof playRows>();
       for (const p of playRows ?? []) {
         const arr = byGame.get(p.game_id as number) ?? [];
@@ -2015,13 +2028,27 @@ export async function freezeJob(
 
   const fcsTop = await loadFcsTop(db);
 
-  const { data: ratingRows } = await db
-    .from("ratings")
-    .select("team_id, week, overall, offense, defense")
-    .eq("season_id", SEASON)
-    .order("week", { ascending: false });
+  // Paged (FREEZE-3): ~136 teams × every week crosses 1,000 rows by
+  // mid-season; unpaged, the newest weeks would arrive complete and older
+  // ones vanish, which happens to be harmless here — but the freeze is the
+  // one job that must never learn that by accident.
+  const ratingRows = await pageAll<{
+    team_id: number;
+    week: number;
+    overall: number;
+    offense: number | null;
+    defense: number | null;
+  }>((from, to) =>
+    db
+      .from("ratings")
+      .select("team_id, week, overall, offense, defense")
+      .eq("season_id", SEASON)
+      .order("week", { ascending: false })
+      .order("team_id")
+      .range(from, to),
+  );
   const latest = new Map<number, { overall: number; offense: number; defense: number }>();
-  for (const r of ratingRows ?? []) {
+  for (const r of ratingRows) {
     if (!latest.has(r.team_id)) {
       latest.set(r.team_id, {
         overall: Number(r.overall),
@@ -2039,18 +2066,29 @@ export async function freezeJob(
         .select("team_id, game_id, points")
         .eq("season_id", SEASON)
         .not("confirmed_at", "is", null),
-      db
-        .from("line_snapshots")
-        .select(SNAPSHOT_COLS)
-        .in(
-          "game_id",
-          games.map((g) => g.id),
-        ),
-      db
-        .from("system_ratings")
-        .select("team_id, system, week, value")
-        .eq("season_id", SEASON)
-        .order("week", { ascending: false }),
+      // FREEZE-3: THIS read is the one that truncated on 2026-09-03. 91 games,
+      // 4,423 snapshots, 1,000 returned — 71 receipts stamped with no line.
+      pageAll<Snapshot>((from, to) =>
+        db
+          .from("line_snapshots")
+          .select(SNAPSHOT_COLS)
+          .in(
+            "game_id",
+            games.map((g) => g.id),
+          )
+          .order("id")
+          .range(from, to),
+      ).then((rows) => ({ data: rows, error: null })),
+      pageAll<{ team_id: number; system: string; week: number; value: number }>((from, to) =>
+        db
+          .from("system_ratings")
+          .select("team_id, system, week, value")
+          .eq("season_id", SEASON)
+          .order("week", { ascending: false })
+          .order("system")
+          .order("team_id")
+          .range(from, to),
+      ).then((rows) => ({ data: rows, error: null })),
     ]);
   const hfa = new Map<number, number>(
     (hfaRows ?? []).map((r: { team_id: number; blended_hfa: number }) => [

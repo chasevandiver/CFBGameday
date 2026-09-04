@@ -123,6 +123,8 @@ export interface PredictionRow {
   edge: number | null;
   edge_flag: "EDGE" | "BIG_EDGE" | null;
   consensus_flag: boolean;
+  /** Situational components and flags at freeze; `line_recovered` after FREEZE-3. */
+  adjustments: Record<string, unknown>;
   /** Consensus opener, captured at freeze. Context for the movement, not graded. */
   open_spread: number | null;
   /** Consensus at kickoff. Written by the Sunday grader, null until then. */

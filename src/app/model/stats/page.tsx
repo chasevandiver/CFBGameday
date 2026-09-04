@@ -23,6 +23,7 @@ import {
   type ModelReceipt,
   type ModelTally,
 } from "../../../lib/model-stats";
+import { pageAll } from "../../../lib/page-all";
 import { fetchCurrentSeasonWeek } from "../../../lib/queries";
 import { createClient } from "../../../lib/supabase/server";
 
@@ -134,17 +135,21 @@ export default async function ModelStatsPage({
 
   // Frozen rows, newest first, so the first row per game is the standing
   // prediction — same fold as Receipts.
-  const frozen = required<PredSlice>(
-    await supabase
+  // Paged (FREEZE-3): a season is ~900 frozen rows against a 1,000-row ceiling.
+  const frozen = await pageAll<PredSlice>((from, to) =>
+    supabase
       .from("predictions")
       .select(
         "game_id, season_id, model_version, spread, total, home_win_prob, vegas_spread, open_spread, close_spread, edge, edge_flag, consensus_flag, clv, created_at",
       )
       .eq("frozen", true)
       .eq("season_id", seasonId)
-      .order("created_at", { ascending: false }),
-    "frozen predictions",
-  );
+      .order("created_at", { ascending: false })
+      .order("id")
+      .range(from, to),
+  ).catch((e: Error) => {
+    throw new Error(`frozen predictions failed to load: ${e.message}`);
+  });
   const newestByGame = new Map<number, PredSlice>();
   for (const p of frozen) if (!newestByGame.has(p.game_id)) newestByGame.set(p.game_id, p);
   const gameIds = [...newestByGame.keys()];

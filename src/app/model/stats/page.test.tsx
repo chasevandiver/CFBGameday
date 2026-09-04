@@ -75,6 +75,10 @@ function fakeFrom(table: string) {
     order() {
       return b;
     },
+    range(from: number, to: number) {
+      rows = rows.slice(from, to + 1);
+      return b;
+    },
     then(resolve: (v: { data: Row[] | null; error: null; count: number }) => void) {
       resolve({ data: head ? null : rows, error: null, count: rows.length });
     },

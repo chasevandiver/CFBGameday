@@ -6,7 +6,8 @@
  * second run finds anything left to do. A pure-function test cannot reach any
  * of that, and the real client needs a server. This covers the handful of chain
  * shapes the jobs and the admin actions actually use and nothing else: `select`
- * with `eq` / `in` / `is` filters, `update` and `delete` (either optionally
+ * with `eq` / `in` / `is` filters, `order` and `range` (the paging shape
+ * `pageAll` issues — FREEZE-3), `update` and `delete` (either optionally
  * followed by `select`), `insert`, and `maybeSingle`.
  *
  * It is deliberately NOT a Postgres emulator. RLS, triggers, constraints and
@@ -32,6 +33,8 @@ class FakeQuery implements PromiseLike<Result> {
   private patch: FakeRow = {};
   private payload: FakeRow | FakeRow[] | null = null;
   private single = false;
+  private orders: Array<{ col: string; ascending: boolean }> = [];
+  private slice: [number, number] | null = null;
 
   constructor(
     private readonly db: FakeSupabase,
@@ -56,6 +59,17 @@ class FakeQuery implements PromiseLike<Result> {
   /** `.is(col, null)` is the ungraded filter; undefined counts as null. */
   is(col: string, val: unknown): this {
     this.filters.push((r) => (r[col] ?? null) === val);
+    return this;
+  }
+
+  order(col: string, opts?: { ascending?: boolean }): this {
+    this.orders.push({ col, ascending: opts?.ascending ?? true });
+    return this;
+  }
+
+  /** Inclusive, like PostgREST's `Range` header: `.range(0, 999)` is 1,000 rows. */
+  range(from: number, to: number): this {
+    this.slice = [from, to];
     return this;
   }
 
@@ -117,7 +131,18 @@ class FakeQuery implements PromiseLike<Result> {
     }
 
     this.db.reads.set(this.table, (this.db.reads.get(this.table) ?? 0) + 1);
-    const copies = matched.map((r) => ({ ...r }));
+    let copies = matched.map((r) => ({ ...r }));
+    if (this.orders.length > 0) {
+      const cmp = (a: unknown, b: unknown) => (a === b ? 0 : (a as number) < (b as number) ? -1 : 1);
+      copies.sort((a, b) => {
+        for (const o of this.orders) {
+          const c = cmp(a[o.col], b[o.col]);
+          if (c !== 0) return o.ascending ? c : -c;
+        }
+        return 0;
+      });
+    }
+    if (this.slice) copies = copies.slice(this.slice[0], this.slice[1] + 1);
     return { data: this.single ? (copies[0] ?? null) : copies, error: null };
   }
 
