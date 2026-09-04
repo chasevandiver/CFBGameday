@@ -25,6 +25,7 @@ import {
   type SlateData,
 } from "../../lib/slate";
 import { BetSlip } from "./BetSlip";
+import type { ActingBettor } from "../../lib/log-for";
 import { CrowdSigns, type SignView } from "./CrowdSigns";
 import { GameCard } from "./GameCard";
 import { PennantRow } from "./PennantRow";
@@ -58,6 +59,8 @@ export function SlateView({
   signsWeek = null,
   poolName = null,
   demo = false,
+  actingFor = null,
+  groupSlug = null,
 }: {
   initial: SlateData;
   currentWeek: number;
@@ -82,6 +85,15 @@ export function SlateView({
    * real signed-out one and the demo would empty out while somebody watched.
    */
   demo?: boolean;
+  /**
+   * 0083: the viewer is a betting-group admin logging as this member. The
+   * server rendered the slate as them (their bets on the cards) and the slip
+   * writes as them; the refresh below has to keep saying so or the first poll
+   * would quietly swap the cards back to the admin's own bets.
+   */
+  actingFor?: ActingBettor | null;
+  /** The `?g=` the page was opened with, carried into the refresh with `?for=`. */
+  groupSlug?: string | null;
 }) {
   const [data, setData] = useState<SlateData>(initial);
   const [loading, setLoading] = useState(false);
@@ -161,10 +173,15 @@ export function SlateView({
     if (showSkeleton) setLoading(true);
     const fetchStart = Date.now();
     try {
+      const acting = actingFor
+        ? `&for=${encodeURIComponent(actingFor.id)}${
+            groupSlug ? `&g=${encodeURIComponent(groupSlug)}` : ""
+          }`
+        : "";
       const res = await fetch(
         liveView
-          ? "/api/slate?sport=live"
-          : `/api/slate?week=${targetWeek}&st=${st ?? "regular"}&sport=${sport}`,
+          ? `/api/slate?sport=live${acting}`
+          : `/api/slate?week=${targetWeek}&st=${st ?? "regular"}&sport=${sport}${acting}`,
         { cache: "no-store" },
       );
       if (res.ok) {
@@ -202,7 +219,7 @@ export function SlateView({
     } finally {
       if (showSkeleton) setLoading(false);
     }
-  }, [demo, sport, liveView]);
+  }, [demo, sport, liveView, actingFor, groupSlug]);
 
   const handleGameUpdate = useCallback((row: GameRow) => {
     liveEventAt.current.set(row.id, Date.now());
@@ -776,6 +793,17 @@ export function SlateView({
         default="none"
       >
       <div className="mx-auto mt-4 max-w-7xl pb-12">
+        {/* Said loudly, not inferred from a URL (0083, the same rule as the
+            pick'em board's seat banner): whose ledger the slip writes to is
+            the one fact an admin working through a text thread must never
+            lose track of. */}
+        {actingFor && (
+          <p className="card mb-4 border-accent/40 bg-accent/10 px-4 py-3 text-sm text-chalk">
+            You&rsquo;re logging bets for <span className="font-semibold">{actingFor.name}</span> —
+            everything on the slip lands on their ledger. The bet chips show{" "}
+            <span className="font-semibold">their</span> bets, not yours.
+          </p>
+        )}
         {/* Fun Mode: the crowd-sign wall (FUN-10), pennants for your teams
             (FUN-6) and the crew-picks reveal for the big game (FUN-9). All
             render nothing unless toggled on, so the default slate is
@@ -889,7 +917,14 @@ export function SlateView({
       </div>
       </VT>
 
-      <BetSlip seasonId={data.seasonId} week={week} tz={tz} demo={demo} displayName={displayName} />
+      <BetSlip
+        seasonId={data.seasonId}
+        week={week}
+        tz={tz}
+        demo={demo}
+        displayName={displayName}
+        forUser={actingFor}
+      />
     </>
   );
 }

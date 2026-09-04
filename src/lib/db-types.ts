@@ -244,6 +244,11 @@ export interface BetRow {
   /** future only: last manual mark-to-market, American odds (R2-A4, 0055). */
   marked_odds: number | null;
   marked_at: string | null;
+  /**
+   * Who wrote the row when it was not the bettor: an admin of a betting group
+   * they are in, logging a bet they were sent (0083). Null when self-logged.
+   */
+  logged_by: string | null;
 }
 
 /**

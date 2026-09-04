@@ -138,6 +138,7 @@ export default async function GroupHomePage({
           seasonType={seasonType}
           weeks={weeks}
           weekRef={ref}
+          forParam={forParam ?? null}
         />
       </>
     );

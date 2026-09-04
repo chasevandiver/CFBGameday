@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { CONFIDENCE_TIERS, type ConfidenceTier } from "../../lib/db-types";
+import { canLogBetFor } from "../../lib/log-for";
 import { homeLineForSide } from "../../lib/slate";
 import { createClient } from "../../lib/supabase/server";
 
@@ -22,6 +23,35 @@ export interface BetActionResult {
   message?: string;
 }
 
+/**
+ * Whose row this is (0083).
+ *
+ * Every write below is the signed-in user's own by default. A betting-group
+ * admin may instead name a member of that group, and the row lands as that
+ * member's bet with the admin's id in `logged_by`. The policy on `bets` would
+ * refuse an unauthorised proxy row on its own; asking first turns a bare RLS
+ * error into a sentence, and keeps the "who" decision in one place for the
+ * three actions that need it.
+ */
+type Bettor = { userId: string; loggedBy: string | null };
+
+async function resolveBettor(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  callerId: string,
+  forUserId: string | null,
+): Promise<Bettor | { refused: string }> {
+  if (!forUserId || forUserId === callerId) return { userId: callerId, loggedBy: null };
+  if (!(await canLogBetFor(supabase, forUserId))) {
+    return { refused: "You can only log bets for a member of a betting group you run" };
+  }
+  return { userId: forUserId, loggedBy: callerId };
+}
+
+/** The pages a proxy write shows up on, beyond the ledger the actions already refresh. */
+function revalidateProxy(bettor: Bettor) {
+  if (bettor.loggedBy !== null) revalidatePath("/groups", "layout");
+}
+
 export async function logBet(formData: FormData): Promise<BetActionResult> {
   const supabase = await createClient();
   const {
@@ -39,6 +69,7 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
   const seasonId = Number(formData.get("season_id"));
   const gameIdRaw = String(formData.get("game_id") ?? "").trim();
   const sideRaw = String(formData.get("side") ?? "").trim();
+  const forRaw = String(formData.get("for_user") ?? "").trim();
 
   if (!description) return { ok: false, message: "Describe the bet (e.g. “Michigan -3.5”)" };
   if (!Number.isFinite(units) || units <= 0) return { ok: false, message: "Units must be > 0" };
@@ -71,9 +102,13 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
   const teamSide =
     betType === "team_total" && ["home", "away"].includes(teamSideRaw) ? teamSideRaw : null;
 
+  const bettor = await resolveBettor(supabase, user.id, forRaw || null);
+  if ("refused" in bettor) return { ok: false, message: bettor.refused };
+
   const { error } = await supabase.from("bets").insert({
     season_id: gameSeasonId ?? seasonId,
-    user_id: user.id,
+    user_id: bettor.userId,
+    logged_by: bettor.loggedBy,
     game_id: gameId,
     bet_type: betType,
     description,
@@ -88,6 +123,7 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
 
   if (error) return { ok: false, message: error.message };
   revalidatePath("/ledger");
+  revalidateProxy(bettor);
   return { ok: true };
 }
 
@@ -132,16 +168,22 @@ export interface SlipBetInput {
   confidence: string;
 }
 
-/** Log every selection on the bet slip in one shot (one ledger row each). */
+/**
+ * Log every selection on the bet slip in one shot (one ledger row each).
+ * `forUserId` (0083): a betting-group admin logging the slip as a member.
+ */
 export async function logSlipBets(
   seasonId: number,
   bets: SlipBetInput[],
+  forUserId: string | null = null,
 ): Promise<BetActionResult> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, message: "Sign in to log bets" };
+  const bettor = await resolveBettor(supabase, user.id, forUserId);
+  if ("refused" in bettor) return { ok: false, message: bettor.refused };
 
   if (!Number.isInteger(seasonId)) return { ok: false, message: "Bad season" };
   if (bets.length === 0) return { ok: false, message: "Nothing on the slip" };
@@ -170,7 +212,8 @@ export async function logSlipBets(
   const { error } = await supabase.from("bets").insert(
     bets.map((b) => ({
       season_id: seasonByGame.get(b.gameId) ?? seasonId,
-      user_id: user.id,
+      user_id: bettor.userId,
+      logged_by: bettor.loggedBy,
       game_id: b.gameId,
       bet_type: b.betType,
       description: b.description.trim(),
@@ -185,25 +228,37 @@ export async function logSlipBets(
   if (error) return { ok: false, message: error.message };
   revalidatePath("/ledger");
   revalidatePath("/slate");
+  revalidateProxy(bettor);
   return { ok: true };
 }
 
-/** Append-only ledger: voiding is the only "delete" (docs/SPEC.md §5.3). */
-export async function voidBet(betId: number): Promise<BetActionResult> {
+/**
+ * Append-only ledger: voiding is the only "delete" (docs/SPEC.md §5.3).
+ * `forUserId` (0083): an admin voiding a row they logged for a member — the
+ * mistyped number from a text needs undoing by the person who typed it.
+ */
+export async function voidBet(
+  betId: number,
+  forUserId: string | null = null,
+): Promise<BetActionResult> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, message: "Not signed in" };
+  if (!Number.isInteger(betId)) return { ok: false, message: "Bad bet" };
+  const bettor = await resolveBettor(supabase, user.id, forUserId);
+  if ("refused" in bettor) return { ok: false, message: bettor.refused };
 
   const { error } = await supabase
     .from("bets")
     .update({ voided_at: new Date().toISOString(), result: "void" })
     .eq("id", betId)
-    .eq("user_id", user.id);
+    .eq("user_id", bettor.userId);
 
   if (error) return { ok: false, message: error.message };
   revalidatePath("/ledger");
+  revalidateProxy(bettor);
   // The slate cards and the game page both show logged bets now, so a void has
   // to clear there too — otherwise the chip lingers until the next poll heals it.
   revalidatePath("/slate");

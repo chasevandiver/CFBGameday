@@ -15,14 +15,15 @@ import { MarkFutureButton } from "../../components/MarkFutureButton";
 import { VoidBetButton } from "../../components/VoidBetButton";
 import { TailFadeAudit, type AuditGroup, type PairRow, type RelationRow } from "../../components/TailFadeAudit";
 import { type BetRow, type TeamRow } from "../../lib/db-types";
-import { kickParts, tzLabel, tzOf } from "../../lib/kick";
+import { tzOf } from "../../lib/kick";
 import { statusForBet, type LiveBetStatus } from "../../lib/live-status";
 import { betsCardPayload, shareableBets, type BetCardGame } from "../../lib/share-card-build";
 import { seasonIdsForYear, seasonYearOf, sportOfSeasonId } from "../../lib/league";
 import { fetchBettingSheet } from "../../lib/betting-groups";
 import { fetchMyGroups } from "../../lib/groups";
 import { pairStatsFor } from "../../lib/tailing";
-import { fetchBetFormGames, fetchCurrentSeasonWeek } from "../../lib/queries";
+import { fetchCurrentSeasonWeek } from "../../lib/queries";
+import { abbrOf, fetchBetFormOptions } from "../../lib/bet-form-games";
 import { cumulativeUnits, formatRecord, tally, tallyBy } from "../../lib/records";
 import { fmtSpread, fmtTotal, lineForSide } from "../../lib/slate";
 import { createClient } from "../../lib/supabase/server";
@@ -43,9 +44,6 @@ function fmtBetLine(b: BetRow): string {
   if (b.bet_type === "total" || b.bet_type === "team_total") return fmtTotal(n);
   return fmtSpread(b.side ? lineForSide(b.side, n) : n);
 }
-
-const abbrOf = (t: TeamRow | undefined): string =>
-  t?.abbreviation ?? t?.school.replace(/[^A-Za-z]/g, "").slice(0, 4).toUpperCase() ?? "?";
 
 /* The three ways a bet can stand relative to the crowd, in the order that reads
    as a story: what you opened, what you rode, what you opposed. Each carries a
@@ -115,7 +113,7 @@ export default async function LedgerPage({
 
   // No user → no ledger, without leaning on a "" uuid cast that only returns
   // empty because the cast error is swallowed (audit 06/SEC-09).
-  const [{ data }, { data: weekGames }] = await Promise.all([
+  const [{ data }, formOptions] = await Promise.all([
     user
       ? supabase
           .from("bets")
@@ -125,34 +123,32 @@ export default async function LedgerPage({
           .eq("user_id", user.id)
           .order("placed_at", { ascending: false })
       : Promise.resolve({ data: [] as BetRow[] }),
-    fetchBetFormGames(supabase, seasonId),
+    // this week's games for the bet form, so bets link to a game for grading
+    fetchBetFormOptions(supabase, seasonId, tz),
   ]);
   const bets = (data ?? []) as BetRow[];
+  const formGames: BetFormGame[] = formOptions.games;
+  const teamById = formOptions.teamById;
 
-  // this week's games for the bet form, so bets link to a game for grading
-  const gameRows = (weekGames ?? []) as Array<{
-    id: number;
-    start_ts: string | null;
-    home_team_id: number;
-    away_team_id: number;
-  }>;
-  const formTeamIds = [...new Set(gameRows.flatMap((g) => [g.home_team_id, g.away_team_id]))];
-  const { data: formTeams } =
-    formTeamIds.length > 0
-      ? await supabase.from("teams").select("*").in("id", formTeamIds)
+  // 0083: a row an admin logged for you says so. Names resolved in one read
+  // for however many admins that turns out to be — usually one.
+  const loggerIds = [
+    ...new Set(
+      bets
+        .map((b) => b.logged_by)
+        .filter((id): id is string => id !== null && id !== undefined && id !== user?.id),
+    ),
+  ];
+  const { data: loggerRows } =
+    loggerIds.length > 0
+      ? await supabase.from("profiles").select("id, display_name").in("id", loggerIds)
       : { data: [] };
-  const teamById = new Map<number, TeamRow>(((formTeams ?? []) as TeamRow[]).map((t) => [t.id, t]));
-  const formGames: BetFormGame[] = gameRows.map((g) => {
-    const homeAbbr = abbrOf(teamById.get(g.home_team_id));
-    const awayAbbr = abbrOf(teamById.get(g.away_team_id));
-    const kick = g.start_ts ? kickParts(g.start_ts, tz) : null;
-    return {
-      id: g.id,
-      label: `${awayAbbr} @ ${homeAbbr}${kick ? ` · ${kick.day} ${kick.time} ${tzLabel(tz)}` : ""}`,
-      homeAbbr,
-      awayAbbr,
-    };
-  });
+  const loggerName = new Map(
+    ((loggerRows ?? []) as Array<{ id: string; display_name: string | null }>).map((p) => [
+      p.id,
+      p.display_name ?? "an admin",
+    ]),
+  );
 
   // live status for open bets tied to an in-progress game (snapshot at page load)
   const openGameIds = [
@@ -519,7 +515,14 @@ export default async function LedgerPage({
                   key={b.id}
                   className={`border-b border-chalk/5 last:border-0 ${b.voided_at ? "opacity-40" : ""}`}
                 >
-                  <td className="max-w-[16rem] truncate px-3 py-2 font-sans">{b.description}</td>
+                  <td className="max-w-[16rem] truncate px-3 py-2 font-sans">
+                    {b.description}
+                    {b.logged_by && loggerName.has(b.logged_by) && (
+                      <span className="block text-[11px] text-dim">
+                        logged by {loggerName.get(b.logged_by)}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2">
                     <RetagBetButton
                       betId={b.id}

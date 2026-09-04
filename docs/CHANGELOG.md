@@ -226,6 +226,50 @@ shipping it.
 
 ## Log
 
+### Sep 4 — LOGF-1…3: an admin logs bets for a member of the betting group
+
+Owner request: "my friends aren't using the site that much. Can I log their
+bets for them cause they send them in the text, but sometimes it's after
+kick off" — and, asked what shape: "as the admin of the betting group,
+impersonate a user or make the picks easily as another person in the group."
+
+**What existed.** Bets were strictly self-logged: the insert policy required
+`user_id = auth.uid()` and both actions wrote the caller's id. The seats
+work (0081) let an admin *pick* for someone with no login, but its
+`acting_user` is wired only into the pick'em and survivor RPCs, and these
+friends have logins — they just text. After kickoff was never the problem:
+the ledger has no kickoff lock (only the confidence retag freezes, 0045), the
+bet form already listed games three days back, and the grader never reads
+when a row was logged.
+
+**What shipped.** Migration **0083**: `bets.logged_by` and
+`can_log_bet_for(p_user)` — current admin of a live betting group, `p_user`
+a current member of it (account or seat), not yourself. The insert policy
+takes that grant and makes the byline mandatory on a proxy row: a self row
+may carry null or its own id, a row for somebody else must carry the admin's,
+anything else is refused. The void policy widens identically, so the admin
+can undo a number typed wrong from a text; `enforce_bet_void_only` still
+decides what may move. Pick'em and survivor groups grant nothing, nor do
+removed members or archived rosters. In the app: a "Logging for" switcher on
+the betting group's home (admins only, resolved against the roster, the seat
+switcher's pattern), a banner and the manual form writing as the member,
+their open bets with a void, and a "Bet the slate as Jeff" link that opens
+`/slate?g=…&for=…` rendered as them — chips, slip and the `/api/slate`
+refresh all carry the member, and the slip's two share points are withheld
+while acting. Every action re-asks the grant before writing. The member's
+ledger shows "logged by Chase" under the row.
+
+**Deliberately not done.** `placed_at` stays the sanitizer's `now()` — an
+admin cannot backdate a row to when the text arrived, because any
+authenticated caller being able to choose `placed_at` lets everyone backdate
+their own. Recorded in STATUS §6 with the tail/fade consequence. The paste-
+the-text-and-parse-it idea is a separate step and was not started.
+
+**Verified.** DB suite: `log-bets-for.sql` 27 assertions plus `bets.sql` and
+`managed-members.sql` re-run beside it, 99 PASS 0 FAIL against a real
+Postgres 16. Vitest **2,031 across 136 files** (18 new), typecheck and lint
+green. 0083 is **not yet applied** to the live project (LOGF-4).
+
 ### Aug 29 — SCORE-5: a hand-started scoreboard loop was killed at 75 minutes
 
 Owner, mid-game: *"it's halftime in TCU/UNC but the site says there's 6:21 left

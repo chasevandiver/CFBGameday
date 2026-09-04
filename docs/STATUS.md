@@ -6336,6 +6336,53 @@ the changelog's Aug 28 entry.
       `survivorStandings` the way elimination always was — recomputed, never
       stored.
 
+**Logging bets for a member** — owner request 2026-09-04: "my friends aren't
+using the site that much. Can I log their bets for them cause they send them
+in the text, but sometimes it's after kick off" — and, asked what shape that
+should take: "as the admin of the betting group, impersonate a user or make
+the picks easily as another person in the group." Full reasoning in the
+changelog's Sep 4 entry.
+
+- [x] **LOGF-1** The grant. Migration **0083**: `bets.logged_by` (nullable,
+      references profiles) and `can_log_bet_for(p_user)` — true when the
+      caller is a current admin of a live *betting* group that `p_user` is a
+      current member of (a real account or a seat, the rule does not care),
+      and `p_user` is not the caller. The insert policy on `bets` widens to
+      that grant and **requires the byline on a proxy row** — a self row may
+      carry null or its own id, a row for somebody else must carry the
+      admin's, and anything else is refused by RLS. The void policy widens
+      the same way (the admin who typed the wrong number from a text needs
+      to undo it); `enforce_bet_void_only` still decides what may change.
+      Pick'em and survivor rosters grant nothing (no ledger), nor do removed
+      members or archived groups. 27 new DB assertions
+      (`supabase/tests/log-bets-for.sql`), `bets.sql` and
+      `managed-members.sql` unchanged and green beside them.
+- [x] **LOGF-2** The switcher. A "Logging for" row on the betting group's
+      home — admins only, one chip per other member, resolved server-side
+      against the roster like the pick'em seat switcher — and, while acting,
+      a banner, the manual bet form writing as them, their open bets with a
+      void, and a "Bet the slate as Jeff" link. That link opens `/slate` with
+      `?g=<group>&for=<member>`: the slate renders as the member (their chips
+      on the cards), the slip logs as them (`logSlipBets` carries the id),
+      the `/api/slate` refresh carries `?for=` so the first poll does not
+      swap the cards back, and both share points on the slip are withheld
+      while acting (they speak as "me"). Every write re-asks
+      `can_log_bet_for` in the action before touching the table; the URL is
+      never trusted. Actions: 9 vitest cases on the row shape and the
+      refusal (`actions/bets.test.ts`); resolver: 9 (`lib/log-for.test.ts`).
+- [x] **LOGF-3** The byline. A row somebody else logged says so on the
+      owner's ledger ("logged by Chase" under the description), names
+      resolved in one read. The sheet and the slate cards show the bet as the
+      member's, which it is.
+- [ ] **LOGF-4** Apply **0083** to the live project. Ordering is free in
+      both directions: old code inserts with no `logged_by` (the self branch,
+      unchanged), and new code deployed first still logs for yourself — only
+      the proxy path fails, closed, on the missing function. Read back after
+      applying: `bets.logged_by` present, `can_log_bet_for` executable by
+      `authenticated` and not by `anon`, both policies on `bets` recreated
+      under their old names. Not applied from this session — the owner's
+      call, as with 0082.
+
 ## 5. Not built, by choice
 
 Additive features, no defect behind any of them. Verified still open 2026-08-12.
@@ -6370,6 +6417,20 @@ here so they aren't rediscovered as bugs.
   `@managed.invalid` users. Deleting them from a security-definer RPC is how a
   cascade eats the pick history that was just handed over, so they stay.
   **Recorded rather than queued.**
+- **A proxied bet's `placed_at` is when it was typed in, not when the text
+  arrived** (LOGF-1, 2026-09-04). The insert sanitizer (0013) stamps
+  `placed_at` for every authenticated insert, so an admin logging a bet from a
+  text sent at noon at 9pm gets a 9pm row — and if that is after kickoff, a
+  row indistinguishable from one placed after seeing the score. Letting any
+  authenticated caller choose `placed_at` would let anyone backdate their own
+  rows, which is worse than the honest gap. The byline says who typed it; the
+  text thread says when. Tail/fade credit on the sheet follows `placed_at`, so
+  a late-logged bet reads as tailing whoever logged first. **Recorded rather
+  than queued.**
+- **The betting home's week jump drops `?for=`** (LOGF-2, 2026-09-04). Same
+  shape as the survivor one below: `WeekJump` builds its links from a base
+  path, and threading the member through it touches every group surface. The
+  switcher is one tap away and labelled. **Recorded rather than queued.**
 - **The survivor week switcher drops `?for=`** (SEAT-2, 2026-08-28). On the
   survivor home, jumping weeks through `WeekJump` returns the admin to picking
   for themselves; the pick'em board's own week chevrons carry it. The switcher

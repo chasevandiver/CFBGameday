@@ -4,6 +4,7 @@ import { Check, ChevronDown, ChevronUp, Share, Ticket, X } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { logSlipBets } from "../../app/actions/bets";
 import { slipKey, useBetSlip, type SlipSelection } from "../../lib/bet-slip-store";
+import type { ActingBettor } from "../../lib/log-for";
 import { betsChanged } from "../../lib/bets-changed";
 import { DEFAULT_TZ, kickHeading } from "../../lib/kick";
 import { slipCardPayload } from "../../lib/share-card-build";
@@ -45,6 +46,7 @@ export function BetSlip({
   tz = DEFAULT_TZ,
   displayName = "",
   demo = false,
+  forUser = null,
 }: {
   seasonId: number;
   week: number;
@@ -53,6 +55,12 @@ export function BetSlip({
   displayName?: string;
   /** `/demo`: the slip fills and confirms, but never reaches the ledger. */
   demo?: boolean;
+  /**
+   * 0083: the slip logs as this member of a betting group the viewer runs.
+   * The share points are withheld while acting — they speak as "me", and
+   * the card would be titled with the wrong name.
+   */
+  forUser?: ActingBettor | null;
 }) {
   const { slip, remove, setTier, clear } = useBetSlip();
   const [units, setUnits] = useState<Record<string, string>>({});
@@ -116,10 +124,12 @@ export function BetSlip({
             {logged.length} {logged.length === 1 ? "bet" : "bets"}{" "}
             {/* Short on purpose: the toast is capped at the viewport width and
                 a longer sentence wraps out of its own card. */}
-            {demo ? "— demo, not saved" : "logged"}
+            {demo ? "— demo, not saved" : forUser ? `logged for ${forUser.name}` : "logged"}
           </span>
           {/* The share offer belongs on the confirmation, not three screens
               away on the ledger: this is the second someone wants to send it. */}
+          {!forUser && (
+            <>
           <button
             onClick={() => void share(logged, loggedUnits.current)}
             className="stat inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-chalk/20 px-2.5 text-xs font-semibold text-chalk hover:border-chalk/50"
@@ -133,6 +143,8 @@ export function BetSlip({
             label="Image"
             className="stat inline-flex min-h-11 min-w-[5.5rem] items-center justify-center gap-1.5 rounded-lg border border-chalk/20 px-2.5 text-xs font-semibold text-chalk hover:border-chalk/50 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
           />
+            </>
+          )}
           <button
             onClick={() => setLogged(null)}
             aria-label="Dismiss"
@@ -184,6 +196,7 @@ export function BetSlip({
           description: s.description,
           confidence: s.tier,
         })),
+        forUser?.id ?? null,
       );
       if (!res.ok) {
         setError(res.message ?? "Something went wrong");
@@ -301,7 +314,12 @@ export function BetSlip({
                   Clear
                 </button>
                 {/* Shareable before it is logged, too: plenty of slips get
-                    texted round for opinions and never make the ledger. */}
+                    texted round for opinions and never make the ledger. Not
+                    while logging for somebody else (0083): both shares speak
+                    as "me" and would put the admin's name on the member's
+                    slip. */}
+                {!forUser && (
+                  <>
                 <button
                   onClick={() =>
                     void share(
@@ -325,6 +343,8 @@ export function BetSlip({
                   label="Image"
                   className="stat flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-chalk/15 px-2.5 text-xs font-medium text-dim transition-colors hover:border-chalk/40 hover:text-chalk disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
                 />
+                  </>
+                )}
               </div>
               {/* Full width and last, so the primary action sits lowest and
                   widest — the thumb zone rule in docs/DESIGN.md. */}
@@ -335,7 +355,9 @@ export function BetSlip({
               >
                 {pending
                   ? "Logging…"
-                  : `Log ${slip.length} bet${slip.length > 1 ? "s" : ""} · ${totalUnits}u`}
+                  : `Log ${slip.length} bet${slip.length > 1 ? "s" : ""} · ${totalUnits}u${
+                      forUser ? ` for ${forUser.name}` : ""
+                    }`}
               </button>
             </div>
           </div>

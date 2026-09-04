@@ -4,6 +4,7 @@ import type { SignView } from "../../components/slate/CrowdSigns";
 import { SlateView } from "../../components/slate/SlateView";
 import { ACTIVE_GROUP_COOKIE, activeOfKind, resolveActiveGroup } from "../../lib/groups";
 import { seasonYearOf } from "../../lib/league";
+import { resolveActingBettor } from "../../lib/log-for";
 import { fetchCurrentSeasonWeek, fetchLiveSlate, fetchSlateView } from "../../lib/queries";
 import { createClient } from "../../lib/supabase/server";
 import { isValidWeek } from "../../lib/week-range";
@@ -15,14 +16,28 @@ export const metadata = { title: "Slate" };
 export default async function SlatePage({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string; st?: string; g?: string; sport?: string }>;
+  searchParams: Promise<{ week?: string; st?: string; g?: string; sport?: string; for?: string }>;
 }) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { week: weekParam, st: stParam, g: groupParam, sport: sportParam } = await searchParams;
+  const {
+    week: weekParam,
+    st: stParam,
+    g: groupParam,
+    sport: sportParam,
+    for: forParam,
+  } = await searchParams;
+  /* 0083: a betting-group admin opening the slate as one of their members.
+     Resolved against the database's grant, never trusted from the URL; a
+     stale or hostile id renders the admin's own slate. From here down the
+     "viewer" of the bet layer is that member — their chips on the cards,
+     their ledger under the slip — while favourites, signs and the group
+     cookie stay the admin's own. */
+  const acting = await resolveActingBettor(supabase, user?.id ?? null, forParam);
+  const viewerId = acting?.id ?? user?.id ?? null;
   // Three views now (UX-36): `live` spans both leagues and every week, the
   // other two are one league's week. Anything unrecognised is the default
   // league, as before.
@@ -83,7 +98,7 @@ export default async function SlatePage({
       ? fetchLiveSlate(
           supabase,
           seasonYearOf(seasonId),
-          user?.id ?? null,
+          viewerId,
           pickemGroup?.id ?? null,
           bettingGroup?.id ?? null,
         )
@@ -91,7 +106,7 @@ export default async function SlatePage({
           supabase,
           seasonId,
           week,
-          user?.id ?? null,
+          viewerId,
           st,
           pickemGroup?.id ?? null,
           bettingGroup?.id ?? null,
@@ -151,6 +166,8 @@ export default async function SlatePage({
           signs={user && !liveView ? signs : null}
           signsWeek={week}
           poolName={pickemGroup?.name ?? null}
+          actingFor={acting}
+          groupSlug={groupParam ?? null}
         />
       </main>
     </>

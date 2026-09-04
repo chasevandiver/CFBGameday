@@ -30,7 +30,7 @@ class FakeQuery implements PromiseLike<Result> {
   private filters: Array<(r: FakeRow) => boolean> = [];
   private mode: Mode = "select";
   private patch: FakeRow = {};
-  private payload: FakeRow | null = null;
+  private payload: FakeRow | FakeRow[] | null = null;
   private single = false;
 
   constructor(
@@ -65,7 +65,8 @@ class FakeQuery implements PromiseLike<Result> {
     return this;
   }
 
-  insert(row: FakeRow): this {
+  /** One row or, as the slip does, several in one statement. */
+  insert(row: FakeRow | FakeRow[]): this {
     this.mode = "insert";
     this.payload = row;
     return this;
@@ -88,13 +89,18 @@ class FakeQuery implements PromiseLike<Result> {
     const rows = this.db.rows(this.table);
 
     if (this.mode === "insert") {
-      const row = { ...this.payload };
+      const incoming = (Array.isArray(this.payload) ? this.payload : [this.payload ?? {}]).map(
+        (r) => ({ ...r }),
+      );
       const unique = this.db.uniqueBy.get(this.table);
-      if (unique && rows.some((r) => unique.every((c) => r[c] === row[c]))) {
+      if (
+        unique &&
+        incoming.some((row) => rows.some((r) => unique.every((c) => r[c] === row[c])))
+      ) {
         return { data: null, error: { message: "duplicate key value", code: "23505" } };
       }
-      rows.push(row);
-      return { data: [row], error: null };
+      rows.push(...incoming);
+      return { data: incoming, error: null };
     }
 
     const matched = rows.filter((r) => this.filters.every((f) => f(r)));

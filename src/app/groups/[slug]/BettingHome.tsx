@@ -1,6 +1,8 @@
-import { Ticket, Users } from "lucide-react";
+import { PenLine, Ticket, Users } from "lucide-react";
 import Link from "next/link";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { BetForm } from "../../../components/BetForm";
+import { VoidBetButton } from "../../../components/VoidBetButton";
 import { GroupArcade } from "../../../components/games/GroupArcade";
 import { GroupSwitcher, JoinCode } from "../../../components/group/GroupForms";
 import { GroupRoster } from "../../../components/group/GroupRoster";
@@ -12,9 +14,10 @@ import {
 import { ShareImageButton } from "../../../components/ShareImageButton";
 import { ShareSheetButton } from "../../../components/group/ShareSheetButton";
 import { WeekJump } from "../../../components/group/WeekJump";
+import { fetchBetFormOptions } from "../../../lib/bet-form-games";
 import { byUnits, fetchBettingSheet } from "../../../lib/betting-groups";
 import { outsideWeekIds } from "../../../lib/home";
-import { weekLabel, type WeekRef } from "../../../lib/group-weeks";
+import { weekLabel, weekQuery, type WeekRef } from "../../../lib/group-weeks";
 import { EMPTY_TALLY } from "../../../lib/records";
 import type { GroupSummary } from "../../../lib/groups";
 import type { BetRow } from "../../../lib/db-types";
@@ -50,6 +53,7 @@ export async function BettingHome({
   seasonType,
   weeks,
   weekRef,
+  forParam = null,
 }: {
   supabase: SupabaseClient;
   group: GroupSummary;
@@ -62,6 +66,8 @@ export async function BettingHome({
    *  a betting group very much does play. */
   weeks: WeekRef[];
   weekRef: WeekRef;
+  /** `?for=`: the member an admin is logging bets for (0083). */
+  forParam?: string | null;
 }) {
   const [sheet, slate, joinRes] = await Promise.all([
     fetchBettingSheet(supabase, group.id, seasonId),
@@ -116,6 +122,26 @@ export async function BettingHome({
     );
     otherGames = loaded.flatMap((s) => s.games);
   }
+
+  /* 0083. Whose ledger the form below writes to. Normally nobody's but your
+     own; an admin can stand in for any other member of this group — a real
+     account that texts its bets in, or a seat — via `?for=`. Resolved against
+     the roster so a stale or hostile id in the URL means "yourself", the way
+     the pick'em board treats a seat id. The write itself is re-checked
+     against the database's grant in the action; this only decides what to
+     draw. */
+  const isAdmin = group.role === "admin" && userId !== null;
+  const others = isAdmin ? sheet.members.filter((m) => m.userId !== userId) : [];
+  const actingFor = forParam ? (others.find((m) => m.userId === forParam) ?? null) : null;
+  const formOptions = actingFor ? await fetchBetFormOptions(supabase, seasonId, DEFAULT_TZ) : null;
+  /* Their open bets, newest first, so a number typed wrong from a text can be
+     voided by the person who typed it without leaving the page. Graded and
+     voided rows are the ledger's business, not this form's. */
+  const theirOpen = actingFor
+    ? sheet.raw
+        .filter((b) => b.user_id === actingFor.userId && b.result === null && b.voided_at === null)
+        .sort((a, b) => b.placed_at.localeCompare(a.placed_at))
+    : [];
 
   const onTheSheet = [...slate.games, ...otherGames]
     .filter((g) => g.groupBets.length > 0)
@@ -189,6 +215,94 @@ export async function BettingHome({
         Betting group — every bet you log from the slate lands here. First one on a game gets
         credit; everyone after is tailing or fading them.
       </p>
+
+      {/* The member switcher (0083): whose ledger the form and the slate link
+          below write to. Rendered only for admins of a group with somebody
+          else in it, and it says who is selected rather than trusting the
+          reader to notice a URL. */}
+      {others.length > 0 && (
+        <nav aria-label="Logging for" className="mb-4 flex flex-wrap items-center gap-1.5">
+          <span className="stat text-[11px] uppercase tracking-wider text-chalk/45">
+            Logging for
+          </span>
+          <Link
+            href={`/groups/${group.slug}${weekQuery(weekRef)}`}
+            aria-current={actingFor === null ? "page" : undefined}
+            className={`stat flex min-h-11 items-center rounded-full border px-3 text-xs font-semibold ${
+              actingFor === null
+                ? "border-accent bg-accent/15 text-accent"
+                : "border-chalk/20 text-dim hover:border-chalk/50"
+            }`}
+          >
+            Me
+          </Link>
+          {others.map((m) => (
+            <Link
+              key={m.userId}
+              href={`/groups/${group.slug}${weekQuery(weekRef, { for: m.userId })}`}
+              aria-current={actingFor?.userId === m.userId ? "page" : undefined}
+              className={`stat flex min-h-11 items-center rounded-full border px-3 text-xs font-semibold ${
+                actingFor?.userId === m.userId
+                  ? "border-accent bg-accent/15 text-accent"
+                  : "border-chalk/20 text-dim hover:border-chalk/50"
+              }`}
+            >
+              {m.name}
+            </Link>
+          ))}
+        </nav>
+      )}
+
+      {actingFor && (
+        <section className="card mb-6 border-accent/40 bg-accent/10 p-4" aria-labelledby="acting-heading">
+          {/* Said loudly, not inferred from a chip: whose ledger this lands on
+              is the one fact an admin working down a text thread must never
+              lose track of. */}
+          <h2 id="acting-heading" className="text-sm text-chalk">
+            You&rsquo;re logging bets for <span className="font-semibold">{actingFor.name}</span>
+          </h2>
+          <p className="mt-1 text-sm text-dim">
+            Everything logged here lands on their ledger, marked as logged by you. Tap an odds cell
+            on the slate to do it from the sheet, or type it in below.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Link
+              href={`/slate?g=${encodeURIComponent(group.slug)}&for=${encodeURIComponent(actingFor.userId)}`}
+              className="stat inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink"
+            >
+              <PenLine size={14} aria-hidden />
+              Bet the slate as {actingFor.name.split(" ")[0]}
+            </Link>
+          </div>
+          <div className="mt-4">
+            <BetForm
+              seasonId={seasonId}
+              games={formOptions?.games ?? []}
+              forUserId={actingFor.userId}
+            />
+          </div>
+          {theirOpen.length > 0 && (
+            <div className="mt-4">
+              <h3 className="mb-1.5 text-xs uppercase tracking-wider text-chalk/45">
+                {actingFor.name.split(" ")[0]}&rsquo;s open bets
+              </h3>
+              <ul className="divide-y divide-chalk/8">
+                {theirOpen.map((b) => (
+                  <li key={b.id} className="flex items-center gap-2 py-1 text-sm">
+                    <span className="truncate text-chalk">{b.description}</span>
+                    <span className="stat shrink-0 text-xs text-chalk/50">
+                      {b.units}u · {b.odds > 0 ? `+${b.odds}` : b.odds}
+                    </span>
+                    <span className="ml-auto shrink-0">
+                      <VoidBetButton betId={b.id} forUserId={actingFor.userId} />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
 
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <Link
