@@ -226,6 +226,42 @@ shipping it.
 
 ## Log
 
+### Sep 5 — LIVE-10: the database launches the live loop when GitHub doesn't
+
+Owner, an hour after LIVE-9 landed: "This has been happening a lot with the
+GitHub actions. We need to fix this." The record agrees: a 13–15 minute drift
+and a dropped fire on Aug 20 (LIVE-2), an outright stall on Aug 13 with
+preseason games live (why 0043 exists), and today's three-hour delivery with
+an hourly range coalesced into one run. Every fix so far — four-hour runs,
+holding the runner — was on the loop's side of the line and still needed
+GitHub to start something first.
+
+**Fix.** Migration 0084 makes the database a second launcher. pg_cron, which
+has not missed a 10-second tick since 0044, runs
+`launch_live_loop_if_needed()` every two minutes. It asks whether football is
+on (`in_progress`, or `scheduled` and kicked within 4h, or kicking within 15
+min — `activity()`'s window) and whether the loop's LIVE-3 heartbeat has
+beaten in the last 3 minutes. Football on and no beat: `pg_net` posts a
+`workflow_dispatch` for `jobs.yml` with `task: scoreboard-loop`, which lands
+in the same concurrency group as a scheduled launch and hands off the same
+way. A second dispatch is held for 10 minutes. The GitHub crons are untouched;
+this fills the hours when none of them arrive. `loop_launcher_state` holds
+the last decision, `loop_launches` every dispatch with its request id; both
+deny-all. 16 offline assertions in `supabase/tests/loop-launcher.sql`.
+
+**Applied live at 16:47 UTC** with ten games in progress: read back as
+scheduled, active, and answering `polling` — no dispatch, because the loop was
+beating. It stays inert until a GitHub token exists.
+
+**Owner step.** A fine-grained PAT scoped to this repo with Actions: write,
+stored once with `vault.create_secret(..., 'github_actions_dispatch', ...)`.
+The STATUS entry has the exact statement. Until then the launcher records
+`no_token` and does nothing; the LIVE-10 box stays open.
+
+**Not covered.** Token expiry surfaces as 401s in `net._http_response` and
+nothing pages it; the watchdog still runs on GitHub's scheduler. Both in
+STATUS.
+
 ### Sep 5 — LIVE-9: the idle exit trusted a launch that never came; ten games kicked with no poller
 
 Owner, 16:27 UTC on Week 1 Saturday: "The games aren't live on the app and

@@ -1249,7 +1249,55 @@ deliberate deferrals, each recorded below with what it would take.
       polls until one arrives, and the watchdog is on the same scheduler. The
       real backstop is a second scheduler — the pg_cron edge path `jobs.yml`'s
       header says was deleted, or a hand dispatch, which is one click and worked
-      today. · **S** · 2026-09-05
+      today. **Built the same afternoon as LIVE-10, below.** · **S** · 2026-09-05
+- [ ] **LIVE-10 — the database launches the live loop when GitHub doesn't.**
+      Owner, same afternoon, on LIVE-9's residual: *"This has been happening a
+      lot with the GitHub actions. We need to fix this."* It has: a 13–15
+      minute drift and a dropped fire on 08-20 (LIVE-2), an outright stall on
+      08-13 with preseason games live (0043's reason for existing), and today's
+      three-hour delivery with an hourly range coalesced to one run. Every fix
+      so far was on the loop's side of that line and still needed GitHub to
+      start *something*. **Nothing can be done about when GitHub fires; the
+      fix is to stop depending on it.**
+      **Migration 0084**: pg_cron — which has not missed a 10-second tick since
+      0044 — runs `launch_live_loop_if_needed()` every two minutes. It asks the
+      two questions the loop already answers from the same table: is football
+      on (a game `in_progress`, a `scheduled` one kicked in the last 4h, or one
+      kicking in 15 min — `activity()`'s exact window), and has the loop's
+      LIVE-3 heartbeat beaten in the last 3 minutes. Yes and no, and the
+      database dispatches `jobs.yml` itself with `task: scoreboard-loop`
+      through `pg_net` — the same concurrency group and handoff as a scheduled
+      launch, so it never runs beside one. A second dispatch is held 10 minutes
+      for the runner to reach its first beat. The GitHub crons stay as the
+      first line; this fills the hours when none of them arrive. State in one
+      row (`loop_launcher_state`: last decision, reason, last dispatch) and a
+      log of every dispatch with its pg_net request id (`loop_launches`), both
+      deny-all like `live_heartbeat`. 16 assertions in
+      `supabase/tests/loop-launcher.sql` cover both gates, the kicked window's
+      edges, the 10-minute hold and the API-role denials.
+      **Applied live 2026-09-05 during the noon wave** and read back:
+      `loop-launcher-2m` scheduled and active, the function answering
+      `polling` with ten games live and the heartbeat 20s old, no dispatch
+      issued. Inert until the token exists, by design.
+      **⚠️ Owner step, and the box stays open until it is done:** GitHub will
+      not dispatch without credentials. Create a fine-grained personal access
+      token (Settings → Developer settings → Fine-grained tokens) scoped to
+      **chasevandiver/CFBGameday only**, permission **Actions: Read and
+      write**, longest expiry offered, and store it once:
+      `select vault.create_secret('<token>', 'github_actions_dispatch', 'Fine-grained PAT, Actions: write on CFBGameday (LIVE-10)');`
+      Then confirm with `select result from loop_launcher_state` — anything
+      but `no_token` during a game window means it is armed. Until then the
+      state row reads `no_token` on every tick and nothing else changes.
+      **Residuals, recorded:** (1) fine-grained tokens expire (a year at most);
+      on expiry the launcher keeps dispatching and GitHub answers 401, which
+      pg_net's asynchrony hides from the function — `loop_launches` and
+      `net._http_response` show it, nothing pages it. Put the expiry date in
+      the calendar. (2) The watchdog still rides GitHub's scheduler, so the
+      alert for "the launcher itself is not running" is a person looking at
+      `loop_launcher_state.checked_at`. (3) A dispatch at T-15 while a LIVE-9
+      run is holding replaces that run — harmless, a one-minute gap fifteen
+      minutes before kickoff, because a holding run does not beat and the
+      launcher cannot tell it from a dead one. · **M** · 2026-09-05
 - [ ] **SPLASH-1 — the iPad landscape splash is a portrait image stretched to
       fit, and iPadOS will not let us fix it.** ⚠️ **Un-ticked 2026-08-21** — it
       was checked on 08-20 on the strength of a fix that does not work, and a
