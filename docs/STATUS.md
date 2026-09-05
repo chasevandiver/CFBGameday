@@ -6482,6 +6482,29 @@ changelog's Sep 4 entry.
       are not rediscovered: the grader's frozen-predictions read (one week's
       finals, ~90 rows) and `settleGames`' `games` read by id list (same).
       Both are bounded by a week, not a season. · S
+- [x] **GRADE-3** Every bet on the Friday Week 1 slate but two sat open
+      overnight. Owner, 2026-09-05: "Why haven't the bets settled from
+      Friday night yet." All 8 games were `final` with scores; 8 bets on
+      four of them were ungraded. **Root cause: FREEZE-3's paging ordered
+      the grader's `scoring_plays` read by `id`, and that table has no `id`
+      column** — its key is `(game_id, sequence)`. The read only runs for a
+      final carrying an ungraded `first_half` bet, so it never fired in
+      testing or on the two Eastern Michigan bets that settled at ~01:30
+      UTC; from the moment Oklahoma/UTEP went final (bet 59, "OU -13.5 2Q")
+      every tick and all three GRADE-2 sweeps threw `column
+      scoring_plays.id does not exist` *before* grading anything, taking
+      the other seven bets down with it. The loop swallows grading errors by
+      design, so all four Actions runs were green. `grade-at-final.test.ts`
+      could not see it: the fake sorted by an undefined column silently.
+      **Fix:** order by `game_id, sequence`. `FakeSupabase` learned an
+      opt-in `columns` map that answers a filter or order on an unknown
+      column with Postgres's own 42703, and one test declares migration
+      0048's list and settles a first_half bet through it. The next
+      scoreboard-loop launch (or a `ratings-update` dispatch) sweeps the
+      slate. *Two bets need a hand afterwards:* bet 62 ("OU/UTEP 1Q Over
+      13.5") was logged as a full-game `total` and will grade as a win on
+      51–0 — there is no first-quarter type; bet 59 settles only if the
+      plays prove the half, else it waits for manual settle as designed.
 
 ## 5. Not built, by choice
 

@@ -1547,14 +1547,19 @@ async function settleGames(db: SupabaseClient, allGames: SettleGameRow[]): Promi
     ];
     const halfByGame = new Map<number, HalfScore>();
     for (let i = 0; i < fhGameIds.length; i += 300) {
-      // No .order(): buildBoxScore sorts by sequence itself.
+      // Ordered by the table's own key, (game_id, sequence) — `scoring_plays`
+      // has no `id` column, and paging needs a stable order. `.order("id")`
+      // here threw "column scoring_plays.id does not exist" on every grading
+      // pass from the first first_half bet on a final (GRADE-3, Sep 4).
+      // buildBoxScore still sorts by sequence itself.
       const fhChunk = fhGameIds.slice(i, i + 300);
       const playRows = await pageAll<Parameters<typeof firstHalfScore>[0][number]>((from, to) =>
         db
           .from("scoring_plays")
           .select("game_id, sequence, period, clock, scoring_team_id, play_type, play_text, home_points, away_points, source")
           .in("game_id", fhChunk)
-          .order("id")
+          .order("game_id")
+          .order("sequence")
           .range(from, to),
       ).catch((e: Error) => {
         throw new Error(`grading: scoring_plays read failed: ${e.message}`);
