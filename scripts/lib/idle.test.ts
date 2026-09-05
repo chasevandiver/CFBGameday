@@ -2,7 +2,17 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { DAY_MS, envDays, idleExhausted, IDLE_EXIT_MS, idleOverridden, idleSkip, msUntilNextGame, scheduledState } from "./idle";
+import {
+  DAY_MS,
+  envDays,
+  idleExhausted,
+  IDLE_EXIT_MS,
+  idleOverridden,
+  idleSkip,
+  kickoffBeforeDeadline,
+  msUntilNextGame,
+  scheduledState,
+} from "./idle";
 
 /**
  * Minimal PostgREST-shaped stub. Filters chain; `.limit()` is both awaitable
@@ -181,6 +191,53 @@ describe("idleExhausted — when a long run gives up (LIVE-2)", () => {
     // near the old 63-minute run length would end a run mid-game.
     expect(IDLE_EXIT_MS).toBeGreaterThanOrEqual(15 * 60_000);
     expect(IDLE_EXIT_MS).toBeLessThan(63 * 60_000);
+  });
+});
+
+/**
+ * LIVE-9, Week 1 Saturday 2026-09-05. GitHub delivered the 10:00 UTC launches
+ * at 13:11; the loop found nothing within 15 minutes, left at 13:32 as LIVE-2
+ * designed, and the 14:00/15:00/16:00 launches were all still undelivered when
+ * the noon-ET wave kicked at 16:00. Ten games ran 29 minutes with no poller.
+ * The runner a run already holds is the one thing the scheduler cannot lose,
+ * so an idle-exhausted run now stays when a kickoff falls before its deadline.
+ */
+describe("kickoffBeforeDeadline — holding an idle run for a kickoff it can reach (LIVE-9)", () => {
+  const t0 = Date.parse("2026-09-05T13:12:00Z");
+  const deadline = t0 + 240 * 60_000; // 17:12Z, the --minutes 240 run
+  const H = 3600_000;
+
+  it("holds for Week 1's noon-ET wave: kickoff 2h48m out, deadline 4h out", () => {
+    const kick = Date.parse("2026-09-05T16:00:00Z");
+    expect(kickoffBeforeDeadline([kick - t0, null], t0, deadline)).toBe(kick);
+  });
+
+  it("exits when the next kickoff is past the deadline — holding cannot reach it", () => {
+    expect(kickoffBeforeDeadline([5 * H, 6 * H], t0, deadline)).toBeNull();
+  });
+
+  it("exits when neither league has anything scheduled", () => {
+    expect(kickoffBeforeDeadline([null, null], t0, deadline)).toBeNull();
+    expect(kickoffBeforeDeadline([], t0, deadline)).toBeNull();
+  });
+
+  it("takes the earliest reachable kickoff across leagues, ignoring an unreachable one", () => {
+    expect(kickoffBeforeDeadline([3 * H, 1 * H], t0, deadline)).toBe(t0 + 1 * H);
+    expect(kickoffBeforeDeadline([5 * H, 2 * H], t0, deadline)).toBe(t0 + 2 * H);
+  });
+
+  it("a kickoff exactly at the deadline still holds; one past it does not", () => {
+    expect(kickoffBeforeDeadline([deadline - t0], t0, deadline)).toBe(deadline);
+    expect(kickoffBeforeDeadline([deadline - t0 + 1], t0, deadline)).toBeNull();
+  });
+
+  it("an overdue or live game (msUntilNextGame = 0) holds — that status flip is the point", () => {
+    expect(kickoffBeforeDeadline([0, null], t0, deadline)).toBe(t0);
+  });
+
+  it("a league whose polling is off is passed as null and cannot hold the run", () => {
+    // The caller substitutes null for CFB once the CFBD budget gate trips.
+    expect(kickoffBeforeDeadline([null, 5 * H], t0, deadline)).toBeNull();
   });
 });
 

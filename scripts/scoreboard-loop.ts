@@ -24,7 +24,15 @@ import { cfbdCallCount } from "../src/lib/cfbd";
 import { espnCallCount } from "../src/lib/espn";
 import { createServiceClient } from "../src/lib/supabase/service";
 import { envNum } from "./lib/env-num";
-import { idleSkip, envDays, idleExhausted, scheduledState, IDLE_EXIT_MS } from "./lib/idle";
+import {
+  idleSkip,
+  envDays,
+  idleExhausted,
+  kickoffBeforeDeadline,
+  msUntilNextGame,
+  scheduledState,
+  IDLE_EXIT_MS,
+} from "./lib/idle";
 import {
   SEASON,
   beat,
@@ -239,6 +247,8 @@ async function main() {
        runner for the rest of a four-hour deadline. Null while anything is
        live or imminent; see idleExhausted for why leaving early is free. */
     let idleSince: number | null = null;
+    /** LIVE-9. Say once per run that the idle exit is being held off, not every minute. */
+    let holdLogged = false;
     /** LIVE-3. One page per run about the other path, not one per tick. */
     let edgePaged = false;
     // Per-league edge detection for the settle sweep, and whether this run ever
@@ -342,11 +352,33 @@ async function main() {
         waitMs = 60_000;
       }
       if (idleExhausted(idleSince, Date.now())) {
-        console.log(
-          `nothing live or imminent for ${IDLE_EXIT_MS / 60_000} min — ending this run early; ` +
-            "the next launch picks it up",
-        );
-        break;
+        /* LIVE-9. "The next launch picks it up" is only true if the next launch
+           comes. Before giving up the runner, check whether a kickoff lands
+           inside this run's own deadline — and if so, hold: the scheduler
+           delivered Week 1 Saturday's launches 2.5 hours late, and a loop that
+           had simply stayed would have been polling at kickoff. A CFB kickoff
+           does not count once the CFBD budget has switched CFB polling off. */
+        const now = Date.now();
+        const [cfbMs, nflMs] = await Promise.all([
+          cfbdExhausted ? Promise.resolve(null) : msUntilNextGame(db, SEASON, now),
+          msUntilNextGame(db, NFL_SEASON, now),
+        ]);
+        const kick = kickoffBeforeDeadline([cfbMs, nflMs], now, deadline);
+        if (kick === null) {
+          console.log(
+            `nothing live or imminent for ${IDLE_EXIT_MS / 60_000} min — ending this run early; ` +
+              "the next launch picks it up",
+          );
+          break;
+        }
+        if (!holdLogged) {
+          holdLogged = true;
+          console.log(
+            `nothing live or imminent for ${IDLE_EXIT_MS / 60_000} min, but a kickoff at ` +
+              `${new Date(kick).toISOString()} lands before this run's deadline — holding the runner ` +
+              "rather than trusting the next launch to arrive (LIVE-9)",
+          );
+        }
       }
       if (Date.now() + waitMs > deadline) break;
       await sleep(waitMs);

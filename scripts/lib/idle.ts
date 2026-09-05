@@ -119,6 +119,48 @@ export function idleExhausted(
 }
 
 /**
+ * LIVE-9, 2026-09-05. Should an idle-exhausted run stay anyway, because a
+ * kickoff lands before its own deadline?
+ *
+ * `idleExhausted` assumed "the next launch re-enters within the hour". On
+ * Week 1 Saturday it did not: GitHub delivered the 10:00 UTC crons at 13:11,
+ * the loop found nothing within 15 minutes of kickoff, left at 13:32 as
+ * designed — and the 14:00, 15:00 and 16:00 launches were all still undelivered
+ * when the noon-ET wave kicked at 16:00. Ten games were live for 29 minutes
+ * with no poller anywhere; the 14:00 slot finally arrived at 16:28, two and a
+ * half hours late. Owner report, mid-wave: *"The games aren't live on the app
+ * and they kicked off already."*
+ *
+ * The runner the run already holds is the one thing the scheduler cannot take
+ * away. So when the leagues have been quiet past the limit, the loop asks how
+ * far off the next kickoff is (`msUntilNextGame`, the same read the launch
+ * guard uses) and stays if that kickoff falls before `deadline`: the run would
+ * have been alive for it anyway had the leagues stayed busy, and staying costs
+ * one database read a minute. A kickoff past the deadline still ends the run —
+ * a 245-minute timeout is the ceiling either way, and holding for a game the
+ * run cannot reach buys nothing.
+ *
+ * Returns the earliest such kickoff (for the log line), or null to exit. Each
+ * entry is one league's `msUntilNextGame`: null when that league has nothing
+ * scheduled, 0 when a game is live or overdue — which counts, since an overdue
+ * `scheduled` row is exactly the status flip the loop exists to catch.
+ */
+export function kickoffBeforeDeadline(
+  msUntilNext: ReadonlyArray<number | null>,
+  now: number,
+  deadline: number,
+): number | null {
+  let earliest: number | null = null;
+  for (const ms of msUntilNext) {
+    if (ms === null || !Number.isFinite(ms)) continue;
+    const at = now + ms;
+    if (at > deadline) continue;
+    if (earliest === null || at < earliest) earliest = at;
+  }
+  return earliest;
+}
+
+/**
  * What a league's earliest still-`scheduled` kickoff means for poll cadence.
  *
  * `kicked` is the state this function exists to name: the clock has passed a

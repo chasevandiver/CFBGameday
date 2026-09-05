@@ -226,6 +226,40 @@ shipping it.
 
 ## Log
 
+### Sep 5 — LIVE-9: the idle exit trusted a launch that never came; ten games kicked with no poller
+
+Owner, 16:27 UTC on Week 1 Saturday: "The games aren't live on the app and
+they kicked off already." Ten noon-ET games had been live for 27 minutes.
+Nothing polled them.
+
+**What happened.** No code failed. GitHub Actions delivered the 10:00 UTC crons
+at 13:11–13:23 — three hours late — and coalesced the hourly `0 10-14 * * 6`
+range into one run. That run (33968188823) found nothing within 15 minutes of
+kickoff, waited its 20 idle minutes and left at 13:32, exactly as LIVE-2
+designed: "the next launch re-enters within the hour." The 14:00, 15:00 and
+16:00 launches were all still undelivered when the wave kicked at 16:00; the
+14:00 slot arrived at 16:28. The 08:00 watchdog had run at 11:43 and the 14:00
+one had not run, so nothing paged.
+
+**Recovery.** A hand-dispatched `scoreboard-loop` at 16:28:40, replaced 13
+seconds later by the late scheduled launch (one concurrency group, the newest
+wins). Ten games flipped to `in_progress` and the loop heartbeat read
+`cfb: kicked` at 16:29:37.
+
+**Fix.** The runner a run already holds is the one thing the scheduler cannot
+take away. When the idle limit trips, the loop now reads the next kickoff in
+each league and stays if one lands before its own deadline
+(`kickoffBeforeDeadline`, `scripts/lib/idle.ts`): one database read a minute
+and no feed calls. Today's 13:12 launch would have been polling at 16:00. A
+kickoff beyond the deadline still exits; a CFB kickoff stops counting once the
+CFBD budget gate has switched CFB polling off. Logged once per run so the
+four-hour hold is visible in the job log.
+
+**Still open.** This covers a launch that arrived late, not one that never
+arrives. With no launch at all in the four hours before a kickoff the hole
+remains, and the watchdog rides the same scheduler. The backstop is a second
+scheduler or a hand dispatch — recorded in `docs/STATUS.md` under LIVE-9.
+
 ### Sep 5 — GRADE-3: the grader threw on every pass from the first first-half bet on a final
 
 Owner, Saturday morning: "Why haven't the bets settled from Friday night

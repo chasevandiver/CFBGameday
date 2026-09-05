@@ -1217,6 +1217,39 @@ deliberate deferrals, each recorded below with what it would take.
       Verified by mutation: stubbing the hand-back turns four tests red across
       the pure rule and the rendered card.
 
+- [x] **LIVE-9 — the loop's idle exit trusted the next launch to arrive, and on
+      Week 1 Saturday none did.** Owner report 2026-09-05, 16:27 UTC: *"The
+      games aren't live on the app and they kicked off already."* Ten noon-ET
+      games had been live for 27 minutes with nothing polling. **Nothing was
+      broken; the scheduler was late and the loop was designed to leave.**
+      GitHub delivered the 10:00 UTC crons at 13:11–13:23 (three hours late)
+      and coalesced the hourly `0 10-14 * * 6` range into a single run. That run
+      found no kickoff within 15 minutes, sat 20 idle minutes and exited at
+      13:32 exactly as LIVE-2 designed — *"the next launch re-enters within the
+      hour."* The 14:00, 15:00 and 16:00 launches were all still undelivered at
+      kickoff; the 14:00 slot finally landed at **16:28**. The 08:00 watchdog
+      ran at 11:43 and the 14:00 one had not run either, so nothing paged.
+      **Recovered by hand:** a dispatched `scoreboard-loop` at 16:28:40 (itself
+      replaced 13 seconds later by the late scheduled launch, same concurrency
+      group, as designed); ten games `in_progress` and the loop heartbeat at
+      `cfb: kicked` by 16:29:37.
+      **Fixed by holding the runner the run already has.** When `idleExhausted`
+      trips, the loop now asks `msUntilNextGame` for both leagues and stays if a
+      kickoff falls before its own `--minutes 240` deadline
+      (`kickoffBeforeDeadline`, `scripts/lib/idle.ts`) — one database read a
+      minute, zero feed calls, and the runner is free on a public repo. Today's
+      13:12 launch would have held to 16:00 and been polling at kickoff. A
+      kickoff past the deadline still exits: the 245-minute timeout is the
+      ceiling either way. A CFB kickoff stops counting once the CFBD budget gate
+      has switched CFB polling off. Seven tests on the pure function, including
+      the exact Week 1 timings.
+      **Not fixed, and worth stating:** this only covers a launch that exists.
+      If the scheduler delivers *no* launch in the four hours before a kickoff
+      (today's first came at 13:11 for a 16:00 kick, inside the window), nothing
+      polls until one arrives, and the watchdog is on the same scheduler. The
+      real backstop is a second scheduler — the pg_cron edge path `jobs.yml`'s
+      header says was deleted, or a hand dispatch, which is one click and worked
+      today. · **S** · 2026-09-05
 - [ ] **SPLASH-1 — the iPad landscape splash is a portrait image stretched to
       fit, and iPadOS will not let us fix it.** ⚠️ **Un-ticked 2026-08-21** — it
       was checked on 08-20 on the strength of a fix that does not work, and a
