@@ -545,6 +545,33 @@ describe("gradeGames — team totals and first halves (R2-A4)", () => {
     expect(db.rows("bets").find((b) => b.id === 904)!.result).toBe(null);
   });
 
+  /* GRADE-3 (Sep 4–5): FREEZE-3 paged this read and ordered it by `id`, a
+     column `scoring_plays` does not have — its key is (game_id, sequence).
+     The seed rows above happen to carry no `id` either, but the fake sorted
+     by an undefined column without complaint, so nothing failed until the
+     first first_half bet on a live final: every grading pass then threw
+     before settling anything, and the whole Friday slate sat open. The
+     column list is migration 0048's, and the fake now refuses any other. */
+  it("orders scoring_plays by its real key — the table has no id column", async () => {
+    const db = new FakeSupabase(gapSeed());
+    db.columns.set("scoring_plays", [
+      "game_id",
+      "sequence",
+      "period",
+      "clock",
+      "scoring_team_id",
+      "play_type",
+      "play_text",
+      "home_points",
+      "away_points",
+      "source",
+      "created_at",
+    ]);
+    const out = (await gradeGames(asClient(db), [402, 403])) as { betsGraded: number };
+    expect(out.betsGraded).toBe(2);
+    expect(db.rows("bets").find((b) => b.id === 903)!.result).toBe("win");
+  });
+
   it("reads scoring_plays only when a first_half bet is ungraded", async () => {
     const db = new FakeSupabase(gapSeed());
     await gradeGames(asClient(db), [402, 403]);

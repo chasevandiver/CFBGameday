@@ -226,6 +226,43 @@ shipping it.
 
 ## Log
 
+### Sep 5 — GRADE-3: the grader threw on every pass from the first first-half bet on a final
+
+Owner, Saturday morning: "Why haven't the bets settled from Friday night
+yet." All eight Friday games were `final` with scores; eight bets on four of
+them were still open. The two bets on Eastern Michigan/San José State had
+settled.
+
+**Root cause.** FREEZE-3 paged the grader's `scoring_plays` read and ordered
+it by `id`. `scoring_plays` has no `id` column — its primary key is
+`(game_id, sequence)` — so PostgREST answered every request with `column
+scoring_plays.id does not exist`. The read runs only for a final that carries
+an ungraded `first_half` bet, which is why nothing failed until Oklahoma/UTEP
+went final at ~03:15 UTC with "OU -13.5 2Q" on it. From that tick on, every
+inline grade and all three GRADE-2 sweeps threw *before* settling anything, so
+the seven ordinary spread, total and team-total bets on the other finals went
+down with it. The loop swallows grading errors on purpose (scores over
+settlement), so both scoreboard-loop runs were green and the watchdog had
+nothing to say. The 600-line tail of run 33929593055 is the error 19 times;
+run 33943914094 has it at start, on the live→idle edge, and at the end.
+
+**Why the tests passed.** `FakeSupabase` sorted by an undefined column and
+returned rows. The paging test asserted the read *happened*, which it did.
+
+**Fix.** Order by `game_id` then `sequence`, the table's own key. The fake
+grew an opt-in `columns` map: a test that declares a table's real column list
+gets Postgres's 42703 for any filter or order naming another one. One new test
+declares migration 0048's list for `scoring_plays` and settles a first-half
+bet through it; it fails on the old line with the production message.
+
+**What settles it.** The next scoreboard-loop launch sweeps `gradeSeasonFinals`
+before its idle guard, so the Friday slate grades on Saturday's first run
+after merge; `jobs → ratings-update` does the same on demand. Two rows then
+need a person: bet 62 ("OU/UTEP 1Q Over 13.5") was logged as a full-game
+`total` and grades as a win on 51–0 because there is no first-quarter type;
+bet 59 settles only if the plays prove the halftime score, and otherwise
+waits for manual settle, which is the R2-A4 rule.
+
 ### Sep 4 — FREEZE-3: the freeze read was cut off at 1,000 rows; 71 Week 1 receipts recovered
 
 Owner, off the new stats page: "We have a ton of games without a line on the

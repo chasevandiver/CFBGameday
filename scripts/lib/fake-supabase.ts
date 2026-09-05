@@ -35,6 +35,8 @@ class FakeQuery implements PromiseLike<Result> {
   private single = false;
   private orders: Array<{ col: string; ascending: boolean }> = [];
   private slice: [number, number] | null = null;
+  /** Every column a filter or order named, for the schema check in `run`. */
+  private cols: string[] = [];
 
   constructor(
     private readonly db: FakeSupabase,
@@ -46,11 +48,13 @@ class FakeQuery implements PromiseLike<Result> {
   }
 
   eq(col: string, val: unknown): this {
+    this.cols.push(col);
     this.filters.push((r) => r[col] === val);
     return this;
   }
 
   in(col: string, vals: unknown[]): this {
+    this.cols.push(col);
     const set = new Set(vals);
     this.filters.push((r) => set.has(r[col]));
     return this;
@@ -58,11 +62,13 @@ class FakeQuery implements PromiseLike<Result> {
 
   /** `.is(col, null)` is the ungraded filter; undefined counts as null. */
   is(col: string, val: unknown): this {
+    this.cols.push(col);
     this.filters.push((r) => (r[col] ?? null) === val);
     return this;
   }
 
   order(col: string, opts?: { ascending?: boolean }): this {
+    this.cols.push(col);
     this.orders.push({ col, ascending: opts?.ascending ?? true });
     return this;
   }
@@ -99,6 +105,21 @@ class FakeQuery implements PromiseLike<Result> {
   private run(): Result {
     const fail = this.db.failures.get(`${this.table}:${this.mode}`);
     if (fail) return { data: null, error: { message: fail } };
+
+    // GRADE-3: a filter or order on a column the table does not have. Seed
+    // rows are ad hoc, so this only fires for a table whose real column list
+    // a test declared — and then it answers exactly as PostgREST does, which
+    // is what `.order("id")` on `scoring_plays` got in production.
+    const known = this.db.columns.get(this.table);
+    if (known) {
+      const missing = this.cols.find((c) => !known.includes(c));
+      if (missing) {
+        return {
+          data: null,
+          error: { message: `column ${this.table}.${missing} does not exist`, code: "42703" },
+        };
+      }
+    }
 
     const rows = this.db.rows(this.table);
 
@@ -162,6 +183,12 @@ export class FakeSupabase {
   readonly failures = new Map<string, string>();
   /** Columns standing in for a unique index, so an insert can return 23505. */
   readonly uniqueBy = new Map<string, string[]>();
+  /**
+   * A table's real column list, when a test wants the schema enforced: any
+   * filter or order naming another column fails with Postgres's 42703, as it
+   * would live. Undeclared tables accept anything, as before (GRADE-3).
+   */
+  readonly columns = new Map<string, string[]>();
 
   constructor(seed: Record<string, FakeRow[]> = {}) {
     for (const [name, rows] of Object.entries(seed)) {
