@@ -226,6 +226,36 @@ shipping it.
 
 ## Log
 
+### Sep 6 — LIVE-11: CFBD revoked `/scoreboard` mid-slate; college gets a second feed from ESPN
+
+Owner, ~01:00 UTC with 25 games live: "the slate isnt updating live scores
+right now. Its super behind." The loop was running, launched on time, and
+had beaten until 00:30:34. From 00:31:06 every tick read
+`CFBD /scoreboard failed: 401 Unauthorized`. A hand-dispatched `cfbd-probe`
+at 01:03 answered the question: every other endpoint `ok`, `/scoreboard`
+DENIED 401. The Tier 1+ entitlement on the key lapsed while the key still
+worked. Not the scheduler this time, and nothing in the repo can renew a
+tier.
+
+**Fix.** 0044's lane, opened to college. NFL-13 had said CFB could not use
+it because there was no ESPN id to join on; CFBD's game ids turn out to BE
+ESPN's event ids — 401860878 is CSU/WYO on both boards, and all 25 live ids
+matched. `supabase/functions/cfb-scoreboard/index.ts` is `nfl-scoreboard`
+with the sport, two ESPN URLs (FBS group 80, FCS group 81) and heartbeat
+source `edge-cfb` changed, plus CFBD-style clock normalisation ("8:00" →
+"08:00") so the two writers never alternate, and a rule that a stored final
+is never reopened. Migration 0085 runs it every 30s behind the same
+`where exists` gate as 0044. Grading is untouched.
+
+**Live at 01:08 UTC.** First manual call: `updated 25/85`. CSU/WYO went from
+a stale 21–13 Q3 to 28–13 Q4; CLT/CIT flipped to final 43–41 in 2OT. The cron
+took over on the next tick; heartbeat and `last_play_at` advancing since.
+
+**Owner step.** Renew the CFBD tier at collegefootballdata.com/key. Until
+then live scores are ESPN-only, scoring timelines (`/plays`) stop, and the
+loop logs `tick failed` once a minute. The 08:00 watchdog will page about a
+"dark" loop that is in fact covered — residual in STATUS.
+
 ### Sep 5 — LIVE-10: the database launches the live loop when GitHub doesn't
 
 Owner, an hour after LIVE-9 landed: "This has been happening a lot with the

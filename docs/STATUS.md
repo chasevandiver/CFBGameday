@@ -1298,6 +1298,55 @@ deliberate deferrals, each recorded below with what it would take.
       run is holding replaces that run — harmless, a one-minute gap fifteen
       minutes before kickoff, because a holding run does not beat and the
       launcher cannot tell it from a dead one. · **M** · 2026-09-05
+- [x] **LIVE-11 — the college slate had exactly one live feed, and it was
+      revoked mid-game.** Owner report 2026-09-06 ~01:00 UTC: *"the slate isnt
+      updating live scores right now. Its super behind."* 25 games live, the
+      loop running and beating until 00:30:34 — then every tick from 00:31:06
+      on: `CFBD /scoreboard failed: 401 Unauthorized`. A hand-dispatched
+      `cfbd-probe` at 01:03 read every other endpoint `ok` (`/games`, `/lines`,
+      ratings, `/teams`, 17 calls) and **`/scoreboard` DENIED 401** — the Tier
+      1+ entitlement on the key lapsed at 00:31 while the key itself still
+      works. Not a scheduler fault this time (LIVE-9/10 are about launches;
+      this loop was launched and alive), not a code fault, and nothing on our
+      side can renew a tier. The launcher (LIVE-10) would have dispatched a new
+      loop every 10 minutes had the token existed, and every one of them would
+      have failed the same way — correctly, since a dead loop and a dead feed
+      look the same from the heartbeat.
+      **Fixed by giving CFB a second feed, in the database, from ESPN** —
+      0044's lane opened to college. NFL-13 had recorded that this could not
+      be done because *"there is no ESPN id column to join a college board
+      on"*. **That was wrong: CFBD's game ids are ESPN's event ids** —
+      401860878 is CSU/WYO on both boards, and every one of tonight's 25 live
+      ids matched ESPN's FBS+FCS scoreboards. So
+      `supabase/functions/cfb-scoreboard/index.ts` is `nfl-scoreboard` with
+      the sport, the two ESPN URLs (group 80 FBS, group 81 FCS, `limit=300`)
+      and the heartbeat source (`edge-cfb`) changed, plus two CFB-specific
+      lines: ESPN's `8:00` is normalised to CFBD's `08:00` so the two writers
+      never flip-flop a row over the clock, and a stored `final` is never
+      reopened by a stale ESPN `in`. **Migration 0085** schedules it every 30s
+      behind the same `where exists` gate as 0044, so an idle night costs no
+      invocation (~8k/month in season against 500k). Grading is untouched: the
+      loop's sweeps and the Sunday backstop read `status = 'final'` whoever
+      wrote it.
+      **Deployed and applied live at 01:08 UTC, mid-slate.** First manual
+      invocation: `updated 25/85` — every live game re-scored (CSU/WYO from a
+      stale 21–13 Q3 to 28–13 Q4, CLT/CIT flipped to final 43–41 in 2OT), then
+      the cron took over at 30s. **Verified by reading back the heartbeat and
+      `last_play_at` advancing** with the CFBD loop still failing beside it.
+      **Owner step, separate from this fix:** renew the CFBD tier at
+      collegefootballdata.com/key so the primary feed, `/plays` for scoring
+      timelines, and `observe-scoreboard` come back. Until then CFB live
+      scores are ESPN-only, scoring timelines (`cfbScoringJob`, `/plays`) do
+      not update, and the loop logs `tick failed` every minute — expected.
+      **Residuals:** (1) NFL-13's premise is retracted; the ESPN client in
+      `src/lib/espn.ts` could serve the Actions loop for CFB too, making the
+      loop feed-redundant rather than only the edge path — queued, not done.
+      (2) The watchdog's liveness rule keys on the loop's beat, so it will page
+      at 08:00 UTC about a loop that is "dark" while the slate is in fact live
+      off `edge-cfb`; teach it the second source. (3) The two writers agree on
+      every column tonight; if CFBD and ESPN ever disagree on a score for more
+      than a tick, the row will alternate — watch `games` for churn the first
+      Saturday both feeds are up. · **M** · 2026-09-06
 - [ ] **SPLASH-1 — the iPad landscape splash is a portrait image stretched to
       fit, and iPadOS will not let us fix it.** ⚠️ **Un-ticked 2026-08-21** — it
       was checked on 08-20 on the strength of a fix that does not work, and a
