@@ -6,6 +6,7 @@ import { VoidBetButton } from "../../../components/VoidBetButton";
 import { GroupArcade } from "../../../components/games/GroupArcade";
 import { GroupSwitcher, JoinCode } from "../../../components/group/GroupForms";
 import { GroupRoster } from "../../../components/group/GroupRoster";
+import { LeagueTabs } from "../../../components/group/LeagueTabs";
 import {
   PairPanel,
   SheetGameRow,
@@ -21,6 +22,7 @@ import { weekLabel, weekQuery, type WeekRef } from "../../../lib/group-weeks";
 import { EMPTY_TALLY } from "../../../lib/records";
 import type { GroupSummary } from "../../../lib/groups";
 import type { BetRow } from "../../../lib/db-types";
+import type { Sport } from "../../../lib/league";
 import { buildSheetShareContext } from "../../../lib/group-share";
 import { DEFAULT_TZ } from "../../../lib/kick";
 import {
@@ -39,6 +41,12 @@ import { pairStatsFor } from "../../../lib/tailing";
  * members' ledgers read side by side. So the page is: what's on the sheet this
  * week, who's running good, and who is actually worth copying.
  *
+ * One league at a time (GRP-12). The members bet both, and the season numbers
+ * below count both, but a *week* only exists on one league's calendar — NFL
+ * week 2 and CFB week 3 are the same weekend, and neither has the other's
+ * preseason or playoffs. So the sheet is one league's week, chosen by the
+ * tabs, the way a both-league pick'em group shows one board at a time.
+ *
  * The last of those is the point. Everyone in a group chat claims a record;
  * "how does tailing you actually go" is a different number, and it is the one
  * nobody can argue with.
@@ -48,6 +56,7 @@ export async function BettingHome({
   group,
   mine,
   userId,
+  league,
   seasonId,
   week,
   seasonType,
@@ -59,6 +68,8 @@ export async function BettingHome({
   group: GroupSummary;
   mine: GroupSummary[];
   userId: string | null;
+  /** The league in view; `seasonId`, `week` and `weeks` are all its own. */
+  league: Sport;
   seasonId: number;
   week: number;
   seasonType: SeasonType;
@@ -69,6 +80,12 @@ export async function BettingHome({
   /** `?for=`: the member an admin is logging bets for (0083). */
   forParam?: string | null;
 }) {
+  const leagueParam = league === "nfl" ? "nfl" : null;
+  /* Every road to the slate from here opens the league in view: a reader on
+     the NFL tab who taps "Go bet the slate" and lands on Saturday's games has
+     been told, wrongly, that this is a CFB product. */
+  const slateHref = league === "nfl" ? "/slate?sport=nfl" : "/slate";
+
   const [sheet, slate, joinRes] = await Promise.all([
     fetchBettingSheet(supabase, group.id, seasonId),
     // The slate already knows how to classify a betting group's bets per game
@@ -80,14 +97,14 @@ export async function BettingHome({
       : Promise.resolve({ data: null }),
   ]);
 
-  /* GRP-6. The sheet was one `fetchSlateView` — one league, one week — so every
-     NFL bet a member logged was invisible here, while the standings two
-     sections down printed "CFB 8-9 · NFL 3-1" off the same book. `sheet` has
-     always read both leagues (0042); only the display forgot.
-     Scoped by the selected week's own dates rather than by the NFL calendar,
-     because the two leagues do not share week numbers and "week 0" is a CFB
-     idea. What belongs on this sheet is what the group had money on while this
-     week was being played. */
+  /* GRP-6 tried to show both leagues on one sheet by sweeping in whatever the
+     group had money on between this week's first and last kickoff. Those were
+     CFB kickoffs — Thursday to Saturday night — so an NFL Sunday or Monday
+     game was never inside the window, and every NFL bet but the Thursday one
+     stayed invisible. GRP-12 gives each league its own tab and own week
+     instead; the sweep below stays, but within the league in view: it exists
+     for a bet on a game whose `week` differs from this one while its kickoff
+     does not (a rescheduled game), not for crossing leagues. */
   const onSlate = new Set(slate.games.map((g) => g.id));
   const kickoffs = slate.games
     .map((g) => g.startTs)
@@ -105,22 +122,27 @@ export async function BettingHome({
        belongs on the ledger; it does not belong on this week's sheet. */
     const { data: placed } = await supabase
       .from("games")
-      .select("id, season_id")
+      .select("id")
       .in("id", otherIds)
+      .eq("season_id", seasonId)
       .gte("start_ts", kickoffs[0])
       .lte("start_ts", kickoffs[kickoffs.length - 1]);
-    const bySeason = new Map<number, number[]>();
-    for (const g of (placed ?? []) as Array<{ id: number; season_id: number }>) {
-      bySeason.set(g.season_id, [...(bySeason.get(g.season_id) ?? []), g.id]);
+    const ids = ((placed ?? []) as Array<{ id: number }>).map((g) => g.id);
+    if (ids.length > 0) {
+      /* WEEK_NONE: these games have no week of their own worth naming here,
+         and the ids are the whole query. */
+      const extra = await fetchSlateView(
+        supabase,
+        seasonId,
+        WEEK_NONE,
+        userId,
+        "regular",
+        null,
+        group.id,
+        ids,
+      );
+      otherGames = extra.games;
     }
-    const loaded = await Promise.all(
-      [...bySeason].map(([sid, ids]) =>
-        /* WEEK_NONE: these games have no week of their own worth naming here,
-           and the ids are the whole query. */
-        fetchSlateView(supabase, sid, WEEK_NONE, userId, "regular", null, group.id, ids),
-      ),
-    );
-    otherGames = loaded.flatMap((s) => s.games);
   }
 
   /* 0083. Whose ledger the form below writes to. Normally nobody's but your
@@ -216,6 +238,16 @@ export async function BettingHome({
         credit; everyone after is tailing or fading them.
       </p>
 
+      {/* GRP-12: one sheet per league per week. The switch keeps `?for=` so an
+          admin working down a text thread of NFL bets is not sent back to
+          their own ledger by changing tab. */}
+      <LeagueTabs
+        base={`/groups/${group.slug}`}
+        league={league}
+        leagues={group.leagues}
+        extra={{ for: actingFor?.userId ?? null }}
+      />
+
       {/* The member switcher (0083): whose ledger the form and the slate link
           below write to. Rendered only for admins of a group with somebody
           else in it, and it says who is selected rather than trusting the
@@ -226,7 +258,7 @@ export async function BettingHome({
             Logging for
           </span>
           <Link
-            href={`/groups/${group.slug}${weekQuery(weekRef)}`}
+            href={`/groups/${group.slug}${weekQuery(weekRef, { league: leagueParam })}`}
             aria-current={actingFor === null ? "page" : undefined}
             className={`stat flex min-h-11 items-center rounded-full border px-3 text-xs font-semibold ${
               actingFor === null
@@ -239,7 +271,7 @@ export async function BettingHome({
           {others.map((m) => (
             <Link
               key={m.userId}
-              href={`/groups/${group.slug}${weekQuery(weekRef, { for: m.userId })}`}
+              href={`/groups/${group.slug}${weekQuery(weekRef, { league: leagueParam, for: m.userId })}`}
               aria-current={actingFor?.userId === m.userId ? "page" : undefined}
               className={`stat flex min-h-11 items-center rounded-full border px-3 text-xs font-semibold ${
                 actingFor?.userId === m.userId
@@ -267,7 +299,7 @@ export async function BettingHome({
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Link
-              href={`/slate?g=${encodeURIComponent(group.slug)}&for=${encodeURIComponent(actingFor.userId)}`}
+              href={`/slate?g=${encodeURIComponent(group.slug)}&for=${encodeURIComponent(actingFor.userId)}${league === "nfl" ? "&sport=nfl" : ""}`}
               className="stat inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink"
             >
               <PenLine size={14} aria-hidden />
@@ -306,10 +338,10 @@ export async function BettingHome({
 
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <Link
-          href="/slate"
+          href={slateHref}
           className="stat inline-flex min-h-11 items-center rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink"
         >
-          Go bet the slate
+          Go bet the {league.toUpperCase()} slate
         </Link>
         <Link
           href="/ledger"
@@ -317,7 +349,13 @@ export async function BettingHome({
         >
           My ledger
         </Link>
-        <WeekJump base={`/groups/${group.slug}`} weeks={weeks} current={weekRef} sport="cfb" />
+        <WeekJump
+          base={`/groups/${group.slug}`}
+          weeks={weeks}
+          current={weekRef}
+          sport={league}
+          league={leagueParam}
+        />
         {share && <ShareSheetButton sheet={share} />}
         {myCard && <ShareImageButton payload={myCard} filename="the-slate-bets.png" label="My bets image" />}
         {group.role === "admin" && (
@@ -336,7 +374,7 @@ export async function BettingHome({
       <section className="mb-7" aria-labelledby="sheet-heading">
         <div className="mb-2.5 flex items-baseline gap-2">
           <h2 id="sheet-heading" className="text-sm text-accent">
-            {weekLabel(weekRef, "cfb")} sheet
+            {league.toUpperCase()} {weekLabel(weekRef, league)} sheet
           </h2>
           <span className="h-px flex-1 bg-chalk/10" aria-hidden />
           <span className="stat text-[11px] text-dim">
@@ -345,10 +383,12 @@ export async function BettingHome({
         </div>
         {onTheSheet.length === 0 ? (
           <div className="card px-6 py-10 text-center">
-            <p className="text-sm text-chalk">Nothing on the sheet yet this week.</p>
+            <p className="text-sm text-chalk">
+              Nothing on the {league.toUpperCase()} sheet yet this week.
+            </p>
             <p className="mt-1 text-sm text-dim">
-              <Link href="/slate" className="font-medium text-accent underline-offset-2 hover:underline">
-                Open the slate
+              <Link href={slateHref} className="font-medium text-accent underline-offset-2 hover:underline">
+                Open the {league.toUpperCase()} slate
               </Link>{" "}
               and tap an odds cell — whoever logs a game first is the source.
             </p>

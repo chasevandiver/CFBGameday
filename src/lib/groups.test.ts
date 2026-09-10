@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { joinedLabel } from "./groups";
+import { groupLeagues, joinedLabel } from "./groups";
 
 /**
  * The roster came back empty for five days and nothing failed.
@@ -79,5 +79,29 @@ describe("joinedLabel", () => {
   it("dates an old membership in the group's timezone, not the server's", () => {
     // 01:00 UTC on Aug 12 is still Aug 11 in Chicago.
     expect(joinedLabel("2026-08-12T01:00:00Z", tz, now)).toBe("joined Aug 11");
+  });
+});
+
+describe("groupLeagues", () => {
+  /* GRP-12. A betting group's row stores the column default `{cfb}` and the
+     RPC refuses to change it, so the pages used to run every betting group on
+     the CFB calendar alone. The summary is where the kind decides. */
+  it("a betting group is always both leagues, whatever the row says", () => {
+    expect(groupLeagues("betting", ["cfb"])).toEqual(["cfb", "nfl"]);
+    expect(groupLeagues("betting", null)).toEqual(["cfb", "nfl"]);
+  });
+
+  it("a pick'em group keeps its admin-set scope", () => {
+    expect(groupLeagues("pickem", ["nfl"])).toEqual(["nfl"]);
+    expect(groupLeagues("pickem", ["cfb", "nfl"])).toEqual(["cfb", "nfl"]);
+  });
+
+  it("a survivor pool keeps its one league", () => {
+    expect(groupLeagues("survivor", ["nfl"])).toEqual(["nfl"]);
+  });
+
+  it("a row written before 0042 is CFB by history", () => {
+    expect(groupLeagues("pickem", null)).toEqual(["cfb"]);
+    expect(groupLeagues("pickem", undefined)).toEqual(["cfb"]);
   });
 });

@@ -6408,6 +6408,37 @@ changelog's Sep 4 entry.
       `lib/bet-form-prefill.ts` (8 tests) and `fetchBetFormOptions` reads
       the consensus in one query beside the teams; 7 jsdom cases on the
       form. Applies to the ledger's own form too — same component.
+- [x] **GRP-12** The betting group ran on the CFB calendar alone. Owner
+      report 2026-09-10: "I think the betting groups are for cfb only, we need
+      to make it to be nfl and cfb." Correct, and GRP-6 (Aug 22) had already
+      been closed against this symptom. What GRP-6 did: kept the page on the
+      CFB week and swept in any other bet whose kickoff fell between that
+      week's first and last kickoff. What it missed: a CFB week runs Thursday
+      to Saturday night, so an NFL Sunday or Monday game was never inside the
+      window — only the Thursday game could ever cross over, and Week 1's
+      Labor Day Monday game is why the fix looked right the week it shipped.
+      `groups/[slug]/page.tsx` also pinned the kind to `["cfb"]` by hand
+      (`kind === "betting" ? ["cfb"] : leagues`), so the week jump, the label
+      and every slate link were CFB's, and NFL preseason and playoff weeks
+      were unreachable.
+      **Fixed 2026-09-10.** A betting group is a both-league group, decided
+      once in `groupLeagues` (`lib/groups.ts`) rather than in each page: the
+      row still stores the column default `{cfb}` — `set_group_leagues`
+      refuses the kind — and the summary overrides it. The home gets the same
+      CFB / NFL tabs a two-league pick'em group has, extracted into
+      `LeagueTabs` and used by both hubs; each tab is that league's own week
+      on that league's own calendar (`?league=nfl` beside `?week=`/`?st=`,
+      exactly as the pick'em pages spell it), the sheet is that league's
+      games, the week jump and heading name the league, and every slate link
+      from the page — "Go bet the NFL slate", the empty state, "Bet the slate
+      as Jeff" — opens `?sport=nfl` on the NFL tab. GRP-6's sweep stays but
+      within the league in view, which is the case it was actually good for
+      (a rescheduled game whose `week` differs while its kickoff does not).
+      The season standings and the member page were already both leagues
+      (0042) and are unchanged. The tab switch keeps `?for=` so an admin
+      logging a member's NFL bets is not sent back to their own ledger by
+      changing league. 4 tests on `groupLeagues`, 4 jsdom on the tabs.
+      **Not seen rendered.**
 - [x] **MSTAT-1** The model had no record page. Owner request 2026-09-04: "I
       want to be able to view the model's full stats somewhere. It doesn't
       have its total record, I want to see how it's doing on a bunch of
