@@ -299,7 +299,9 @@ second slate, the same ledger — **not** a second model.
   `group_week_config` rows under separate season ids. Betting groups have no
   admin-set scope — the sheet is the members' one book — and are always both
   leagues in display: one sheet per league per week, chosen by the same tabs
-  **[amended 2026-09-10, GRP-12]**.
+  **[amended 2026-09-10, GRP-12]**, with the season standings and every
+  tail/fade number cut to the league in view and the whole book one tap away
+  **[GRP-13]**.
 
 # 11. Honest Notes (build these truths into the product)
 

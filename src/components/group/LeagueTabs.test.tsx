@@ -43,3 +43,25 @@ describe("LeagueTabs", () => {
     expect(container.innerHTML).toBe("");
   });
 });
+
+describe("LeagueTabs with an All tab (GRP-13)", () => {
+  it("makes All the bare route and each league explicit", () => {
+    render(<LeagueTabs base="/groups/crew/member/u1" league={null} leagues={["cfb", "nfl"]} all />);
+    expect(screen.getByRole("link", { name: "All" }).getAttribute("href")).toBe(
+      "/groups/crew/member/u1",
+    );
+    expect(screen.getByRole("link", { name: "CFB" }).getAttribute("href")).toBe(
+      "/groups/crew/member/u1?league=cfb",
+    );
+    expect(screen.getByRole("link", { name: "NFL" }).getAttribute("href")).toBe(
+      "/groups/crew/member/u1?league=nfl",
+    );
+    expect(screen.getByRole("link", { name: "All" }).getAttribute("aria-current")).toBe("page");
+  });
+
+  it("marks a league current when one is in view", () => {
+    render(<LeagueTabs base="/g" league="cfb" leagues={["cfb", "nfl"]} all />);
+    expect(screen.getByRole("link", { name: "CFB" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("link", { name: "All" }).hasAttribute("aria-current")).toBe(false);
+  });
+});

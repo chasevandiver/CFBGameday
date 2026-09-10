@@ -4,8 +4,10 @@ import { notFound } from "next/navigation";
 import { AppNav } from "../../../../../components/AppNav";
 import { SeasonNumbers } from "../../../../../components/SeasonNumbers";
 import { FormPip, RecordAndUnits, Units } from "../../../../../components/group/BettingHub";
+import { LeagueTabs } from "../../../../../components/group/LeagueTabs";
 import { ResultChip } from "../../../../../components/slate/chips";
-import { fetchBettingSheet } from "../../../../../lib/betting-groups";
+import { betsInLeague, fetchBettingSheet, memberCut } from "../../../../../lib/betting-groups";
+import type { Sport } from "../../../../../lib/league";
 import { resolveActiveGroup } from "../../../../../lib/groups";
 import { fetchCurrentSeasonWeek } from "../../../../../lib/queries";
 import { formatRecord, type Tally } from "../../../../../lib/records";
@@ -37,13 +39,22 @@ export const dynamic = "force-dynamic";
  * always allowed exactly this — the sheet renders the same rows on the group
  * home. This page adds no reach a member did not already have; it gives the
  * reach a URL.
+ *
+ * `?league=cfb|nfl` cuts the whole page to one league (GRP-13): the record,
+ * the form, the group trio, your pair, who they follow, the deeper cuts and
+ * the history. The bare route is the whole book, which is what a season is.
  */
 export default async function GroupMemberPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string; memberId: string }>;
+  searchParams: Promise<{ league?: string }>;
 }) {
   const { slug, memberId } = await params;
+  const { league: leagueParam } = await searchParams;
+  const league: Sport | null =
+    leagueParam === "nfl" ? "nfl" : leagueParam === "cfb" ? "cfb" : null;
   const supabase = await createClient();
   const {
     data: { user },
@@ -61,14 +72,17 @@ export default async function GroupMemberPage({
   // non-answer a wrong slug gets, for the same reason.
   if (!member) notFound();
 
-  const s = member.stats;
+  const { stats: s, form } = memberCut(member, league);
   const isMe = user?.id === memberId;
+  /* One slice of the book for every number below. Classification stays
+     whole-book — it happened per game — so slicing after is lossless. */
+  const bets = betsInLeague(sheet.bets, league);
   const pair =
-    !isMe && user ? (pairStatsFor(sheet.bets, user.id).find((p) => p.otherId === memberId) ?? null) : null;
+    !isMe && user ? (pairStatsFor(bets, user.id).find((p) => p.otherId === memberId) ?? null) : null;
 
   /* Their season, newest first. The classified rows carry relation and
      result; the games read fills in who they bet on. */
-  const history = sheet.bets
+  const history = bets
     .filter((b) => b.userId === memberId)
     .sort((a, b) => b.placedAt.localeCompare(a.placedAt) || b.id - a.id);
   const gameIds = [...new Set(history.map((b) => b.gameId).filter((id): id is number => id !== null))];
@@ -117,7 +131,7 @@ export default async function GroupMemberPage({
   /* Who THEY follow — pairStatsFor run for the member being viewed, the same
      function GRP-7 runs for the viewer. "Hayden tails Chase 3-1 and fades Dave
      0-2" is the sheet's whole social claim, per person, with receipts. */
-  const theirPairs = pairStatsFor(sheet.bets, memberId);
+  const theirPairs = pairStatsFor(bets, memberId);
 
   const kickDay = new Intl.DateTimeFormat("en-US", {
     timeZone: DEFAULT_TZ,
@@ -130,12 +144,21 @@ export default async function GroupMemberPage({
       <AppNav />
       <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
         <Link
-          href={`/groups/${active.slug}`}
+          href={`/groups/${active.slug}${league === "nfl" ? "?league=nfl" : ""}`}
           className="stat inline-flex min-h-11 items-center gap-1.5 text-xs text-dim hover:text-chalk"
         >
           <ArrowLeft size={13} aria-hidden />
           {active.name}
         </Link>
+
+        <div className="mt-3">
+          <LeagueTabs
+            base={`/groups/${active.slug}/member/${memberId}`}
+            league={league}
+            leagues={active.leagues}
+            all
+          />
+        </div>
 
         <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2">
           <h1 className="flex items-center gap-2 text-2xl">
@@ -143,14 +166,14 @@ export default async function GroupMemberPage({
             {isMe && (
               <span className="stat text-[10px] uppercase tracking-wider text-accent">you</span>
             )}
-            <FormPip label={member.form.label} />
+            <FormPip label={form.label} />
           </h1>
           <RecordAndUnits t={s.overall} />
         </div>
         <p className="stat mt-1 text-xs text-chalk/50">
           {s.overall.decided === 0
-            ? "Nothing graded yet."
-            : `${s.overall.decided} graded · ${
+            ? `Nothing graded ${league === null ? "yet" : `in the ${league.toUpperCase()} yet`}.`
+            : `${league === null ? "" : `${league.toUpperCase()} · `}${s.overall.decided} graded · ${
                 s.overall.roi === null ? "no priced action" : `${(s.overall.roi * 100).toFixed(0)}% ROI`
               }${s.overall.avgClv === null ? "" : ` · CLV ${s.overall.avgClv > 0 ? "+" : ""}${s.overall.avgClv.toFixed(2)}`}`}
         </p>
@@ -235,10 +258,14 @@ export default async function GroupMemberPage({
         )}
 
         <section className="mt-6" aria-labelledby="history-heading">
-          <SectionRule id="history-heading" title="Bet history" count={`${history.length} this season`} />
+          <SectionRule
+            id="history-heading"
+            title="Bet history"
+            count={`${history.length} ${league === null ? "this season" : `in the ${league.toUpperCase()}`}`}
+          />
           {history.length === 0 ? (
             <p className="card px-3.5 py-3 text-sm text-chalk/60">
-              No bets logged this season.
+              No {league === null ? "" : `${league.toUpperCase()} `}bets logged this season.
             </p>
           ) : (
             <ul className="flex flex-col gap-1.5">

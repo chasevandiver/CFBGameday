@@ -226,6 +226,48 @@ shipping it.
 
 ## Log
 
+### Sep 10 — GRP-13: the betting group's season numbers follow the league tab
+
+**Owner, minutes after GRP-12 merged.** "Will the stats on the betting groups
+also break it out on nfl and cfb?"
+
+**What was true.** Half of it. A member's card captioned "CFB 5-8 · NFL 3-1"
+once both leagues had graded, and the member page had a tile for each. But
+the ranking was whole-book units, and every relational number — they open,
+others tailing them, you tailing them, who they follow — came out of
+`statsByMember` and `pairStatsFor` run over the whole book. There was no
+per-league cut of any of those. The NFL tab changed the week's sheet and
+nothing under it.
+
+**What shipped.** `SheetMember.byLeague`: every number in `stats` and `form`,
+cut per league. The cut is a *filter* on the classified rows, never a
+re-classification. Origination and the tail/fade relations are decided inside
+one game and a game is in one league, so slicing after the fact loses nothing
+— and `classifyBets` still never runs on a subset, which GRP-6's docblock made
+a rule for a reason (the first bet of a *week* must not be credited as the
+source for a game that opened the Tuesday before). Three pure helpers:
+`betsInLeague(bets, sport | null)`, `memberCut(member, league | null)` and
+`byUnitsIn(league | null)`; `byUnits` is now `byUnitsIn(null)`.
+
+The home's Season section becomes "NFL season · by NFL units": ranked on the
+league in view, each card's record, form pip and trio cut to it, and the
+caption ends "all leagues 8-9 −1.0u" so a 3-1 NFL card under an 8-12 season
+says so. The viewer's pair table is labelled "NFL only". The member page gets
+All / CFB / NFL tabs (a new `all` mode on `LeagueTabs`: All is the bare route,
+each league explicit) that cut the whole page — record, form, trio, your pair,
+who they follow, the market and bad-beat cuts, the bet history. Card links open
+the member on the same league.
+
+**Left whole-book on purpose.** The home hub's group card still ranks by
+season units; the ledger's tail/fade audit is per group, not per league. A
+season is both leagues; the tab is a lens on it, not a replacement.
+
+**Tests.** 9 on the helpers (a cut is a filter; a league tab ranks on its own
+units; ties break on ROI then name), 4 jsdom on the card's cut (whole-book
+caption without a league; a league's record with the whole book named; the
+league's form; links carry the league), 2 on the tabs' All mode. Typecheck,
+lint and build clean. **Not seen rendered.**
+
 ### Sep 10 — GRP-12: a betting group gets the NFL tab
 
 **Owner report.** "I think the betting groups are for cfb only, we need to

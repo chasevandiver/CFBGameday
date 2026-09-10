@@ -16,7 +16,7 @@ import { ShareImageButton } from "../../../components/ShareImageButton";
 import { ShareSheetButton } from "../../../components/group/ShareSheetButton";
 import { WeekJump } from "../../../components/group/WeekJump";
 import { fetchBetFormOptions } from "../../../lib/bet-form-games";
-import { byUnits, fetchBettingSheet } from "../../../lib/betting-groups";
+import { betsInLeague, byUnitsIn, fetchBettingSheet } from "../../../lib/betting-groups";
 import { outsideWeekIds } from "../../../lib/home";
 import { weekLabel, weekQuery, type WeekRef } from "../../../lib/group-weeks";
 import { EMPTY_TALLY } from "../../../lib/records";
@@ -168,8 +168,12 @@ export async function BettingHome({
   const onTheSheet = [...slate.games, ...otherGames]
     .filter((g) => g.groupBets.length > 0)
     .sort((a, b) => (a.startTs ?? "9999").localeCompare(b.startTs ?? "9999"));
-  const standings = [...sheet.members].sort(byUnits);
-  const pairs = userId ? pairStatsFor(sheet.bets, userId) : [];
+  /* GRP-13: the season section follows the tab too. Ranked on the league in
+     view, and the viewer's tail/fade record cut to it — "how tailing Jeff goes
+     in the NFL" was a number the whole-book pair was averaging away. The
+     whole book is still one tap away on every card's caption and page. */
+  const standings = [...sheet.members].sort(byUnitsIn(league));
+  const pairs = userId ? pairStatsFor(betsInLeague(sheet.bets, league), userId) : [];
   const joinCode = (joinRes.data as { join_code: string } | null)?.join_code ?? null;
   // The image share is the viewer's OWN bets, not the whole sheet — a card
   // titled "<display_name> Bets" carrying someone else's picks would be a lie,
@@ -406,10 +410,10 @@ export async function BettingHome({
       <section className="mb-7" aria-labelledby="standings-heading">
         <div className="mb-2.5 flex items-baseline gap-2">
           <h2 id="standings-heading" className="text-sm text-accent">
-            Season
+            {league.toUpperCase()} season
           </h2>
           <span className="h-px flex-1 bg-chalk/10" aria-hidden />
-          <span className="stat text-[11px] text-dim">by units</span>
+          <span className="stat text-[11px] text-dim">by {league.toUpperCase()} units</span>
         </div>
         <ul className="flex flex-col gap-2">
           {standings.map((m, i) => (
@@ -419,6 +423,7 @@ export async function BettingHome({
               member={m}
               isMe={m.userId === userId}
               slug={group.slug}
+              league={league}
               /* GRP-7: the viewer's own record against this member, tap to
                  open. `pairs` is already computed for the pair panel below;
                  handing each row its slice costs nothing new. Signed in but
@@ -448,6 +453,7 @@ export async function BettingHome({
               How you do behind them
             </h2>
             <span className="h-px flex-1 bg-chalk/10" aria-hidden />
+            <span className="stat text-[11px] text-dim">{league.toUpperCase()} only</span>
           </div>
           <PairPanel pairs={pairs} nameById={sheet.nameById} />
           <p className="mt-2 text-[11px] leading-relaxed text-dim">
