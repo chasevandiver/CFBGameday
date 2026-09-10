@@ -77,7 +77,20 @@ const memberStats = (
   timesFollowed,
 });
 
-const SAMPLE_SOURCE: SheetMember = {
+/* A sample book is CFB-only, so its CFB cut is the whole book and its NFL cut
+   is empty — the shape a real member has before the NFL season starts. */
+const cfbOnly = (m: Omit<SheetMember, "byLeague">): SheetMember => ({
+  ...m,
+  byLeague: {
+    cfb: { stats: m.stats, form: m.form },
+    nfl: {
+      stats: memberStats(m.userId, EMPTY_TALLY, EMPTY_TALLY, EMPTY_TALLY, EMPTY_TALLY, 0),
+      form: { results: [], wins: 0, losses: 0, units: 0, label: "level" },
+    },
+  },
+});
+
+const SAMPLE_SOURCE: SheetMember = cfbOnly({
   userId: "chase",
   name: "Chase",
   role: "admin",
@@ -93,9 +106,9 @@ const SAMPLE_SOURCE: SheetMember = {
   ),
   form: { results: ["win", "win", "loss", "win", "win"], wins: 7, losses: 3, units: 2.9, label: "hot" },
   leagueSplit: { cfb: sampleTally(31, 22, 1, 6.4, 0.31), nfl: EMPTY_TALLY },
-};
+});
 
-const SAMPLE_SOURCE_2: SheetMember = {
+const SAMPLE_SOURCE_2: SheetMember = cfbOnly({
   userId: "sam",
   name: "Sam",
   role: "member",
@@ -111,7 +124,7 @@ const SAMPLE_SOURCE_2: SheetMember = {
   ),
   form: { results: ["loss", "loss", "win", "loss", "loss"], wins: 3, losses: 7, units: -4.1, label: "cold" },
   leagueSplit: { cfb: sampleTally(19, 26, 0, -8.1, -0.12), nfl: EMPTY_TALLY },
-};
+});
 
 /* ---- the card states ----------------------------------------------------- */
 

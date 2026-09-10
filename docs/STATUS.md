@@ -6439,6 +6439,32 @@ changelog's Sep 4 entry.
       logging a member's NFL bets is not sent back to their own ledger by
       changing league. 4 tests on `groupLeagues`, 4 jsdom on the tabs.
       **Not seen rendered.**
+- [x] **GRP-13** The season numbers follow the league tab. Owner, minutes
+      after GRP-12 merged: "Will the stats on the betting groups also break it
+      out on nfl and cfb?" They half did: each member's card captioned a
+      CFB/NFL record once both had graded, and the member page had a tile
+      for each — but the ranking was whole-book units, and every tail/fade
+      number (they open, others tailing them, you tailing them, who they
+      follow) was computed across the whole book with no per-league cut at
+      all. Switching to the NFL tab changed the week's sheet and nothing
+      below it.
+      **Fixed 2026-09-10.** `SheetMember.byLeague` carries every number in
+      `stats` and `form` cut to one league. Classified once across the book,
+      then sliced — origination and the tail/fade relations are decided
+      inside one game, and a game is in one league, so the cut is lossless
+      and `classifyBets` never runs on a subset (the rule GRP-6's docblock
+      set). Three pure helpers: `betsInLeague`, `memberCut`, `byUnitsIn`.
+      The home's Season section is now "NFL season · by NFL units": ranked
+      on the league in view, each card's record, form and trio cut to it,
+      with "all leagues 8-9 −1.0u" as the caption's tail so a 3-1 NFL card
+      under an 8-12 season is not a lie by omission; the viewer's pair table
+      says "NFL only". The member page gets All / CFB / NFL tabs (the
+      `LeagueTabs` All mode, bare route = whole book) that cut the record,
+      the form, the trio, your pair, who they follow, the market and
+      bad-beat cuts and the bet history. Links from a card open the member
+      on the same league. The home hub's group card still ranks by the whole
+      book, which is what a season is. 9 tests on the helpers, 4 jsdom on
+      the card's cut, 2 on the tabs' All mode. **Not seen rendered.**
 - [x] **MSTAT-1** The model had no record page. Owner request 2026-09-04: "I
       want to be able to view the model's full stats somewhere. It doesn't
       have its total record, I want to see how it's doing on a bunch of

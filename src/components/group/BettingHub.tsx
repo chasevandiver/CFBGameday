@@ -1,6 +1,7 @@
 import { ChevronDown, Flame, Snowflake, TrendingDown, TrendingUp } from "lucide-react";
 import Link from "next/link";
-import type { SheetMember } from "../../lib/betting-groups";
+import { memberCut, type SheetMember } from "../../lib/betting-groups";
+import type { Sport } from "../../lib/league";
 import { DEFAULT_TZ, kickParts, tzLabel } from "../../lib/kick";
 import { EMPTY_TALLY, formatRecord, type Tally } from "../../lib/records";
 import { betSideLabel, type GameView } from "../../lib/slate";
@@ -73,12 +74,17 @@ export function FormPip({ label }: { label: "hot" | "cold" | "level" }) {
  * anybody expects — a good bettor who posts late is a bad source, and the only
  * way to see it is to keep the two apart.
  */
+/** Where a member's page is, on the league the reader is already looking at. */
+export const memberHref = (slug: string, userId: string, league: Sport | null): string =>
+  `/groups/${slug}/member/${userId}${league === null ? "" : `?league=${league}`}`;
+
 export function SourceCard({
   place,
   member,
   isMe,
   slug,
   pair,
+  league = null,
 }: {
   place: number;
   member: SheetMember;
@@ -99,6 +105,12 @@ export function SourceCard({
    * starts an argument.
    */
   pair: PairStats | null;
+  /**
+   * The league the numbers are cut to (GRP-13): the home's tab. Null is the
+   * whole book — the preview and the demo, which have no tab. `pair` is the
+   * caller's to cut; the card only says which slice its own numbers are.
+   */
+  league?: Sport | null;
 }) {
   /* Nothing personal to open on your own row or signed out — a plain card,
      exactly as before. Everyone else expands: owner request 2026-08-22,
@@ -111,7 +123,7 @@ export function SourceCard({
   if (isMe || pair === null) {
     return (
       <li className={`card px-3.5 py-2.5 ${isMe ? "ring-1 ring-inset ring-accent/40" : ""}`}>
-        <SourceCardBody place={place} member={member} isMe={isMe} slug={slug} />
+        <SourceCardBody place={place} member={member} isMe={isMe} slug={slug} league={league} />
       </li>
     );
   }
@@ -120,7 +132,7 @@ export function SourceCard({
       <details>
         <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3.5 py-2.5 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent [&::-webkit-details-marker]:hidden">
           <span className="min-w-0 flex-1">
-            <SourceCardBody place={place} member={member} isMe={isMe} slug={slug} />
+            <SourceCardBody place={place} member={member} isMe={isMe} slug={slug} league={league} />
           </span>
           <ChevronDown
             size={14}
@@ -146,7 +158,7 @@ export function SourceCard({
         {/* GRP-8: the quick answer is here; the whole season is a page. */}
         {slug && (
           <Link
-            href={`/groups/${slug}/member/${member.userId}`}
+            href={memberHref(slug, member.userId, league)}
             className="stat block border-t border-chalk/8 px-3.5 py-2.5 text-[11px] text-accent underline-offset-2 hover:underline"
           >
             Full stats &amp; bet history →
@@ -162,13 +174,24 @@ function SourceCardBody({
   member,
   isMe,
   slug,
+  league,
 }: {
   place: number;
   member: SheetMember;
   isMe: boolean;
   slug: string | null;
+  league: Sport | null;
 }) {
-  const s = member.stats;
+  const { stats: s, form } = memberCut(member, league);
+  /* On a league tab the whole book still gets a word, so a CFB tab that reads
+     "3-1" under someone who is 8-12 for the season is not a lie by omission.
+     It is the tail of the caption rather than a second number because the
+     tab, not the card, chose the slice. */
+  const whole = member.stats.overall;
+  const wholeNote =
+    league !== null && whole.decided > s.overall.decided
+      ? ` · all leagues ${formatRecord(whole)} ${fmtUnits(whole.units)}`
+      : "";
   return (
     <>
       <div className="flex items-center gap-3">
@@ -181,7 +204,7 @@ function SourceCardBody({
                 harmless, since the page change wins. */}
             {slug && !isMe ? (
               <Link
-                href={`/groups/${slug}/member/${member.userId}`}
+                href={memberHref(slug, member.userId, league)}
                 className="truncate font-medium text-chalk underline-offset-2 hover:text-accent hover:underline"
               >
                 {member.name}
@@ -194,13 +217,15 @@ function SourceCardBody({
                 you
               </span>
             )}
-            <FormPip label={member.form.label} />
+            <FormPip label={form.label} />
           </span>
           <span className="stat block text-[10.5px] leading-tight text-chalk/45">
             {s.overall.decided === 0
-              ? "nothing graded yet"
-              : member.leagueSplit.cfb.decided > 0 && member.leagueSplit.nfl.decided > 0
-                ? // both leagues in play: the split is the more useful caption
+              ? `nothing graded ${league === null ? "yet" : `in the ${league.toUpperCase()} yet`}${wholeNote}`
+              : league === null &&
+                  member.leagueSplit.cfb.decided > 0 &&
+                  member.leagueSplit.nfl.decided > 0
+                ? // whole book, both leagues in play: the split is the more useful caption
                   `CFB ${formatRecord(member.leagueSplit.cfb)} ${fmtUnits(member.leagueSplit.cfb.units)} · NFL ${formatRecord(member.leagueSplit.nfl)} ${fmtUnits(member.leagueSplit.nfl.units)}`
                 : `${s.overall.decided} graded · ${
                     s.overall.roi === null ? "no priced action" : `${(s.overall.roi * 100).toFixed(0)}% ROI`
@@ -208,7 +233,7 @@ function SourceCardBody({
                     s.overall.avgClv === null
                       ? ""
                       : ` · CLV ${s.overall.avgClv > 0 ? "+" : ""}${s.overall.avgClv.toFixed(2)}`
-                  }`}
+                  }${wholeNote}`}
           </span>
         </span>
         <span className="shrink-0 text-right">

@@ -16,19 +16,27 @@ const tally = (wins: number, losses: number, units: number) => ({
   units,
 });
 
+const stats = (overall: ReturnType<typeof tally>) => ({
+  overall,
+  originated: overall,
+  tailedByOthers: tally(0, 0, 0),
+  fadedByOthers: tally(0, 1, -1),
+  timesFollowed: 1,
+});
+
+/* A season of 8-9 that is 5-8 in CFB and 3-1 in the NFL — the shape where the
+   whole book and a league cut disagree, which is the whole point of GRP-13. */
 const member = (name: string): SheetMember =>
   ({
     userId: `u-${name}`,
     name,
-    stats: {
-      overall: tally(8, 9, -1),
-      originated: tally(8, 9, -1),
-      tailedByOthers: tally(0, 0, 0),
-      fadedByOthers: tally(0, 1, -1),
-      timesFollowed: 1,
-    },
-    leagueSplit: { cfb: tally(8, 9, -1), nfl: EMPTY_TALLY },
+    stats: stats(tally(8, 9, -1)),
+    leagueSplit: { cfb: tally(5, 8, -3.5), nfl: tally(3, 1, 2.5) },
     form: { results: [], label: "level" as const },
+    byLeague: {
+      cfb: { stats: stats(tally(5, 8, -3.5)), form: { results: [], label: "cold" as const } },
+      nfl: { stats: stats(tally(3, 1, 2.5)), form: { results: [], label: "hot" as const } },
+    },
   }) as unknown as SheetMember;
 
 const pair = (over: Partial<PairStats> = {}): PairStats => ({
@@ -151,5 +159,79 @@ describe("a member's name is the door to their full page", () => {
       </ul>,
     );
     expect(screen.queryByRole("link", { name: "Hayden" })).toBeNull();
+  });
+});
+
+/**
+ * GRP-13. Owner: "Will the stats on the betting groups also break it out on
+ * nfl and cfb?" The home's league tab now cuts the season section too. The
+ * card is told which slice it is showing; without a league it is the whole
+ * book, which is what the preview and the demo render.
+ */
+describe("SourceCard cuts its numbers to the league in view", () => {
+  it("shows the whole book with the per-league caption when no league is given", () => {
+    render(
+      <ul>
+        <SourceCard slug="test-crew" place={1} member={member("Hayden")} isMe={false} pair={pair()} />
+      </ul>,
+    );
+    // The record leads the card; "They open" repeats it in this fixture.
+    expect(screen.getAllByText("8-9").length).toBeGreaterThan(0);
+    expect(screen.getByText(/CFB 5-8 -3\.5u · NFL 3-1 \+2\.5u/)).toBeDefined();
+  });
+
+  it("shows one league's record and says what the whole book is", () => {
+    render(
+      <ul>
+        <SourceCard
+          slug="test-crew"
+          place={1}
+          member={member("Hayden")}
+          isMe={false}
+          pair={pair()}
+          league="nfl"
+        />
+      </ul>,
+    );
+    expect(screen.getAllByText("3-1").length).toBeGreaterThan(0);
+    expect(screen.queryByText("8-9")).toBeNull();
+    expect(screen.getByText(/all leagues 8-9 -1\.0u/)).toBeDefined();
+  });
+
+  it("uses that league's form, not the season's", () => {
+    render(
+      <ul>
+        <SourceCard
+          slug="test-crew"
+          place={1}
+          member={member("Hayden")}
+          isMe={false}
+          pair={pair()}
+          league="cfb"
+        />
+      </ul>,
+    );
+    expect(screen.getByText("Cold")).toBeDefined();
+  });
+
+  it("links the member's page on the same league", () => {
+    render(
+      <ul>
+        <SourceCard
+          slug="test-crew"
+          place={1}
+          member={member("Hayden")}
+          isMe={false}
+          pair={pair()}
+          league="nfl"
+        />
+      </ul>,
+    );
+    expect(screen.getByRole("link", { name: "Hayden" }).getAttribute("href")).toBe(
+      "/groups/test-crew/member/u-Hayden?league=nfl",
+    );
+    expect(screen.getByRole("link", { name: /full stats/i }).getAttribute("href")).toBe(
+      "/groups/test-crew/member/u-Hayden?league=nfl",
+    );
   });
 });
