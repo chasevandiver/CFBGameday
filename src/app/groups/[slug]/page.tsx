@@ -8,6 +8,7 @@ import { GroupArcade } from "../../../components/games/GroupArcade";
 import { GroupSwitcher, JoinCode } from "../../../components/group/GroupForms";
 import { GroupRoster } from "../../../components/group/GroupRoster";
 import { MemberCard, WeekHero } from "../../../components/group/GroupHub";
+import { LeagueTabs } from "../../../components/group/LeagueTabs";
 import type { PickRow } from "../../../lib/db-types";
 import { buildGroupShareContext, type MyWeekPick } from "../../../lib/group-share";
 import {
@@ -73,12 +74,11 @@ export default async function GroupHomePage({
   /* A both-league group holds one board per league per week (separate
      group_week_config rows under separate season ids); ?league= says which is
      in view. A survivor pool carries its single league in the same column, so
-     it resolves the same way. A betting group always resolves CFB — its home
-     reads both leagues' ledgers regardless. */
-  const league = groupLeague(
-    leagueParam,
-    active.kind === "betting" ? ["cfb"] : active.leagues,
-  );
+     it resolves the same way. A betting group is always both (`groupLeagues`):
+     its sheet is one week of one league at a time, on that league's own
+     calendar — this used to pin it to CFB, and a CFB week ends on Saturday
+     night, so NFL Sundays never made the sheet (GRP-12). */
+  const league = groupLeague(leagueParam, active.leagues);
   const {
     seasonId,
     week: currentWeek,
@@ -133,6 +133,7 @@ export default async function GroupHomePage({
           group={active}
           mine={mine}
           userId={user?.id ?? null}
+          league={league}
           seasonId={seasonId}
           week={week}
           seasonType={seasonType}
@@ -267,27 +268,7 @@ export default async function GroupHomePage({
           </p>
         </div>
 
-        {active.leagues.length > 1 && (
-          <nav aria-label="League" className="mb-3 flex items-center gap-1">
-            {(
-              [
-                ["cfb", `/groups/${slug}`],
-                ["nfl", `/groups/${slug}?league=nfl`],
-              ] as const
-            ).map(([l, href]) => (
-              <Link
-                key={l}
-                href={href}
-                aria-current={league === l ? "page" : undefined}
-                className={`stat flex min-h-11 items-center rounded-lg px-3 text-xs font-semibold ${
-                  league === l ? "bg-accent/15 text-accent" : "text-dim hover:text-chalk"
-                }`}
-              >
-                {l.toUpperCase()}
-              </Link>
-            ))}
-          </nav>
-        )}
+        <LeagueTabs base={`/groups/${slug}`} league={league} leagues={active.leagues} />
 
         <WeekHero
           slug={slug}

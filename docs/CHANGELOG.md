@@ -226,6 +226,48 @@ shipping it.
 
 ## Log
 
+### Sep 10 — GRP-12: a betting group gets the NFL tab
+
+**Owner report.** "I think the betting groups are for cfb only, we need to
+make it to be nfl and cfb."
+
+**What was true.** `fetchBettingSheet` has read both leagues since 0042 and the
+season standings said so ("CFB 8-9 · NFL 3-1"). The *week* was the problem.
+`groups/[slug]/page.tsx` resolved a betting group's league as `["cfb"]` by
+hand, so the week calendar, the week jump, the heading and every link to
+`/slate` were CFB's; and the sheet — GRP-6's fix from Aug 22 — swept in bets
+on other games only between that CFB week's first and last kickoff. A CFB
+week ends Saturday night. An NFL Sunday or Monday game was never in the
+window, so of a member's NFL bets only the Thursday one could ever appear.
+GRP-6 shipped in Week 1, whose Labor Day Monday game put Sunday inside the
+window; it was correct for exactly one week and marked "not seen rendered".
+
+**What shipped.** A betting group is a both-league group, decided once in
+`groupLeagues` (`lib/groups.ts`): the row keeps the column default `{cfb}`
+(`set_group_leagues` refuses the kind) and the summary overrides it, so every
+reader of `GroupSummary.leagues` agrees. The home gets the CFB / NFL tabs a
+two-league pick'em group already had, pulled out into `LeagueTabs` and used by
+both hubs. Each tab is that league's own week on its own calendar —
+`?league=nfl` beside `?week=`/`?st=`, the pick'em spelling — with the sheet,
+the week jump, the heading ("NFL Week 2 sheet") and every slate link ("Go bet
+the NFL slate", the empty state, "Bet the slate as Jeff") following the tab.
+The sweep stays, scoped to the league in view, for the case it was good for: a
+rescheduled game whose `week` differs while its kickoff does not. `?for=`
+survives the switch so an admin working down a text of NFL bets stays on that
+member's ledger.
+
+**Why tabs and not one merged sheet.** The leagues do not share a week: NFL
+week 2 is CFB week 3, the NFL has four preseason weeks and four playoff
+rounds, CFB has Week 0 and a bowl month. A merged sheet needs a window, and any
+window drawn from one league's kickoffs is wrong for the other — which is
+precisely how GRP-6 failed. One week per league, chosen explicitly, has no
+window to draw.
+
+**Tests.** 4 on `groupLeagues` (betting is always both; pick'em and survivor
+keep their scope; pre-0042 rows are CFB), 4 jsdom on `LeagueTabs` (hrefs,
+`aria-current`, carried params, nothing for a one-league group). Typecheck
+and lint clean. **Not seen rendered.**
+
 ### Sep 5 — GRADE-3: the grader threw on every pass from the first first-half bet on a final
 
 Owner, Saturday morning: "Why haven't the bets settled from Friday night

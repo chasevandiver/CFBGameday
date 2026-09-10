@@ -31,7 +31,7 @@
  */
 
 import { buildPositions, type GroupStanding, type HomeBet, type HomeData, type HomePick, type Position, type WeekProgress } from "./home";
-import type { GroupSummary } from "./groups";
+import { groupLeagues, type GroupSummary } from "./groups";
 import { kickSlot } from "./kick";
 import { EMPTY_TALLY, type Tally } from "./records";
 import type {
@@ -588,7 +588,8 @@ const group = (
   role,
   visibility: "private",
   picksHiddenUntilKickoff: false,
-  leagues: ["cfb"],
+  // The same rule production applies (GRP-12): a betting group is both leagues.
+  leagues: groupLeagues(kind, ["cfb"]),
 });
 
 const SATURDAY_BOYS = group("g1", "Saturday Boys", "saturday-boys", "pickem", "admin");

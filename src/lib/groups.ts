@@ -41,24 +41,53 @@ export interface GroupSummary {
   kind: GroupKind;
   /** Others' picks stay unreadable until each game kicks off (migration 0023). */
   picksHiddenUntilKickoff: boolean;
-  /** Pick'em league scope (0042). Betting groups always read both leagues. */
+  /**
+   * Which leagues this group's pages can show (0042).
+   *
+   * Pick'em: admin-set scope, one board per league per week. Betting: always
+   * both — the sheet is its members' one book, and the home has a tab per
+   * league so each week is read on that league's own calendar (GRP-12).
+   * Survivor: the one league the pool plays.
+   */
   leagues: Array<"cfb" | "nfl">;
   /** The viewer's role, or null when they are only looking at a public group. */
   role: "admin" | "member" | null;
 }
 
-const toSummary = (g: GroupRow, role: GroupSummary["role"]): GroupSummary => ({
-  id: g.id,
-  name: g.name,
-  slug: g.slug,
-  visibility: g.visibility,
-  // Rows written before 0027 have no kind; they are all pick'em by history.
-  kind: g.kind ?? "pickem",
-  picksHiddenUntilKickoff: g.picks_hidden_until_kickoff ?? false,
+/**
+ * The leagues a group's pages show, from what the row stores.
+ *
+ * A betting group's row says `{cfb}` — the column default, which
+ * `set_group_leagues` refuses to change for that kind — yet its members bet
+ * both leagues and the sheet has read both since 0042. The pages used to
+ * special-case this (`kind === "betting" ? ["cfb"] : leagues`) and so ran
+ * every betting group on the CFB calendar alone; see GRP-12. Resolving it
+ * here, once, is what makes a betting group a both-league group everywhere
+ * the summary is read.
+ */
+export function groupLeagues(
+  kind: GroupKind,
+  stored: Array<"cfb" | "nfl"> | null | undefined,
+): Array<"cfb" | "nfl"> {
+  if (kind === "betting") return ["cfb", "nfl"];
   // Rows written before 0042 have no leagues; they are all CFB by history.
-  leagues: g.leagues ?? ["cfb"],
-  role,
-});
+  return stored ?? ["cfb"];
+}
+
+const toSummary = (g: GroupRow, role: GroupSummary["role"]): GroupSummary => {
+  // Rows written before 0027 have no kind; they are all pick'em by history.
+  const kind = g.kind ?? "pickem";
+  return {
+    id: g.id,
+    name: g.name,
+    slug: g.slug,
+    visibility: g.visibility,
+    kind,
+    picksHiddenUntilKickoff: g.picks_hidden_until_kickoff ?? false,
+    leagues: groupLeagues(kind, g.leagues),
+    role,
+  };
+};
 
 /** The viewer's groups, newest membership last. Empty for signed-out visitors. */
 export async function fetchMyGroups(
