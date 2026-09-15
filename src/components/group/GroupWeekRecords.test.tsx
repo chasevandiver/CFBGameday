@@ -2,13 +2,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { GroupWeekRecords, type GroupWeekRow } from "./GroupWeekRecords";
-import {
-  leagueSplit,
-  memberSplits,
-  pendingCount,
-  weekBuckets,
-  type WeekWager,
-} from "../../lib/week-records";
+import { memberRecords, sliceRecord, weekBuckets, type WeekWager } from "../../lib/week-records";
 import { nflSeasonId } from "../../lib/league";
 
 afterEach(cleanup);
@@ -26,6 +20,7 @@ const bet = (
   result: WeekWager["result"],
   units = 1,
   week = 3,
+  extra: Partial<WeekWager> = {},
 ): Row => ({
   userId,
   seasonId,
@@ -35,6 +30,8 @@ const bet = (
   result,
   units,
   payoutUnits: null,
+  odds: -110,
+  ...extra,
 });
 
 const NAMES = new Map([
@@ -48,22 +45,21 @@ function rows(bets: Row[]): GroupWeekRow[] {
     key: wk.key,
     label: wk.label,
     range: wk.range,
-    split: leagueSplit(wk.wagers),
-    pending: pendingCount(wk.wagers),
-    members: memberSplits(wk.wagers, NAMES),
+    record: sliceRecord(wk.wagers),
+    members: memberRecords(wk.wagers, NAMES),
     days: wk.days.map((d) => ({
       key: d.key,
       label: d.label,
-      split: leagueSplit(d.wagers),
-      pending: pendingCount(d.wagers),
-      members: memberSplits(d.wagers, NAMES),
+      record: sliceRecord(d.wagers),
+      members: memberRecords(d.wagers, NAMES),
     })),
   }));
 }
 
 /**
  * WEEK-1 on a betting group: the same three cuts, but "the record" is every
- * member's, so a week has to rank them and a day has to re-rank them.
+ * member's, so a week has to rank them and a day has to re-rank them. WEEK-3:
+ * that ranking is the board's, not the grader's.
  */
 describe("GroupWeekRecords", () => {
   const week = [
@@ -129,5 +125,43 @@ describe("GroupWeekRecords", () => {
   it("renders nothing when the group has no week on the book yet", () => {
     const { container } = render(<GroupWeekRecords weeks={[]} slug="crew" />);
     expect(container.innerHTML).toBe("");
+  });
+
+  /* ── WEEK-3: live ───────────────────────────────────────────────────── */
+
+  it("hands the week to whoever is ahead on the board, not on the grader", () => {
+    // Jeff has the only settled win; Hayden is 4u up on a game being played.
+    const live = [
+      bet("u-jeff", "2026-09-12T16:00:00Z", CFB, "win", 1),
+      bet("u-hayden", "2026-09-12T20:00:00Z", CFB, null, 4, 3, {
+        standingState: "in_progress",
+        standing: "win",
+      }),
+    ];
+    const { container } = render(<GroupWeekRecords weeks={rows(live)} slug="crew" />);
+    const summary = container.querySelector("summary") as HTMLElement;
+    expect(summary.textContent).toContain("Hayden");
+    expect(summary.textContent).toContain("1 live");
+    expect(container.querySelectorAll(".live-dot").length).toBeGreaterThan(0);
+  });
+
+  it("opens a week with games on it, days and all", () => {
+    const live = [
+      bet("u-jeff", "2026-09-12T16:00:00Z", CFB, "win", 1),
+      bet("u-hayden", "2026-09-13T17:00:00Z", NFL, null, 1, 2, {
+        standingState: "in_progress",
+        standing: "loss",
+      }),
+    ];
+    const { container } = render(<GroupWeekRecords weeks={rows(live)} slug="crew" />);
+    const details = [...container.querySelectorAll("details")] as HTMLDetailsElement[];
+    expect(details.every((d) => d.open)).toBe(true);
+    cleanup();
+    const settled = render(<GroupWeekRecords weeks={rows(week)} slug="crew" />);
+    expect(
+      [...settled.container.querySelectorAll("details")].every(
+        (d) => !(d as HTMLDetailsElement).open,
+      ),
+    ).toBe(true);
   });
 });

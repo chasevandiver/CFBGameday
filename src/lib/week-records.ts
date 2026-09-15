@@ -35,7 +35,17 @@
 import { dayKey, dayTabLabel } from "./kick";
 import { weekLabel, type WeekRef } from "./group-weeks";
 import { sportOfSeasonId, type Sport } from "./league";
-import { byLeagueRules, tally, type Tally, type Wager } from "./records";
+import { statusForBet } from "./live-status";
+import {
+  byLeagueRules,
+  EMPTY_TALLY,
+  payoutAt,
+  tally,
+  type Numeric,
+  type Tally,
+  type Wager,
+  type WagerResult,
+} from "./records";
 import type { SeasonType } from "./season";
 import { nflPlayoffLabel } from "./week-range";
 
@@ -54,7 +64,28 @@ export interface WeekWager extends Wager {
   week: number | null;
   /** The game's `season_type`, as stored. Anything unrecognised reads regular. */
   seasonType: string | null;
+  /**
+   * Where the game is, for a wager the grader has not settled yet. Null when
+   * the wager is settled, when its game has not kicked off, or when the score
+   * cannot answer it (a team total, a first half, a future).
+   */
+  standingState?: StandingState;
+  /** How it would grade on the board as it stands. Null with `standingState`. */
+  standing?: WagerResult;
+  /** American price — what a projected win would actually pay. */
+  odds?: Numeric | null;
 }
+
+/**
+ * Two kinds of not-yet-settled, and they are different facts.
+ *
+ * `in_progress` is a sweat: the number can still move, and it is what "how are
+ * we doing live" is asking about. `final` is a game that is over and a grader
+ * that has not run — Sunday morning on an NFL week, or any Saturday night
+ * before the settle pass. Both belong in the projection; only the first is
+ * live, so only the first wears the dot.
+ */
+export type StandingState = "in_progress" | "final" | null;
 
 /** One slice of wagers, three ways: both leagues, then each on its own. */
 export interface LeagueSplit {
@@ -74,9 +105,104 @@ export function leagueSplit<T extends Wager & { seasonId: number }>(
   };
 }
 
-/** Graded-but-not-void is what a record counts; everything else is still open. */
-export const pendingCount = (wagers: readonly Wager[]): number =>
-  wagers.filter((w) => w.result === null || w.result === undefined).length;
+/**
+ * One slice of a book — a week, a day, a member's day — answered twice.
+ *
+ * Owner, 2026-09-15, on the first cut of these lists: *"So it only shows when
+ * everything is graded? I want live week by week and day by day to see how
+ * we're doing live."* Fair: `settled` alone is blank all Saturday afternoon and
+ * wrong all Sunday morning, because the grader runs after the games, not during
+ * them.
+ *
+ * `now` is the same three cuts with every unsettled wager graded off the board
+ * as it stands. It is the number a phone propped against a TV wants, and it is
+ * provisional by construction — which is why `settled` is kept beside it rather
+ * than replaced, and why the surfaces render both.
+ */
+export interface SliceRecord {
+  /** Stored results only. The truth, and it does not move. */
+  settled: LeagueSplit;
+  /** Stored results plus the board. Identical to `settled` when nothing is out. */
+  now: LeagueSplit;
+  /** Wagers riding on a game being played right now. */
+  live: number;
+  /** Wagers `now` graded off the board — the live ones plus finals not yet settled. */
+  projected: number;
+  /** Wagers on a game that has not kicked off. Nothing can say anything yet. */
+  upcoming: number;
+}
+
+export const EMPTY_SLICE: SliceRecord = {
+  settled: { total: EMPTY_TALLY, cfb: EMPTY_TALLY, nfl: EMPTY_TALLY },
+  now: { total: EMPTY_TALLY, cfb: EMPTY_TALLY, nfl: EMPTY_TALLY },
+  live: 0,
+  projected: 0,
+  upcoming: 0,
+};
+
+/** True for a wager the grader has settled — the only ones `settled` counts. */
+const isSettled = (w: WeekWager): boolean => w.result !== null && w.result !== undefined;
+
+/** True once the board can answer for it. Both fields are optional, so this
+ *  has to reject `undefined` as well as `null`. */
+const hasStanding = (w: WeekWager): boolean =>
+  w.standing !== null && w.standing !== undefined;
+
+/**
+ * A wager as the board would grade it: the stored row when there is one, else
+ * the standing, priced at the wager's own odds through the grader's own
+ * formula (`payoutAt`). No odds means no price to grade at, and `tally` falls
+ * back to the −110 convention rather than dropping the wager.
+ */
+function asOfNow<T extends WeekWager>(w: T): T {
+  if (isSettled(w) || !w.standing) return w;
+  return { ...w, result: w.standing, payoutUnits: payoutAt(w.units, w.odds, w.standing) };
+}
+
+/** Both readings of a slice, plus what is still out. */
+export function sliceRecord(wagers: readonly WeekWager[]): SliceRecord {
+  const open = wagers.filter((w) => !isSettled(w));
+  const scored = open.filter(hasStanding);
+  return {
+    settled: leagueSplit(wagers.filter(isSettled)),
+    now: leagueSplit(wagers.map(asOfNow)),
+    live: scored.filter((w) => w.standingState === "in_progress").length,
+    projected: scored.length,
+    upcoming: open.length - scored.length,
+  };
+}
+
+/**
+ * A ledger row's standing off the board, or nulls when nothing can be said.
+ *
+ * The rule is `settledResult`'s, one step earlier: a stored result always wins,
+ * and a score answers only for the types a full-game score can settle — a team
+ * total, a first half and a future stay open until somebody enters them, which
+ * is by design (`statusForBet` returns null for all three). A game with no
+ * score on the board yet is not in progress as far as this is concerned.
+ */
+export function standingOf(
+  bet: { betType: string | null; side: string | null; line: number | null },
+  game:
+    | { status: string; home_points: number | null; away_points: number | null }
+    | undefined
+    | null,
+): { standingState: StandingState; standing: WagerResult } {
+  const none = { standingState: null, standing: null } as const;
+  if (!game) return none;
+  if (game.status !== "in_progress" && game.status !== "final") return none;
+  if (game.home_points === null || game.away_points === null) return none;
+  const status = statusForBet(
+    { betType: bet.betType ?? "", side: bet.side, line: bet.line },
+    game.home_points,
+    game.away_points,
+  );
+  if (!status) return none;
+  return {
+    standingState: game.status === "in_progress" ? "in_progress" : "final",
+    standing: status.state === "winning" ? "win" : status.state === "losing" ? "loss" : "push",
+  };
+}
 
 export interface DayBucket<T> {
   /** Local date, `YYYY-MM-DD`. */
@@ -157,42 +283,81 @@ export function weekBuckets<T extends WeekWager>(wagers: readonly T[], tz: strin
 export const undatedCount = (wagers: readonly WeekWager[]): number =>
   wagers.filter((w) => w.startTs === null).length;
 
+/* ── Refresh cadence ─────────────────────────────────────────────────────── */
+
+/** The tiers `useLiveRefresh` takes, same shape as the hub's `homeRefreshTier`. */
+export interface RefreshTier {
+  live: boolean;
+  imminent: boolean;
+}
+
+/**
+ * How hard a page carrying these wagers should poll.
+ *
+ * A live record that only moves when you pull to refresh is not live, and both
+ * surfaces are server components — so the page has to ask for itself again
+ * (`LiveRefresh`). Decided by the positions rather than by the calendar, which
+ * is the lesson `homeRefreshTier` was rewritten for: a CFB-week check left the
+ * hub idling through a live NFL game the owner had money on.
+ *
+ * `imminent` uses the slate's window — kickoff inside six hours, or up to three
+ * hours past a start that has not flipped to in_progress — bounded on both
+ * sides so a permanently-stuck scheduled game cannot hold the fast tier open
+ * forever.
+ *
+ * `now` is a parameter, never `Date.now()` inside, so the tier is a pure
+ * function of what the page loaded.
+ */
+export function refreshTier(wagers: readonly WeekWager[], now: number): RefreshTier {
+  if (wagers.some((w) => w.standingState === "in_progress")) return { live: true, imminent: true };
+  const imminent = wagers.some((w) => {
+    /* Settled, or already scored off the board — neither is waiting to start.
+       Tested against the standing rather than the state because both fields
+       are optional: an absent one is `undefined`, and `!== null` let every
+       caller that omits them fall straight through this guard. */
+    if (isSettled(w) || hasStanding(w)) return false;
+    if (w.startTs === null) return false;
+    const dt = Date.parse(w.startTs) - now;
+    return Number.isFinite(dt) && dt > -3 * 3600_000 && dt < 6 * 3600_000;
+  });
+  return { live: false, imminent };
+}
+
 /* ── Per member ──────────────────────────────────────────────────────────── */
 
-export interface MemberSplit {
+export interface MemberSlice {
   userId: string;
   name: string;
-  split: LeagueSplit;
-  pending: number;
+  record: SliceRecord;
 }
 
 /**
  * One slice of a group's book, split per member and ranked the way a sheet
  * reads: most units first, League Rules #5 for the ties.
  *
- * Members with nothing decided in the slice sort last rather than landing
- * mid-table on a units total of zero — an 0-0 is not better than a −1.0u, it is
- * an absence of information, and a week list that opened with the people who
- * had no action in it would be answering the wrong question. Members with no
- * wagers at all in the slice are absent entirely.
+ * **Ranked on `now`, not on `settled`** — the board as it stands, so a
+ * leaderboard read at 4pm on a Saturday moves with the games instead of showing
+ * the standings as of last Tuesday. Members with nothing decided even off the
+ * board sort last rather than landing mid-table on a units total of zero: an
+ * 0-0 is not better than a −1.0u, it is an absence of information. Members with
+ * no wagers at all in the slice are absent entirely.
  */
-export function memberSplits<T extends WeekWager & { userId: string }>(
+export function memberRecords<T extends WeekWager & { userId: string }>(
   wagers: readonly T[],
   nameById: ReadonlyMap<string, string>,
-): MemberSplit[] {
+): MemberSlice[] {
   const byUser = new Map<string, T[]>();
   for (const w of wagers) byUser.set(w.userId, [...(byUser.get(w.userId) ?? []), w]);
   return [...byUser.entries()]
     .map(([userId, list]) => ({
       userId,
       name: nameById.get(userId) ?? "—",
-      split: leagueSplit(list),
-      pending: pendingCount(list),
+      record: sliceRecord(list),
     }))
     .sort(
       (a, b) =>
-        Number(b.split.total.decided > 0) - Number(a.split.total.decided > 0) ||
-        byLeagueRules(a.split.total, b.split.total) ||
+        Number(b.record.now.total.decided > 0) - Number(a.record.now.total.decided > 0) ||
+        byLeagueRules(a.record.now.total, b.record.now.total) ||
         a.name.localeCompare(b.name),
     );
 }

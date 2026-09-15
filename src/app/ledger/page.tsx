@@ -15,6 +15,7 @@ import { MarkFutureButton } from "../../components/MarkFutureButton";
 import { VoidBetButton } from "../../components/VoidBetButton";
 import { TailFadeAudit, type AuditGroup, type PairRow, type RelationRow } from "../../components/TailFadeAudit";
 import { WeekRecords, type WeekRecordRow } from "../../components/WeekRecords";
+import { LiveRefresh } from "../../components/LiveRefresh";
 import { type BetRow, type TeamRow } from "../../lib/db-types";
 import { tzLabel, tzOf } from "../../lib/kick";
 import { statusForBet, type LiveBetStatus } from "../../lib/live-status";
@@ -28,8 +29,9 @@ import { abbrOf, fetchBetFormOptions } from "../../lib/bet-form-games";
 import { cumulativeUnits, formatRecord, tally, tallyBy } from "../../lib/records";
 import { fmtSpread, fmtTotal, lineForSide } from "../../lib/slate";
 import {
-  leagueSplit,
-  pendingCount,
+  refreshTier,
+  sliceRecord,
+  standingOf,
   undatedCount,
   weekBuckets,
   type WeekWager,
@@ -253,7 +255,6 @@ export default async function LedgerPage({
     if (!g) return null;
     return statusForBet(
       {
-        id: b.id,
         betType: b.bet_type,
         side: b.side,
         line: b.line_taken === null ? null : Number(b.line_taken),
@@ -324,7 +325,13 @@ export default async function LedgerPage({
      game does, which is what `betGameById` is carrying. Voids are dropped
      first (League Rule #4: a void never happened), and a bet on no game — a
      future, a freeform row — is in no week at all and says so under the list
-     rather than quietly not adding up. */
+     rather than quietly not adding up.
+
+     WEEK-3: every row also carries where it stands off the board. `standingOf`
+     reads the same game row the live chips in the history below read, so a
+     week's live record and the chip on the bet inside it cannot disagree. This
+     is why the games query is not filtered to open bets — an ungraded final
+     from Saturday night needs its score as much as a game being played does. */
   const weekWagers: WeekWager[] = bets
     .filter((b) => b.voided_at === null)
     .map((b) => {
@@ -338,22 +345,34 @@ export default async function LedgerPage({
         units: b.units,
         payoutUnits: b.payout_units,
         clv: b.clv,
+        odds: b.odds,
+        ...standingOf(
+          {
+            betType: b.bet_type,
+            side: b.side,
+            line: b.line_taken === null ? null : Number(b.line_taken),
+          },
+          g,
+        ),
       };
     });
   const weekRows: WeekRecordRow[] = weekBuckets(weekWagers, tz).map((wk) => ({
     key: wk.key,
     label: wk.label,
     range: wk.range,
-    split: leagueSplit(wk.wagers),
-    pending: pendingCount(wk.wagers),
+    record: sliceRecord(wk.wagers),
     days: wk.days.map((d) => ({
       key: d.key,
       label: d.label,
-      split: leagueSplit(d.wagers),
-      pending: pendingCount(d.wagers),
+      record: sliceRecord(d.wagers),
     })),
   }));
   const undated = undatedCount(weekWagers);
+  /* A live record that only moves when you pull to refresh is not live. The
+     page is a server component, so it re-asks for itself on the same cadence
+     the hub and the slate use — fast while something is being played, idle
+     otherwise. */
+  const tier = refreshTier(weekWagers, new Date().getTime());
 
   // The audit spec §5.3 asks for — W-L, units, ROI and CLV by angle, because
   // most bettors have one profitable angle and four leaks — now split by who
@@ -419,6 +438,7 @@ export default async function LedgerPage({
   return (
     <>
       <AppNav />
+      <LiveRefresh live={tier.live} imminent={tier.imminent} />
       <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl">Ledger</h1>
@@ -540,11 +560,15 @@ export default async function LedgerPage({
 
         <WeekRecords
           weeks={weekRows}
-          note={
+          note={[
+            `Weeks run Tuesday to Monday, so a Thursday night game and the Monday nighter that closes the weekend are the same week. Days are in ${tzLabel(tz)}.`,
+            "Each row leads with where it stands right now: anything the grader hasn't settled is scored off the board as it sits, at the price you took. The settled record is underneath, and it is the one that counts — a team total, a first half and a future can't be read off a score at all, so they wait.",
             undated > 0
-              ? `${undated} ${undated === 1 ? "bet" : "bets"} on no game — a future, or a row logged freeform — sit in no week and are left out above. Weeks run Tuesday to Monday, so a Thursday night game and the Monday nighter that closes the weekend are the same week. Days are in ${tzLabel(tz)}.`
-              : `Weeks run Tuesday to Monday, so a Thursday night game and the Monday nighter that closes the weekend are the same week. Days are in ${tzLabel(tz)}.`
-          }
+              ? `${undated} ${undated === 1 ? "bet" : "bets"} on no game — a future, or a row logged freeform — sit in no week and are left out above.`
+              : null,
+          ]
+            .filter((line): line is string => line !== null)
+            .join(" ")}
         />
 
         <TailFadeAudit groups={auditGroups} />

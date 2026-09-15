@@ -226,6 +226,69 @@ shipping it.
 
 ## Log
 
+### Sep 15 — WEEK-3: the week-by-week records go live
+
+**Owner, with WEEK-1 in hand.** "So it only shows when everything is graded? I
+want live week by week and day by day to see how we're doing live."
+
+**What was true, and why it was wrong.** WEEK-1's rows counted `result`, which
+only the Sunday grader writes. So all Saturday afternoon the current week read
+"6 open" and all Sunday morning an NFL week read a record that was hours out of
+date — the games were over, the grader had not run. The page was answering
+"what has been settled", and the question is "where do we stand".
+
+**What shipped.** `SliceRecord`: every slice — a week, a day, a member's day —
+is answered twice. `settled` is stored results only, and it does not move.
+`now` is the same three cuts with every unsettled wager graded off the board as
+it sits. Both rows lead with `now`; `settled` rides underneath, labelled, so
+nobody has to guess which number is which. `standingOf` reads the same game row
+the live chip on the bet reads, so a week's live record and the chip inside it
+cannot disagree.
+
+**Two kinds of not-settled, kept apart.** `in_progress` is a sweat and wears the
+pulsing dot; `final` with no stored result is a game that is over and a grader
+that has not run, and it says "1 not graded" instead. Both count toward `now`;
+only the first is live. A team total, a first half and a future are read off no
+score at all (`statusForBet` returns null for all three, by design since R2-A4),
+so they stay in "to come" until somebody enters them.
+
+**A stored result always wins.** The board never overrules the grader — the
+projection only fills in where `result` is null, which is what keeps a
+hand-settled exotic from being silently regraded by a score that cannot settle
+it.
+
+**Priced properly.** A projected win pays at the bet's own American odds, not
+at −110, through `payoutAt` — lifted out of the grader into `records.ts` and
+now called by both. Two spellings of that formula is how a live number and a
+settled one come to disagree on a +2500 moneyline and nobody can say which is
+right. The grader's own `result` is typed `WagerResult` now instead of `string`.
+
+**The group ranks live.** `memberRecords` sorts on `now`, so a 4pm Saturday read
+moves with the games rather than showing where everyone stood on Tuesday. A week
+with something being played opens itself, days and all.
+
+**It actually ticks.** Both pages are server components, so a live record that
+only moved on a manual refresh would not be live. `HomeAutoRefresh` — which was
+never home-specific — moved to `components/LiveRefresh.tsx` as `LiveRefresh`,
+and both surfaces drive it from `refreshTier`, decided by the positions on the
+page rather than by the calendar (the lesson `homeRefreshTier` was rewritten
+for). Fast while something is being played, the slate's six-hour window either
+side of a kickoff, idle otherwise.
+
+**Caught by its own test.** `refreshTier`'s first cut guarded on
+`standingState !== null`; both fields are optional, so an omitted one is
+`undefined` and every caller that left them off fell straight through to
+"nothing is imminent". Now guarded on the standing itself, `hasStanding`, which
+rejects both.
+
+**Tests.** 33 on `lib/week-records.ts` (settled vs. now kept apart, the three
+counts, a projected win priced at +150 rather than −110, the grader never
+overruled, `standingOf` silent on a scheduled game and on the three exotics,
+each refresh tier), 12 jsdom on `WeekRecords`, 9 on `GroupWeekRecords`.
+Typecheck, lint, build and the full suite clean (2,167). **Seen rendered** —
+375px, dark and light, with a live Saturday, an ungraded Sunday final and a
+Sunday that has not kicked off; `scrollWidth` 375 in both states.
+
 ### Sep 15 — WEEK-1: the record week by week, both leagues, day by day
 
 **Owner request.** "In the ledger and on the betting groups, I need to see the

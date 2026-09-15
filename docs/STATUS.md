@@ -6607,6 +6607,31 @@ changelog's Sep 4 entry.
       change has no other business in. · S
 
 
+- [x] **WEEK-3** WEEK-1's rows only counted what the grader had settled. Owner,
+      the same day, with the lists in hand: "So it only shows when everything is
+      graded? I want live week by week and day by day to see how we're doing
+      live." Correct and the right complaint — `result` is written by the Sunday
+      grader, so all Saturday afternoon the current week read "6 open" and all
+      Sunday morning an NFL week showed a record hours out of date.
+      **Shipped 2026-09-15.** Every slice is answered twice: `settled` (stored
+      results, does not move) and `now` (the same three cuts with every
+      unsettled wager graded off the board as it sits). Rows lead with `now`
+      and carry `settled` underneath, labelled. `standingOf` reads the same
+      game row the live chip on the bet reads, so the two cannot disagree. A
+      game in progress wears the pulsing dot; a final the grader has not reached
+      says "1 not graded" — both count, only the first is live. A stored result
+      always wins, so the board never regrades a hand-settled exotic. A
+      projected win pays at its own American odds via `payoutAt`, lifted out of
+      the grader into `records.ts` and now called by both, so a live number and
+      a settled one cannot disagree on a +2500 moneyline. The group's roster
+      ranks on `now`, and a week with something being played opens itself.
+      Both pages are server components, so `HomeAutoRefresh` moved to
+      `components/LiveRefresh.tsx` as `LiveRefresh` (it was never home-specific)
+      and both drive it from `refreshTier` — the positions decide the cadence,
+      not the calendar. 54 tests. **Seen rendered** at 375px, dark and light,
+      with a live Saturday, an ungraded Sunday final and a Sunday yet to kick.
+
+
 ## 5. Not built, by choice
 
 Additive features, no defect behind any of them. Verified still open 2026-08-12.

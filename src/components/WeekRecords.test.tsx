@@ -2,7 +2,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { WeekRecords, type WeekRecordRow } from "./WeekRecords";
-import { leagueSplit, pendingCount, weekBuckets, type WeekWager } from "../lib/week-records";
+import { sliceRecord, weekBuckets, type WeekWager } from "../lib/week-records";
 import { nflSeasonId } from "../lib/league";
 
 afterEach(cleanup);
@@ -16,6 +16,7 @@ const bet = (
   seasonId: number,
   result: WeekWager["result"],
   week: number | null = 3,
+  extra: Partial<WeekWager> = {},
 ): WeekWager => ({
   seasonId,
   startTs,
@@ -24,7 +25,13 @@ const bet = (
   result,
   units: 1,
   payoutUnits: null,
+  odds: -110,
+  ...extra,
 });
+
+/** A bet on a game being played, currently ahead. */
+const live = (startTs: string, seasonId: number, week = 3, standing: "win" | "loss" = "win") =>
+  bet(startTs, seasonId, null, week, { standingState: "in_progress", standing });
 
 /** The page's own composition, so the test exercises what the ledger renders. */
 function rows(bets: WeekWager[]): WeekRecordRow[] {
@@ -32,20 +39,19 @@ function rows(bets: WeekWager[]): WeekRecordRow[] {
     key: wk.key,
     label: wk.label,
     range: wk.range,
-    split: leagueSplit(wk.wagers),
-    pending: pendingCount(wk.wagers),
+    record: sliceRecord(wk.wagers),
     days: wk.days.map((d) => ({
       key: d.key,
       label: d.label,
-      split: leagueSplit(d.wagers),
-      pending: pendingCount(d.wagers),
+      record: sliceRecord(d.wagers),
     })),
   }));
 }
 
 /**
  * WEEK-1. The owner asked for three numbers on every week — the total, CFB and
- * NFL — and a way to open a week onto its days. These are those four claims.
+ * NFL — and a way to open a week onto its days. WEEK-3 added the fourth claim:
+ * those numbers move while the games are on.
  */
 describe("WeekRecords", () => {
   const mixed = [
@@ -81,31 +87,12 @@ describe("WeekRecords", () => {
     expect(summary.textContent).not.toContain("NFL");
   });
 
-  it("still leaves a league out once the other has graded on its own", () => {
-    const { container } = render(
-      <WeekRecords
-        weeks={rows([
-          bet("2026-09-12T16:00:00Z", CFB, "win"),
-          bet("2026-09-13T17:00:00Z", NFL, null, 2),
-        ])}
-      />,
-    );
-    const summary = container.querySelector("summary") as HTMLElement;
-    expect(summary.textContent).not.toContain("NFL 0-0");
-    expect(summary.textContent).toContain("1-0");
-  });
-
   it("opens onto one row per day the week had a bet on, in playing order", () => {
     const { container } = render(<WeekRecords weeks={rows(mixed)} />);
     const days = [...container.querySelectorAll("details > ul > li")].map(
       (li) => li.querySelector("span.block")?.textContent,
     );
     expect(days).toEqual(["Sat", "Sun", "Mon"]);
-  });
-
-  it("says how many are still out instead of dashing a week nothing has graded in", () => {
-    render(<WeekRecords weeks={rows([bet("2026-09-12T16:00:00Z", CFB, null)])} />);
-    expect(screen.getAllByText("1 open").length).toBeGreaterThan(0);
   });
 
   it("renders nothing at all when there is no week to show", () => {
@@ -116,5 +103,73 @@ describe("WeekRecords", () => {
   it("prints the note, because what the weeks leave out has to be said", () => {
     render(<WeekRecords weeks={rows(mixed)} note="1 bet sits in no week." />);
     expect(screen.getByText("1 bet sits in no week.")).toBeTruthy();
+  });
+
+  /* ── WEEK-3: live ───────────────────────────────────────────────────── */
+
+  it("counts a game in progress into the record it leads with", () => {
+    const { container } = render(
+      <WeekRecords weeks={rows([bet("2026-09-12T16:00:00Z", CFB, "win"), live("2026-09-12T20:00:00Z", CFB)])} />,
+    );
+    const summary = container.querySelector("summary") as HTMLElement;
+    expect(within(summary).getByText("2-0")).toBeTruthy();
+    expect(summary.textContent).toContain("1 live");
+    // and the settled truth is still on the row, labelled
+    expect(summary.textContent).toContain("1-0 settled");
+  });
+
+  it("marks a live week with the dot, and leaves a finished one unmarked", () => {
+    const { container } = render(
+      <WeekRecords weeks={rows([live("2026-09-12T20:00:00Z", CFB)])} />,
+    );
+    expect(container.querySelectorAll(".live-dot").length).toBeGreaterThan(0);
+    cleanup();
+    const settled = render(<WeekRecords weeks={rows(mixed)} />);
+    expect(settled.container.querySelectorAll(".live-dot")).toHaveLength(0);
+  });
+
+  it("opens a week with games on it, and leaves a settled one closed", () => {
+    const { container } = render(
+      <WeekRecords weeks={rows([live("2026-09-12T20:00:00Z", CFB), ...mixed])} />,
+    );
+    const open = [...container.querySelectorAll("li > details")].map((d) =>
+      (d as HTMLDetailsElement).open,
+    );
+    expect(open).toEqual([true]);
+  });
+
+  it("names a final the grader has not reached without calling it live", () => {
+    const ungraded = bet("2026-09-12T16:00:00Z", CFB, null, 3, {
+      standingState: "final",
+      standing: "win",
+    });
+    const { container } = render(<WeekRecords weeks={rows([ungraded])} />);
+    const summary = container.querySelector("summary") as HTMLElement;
+    expect(within(summary).getByText("1-0")).toBeTruthy();
+    expect(summary.textContent).toContain("1 not graded");
+    expect(summary.textContent).not.toContain("live");
+    expect(container.querySelectorAll(".live-dot")).toHaveLength(0);
+  });
+
+  it("says what is still to come rather than dashing a week nothing has started in", () => {
+    render(<WeekRecords weeks={rows([bet("2026-09-12T16:00:00Z", CFB, null)])} />);
+    expect(screen.getAllByText("1 to come").length).toBeGreaterThan(0);
+  });
+
+  it("breaks the live record down by day too", () => {
+    const { container } = render(
+      <WeekRecords
+        weeks={rows([
+          bet("2026-09-12T16:00:00Z", CFB, "win"),
+          live("2026-09-13T17:00:00Z", NFL, 2, "loss"),
+        ])}
+      />,
+    );
+    const days = [...container.querySelectorAll("details > ul > li")];
+    expect(days[0].textContent).toContain("Sat");
+    expect(days[0].textContent).toContain("1-0");
+    expect(days[1].textContent).toContain("Sun");
+    expect(days[1].textContent).toContain("0-1");
+    expect(days[1].textContent).toContain("1 live");
   });
 });

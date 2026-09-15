@@ -225,7 +225,10 @@ export function liveUrgency(g: GameView): number {
  * first_half / future — and bets missing a side or a needed line — return null.
  */
 export function statusForBet(
-  bet: MyBetView,
+  /* Only the three fields that decide it. Widened from `MyBetView` so a caller
+     holding a ledger row — the week-by-week lists (WEEK-3) — does not have to
+     invent an `id` to ask the question. */
+  bet: Pick<MyBetView, "betType" | "side" | "line">,
   homePts: number,
   awayPts: number,
 ): LiveBetStatus | null {
