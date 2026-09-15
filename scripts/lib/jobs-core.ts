@@ -25,6 +25,7 @@ import { cfbdScoringOffense, cfbdScoringPlays } from "../../src/lib/scoring";
 import { modelClv, roundClv, spreadClv, totalClv } from "../../src/lib/clv";
 import { consensusFromSnapshots, SNAPSHOT_COLS } from "../../src/lib/consensus";
 import { pageAll } from "../../src/lib/page-all";
+import { payoutAt, type WagerResult } from "../../src/lib/records";
 import { clockToSeconds, coverMargin, spreadCoverSide, totalCoverSide } from "../../src/lib/cover";
 import {
   firstHalfScore,
@@ -1651,7 +1652,9 @@ async function settleGames(db: SupabaseClient, allGames: SettleGameRow[]): Promi
       const total = (g.home_points as number) + (g.away_points as number);
       const line = b.line_taken === null ? null : Number(b.line_taken);
       const close = closing(b.game_id);
-      let result: string | null = null;
+      // Typed as the shared result union rather than a bare string so it can
+      // be handed to `payoutAt` below without a cast.
+      let result: WagerResult = null;
       let clv: number | null = null;
       let closingLine: number | null = null;
       if (b.bet_type === "spread" && line !== null && (b.side === "home" || b.side === "away")) {
@@ -1700,19 +1703,19 @@ async function settleGames(db: SupabaseClient, allGames: SettleGameRow[]): Promi
         }
       }
       if (result === null) continue;
-      const units = Number(b.units);
-      const odds = Number(b.odds);
       // Correct for any American price, which is what makes a +2500 moneyline
-      // pay what it should rather than -110.
-      const win = odds > 0 ? units * (odds / 100) : units * (100 / -odds);
-      const payout = result === "win" ? win : result === "loss" ? -units : 0;
+      // pay what it should rather than -110. `payoutAt` is shared with the
+      // live projection on the week-by-week lists (WEEK-3), so what a bet is
+      // shown to be worth mid-game is what gets written here at settle; it
+      // rounds to cents and answers 0 for a push, as this did inline.
+      const payout = payoutAt(b.units, b.odds, result) ?? 0;
       const { error } = await db
         .from("bets")
         .update({
           result,
           clv,
           closing_line: closingLine,
-          payout_units: Math.round(payout * 100) / 100,
+          payout_units: payout,
         })
         .eq("id", b.id);
       if (!error) betsGraded++;

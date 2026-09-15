@@ -6563,6 +6563,75 @@ changelog's Sep 4 entry.
       51–0 — there is no first-quarter type; bet 59 settles only if the
       plays prove the half, else it waits for manual settle as designed.
 
+- [x] **WEEK-1** Neither the ledger nor a betting group had a weekly record.
+      Owner request 2026-09-15: "In the ledger and on the betting groups, I
+      need to see the records week by week total, and also in cfb and nfl
+      individually. I also want to be able to sort by day for that specific
+      week too." `/ledger` had the season (four tiles, the curve, the CFB/NFL
+      split) and `/ledger/stats` cut it fourteen ways, none by week; the
+      betting group had this week's sheet and the season standings and nothing
+      between them.
+      **Shipped 2026-09-15.** `lib/week-records.ts` — pure, database-free,
+      18 tests — buckets wagers into **weekends anchored on Tuesday**, not
+      league weeks. GRP-12 is why: CFB week 3 and NFL week 2 are the same
+      weekend, so neither number can label a row carrying both, while a
+      Tue→Mon window is what both leagues actually run (and puts a Labor Day
+      Monday with the games it was played alongside). It buckets and does not
+      tally — every number is `records.ts`'s. `/ledger` gets a "Week by week"
+      section, one row per week with the total, CFB and NFL, opening onto
+      Thu · Fri · Sat · Sun · Mon; the betting group home gets the same per
+      member, a week ranking the roster by that week's units and a "By day"
+      fold re-ranking it one day at a time. Server-rendered `<details>`, the
+      `SourceCard` idiom — no client JavaScript and no navigation. The
+      per-league caption appears only when both leagues graded in the slice
+      (on an all-CFB week it would just repeat the total); a week nothing has
+      graded in says "3 open", not "—"; a bet on no game is in no week and the
+      note under the list says how many. The ledger's two game reads collapse
+      into one; the group home adds one narrow read. 32 tests in all.
+      **Seen rendered** — 375px, dark and light, collapsed and expanded,
+      `scrollWidth` 375 in both.
+- [ ] **WEEK-2** `focus:outline-none focus-visible:outline-2` computes to
+      `outline-style: none`, so the focus ring it looks like it sets is
+      invisible. Measured in Chromium against the built stylesheet while
+      rendering WEEK-1 (`outline: rgb(242,182,60) none 0px`). Fixed in
+      `WeekRecords` and `GroupWeekRecords` by dropping `focus:outline-none` —
+      `:focus-visible` already keeps the ring off a mouse click — and
+      insetting the offset (`-outline-offset-2`) so a `.card`'s
+      `overflow-hidden` cannot clip it. **21 more occurrences across 10 other
+      components** pair the two the same way — `SourceCard` (in
+      `BettingHub`), `SettledDisclosure`, `WeekJump`, `SlateView`,
+      `LoginForm`, `InviteForm`, `ProfileSettings`, `NotificationsPanel`,
+      `GameStatusPanel`, `AdjustmentsPanel` — and are still broken: a
+      keyboard-only reader navigates all of them with no visible ring. One sed
+      and one render pass, not done here because it touches ten files this
+      change has no other business in. · S
+
+
+- [x] **WEEK-3** WEEK-1's rows only counted what the grader had settled. Owner,
+      the same day, with the lists in hand: "So it only shows when everything is
+      graded? I want live week by week and day by day to see how we're doing
+      live." Correct and the right complaint — `result` is written by the Sunday
+      grader, so all Saturday afternoon the current week read "6 open" and all
+      Sunday morning an NFL week showed a record hours out of date.
+      **Shipped 2026-09-15.** Every slice is answered twice: `settled` (stored
+      results, does not move) and `now` (the same three cuts with every
+      unsettled wager graded off the board as it sits). Rows lead with `now`
+      and carry `settled` underneath, labelled. `standingOf` reads the same
+      game row the live chip on the bet reads, so the two cannot disagree. A
+      game in progress wears the pulsing dot; a final the grader has not reached
+      says "1 not graded" — both count, only the first is live. A stored result
+      always wins, so the board never regrades a hand-settled exotic. A
+      projected win pays at its own American odds via `payoutAt`, lifted out of
+      the grader into `records.ts` and now called by both, so a live number and
+      a settled one cannot disagree on a +2500 moneyline. The group's roster
+      ranks on `now`, and a week with something being played opens itself.
+      Both pages are server components, so `HomeAutoRefresh` moved to
+      `components/LiveRefresh.tsx` as `LiveRefresh` (it was never home-specific)
+      and both drive it from `refreshTier` — the positions decide the cadence,
+      not the calendar. 54 tests. **Seen rendered** at 375px, dark and light,
+      with a live Saturday, an ungraded Sunday final and a Sunday yet to kick.
+
+
 ## 5. Not built, by choice
 
 Additive features, no defect behind any of them. Verified still open 2026-08-12.

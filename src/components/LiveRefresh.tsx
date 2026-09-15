@@ -1,7 +1,12 @@
 "use client";
 
 /**
- * The home hub's refresh, which it did not have.
+ * Route-level refresh for a server-rendered page that has live numbers on it.
+ *
+ * Was `HomeAutoRefresh`, and home-only; the week-by-week records on `/ledger`
+ * and a betting group home need exactly the same thing for exactly the same
+ * reason (WEEK-3), so it moved here and lost the "Home" in its name. The
+ * original note stands:
  *
  * `/` is a server component all the way down — deliberately, since the hub
  * needs a database, a season, a group, picks and bets before it draws
@@ -21,9 +26,9 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
-import { useLiveRefresh } from "../../lib/use-live-refresh";
+import { useLiveRefresh } from "../lib/use-live-refresh";
 
-export function HomeAutoRefresh({ live, imminent }: { live: boolean; imminent: boolean }) {
+export function LiveRefresh({ live, imminent }: { live: boolean; imminent: boolean }) {
   const router = useRouter();
   const refresh = useCallback(() => router.refresh(), [router]);
   /* A full server re-render is heavier than the slate's JSON poll, so the idle

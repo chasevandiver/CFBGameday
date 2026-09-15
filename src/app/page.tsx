@@ -1,7 +1,7 @@
 import { AppNav } from "../components/AppNav";
 import { GamedayCover } from "../components/home/GamedayCover";
 import { SignOff } from "../components/home/SignOff";
-import { HomeAutoRefresh } from "../components/home/HomeAutoRefresh";
+import { LiveRefresh } from "../components/LiveRefresh";
 import { HomeDashboard } from "../components/home/HomeHub";
 import { fetchHomeData, homeRefreshTier } from "../lib/home";
 import { createClient } from "../lib/supabase/server";
@@ -52,7 +52,7 @@ export default async function HomePage() {
       <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
         <HomeDashboard data={data} signedIn={!!user} />
       </main>
-      <HomeAutoRefresh live={live} imminent={imminent} />
+      <LiveRefresh live={live} imminent={imminent} />
       {/* Fun Mode (FUN-8/FUN-16): the day's bookends — the Cover opens a
           gameday morning, the Sign-Off closes it after the last final. */}
       <GamedayCover />

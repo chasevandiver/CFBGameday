@@ -226,6 +226,145 @@ shipping it.
 
 ## Log
 
+### Sep 15 — WEEK-3: the week-by-week records go live
+
+**Owner, with WEEK-1 in hand.** "So it only shows when everything is graded? I
+want live week by week and day by day to see how we're doing live."
+
+**What was true, and why it was wrong.** WEEK-1's rows counted `result`, which
+only the Sunday grader writes. So all Saturday afternoon the current week read
+"6 open" and all Sunday morning an NFL week read a record that was hours out of
+date — the games were over, the grader had not run. The page was answering
+"what has been settled", and the question is "where do we stand".
+
+**What shipped.** `SliceRecord`: every slice — a week, a day, a member's day —
+is answered twice. `settled` is stored results only, and it does not move.
+`now` is the same three cuts with every unsettled wager graded off the board as
+it sits. Both rows lead with `now`; `settled` rides underneath, labelled, so
+nobody has to guess which number is which. `standingOf` reads the same game row
+the live chip on the bet reads, so a week's live record and the chip inside it
+cannot disagree.
+
+**Two kinds of not-settled, kept apart.** `in_progress` is a sweat and wears the
+pulsing dot; `final` with no stored result is a game that is over and a grader
+that has not run, and it says "1 not graded" instead. Both count toward `now`;
+only the first is live. A team total, a first half and a future are read off no
+score at all (`statusForBet` returns null for all three, by design since R2-A4),
+so they stay in "to come" until somebody enters them.
+
+**A stored result always wins.** The board never overrules the grader — the
+projection only fills in where `result` is null, which is what keeps a
+hand-settled exotic from being silently regraded by a score that cannot settle
+it.
+
+**Priced properly.** A projected win pays at the bet's own American odds, not
+at −110, through `payoutAt` — lifted out of the grader into `records.ts` and
+now called by both. Two spellings of that formula is how a live number and a
+settled one come to disagree on a +2500 moneyline and nobody can say which is
+right. The grader's own `result` is typed `WagerResult` now instead of `string`.
+
+**The group ranks live.** `memberRecords` sorts on `now`, so a 4pm Saturday read
+moves with the games rather than showing where everyone stood on Tuesday. A week
+with something being played opens itself, days and all.
+
+**It actually ticks.** Both pages are server components, so a live record that
+only moved on a manual refresh would not be live. `HomeAutoRefresh` — which was
+never home-specific — moved to `components/LiveRefresh.tsx` as `LiveRefresh`,
+and both surfaces drive it from `refreshTier`, decided by the positions on the
+page rather than by the calendar (the lesson `homeRefreshTier` was rewritten
+for). Fast while something is being played, the slate's six-hour window either
+side of a kickoff, idle otherwise.
+
+**Caught by its own test.** `refreshTier`'s first cut guarded on
+`standingState !== null`; both fields are optional, so an omitted one is
+`undefined` and every caller that left them off fell straight through to
+"nothing is imminent". Now guarded on the standing itself, `hasStanding`, which
+rejects both.
+
+**Tests.** 33 on `lib/week-records.ts` (settled vs. now kept apart, the three
+counts, a projected win priced at +150 rather than −110, the grader never
+overruled, `standingOf` silent on a scheduled game and on the three exotics,
+each refresh tier), 12 jsdom on `WeekRecords`, 9 on `GroupWeekRecords`.
+Typecheck, lint, build and the full suite clean (2,167). **Seen rendered** —
+375px, dark and light, with a live Saturday, an ungraded Sunday final and a
+Sunday that has not kicked off; `scrollWidth` 375 in both states.
+
+### Sep 15 — WEEK-1: the record week by week, both leagues, day by day
+
+**Owner request.** "In the ledger and on the betting groups, I need to see the
+records week by week total, and also in cfb and nfl individually. I also want to
+be able to sort by day for that specific week too."
+
+**What was true.** Nothing on either surface was weekly. `/ledger` had the
+season — four tiles, a curve, the CFB/NFL split — and `/ledger/stats` cut that
+season fourteen ways, none of them by week. The betting group had this week's
+sheet and the season standings, and nothing in between: no way to ask "how did
+we do in Week 3", let alone "who won Saturday".
+
+**The week problem, and what it is keyed to.** A bet has no week; its game does.
+And a *league* week cannot label a row carrying both leagues — that is GRP-12's
+scar, CFB week 3 and NFL week 2 being the same weekend. So the bucket here is
+the weekend, anchored on **Tuesday**, which is what both leagues already run on:
+Thursday night, Friday, Saturday, Sunday, and the Monday nighter that closes it.
+The NFL's Tue→Mon week is reproduced exactly, a Labor Day Monday lands with the
+games it was played alongside instead of opening the next week, and — the point
+of the whole anchor — a CFB Saturday and an NFL Sunday can share a row, which is
+the only way "total, CFB and NFL" means anything on one line. `lib/group-weeks.ts`
+still owns the league week; it is what a *sheet* is keyed to and that has not
+changed.
+
+**What shipped.** `lib/week-records.ts`, pure and database-free: `footballWeekKey`
+(the Tuesday, resolved to a local date then walked back in UTC so no DST falls
+into it), `weekBuckets` (weeks newest first, days inside them oldest first),
+`leagueSplit` (the three cuts, all through `tally`), `memberSplits` (a group's
+slice, ranked), and the labels — "CFB Wk 3 · NFL Wk 2" when both leagues are in
+a week, "Week 3" or "NFL Preseason Week 2" when one is, from the *modal* league
+week so one makeup game cannot rename the week around it.
+
+It buckets; it does not tally. Every number is `records.ts`'s, which is the
+module that exists because six surfaces once disagreed about what a record is.
+
+`/ledger` gets a "Week by week" section: one row per week with the total record
+and units, CFB and NFL beside them, opening onto Thu · Fri · Sat · Sun · Mon. The
+betting group home gets the same thing per member — a week ranks the roster by
+that week's units, and a "By day" fold re-ranks it one day at a time. Both are
+server-rendered `<details>`, the `SourceCard` idiom: no client JavaScript, no
+navigation, keyboard and screen-reader semantics for free.
+
+**Two rules that came out of seeing it rendered.** The per-league caption shows
+only when **both** leagues graded something in the slice — on an all-CFB week
+the league record *is* the total, and a row that prints "CFB 2-1 +1.7u" beside
+"2-1 +1.7u" is not a breakdown. And a week nothing has graded in says "3 open"
+rather than a dash: a week whose games have not been played is not an 0-0 week.
+A bet on no game (a future, a freeform row) is in no week at all — dropped from
+the buckets, counted by `undatedCount`, and said out loud under the list so the
+totals cannot silently fail to add up.
+
+**Queries.** The ledger's two game reads became one: the open-bet read was
+widened to every game the ledger has money on and the open set filtered out of
+it, so the share card still pulls teams for four crests and not for the season.
+The group home adds one narrow read (`id, week, season_type, start_ts`) over the
+games its sheet already covers.
+
+**Focus rings.** `focus:outline-none focus-visible:outline-2` — the pattern these
+components copied from `SourceCard` — computes to `outline-style: none`, so the
+ring is invisible. Verified in Chromium against the built stylesheet. Fixed here
+by dropping `focus:outline-none` (`:focus-visible` already keeps the ring off a
+mouse click) and insetting the offset so `.card`'s `overflow-hidden` cannot clip
+it. **21 more occurrences across 10 other components pair the two the same way
+and are still broken** — `SourceCard`, `SettledDisclosure`, `WeekJump`,
+`SlateView`, `LoginForm`, `InviteForm`, `ProfileSettings`,
+`NotificationsPanel`, `GameStatusPanel`, `AdjustmentsPanel`. Recorded as
+WEEK-2 in `docs/STATUS.md`; not fixed in this change.
+
+**Tests.** 18 on `lib/week-records.ts` (the Tuesday anchor across four days and
+three timezones, Labor Day, the modal-week label, both leagues summing to the
+total, the ranking sinking a member with nothing decided), 7 jsdom on
+`WeekRecords`, 7 on `GroupWeekRecords`. Typecheck, lint, build and the full
+suite clean (2,146 tests). **Seen rendered** — screenshotted at 375px in dark and
+light, collapsed and expanded, `scrollWidth` 375 in both states, and the focus
+ring confirmed as a solid 2px accent outline.
+
 ### Sep 10 — GRP-13: the betting group's season numbers follow the league tab
 
 **Owner, minutes after GRP-12 merged.** "Will the stats on the betting groups

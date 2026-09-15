@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { HomeAutoRefresh } from "./HomeAutoRefresh";
+import { LiveRefresh } from "./LiveRefresh";
 
 const refresh = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
@@ -22,9 +22,9 @@ afterEach(() => {
  * screen isn't refreshing at all" looked like, and is worth a test rather than
  * an assumption.
  */
-describe("HomeAutoRefresh", () => {
+describe("LiveRefresh", () => {
   it("re-renders the server tree on the live cadence", () => {
-    render(<HomeAutoRefresh live imminent />);
+    render(<LiveRefresh live imminent />);
     expect(refresh).toHaveBeenCalledTimes(0); // the server just rendered this
     act(() => void vi.advanceTimersByTime(34_000));
     expect(refresh).toHaveBeenCalledTimes(1);
@@ -37,7 +37,7 @@ describe("HomeAutoRefresh", () => {
      as a page that never refreshes. homeRefreshTier is what decides this, and
      it is tested against the reported case in home.test.ts. */
   it("waits far longer when nothing is happening", () => {
-    render(<HomeAutoRefresh live={false} imminent={false} />);
+    render(<LiveRefresh live={false} imminent={false} />);
     act(() => void vi.advanceTimersByTime(60_000));
     expect(refresh).toHaveBeenCalledTimes(0);
     act(() => void vi.advanceTimersByTime(245_000));
@@ -45,7 +45,7 @@ describe("HomeAutoRefresh", () => {
   });
 
   it("refreshes the moment the tab comes back, whatever the tier", () => {
-    render(<HomeAutoRefresh live={false} imminent={false} />);
+    render(<LiveRefresh live={false} imminent={false} />);
     act(() => void vi.advanceTimersByTime(30_000));
     expect(refresh).toHaveBeenCalledTimes(0);
     act(() => window.dispatchEvent(new Event("focus")));

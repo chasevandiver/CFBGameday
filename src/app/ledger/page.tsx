@@ -14,8 +14,10 @@ import { UnitsCurve } from "../../components/UnitsCurve";
 import { MarkFutureButton } from "../../components/MarkFutureButton";
 import { VoidBetButton } from "../../components/VoidBetButton";
 import { TailFadeAudit, type AuditGroup, type PairRow, type RelationRow } from "../../components/TailFadeAudit";
+import { WeekRecords, type WeekRecordRow } from "../../components/WeekRecords";
+import { LiveRefresh } from "../../components/LiveRefresh";
 import { type BetRow, type TeamRow } from "../../lib/db-types";
-import { tzOf } from "../../lib/kick";
+import { tzLabel, tzOf } from "../../lib/kick";
 import { statusForBet, type LiveBetStatus } from "../../lib/live-status";
 import { betsCardPayload, shareableBets, type BetCardGame } from "../../lib/share-card-build";
 import { seasonIdsForYear, seasonYearOf, sportOfSeasonId } from "../../lib/league";
@@ -26,6 +28,14 @@ import { fetchCurrentSeasonWeek } from "../../lib/queries";
 import { abbrOf, fetchBetFormOptions } from "../../lib/bet-form-games";
 import { cumulativeUnits, formatRecord, tally, tallyBy } from "../../lib/records";
 import { fmtSpread, fmtTotal, lineForSide } from "../../lib/slate";
+import {
+  refreshTier,
+  sliceRecord,
+  standingOf,
+  undatedCount,
+  weekBuckets,
+  type WeekWager,
+} from "../../lib/week-records";
 import { createClient } from "../../lib/supabase/server";
 import { isCurrentUserAdmin } from "../../lib/admin";
 
@@ -150,24 +160,32 @@ export default async function LedgerPage({
     ]),
   );
 
-  // live status for open bets tied to an in-progress game (snapshot at page load)
-  const openGameIds = [
-    ...new Set(
-      bets
-        .filter((b) => !b.result && !b.voided_at && b.game_id !== null)
-        .map((b) => b.game_id as number),
-    ),
+  /* One read of every game this ledger has money on. It answers two questions
+     that used to want two queries: which open bets are live right now, and
+     which week and day each bet belongs to (WEEK-1) — a bet has neither of its
+     own, only its game does. Bounded by the bets, so it is a season of the
+     reader's own games and not the schedule. */
+  const betGameIds = [
+    ...new Set(bets.map((b) => b.game_id).filter((id): id is number => id !== null)),
   ];
-  const { data: openGames } =
-    openGameIds.length > 0
+  const openGameIds = new Set(
+    bets
+      .filter((b) => !b.result && !b.voided_at && b.game_id !== null)
+      .map((b) => b.game_id as number),
+  );
+  const { data: betGames } =
+    betGameIds.length > 0
       ? await supabase
           .from("games")
           // start_ts and both team ids are for the share card: it sorts on
-          // kickoff inside a tier and draws each side's crest.
-          .select("id, status, home_points, away_points, start_ts, home_team_id, away_team_id")
-          .in("id", openGameIds)
+          // kickoff inside a tier and draws each side's crest. week and
+          // season_type name the week the row lands in.
+          .select(
+            "id, status, home_points, away_points, start_ts, home_team_id, away_team_id, week, season_type",
+          )
+          .in("id", betGameIds)
       : { data: [] };
-  type OpenGame = {
+  type BetGame = {
     id: number;
     status: string;
     home_points: number | null;
@@ -175,8 +193,15 @@ export default async function LedgerPage({
     start_ts: string | null;
     home_team_id: number;
     away_team_id: number;
+    week: number;
+    season_type: string;
   };
-  const openGameRows = (openGames ?? []) as OpenGame[];
+  const betGameRows = (betGames ?? []) as BetGame[];
+  const betGameById = new Map(betGameRows.map((g) => [g.id, g]));
+  /* The share card and the live map still want only the open ones — pulling
+     teams for every game bet all season would be a teams query the size of the
+     schedule for a card that draws four crests. */
+  const openGameRows = betGameRows.filter((g) => openGameIds.has(g.id));
   const liveGameById = new Map(
     openGameRows
       .filter((g) => g.status === "in_progress")
@@ -230,7 +255,6 @@ export default async function LedgerPage({
     if (!g) return null;
     return statusForBet(
       {
-        id: b.id,
         betType: b.bet_type,
         side: b.side,
         line: b.line_taken === null ? null : Number(b.line_taken),
@@ -296,6 +320,60 @@ export default async function LedgerPage({
   const nflSplit = byLeague.get("nfl");
   const showSplit = cfbSplit !== undefined && nflSplit !== undefined;
 
+  /* WEEK-1: the same record, week by week — total, CFB and NFL on every row,
+     and each week opening onto its days. A bet has no week of its own; its
+     game does, which is what `betGameById` is carrying. Voids are dropped
+     first (League Rule #4: a void never happened), and a bet on no game — a
+     future, a freeform row — is in no week at all and says so under the list
+     rather than quietly not adding up.
+
+     WEEK-3: every row also carries where it stands off the board. `standingOf`
+     reads the same game row the live chips in the history below read, so a
+     week's live record and the chip on the bet inside it cannot disagree. This
+     is why the games query is not filtered to open bets — an ungraded final
+     from Saturday night needs its score as much as a game being played does. */
+  const weekWagers: WeekWager[] = bets
+    .filter((b) => b.voided_at === null)
+    .map((b) => {
+      const g = b.game_id === null ? undefined : betGameById.get(b.game_id);
+      return {
+        seasonId: b.season_id,
+        startTs: g?.start_ts ?? null,
+        week: g?.week ?? null,
+        seasonType: g?.season_type ?? null,
+        result: b.result,
+        units: b.units,
+        payoutUnits: b.payout_units,
+        clv: b.clv,
+        odds: b.odds,
+        ...standingOf(
+          {
+            betType: b.bet_type,
+            side: b.side,
+            line: b.line_taken === null ? null : Number(b.line_taken),
+          },
+          g,
+        ),
+      };
+    });
+  const weekRows: WeekRecordRow[] = weekBuckets(weekWagers, tz).map((wk) => ({
+    key: wk.key,
+    label: wk.label,
+    range: wk.range,
+    record: sliceRecord(wk.wagers),
+    days: wk.days.map((d) => ({
+      key: d.key,
+      label: d.label,
+      record: sliceRecord(d.wagers),
+    })),
+  }));
+  const undated = undatedCount(weekWagers);
+  /* A live record that only moves when you pull to refresh is not live. The
+     page is a server component, so it re-asks for itself on the same cadence
+     the hub and the slate use — fast while something is being played, idle
+     otherwise. */
+  const tier = refreshTier(weekWagers, new Date().getTime());
+
   // The audit spec §5.3 asks for — W-L, units, ROI and CLV by angle, because
   // most bettors have one profitable angle and four leaks — now split by who
   // you followed rather than by a tag you typed (LEDGER-1). Derived from
@@ -360,6 +438,7 @@ export default async function LedgerPage({
   return (
     <>
       <AppNav />
+      <LiveRefresh live={tier.live} imminent={tier.imminent} />
       <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl">Ledger</h1>
@@ -478,6 +557,19 @@ export default async function LedgerPage({
             <SeasonNumbers id="season-numbers" flips={seasonFlips} run={seasonRun} ends={seasonEnds} />
           </div>
         )}
+
+        <WeekRecords
+          weeks={weekRows}
+          note={[
+            `Weeks run Tuesday to Monday, so a Thursday night game and the Monday nighter that closes the weekend are the same week. Days are in ${tzLabel(tz)}.`,
+            "Each row leads with where it stands right now: anything the grader hasn't settled is scored off the board as it sits, at the price you took. The settled record is underneath, and it is the one that counts — a team total, a first half and a future can't be read off a score at all, so they wait.",
+            undated > 0
+              ? `${undated} ${undated === 1 ? "bet" : "bets"} on no game — a future, or a row logged freeform — sit in no week and are left out above.`
+              : null,
+          ]
+            .filter((line): line is string => line !== null)
+            .join(" ")}
+        />
 
         <TailFadeAudit groups={auditGroups} />
 

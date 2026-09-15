@@ -12,6 +12,11 @@ import {
   SheetGameRow,
   SourceCard,
 } from "../../../components/group/BettingHub";
+import {
+  GroupWeekRecords,
+  type GroupWeekRow,
+} from "../../../components/group/GroupWeekRecords";
+import { LiveRefresh } from "../../../components/LiveRefresh";
 import { ShareImageButton } from "../../../components/ShareImageButton";
 import { ShareSheetButton } from "../../../components/group/ShareSheetButton";
 import { WeekJump } from "../../../components/group/WeekJump";
@@ -20,11 +25,20 @@ import { betsInLeague, byUnitsIn, fetchBettingSheet } from "../../../lib/betting
 import { outsideWeekIds } from "../../../lib/home";
 import { weekLabel, weekQuery, type WeekRef } from "../../../lib/group-weeks";
 import { EMPTY_TALLY } from "../../../lib/records";
+import {
+  memberRecords,
+  refreshTier,
+  sliceRecord,
+  standingOf,
+  undatedCount,
+  weekBuckets,
+  type WeekWager,
+} from "../../../lib/week-records";
 import type { GroupSummary } from "../../../lib/groups";
 import type { BetRow } from "../../../lib/db-types";
 import type { Sport } from "../../../lib/league";
 import { buildSheetShareContext } from "../../../lib/group-share";
-import { DEFAULT_TZ } from "../../../lib/kick";
+import { DEFAULT_TZ, tzLabel } from "../../../lib/kick";
 import {
   betsCardPayload,
   shareableBets,
@@ -212,6 +226,85 @@ export async function BettingHome({
         })
       : null;
 
+  /* WEEK-1: the group's season, week by week, both leagues on every row.
+     `sheet.raw` is already every member's bets for the season (both leagues,
+     0042); what it does not carry is a week, because a bet has none — its game
+     does. One read of those games places every row, and the weekend buckets
+     they fall into are the only ones that can hold a CFB Saturday and an NFL
+     Sunday on the same line (GRP-12's lesson, `lib/week-records.ts`). */
+  const bookGameIds = [
+    ...new Set(sheet.raw.map((b) => b.game_id).filter((id): id is number => id !== null)),
+  ];
+  /* The score comes back with the week (WEEK-3): a group reading this at 4pm on
+     a Saturday wants the standings as the board has them, not as the grader
+     left them on Tuesday, and the same read covers the Sunday-morning case
+     where every game is over and nothing has settled yet. */
+  const { data: bookGames } =
+    bookGameIds.length > 0
+      ? await supabase
+          .from("games")
+          .select("id, week, season_type, start_ts, status, home_points, away_points")
+          .in("id", bookGameIds)
+      : { data: [] };
+  const bookGameById = new Map(
+    ((bookGames ?? []) as Array<{
+      id: number;
+      week: number;
+      season_type: string;
+      start_ts: string | null;
+      status: string;
+      home_points: number | null;
+      away_points: number | null;
+    }>).map((g) => [g.id, g]),
+  );
+  /* Voids first (League Rule #4: a void never happened), then the game's week
+     and kickoff onto each row. Central, not the reader's zone: a group's week
+     has to read the same for everyone in it, or two members would disagree
+     about which day a late kickoff was on. */
+  type GroupWagerRow = WeekWager & { userId: string };
+  const groupWagers: GroupWagerRow[] = sheet.raw
+    .filter((b) => b.voided_at === null)
+    .map((b) => {
+      const g = b.game_id === null ? undefined : bookGameById.get(b.game_id);
+      return {
+        userId: b.user_id,
+        seasonId: b.season_id,
+        startTs: g?.start_ts ?? null,
+        week: g?.week ?? null,
+        seasonType: g?.season_type ?? null,
+        result: b.result,
+        units: Number(b.units),
+        payoutUnits: b.payout_units,
+        clv: b.clv,
+        odds: b.odds,
+        ...standingOf(
+          {
+            betType: b.bet_type,
+            side: b.side,
+            line: b.line_taken === null ? null : Number(b.line_taken),
+          },
+          g,
+        ),
+      };
+    });
+  const groupWeeks: GroupWeekRow[] = weekBuckets(groupWagers, DEFAULT_TZ).map((wk) => ({
+    key: wk.key,
+    label: wk.label,
+    range: wk.range,
+    record: sliceRecord(wk.wagers),
+    members: memberRecords(wk.wagers, sheet.nameById),
+    days: wk.days.map((d) => ({
+      key: d.key,
+      label: d.label,
+      record: sliceRecord(d.wagers),
+      members: memberRecords(d.wagers, sheet.nameById),
+    })),
+  }));
+  const groupUndated = undatedCount(groupWagers);
+  /* Same cadence as the hub: the standings above move with the board, so the
+     page has to re-ask for itself while the group has money on a live game. */
+  const tier = refreshTier(groupWagers, new Date().getTime());
+
   const share = userId
     ? buildSheetShareContext({
         groupName: group.name,
@@ -224,6 +317,7 @@ export async function BettingHome({
 
   return (
     <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
+      <LiveRefresh live={tier.live} imminent={tier.imminent} />
       <GroupSwitcher groups={mine} activeSlug={group.slug} />
 
       <div className="mt-3 mb-1 flex flex-wrap items-baseline justify-between gap-2">
@@ -444,6 +538,21 @@ export async function BettingHome({
           ))}
         </ul>
       </section>
+
+      {/* ---- every week of it, both leagues ---- */}
+      <GroupWeekRecords
+        weeks={groupWeeks}
+        slug={group.slug}
+        note={[
+          `Weeks run Tuesday to Monday in ${tzLabel(DEFAULT_TZ)}, so Thursday night and the Monday nighter that closes the weekend are one week — which is the only way a CFB Saturday and an NFL Sunday share a row. Both leagues, whichever tab the sheet is on.`,
+          "Everyone is ranked on the board as it stands: a bet the grader hasn't settled is scored where it sits, at the price they took, so the order moves while the games are on. Each settled record is underneath its live one.",
+          groupUndated > 0
+            ? `${groupUndated} ${groupUndated === 1 ? "bet" : "bets"} on no game — futures and freeform rows — sit in no week and are left out.`
+            : null,
+        ]
+          .filter((line): line is string => line !== null)
+          .join(" ")}
+      />
 
       {/* ---- you, behind everybody else ---- */}
       {pairs.length > 0 && (

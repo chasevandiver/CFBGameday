@@ -105,6 +105,43 @@ export const PICKEM_WIN_PAYOUT = 0.909;
 /** The one coercion point. See the `Numeric` note above for why it stays. */
 const num = (v: Numeric | null | undefined): number => Number(v ?? 0);
 
+/**
+ * Profit on a winning wager at an American price.
+ *
+ * Lifted out of the Sunday grader (`scripts/lib/jobs-core.ts`), which is the
+ * only thing that had it, so a *projected* payout — a bet that is winning right
+ * now, scored from the board before the grader has run — is the same arithmetic
+ * that will eventually be written to the row. Two spellings of this formula is
+ * how a live number and a settled one come to disagree by a cent on a +2500
+ * moneyline and nobody can say which is right.
+ */
+export function americanProfit(units: Numeric, odds: Numeric): number {
+  const u = num(units);
+  const o = num(odds);
+  if (o === 0) return 0;
+  return o > 0 ? u * (o / 100) : u * (100 / -o);
+}
+
+/**
+ * What a wager pays at its own price, rounded the way the grader stores it.
+ *
+ * Null when there is no price to grade at, or no result yet — and null means
+ * "derive it" to `tally`, which is the −110 convention. That fallback is
+ * deliberate: a legacy row with no odds should read as a flat-priced bet
+ * rather than vanish from a projected total.
+ */
+export function payoutAt(
+  units: Numeric,
+  odds: Numeric | null | undefined,
+  result: WagerResult,
+): number | null {
+  if (odds === null || odds === undefined || num(odds) === 0) return null;
+  if (result === "win") return Math.round(americanProfit(units, odds) * 100) / 100;
+  if (result === "loss") return -num(units);
+  if (result === "push") return 0;
+  return null;
+}
+
 /** Graded payout: the real one when a wager has it, the −110 one otherwise. */
 function payoutOf(w: Wager): number {
   if (w.payoutUnits !== null && w.payoutUnits !== undefined) return num(w.payoutUnits);
