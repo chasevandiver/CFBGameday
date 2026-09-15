@@ -226,6 +226,82 @@ shipping it.
 
 ## Log
 
+### Sep 15 — WEEK-1: the record week by week, both leagues, day by day
+
+**Owner request.** "In the ledger and on the betting groups, I need to see the
+records week by week total, and also in cfb and nfl individually. I also want to
+be able to sort by day for that specific week too."
+
+**What was true.** Nothing on either surface was weekly. `/ledger` had the
+season — four tiles, a curve, the CFB/NFL split — and `/ledger/stats` cut that
+season fourteen ways, none of them by week. The betting group had this week's
+sheet and the season standings, and nothing in between: no way to ask "how did
+we do in Week 3", let alone "who won Saturday".
+
+**The week problem, and what it is keyed to.** A bet has no week; its game does.
+And a *league* week cannot label a row carrying both leagues — that is GRP-12's
+scar, CFB week 3 and NFL week 2 being the same weekend. So the bucket here is
+the weekend, anchored on **Tuesday**, which is what both leagues already run on:
+Thursday night, Friday, Saturday, Sunday, and the Monday nighter that closes it.
+The NFL's Tue→Mon week is reproduced exactly, a Labor Day Monday lands with the
+games it was played alongside instead of opening the next week, and — the point
+of the whole anchor — a CFB Saturday and an NFL Sunday can share a row, which is
+the only way "total, CFB and NFL" means anything on one line. `lib/group-weeks.ts`
+still owns the league week; it is what a *sheet* is keyed to and that has not
+changed.
+
+**What shipped.** `lib/week-records.ts`, pure and database-free: `footballWeekKey`
+(the Tuesday, resolved to a local date then walked back in UTC so no DST falls
+into it), `weekBuckets` (weeks newest first, days inside them oldest first),
+`leagueSplit` (the three cuts, all through `tally`), `memberSplits` (a group's
+slice, ranked), and the labels — "CFB Wk 3 · NFL Wk 2" when both leagues are in
+a week, "Week 3" or "NFL Preseason Week 2" when one is, from the *modal* league
+week so one makeup game cannot rename the week around it.
+
+It buckets; it does not tally. Every number is `records.ts`'s, which is the
+module that exists because six surfaces once disagreed about what a record is.
+
+`/ledger` gets a "Week by week" section: one row per week with the total record
+and units, CFB and NFL beside them, opening onto Thu · Fri · Sat · Sun · Mon. The
+betting group home gets the same thing per member — a week ranks the roster by
+that week's units, and a "By day" fold re-ranks it one day at a time. Both are
+server-rendered `<details>`, the `SourceCard` idiom: no client JavaScript, no
+navigation, keyboard and screen-reader semantics for free.
+
+**Two rules that came out of seeing it rendered.** The per-league caption shows
+only when **both** leagues graded something in the slice — on an all-CFB week
+the league record *is* the total, and a row that prints "CFB 2-1 +1.7u" beside
+"2-1 +1.7u" is not a breakdown. And a week nothing has graded in says "3 open"
+rather than a dash: a week whose games have not been played is not an 0-0 week.
+A bet on no game (a future, a freeform row) is in no week at all — dropped from
+the buckets, counted by `undatedCount`, and said out loud under the list so the
+totals cannot silently fail to add up.
+
+**Queries.** The ledger's two game reads became one: the open-bet read was
+widened to every game the ledger has money on and the open set filtered out of
+it, so the share card still pulls teams for four crests and not for the season.
+The group home adds one narrow read (`id, week, season_type, start_ts`) over the
+games its sheet already covers.
+
+**Focus rings.** `focus:outline-none focus-visible:outline-2` — the pattern these
+components copied from `SourceCard` — computes to `outline-style: none`, so the
+ring is invisible. Verified in Chromium against the built stylesheet. Fixed here
+by dropping `focus:outline-none` (`:focus-visible` already keeps the ring off a
+mouse click) and insetting the offset so `.card`'s `overflow-hidden` cannot clip
+it. **21 more occurrences across 10 other components pair the two the same way
+and are still broken** — `SourceCard`, `SettledDisclosure`, `WeekJump`,
+`SlateView`, `LoginForm`, `InviteForm`, `ProfileSettings`,
+`NotificationsPanel`, `GameStatusPanel`, `AdjustmentsPanel`. Recorded as
+WEEK-2 in `docs/STATUS.md`; not fixed in this change.
+
+**Tests.** 18 on `lib/week-records.ts` (the Tuesday anchor across four days and
+three timezones, Labor Day, the modal-week label, both leagues summing to the
+total, the ranking sinking a member with nothing decided), 7 jsdom on
+`WeekRecords`, 7 on `GroupWeekRecords`. Typecheck, lint, build and the full
+suite clean (2,146 tests). **Seen rendered** — screenshotted at 375px in dark and
+light, collapsed and expanded, `scrollWidth` 375 in both states, and the focus
+ring confirmed as a solid 2px accent outline.
+
 ### Sep 10 — GRP-13: the betting group's season numbers follow the league tab
 
 **Owner, minutes after GRP-12 merged.** "Will the stats on the betting groups
