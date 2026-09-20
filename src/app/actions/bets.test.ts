@@ -32,6 +32,13 @@ vi.mock("../../lib/supabase/server", () => ({
   }),
 }));
 
+/* SETTLE-1: the inline settle runs on the service client, for the same reason
+   the admin void does — `result` and `payout_units` are the grader's columns.
+   Pointed at the same fake, so what it writes is visible on the same rows. */
+vi.mock("../../lib/supabase/service", () => ({
+  createServiceClient: () => ({ from: (t: string) => db.from(t) }),
+}));
+
 vi.mock("next/cache", () => ({ revalidatePath: () => undefined }));
 
 beforeEach(() => {
@@ -165,5 +172,89 @@ describe("voidBet for a member", () => {
     const res = await voidBet(900, member);
     expect(res.ok).toBe(false);
     expect(db.rows("bets").find((b) => b.id === 900)!.result).toBeNull();
+  });
+});
+
+/**
+ * SETTLE-1. Owner report 2026-09-20: UCLA 52 Purdue 38, the ledger carrying
+ * UCLA −14 (a push) against a book ticket at −13.5 (a win). The row is deleted
+ * and re-logged at the real number on Sunday — and then sat open, because every
+ * grading path was driven by the game finishing and this game finished the
+ * night before.
+ */
+describe("a bet logged on a game that is already over", () => {
+  beforeEach(() => {
+    db.rows("games").push({
+      id: 402,
+      season_id: 2026,
+      status: "final",
+      home_points: 52,
+      away_points: 38,
+      start_ts: "2026-09-20T03:00:00Z",
+    });
+    db.rows("line_snapshots").push({
+      id: 1,
+      game_id: 402,
+      provider: "DraftKings",
+      spread: -14,
+      spread_open: -13,
+      total: 59.5,
+      captured_at: "2026-09-20T02:30:00Z",
+    });
+  });
+
+  it("settles on the way in rather than waiting for the next sweep", async () => {
+    const { logBet } = await import("./bets");
+    const res = await logBet(
+      form({
+        description: "UCLA -13.5",
+        units: "1",
+        season_id: "2026",
+        game_id: "402",
+        side: "home",
+        line_taken: "13.5",
+      }),
+    );
+    expect(res.ok).toBe(true);
+    const row = db.rows("bets").at(-1)!;
+    expect(row.result).toBe("win");
+    expect(row.payout_units).toBe(0.91);
+    expect(row.closing_line).toBe(-14);
+  });
+
+  it("a bet on a game still to be played goes in open, and asks nothing extra", async () => {
+    const { logBet } = await import("./bets");
+    await logBet(
+      form({
+        description: "UGA -3.5",
+        units: "1",
+        season_id: "2026",
+        game_id: "401",
+        side: "home",
+        line_taken: "3.5",
+      }),
+    );
+    expect(db.rows("bets").at(-1)!.result).toBeUndefined();
+    // The status rides on the game read the action already makes, so the
+    // ordinary case costs no second query and never builds a service client.
+    expect(db.readCount("line_snapshots")).toBe(0);
+  });
+
+  it("the slip settles a final card the same way", async () => {
+    const { logSlipBets } = await import("./bets");
+    const res = await logSlipBets(2026, [
+      {
+        gameId: 402,
+        betType: "spread",
+        side: "home",
+        line: -13.5,
+        odds: -110,
+        units: 1,
+        description: "UCLA -13.5",
+        confidence: "bet",
+      },
+    ]);
+    expect(res.ok).toBe(true);
+    expect(db.rows("bets").at(-1)!.result).toBe("win");
   });
 });

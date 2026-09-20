@@ -226,6 +226,58 @@ shipping it.
 
 ## Log
 
+### Sep 20 — SETTLE-1: a bet logged after the final had nothing to settle it
+
+Owner, Sunday evening: "I had gotten on my book UCLA at -13.5 even though we
+had UCLA -14 so I had a push, but I deleted it and added UCLA -13.5 today on
+Sunday but it hasn't said settle yet."
+
+UCLA 52, Purdue 38 (game 401858458, Saturday 03:00 UTC). The ledger carried
+UCLA −14, which on a 14-point win is a push, and it graded as one. The book
+ticket was −13.5, which is a win — so the row was deleted (ADM-1) and re-logged
+at the real number on Sunday. Bet 277 went in at 23:34 UTC with everything a
+grader needs on it: `game_id`, `side: home`, `line_taken −13.5`, `result null`,
+on a game that had been `final` for twenty hours.
+
+**Root cause.** Every path that settles a bet is driven by the GAME, and this
+game had already finished. `applyScoreboard` grades the board it just polled
+(GRADE-1); the three sweeps around the loop grade a season when a run starts,
+ends, or goes idle (GRADE-2); `ratings-update` (Sun 13:00 UTC) and `nfl-grade`
+(daily 13:30 UTC) are the scheduled backstop. Nothing at all is driven by the
+BET. So a row logged after the whistle waits for whichever sweep comes next:
+the top of the hour on a Saturday night, when the loop is launching anyway —
+and, on a Wednesday in a week with no midweek game, the better part of a week.
+Bet 277 would have settled on the 00:00 UTC scoreboard-loop launch, ~25 minutes
+later. Nothing was broken about the row; there was simply no trigger attached
+to logging one.
+
+**Fix.** `logBet` and `logSlipBets` settle the bets they just wrote, when the
+game is already final. The decision and the write moved out of
+`scripts/lib/jobs-core.ts` into `src/lib/settle-bets.ts` (`settleBet`,
+`writeBetSettlement`, `settleBetsOnFinalGame`) — `src/lib/` and not
+`scripts/lib/` for the reason `void.ts` states, that jobs-core already imports
+from src/lib and a server action reaching into scripts/ would invert the
+layering. This is the same shape P1-1 gave the void: one implementation, called
+inline from the action and from the scheduled pass, both idempotent, so the
+sweeps stay the backstop rather than becoming the only path.
+
+The season pass keeps its own read plan — one snapshot read and one
+scoring-plays read across the whole ungraded set, in the order GRADE-2 tuned —
+and only the per-row work is shared. The action's path reads one game's worth,
+and the status rides on the game read `logBet` already makes, so a bet logged
+before kickoff (which is nearly all of them) costs no extra query and never
+constructs a service client. `closingConsensus` and `STALE_CLOSE_MS` moved to
+`src/lib/consensus.ts` beside the consensus they are built on; jobs-core
+re-exports both under the names it has always exported, the arrangement
+`SNAPSHOT_COLS` was already in, and `model-stats.ts` drops its restated copy of
+the six-hour constant for the real one.
+
+Service role for the write, as `setGameStatus` takes it: `result`, `clv` and
+`payout_units` are the grader's columns and no `bets` update policy exposes
+them. Failure is swallowed — a bet that is logged but not yet settled is the
+state this exists to shorten, not a reason to tell the bettor the bet did not
+go in — and the sweeps are still underneath it. 10 new tests.
+
 ### Sep 15 — WEEK-3: the week-by-week records go live
 
 **Owner, with WEEK-1 in hand.** "So it only shows when everything is graded? I

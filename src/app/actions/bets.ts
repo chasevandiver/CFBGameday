@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { CONFIDENCE_TIERS, type ConfidenceTier } from "../../lib/db-types";
 import { canLogBetFor } from "../../lib/log-for";
+import { settleBetsOnFinalGame } from "../../lib/settle-bets";
 import { homeLineForSide } from "../../lib/slate";
 import { createClient } from "../../lib/supabase/server";
+import { createServiceClient } from "../../lib/supabase/service";
 
 /**
  * Bet forms and the slip speak in the bettor's number ("UNC +6.5"); the
@@ -52,6 +54,40 @@ function revalidateProxy(bettor: Bettor) {
   if (bettor.loggedBy !== null) revalidatePath("/groups", "layout");
 }
 
+/**
+ * Settle the bets just logged, if their game is already over (SETTLE-1).
+ *
+ * Every other grading path is driven by the game — the scoreboard tick that
+ * sees it finish (GRADE-1), the sweeps around that loop (GRADE-2), the
+ * scheduled backstop. A bet logged AFTER the final has no such moment, so it
+ * used to sit open until whichever sweep came next: the top of the hour on a
+ * Saturday night, and the better part of a week on a Wednesday. That is the
+ * ordinary case for fixing a number — the ledger had UCLA −14 and the book had
+ * −13.5, so the row is deleted and re-logged on Sunday, against a game whose
+ * score has been on the screen since the night before.
+ *
+ * Service role for the same reason `setGameStatus` takes it: `result`, `clv`
+ * and `payout_units` are the grader's to write, not the bettor's, and no
+ * update policy on `bets` exposes them (0018 is scoped to the owner's own
+ * editable fields). Nothing here is reachable without having just inserted the
+ * row it settles.
+ *
+ * Failure is swallowed on purpose. A bet that is logged and not yet settled is
+ * the state this whole function exists to shorten, not a reason to tell the
+ * bettor their bet did not go in — and the sweeps are still underneath it.
+ */
+async function settleFinals(gameIds: number[]): Promise<void> {
+  if (gameIds.length === 0) return;
+  try {
+    const service = createServiceClient();
+    for (const id of [...new Set(gameIds)]) {
+      await settleBetsOnFinalGame(service, id);
+    }
+  } catch (err) {
+    console.error("settle-on-log failed:", err instanceof Error ? err.message : err);
+  }
+}
+
 export async function logBet(formData: FormData): Promise<BetActionResult> {
   const supabase = await createClient();
   const {
@@ -82,17 +118,23 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
   // season is the CFB pointer, and the games list spans both leagues now, so
   // an NFL bet must land under 102026 or the NFL grader never sees it.
   let gameSeasonId: number | null = null;
+  /** SETTLE-1: whether this bet is being logged on a game that is already over. */
+  let gameIsFinal = false;
   if (gameIdRaw !== "") {
     const parsed = Number(gameIdRaw);
     if (!Number.isInteger(parsed)) return { ok: false, message: "Bad game" };
     const { data: game } = await supabase
       .from("games")
-      .select("id, season_id")
+      .select("id, season_id, status")
       .eq("id", parsed)
       .maybeSingle();
     if (!game) return { ok: false, message: "Bad game" };
     gameId = parsed;
     gameSeasonId = game.season_id;
+    // Read here rather than asked again after the insert: the status is one
+    // more column on a query this path already makes, and a bet logged before
+    // kickoff — every bet, nearly always — then costs nothing extra.
+    gameIsFinal = game.status === "final";
   }
   const side = ["home", "away", "over", "under"].includes(sideRaw) ? sideRaw : null;
   // Whose total a team_total settles on (R2-A4, 0055). Only meaningful for
@@ -122,6 +164,7 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
   });
 
   if (error) return { ok: false, message: error.message };
+  if (gameId !== null && gameIsFinal) await settleFinals([gameId]);
   revalidatePath("/ledger");
   revalidateProxy(bettor);
   return { ok: true };
@@ -203,7 +246,10 @@ export async function logSlipBets(
   }
 
   const gameIds = [...new Set(bets.map((b) => b.gameId))];
-  const { data: games } = await supabase.from("games").select("id, season_id").in("id", gameIds);
+  const { data: games } = await supabase
+    .from("games")
+    .select("id, season_id, status")
+    .in("id", gameIds);
   if ((games ?? []).length !== gameIds.length) return { ok: false, message: "Bad game" };
   // The slip's season is whatever slate it was opened on; each row still
   // stores its own game's season so cross-league grading always finds it.
@@ -226,6 +272,11 @@ export async function logSlipBets(
   );
 
   if (error) return { ok: false, message: error.message };
+  // SETTLE-1. Normally none of them — the slip is opened on a slate — but a
+  // card that is already final is still tappable, and that bet settles now.
+  await settleFinals(
+    (games ?? []).filter((g) => g.status === "final").map((g) => g.id as number),
+  );
   revalidatePath("/ledger");
   revalidatePath("/slate");
   revalidateProxy(bettor);

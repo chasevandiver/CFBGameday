@@ -45,6 +45,7 @@
  */
 
 import { type ClvSummary, summarizeClv } from "./clv";
+import { STALE_CLOSE_MS } from "./consensus";
 import { kickSlot } from "./kick";
 import { tierMatchup, tierOf } from "./tiers";
 
@@ -617,11 +618,12 @@ export function calibration(receipts: Iterable<GradedReceipt>): CalibrationRow[]
 
 /**
  * Whether a closing total counts. The grader nulls a close older than six
- * hours at kickoff (`STALE_CLOSE_MS` in scripts/lib/jobs-core.ts) rather than
- * grade against a days-old number; the same rule here, restated because the
- * dependency runs scripts → src and never back.
+ * hours at kickoff rather than grade against a days-old number; the same rule
+ * here, and since SETTLE-1 literally the same constant — `STALE_CLOSE_MS`
+ * moved to `consensus.ts` with the closing read that applies it, so this no
+ * longer has to restate a number it cannot import.
  */
-export const STALE_CLOSE_MS = 6 * 3600 * 1000;
+export { STALE_CLOSE_MS };
 
 export function closingTotal(
   total: number | null,

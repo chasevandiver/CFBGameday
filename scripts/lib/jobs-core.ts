@@ -23,17 +23,16 @@ import {
 import { nflTeamId, seasonIdsForYear, seasonYearOf } from "../../src/lib/league";
 import { cfbdScoringOffense, cfbdScoringPlays } from "../../src/lib/scoring";
 import { modelClv, roundClv, spreadClv, totalClv } from "../../src/lib/clv";
-import { consensusFromSnapshots, SNAPSHOT_COLS } from "../../src/lib/consensus";
-import { pageAll } from "../../src/lib/page-all";
-import { payoutAt, type WagerResult } from "../../src/lib/records";
-import { clockToSeconds, coverMargin, spreadCoverSide, totalCoverSide } from "../../src/lib/cover";
 import {
-  firstHalfScore,
-  gradePick,
-  gradeTeamTotal,
-  type HalfScore,
-  type PickMarket,
-} from "../../src/lib/grade";
+  closingConsensus,
+  consensusFromSnapshots,
+  SNAPSHOT_COLS,
+  STALE_CLOSE_MS,
+} from "../../src/lib/consensus";
+import { settleBet, writeBetSettlement, type SettleBet } from "../../src/lib/settle-bets";
+import { pageAll } from "../../src/lib/page-all";
+import { clockToSeconds, spreadCoverSide, totalCoverSide } from "../../src/lib/cover";
+import { firstHalfScore, gradePick, type HalfScore, type PickMarket } from "../../src/lib/grade";
 import { keepLastPlay } from "../../src/lib/live-play";
 import { notifyBadBeats, notifyWatchdog, type FlipNotice } from "./notify-jobs";
 import { buildTeamNameIndex } from "../../src/lib/rankings";
@@ -115,38 +114,12 @@ export { SNAPSHOT_COLS };
 const consensus = (snapshots: Snapshot[], before?: string) =>
   consensusFromSnapshots(snapshots, before);
 
-/**
- * A close only counts as a close if somebody captured it near kickoff. With
- * one close pass per kickoff wave (jobs.yml) the last pre-kick snapshot is
- * normally under an hour old; if the pass missed — cron skipped, kickoff moved,
- * TBD start — the newest pre-kick snapshot might be Tuesday's, and grading CLV
- * against Tuesday's line produces a plausible-looking wrong number that is
- * worse than no number. So a close older than STALE_CLOSE_MS at kickoff nulls
- * the priced fields: results still grade (they read the line *taken*, not the
- * close) and CLV stays null in the ungraded set, exactly like a game with no
- * snapshots at all.
- */
-export const STALE_CLOSE_MS = 6 * 3600 * 1000;
-export function closingConsensus(
-  snapshots: Snapshot[],
-  startTs: string | null,
-  maxAgeMs: number = STALE_CLOSE_MS,
-): ReturnType<typeof consensusFromSnapshots> {
-  const c = consensusFromSnapshots(snapshots, startTs ?? undefined);
-  // Unknown kickoff = no close. With no `before` cutoff the newest snapshot
-  // wins, which for a TBD-then-played game can be one captured AFTER the
-  // game — a post-hoc line graded as "the close" (audit 05/N6).
-  if (startTs === null)
-    return { ...c, spread: null, total: null, mlHome: null, mlAway: null };
-  const kick = Date.parse(startTs);
-  let newest = -Infinity;
-  for (const s of snapshots) {
-    const t = Date.parse(s.captured_at);
-    if (t < kick && t > newest) newest = t;
-  }
-  if (kick - newest > maxAgeMs) return { ...c, spread: null, total: null, mlHome: null, mlAway: null };
-  return c;
-}
+/* The stale-close guard and the closing read itself moved to
+   src/lib/consensus.ts (SETTLE-1), beside the consensus they are built on and
+   where a server action can reach them without importing this module. Both are
+   re-exported under the names this file has always exported, which is what
+   jobs-core.test.ts asserts on — the same arrangement SNAPSHOT_COLS is in. */
+export { closingConsensus, STALE_CLOSE_MS };
 
 /**
  * OPS-4b, 2026-08-20. Where a run publishes its `job_runs` id so that a LATER
@@ -1642,83 +1615,14 @@ async function settleGames(db: SupabaseClient, allGames: SettleGameRow[]): Promi
     }
 
     for (const b of bets) {
-      // A moneyline bet has no line to take, so `line_taken` being null is
-      // normal for it rather than a reason to skip. It used to be caught by
-      // this guard and sat ungraded forever, quietly missing from the ledger's
-      // record and units.
-      if (!b.side) continue;
-      const g = gameById.get(b.game_id)!;
-      const margin = (g.home_points as number) - (g.away_points as number);
-      const total = (g.home_points as number) + (g.away_points as number);
-      const line = b.line_taken === null ? null : Number(b.line_taken);
-      const close = closing(b.game_id);
-      // Typed as the shared result union rather than a bare string so it can
-      // be handed to `payoutAt` below without a cast.
-      let result: WagerResult = null;
-      let clv: number | null = null;
-      let closingLine: number | null = null;
-      if (b.bet_type === "spread" && line !== null && (b.side === "home" || b.side === "away")) {
-        const cm = coverMargin(b.side, line, g.home_points as number, g.away_points as number);
-        result = cm > 0 ? "win" : cm < 0 ? "loss" : "push";
-        closingLine = close.spread;
-        if (close.spread !== null) clv = roundClv(spreadClv(b.side, line, close.spread));
-      } else if (
-        b.bet_type === "total" &&
-        line !== null &&
-        (b.side === "over" || b.side === "under")
-      ) {
-        const diff = b.side === "over" ? total - line : line - total;
-        result = diff > 0 ? "win" : diff < 0 ? "loss" : "push";
-        closingLine = close.total;
-        if (close.total !== null) clv = roundClv(totalClv(b.side, line, close.total));
-      } else if (b.bet_type === "moneyline" && (b.side === "home" || b.side === "away")) {
-        // Who won, full stop. CLV on a moneyline is measured in cents against a
-        // closing price we do not capture — spec §5.3 — so it stays null rather
-        // than being invented from the spread.
-        result = margin === 0 ? "push" : (margin > 0) === (b.side === "home") ? "win" : "loss";
-      } else if (
-        b.bet_type === "team_total" &&
-        line !== null &&
-        (b.side === "over" || b.side === "under") &&
-        (b.team_side === "home" || b.team_side === "away")
-      ) {
-        // R2-A4. Legacy rows (team_side null — the subject team lives only in
-        // the description) fall through ungraded for manual settle: skipping
-        // beats guessing. No closing team-total is captured, so CLV stays null.
-        const teamPts =
-          b.team_side === "home" ? (g.home_points as number) : (g.away_points as number);
-        result = gradeTeamTotal(b.side, line, teamPts);
-      } else if (
-        b.bet_type === "first_half" &&
-        line !== null &&
-        (b.side === "home" || b.side === "away")
-      ) {
-        // R2-A4. Settles only when scoring_plays PROVE the halftime score
-        // (see firstHalfScore); otherwise the row stays for manual settle.
-        // No closing 1H line is captured, so CLV stays null.
-        const half = halfByGame.get(b.game_id as number);
-        if (half) {
-          const cm = coverMargin(b.side, line, half.home, half.away);
-          result = cm > 0 ? "win" : cm < 0 ? "loss" : "push";
-        }
-      }
-      if (result === null) continue;
-      // Correct for any American price, which is what makes a +2500 moneyline
-      // pay what it should rather than -110. `payoutAt` is shared with the
-      // live projection on the week-by-week lists (WEEK-3), so what a bet is
-      // shown to be worth mid-game is what gets written here at settle; it
-      // rounds to cents and answers 0 for a push, as this did inline.
-      const payout = payoutAt(b.units, b.odds, result) ?? 0;
-      const { error } = await db
-        .from("bets")
-        .update({
-          result,
-          clv,
-          closing_line: closingLine,
-          payout_units: payout,
-        })
-        .eq("id", b.id);
-      if (!error) betsGraded++;
+      /* SETTLE-1: the decision and the write are `src/lib/settle-bets.ts`, so
+         that a bet logged on a game that already finished settles by the same
+         rules from the server action that logs it. What stays here is this
+         pass's read plan — one snapshot read and one scoring-plays read across
+         the whole ungraded set — which is the only thing that differs. */
+      const s = settleBet(b as SettleBet, gameById.get(b.game_id)!, closing(b.game_id), halfByGame.get(b.game_id as number) ?? null);
+      if (s === null) continue;
+      if (await writeBetSettlement(db, b.id, s)) betsGraded++;
     }
   }
 

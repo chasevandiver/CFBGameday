@@ -6632,6 +6632,35 @@ changelog's Sep 4 entry.
       with a live Saturday, an ungraded Sunday final and a Sunday yet to kick.
 
 
+- [x] **SETTLE-1** A bet logged on a game that was already over had nothing to
+      settle it. Owner, 2026-09-20: "I had gotten on my book ucla at -13.5 even
+      though we had ucla -14 so I had a push, but I deleted it and added ucla
+      -13.5 today on Sunday but it hasn't said settle yet." UCLA 52 Purdue 38 —
+      −14 is the push the ledger graded, −13.5 is the win the book paid, so the
+      row was deleted (ADM-1) and re-logged. Bet 277 went in at 23:34 UTC
+      complete and gradable (`game_id`, `side home`, `line_taken −13.5`) on a
+      game `final` since the night before, and stayed open.
+      **Root cause: every settlement path is driven by the GAME, none by the
+      BET.** `applyScoreboard` grades the board it polled (GRADE-1); the three
+      sweeps grade a season at the edges of a loop run (GRADE-2);
+      `ratings-update` and `nfl-grade` are the scheduled net. A row logged after
+      the whistle has no moment of its own and waits for whichever sweep is
+      next — ~25 minutes on the Sunday this was reported, and most of a week if
+      it had been a Wednesday. Nothing was wrong with the row.
+      **Fix:** `logBet` and `logSlipBets` settle inline when the game is already
+      final, through `src/lib/settle-bets.ts` — the decision and the write
+      lifted out of `jobs-core` so one implementation serves the action and the
+      scheduled pass, the shape P1-1 gave the void. The season pass keeps its
+      own read plan; the action reads one game's worth, and the status rides on
+      the game read `logBet` already makes, so a bet logged before kickoff costs
+      no extra query and builds no service client. `closingConsensus` and
+      `STALE_CLOSE_MS` moved to `consensus.ts` (re-exported from jobs-core under
+      the old names), and `model-stats.ts` stops restating the constant. 10 new
+      tests.
+      *Bet 277 itself settled on the next scoreboard-loop sweep, as designed —
+      the fix is about the wait, not about that row.*
+
+
 ## 5. Not built, by choice
 
 Additive features, no defect behind any of them. Verified still open 2026-08-12.

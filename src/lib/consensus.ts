@@ -152,3 +152,46 @@ export function consensusFromSnapshots(snapshots: SnapshotLike[], before?: strin
     mlAway: price((s) => s.ml_away),
   };
 }
+
+/**
+ * A close only counts as a close if somebody captured it near kickoff. With
+ * one close pass per kickoff wave (jobs.yml) the last pre-kick snapshot is
+ * normally under an hour old; if the pass missed — cron skipped, kickoff moved,
+ * TBD start — the newest pre-kick snapshot might be Tuesday's, and grading CLV
+ * against Tuesday's line produces a plausible-looking wrong number that is
+ * worse than no number. So a close older than STALE_CLOSE_MS at kickoff nulls
+ * the priced fields: results still grade (they read the line *taken*, not the
+ * close) and CLV stays null in the ungraded set, exactly like a game with no
+ * snapshots at all.
+ */
+export const STALE_CLOSE_MS = 6 * 3600 * 1000;
+
+/**
+ * The closing consensus, with that guard applied.
+ *
+ * Moved here from `scripts/lib/jobs-core.ts` (SETTLE-1) so that the settlement
+ * can run from a server action without the app importing the jobs module — the
+ * same direction `void.ts` already runs in, and for the same reason. jobs-core
+ * re-exports it under the name it has always exported, which is what
+ * `jobs-core.test.ts` asserts on.
+ */
+export function closingConsensus(
+  snapshots: SnapshotLike[],
+  startTs: string | null,
+  maxAgeMs: number = STALE_CLOSE_MS,
+): Consensus {
+  const c = consensusFromSnapshots(snapshots, startTs ?? undefined);
+  // Unknown kickoff = no close. With no `before` cutoff the newest snapshot
+  // wins, which for a TBD-then-played game can be one captured AFTER the
+  // game — a post-hoc line graded as "the close" (audit 05/N6).
+  if (startTs === null)
+    return { ...c, spread: null, total: null, mlHome: null, mlAway: null };
+  const kick = Date.parse(startTs);
+  let newest = -Infinity;
+  for (const s of snapshots) {
+    const t = Date.parse(s.captured_at);
+    if (t < kick && t > newest) newest = t;
+  }
+  if (kick - newest > maxAgeMs) return { ...c, spread: null, total: null, mlHome: null, mlAway: null };
+  return c;
+}
