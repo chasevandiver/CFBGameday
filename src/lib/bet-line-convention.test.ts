@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { spreadClv } from "./clv";
 import { liveSpreadStatus } from "./live-status";
+import { betTypeTakesLine, storedBetLine, ticketBetLine } from "./bet-line";
 import { fmtSpread, homeLineForSide, lineForSide } from "./slate";
 
 /**
@@ -50,5 +51,55 @@ describe("bet line convention round-trip (away spread)", () => {
 
   it("pick'em line never becomes −0", () => {
     expect(Object.is(homeLineForSide("away", 0), -0)).toBe(false);
+  });
+});
+
+/**
+ * `bet-line.ts` is the same convention with the BET TYPE routing attached, and
+ * it moved out of `actions/bets.ts` so ADM-3's correction could reach it. The
+ * round trip is asserted through both helpers here because a correction reads
+ * the stored number, shows it to a human, and writes what they hand back — so
+ * an asymmetry between the two directions would land as a sign flip on a row
+ * that was already graded.
+ */
+describe("storedBetLine / ticketBetLine round-trip", () => {
+  const cases: Array<[string, string | null, number]> = [
+    ["spread", "away", 6.5],
+    ["spread", "home", -6.5],
+    ["spread", "away", -3], // GB -3 as an away backer: stored +3
+    ["first_half", "away", 3.5],
+    ["first_half", "home", -3.5],
+    ["total", "over", 51.5],
+    ["total", "under", 51.5],
+    ["team_total", "over", 24.5],
+  ];
+
+  for (const [betType, side, ticket] of cases) {
+    it(`${betType} ${side} ${ticket} survives the trip`, () => {
+      const stored = storedBetLine(betType, side, ticket);
+      expect(ticketBetLine(betType, side, stored)).toBe(ticket);
+    });
+  }
+
+  it("spread-style flips for away, totals do not", () => {
+    expect(storedBetLine("spread", "away", -3)).toBe(3);
+    expect(storedBetLine("first_half", "away", -3)).toBe(3);
+    // Side-agnostic: over 51.5 and under 51.5 are both 51.5.
+    expect(storedBetLine("total", "under", 51.5)).toBe(51.5);
+    expect(storedBetLine("team_total", "under", 24.5)).toBe(24.5);
+  });
+
+  it("null in, null out — a moneyline has no line to convert", () => {
+    expect(storedBetLine("moneyline", "home", null)).toBeNull();
+    expect(ticketBetLine("moneyline", "home", null)).toBeNull();
+  });
+
+  it("names the types that carry a number, and the two that do not", () => {
+    for (const t of ["spread", "total", "team_total", "first_half"]) {
+      expect(betTypeTakesLine(t)).toBe(true);
+    }
+    // A moneyline has a price; a future has neither a line nor a game.
+    expect(betTypeTakesLine("moneyline")).toBe(false);
+    expect(betTypeTakesLine("future")).toBe(false);
   });
 });

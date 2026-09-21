@@ -1,3 +1,4 @@
+import { CorrectLineButton } from "./CorrectLineButton";
 import { DeleteWagerButton } from "./DeleteWagerButton";
 
 /**
@@ -25,6 +26,13 @@ export interface AdminWagerView {
    *  deleting a settled row is deliberate rather than accidental. */
   result: string | null;
   voided: boolean;
+  /**
+   * ADM-3: the bettor's number, where there is one to correct. Null for every
+   * pick, for a voided bet, and for a bet type that carries no line — the
+   * control is absent rather than disabled, because there is nothing there to
+   * enable.
+   */
+  line: number | null;
   /** Sort key, not rendered — `when` is already formatted for a human. */
   at: string;
 }
@@ -43,6 +51,11 @@ export function WagersPanel({
         Deleting removes the row outright — it is not a void, and it does not stay on the ledger.
         The deleted row is copied to an archive first, so it can be reconstructed by hand.
       </p>
+      <p className="mb-3 text-xs text-dim">
+        Tapping a bet&rsquo;s line corrects the number it was logged at — for a ticket the book hung
+        at something the site did not have — and re-settles it. The row keeps its id and its
+        timestamp, and the version before the change is archived too.
+      </p>
 
       {wagers.length === 0 ? (
         <p className="text-sm text-dim">No bets or picks yet.</p>
@@ -51,11 +64,15 @@ export function WagersPanel({
           {wagers.map((w) => (
             <li
               key={`${w.kind}-${w.id}`}
-              className={`flex items-center justify-between gap-3 border-b border-chalk/5 py-2 last:border-0 ${
+              /* Wraps, so ADM-3's editing controls can take a line of their
+                 own rather than squeezing the description down to "Green Bay
+                 Pa…" — which is the one moment the operator most needs to know
+                 which row they are about to change. */
+              className={`flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-chalk/5 py-2 last:border-0 ${
                 w.voided ? "opacity-45" : ""
               }`}
             >
-              <span className="min-w-0">
+              <span className="min-w-0 flex-1">
                 <span className="stat text-[10px] uppercase tracking-wider text-dim">
                   {w.kind}
                 </span>
@@ -65,6 +82,9 @@ export function WagersPanel({
                   {w.result ? ` · ${w.result}` : ""}
                 </span>
               </span>
+              {w.kind === "bet" && w.line !== null && (
+                <CorrectLineButton id={w.id} line={w.line} label={w.what} />
+              )}
               <span className="shrink-0">
                 <DeleteWagerButton kind={w.kind} id={w.id} label={`${w.kind} — ${w.what}`} />
               </span>

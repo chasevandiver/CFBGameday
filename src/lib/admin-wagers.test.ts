@@ -173,3 +173,217 @@ describe("adminDeletePick", () => {
     expect(db.rows("picks")).toHaveLength(1);
   });
 });
+
+/**
+ * ADM-3: correcting the line a bet was logged at.
+ *
+ * Two things are load-bearing and neither is arithmetic. The archive lands
+ * before the row changes, for the same reason ADM-1's does — the ordering IS
+ * the record. And the re-grade goes through `settleBetsOnFinalGame`, the
+ * function the log path and the scheduled pass both call, so a corrected bet
+ * cannot settle by a second opinion.
+ *
+ * The worked case is the one that prompted it: GB @ NYJ, Green Bay 20–17, an
+ * away spread logged at -3.5 (a loss) that should have been -3 (a push).
+ */
+const gbSeed = () =>
+  new FakeSupabase({
+    profiles: [
+      { id: admin, is_admin: true },
+      { id: notAdmin, is_admin: false },
+    ],
+    games: [
+      {
+        id: 401872936,
+        status: "final",
+        home_points: 17, // NYJ
+        away_points: 20, // GB
+        start_ts: "2026-09-20T17:00:00.000Z",
+      },
+    ],
+    line_snapshots: [
+      {
+        id: 1,
+        game_id: 401872936,
+        provider: "DraftKings",
+        spread: 3.5,
+        spread_open: 6.5,
+        total: 44.5,
+        captured_at: "2026-09-20T16:57:40.463Z",
+      },
+    ],
+    bets: [
+      {
+        id: 262,
+        user_id: admin,
+        game_id: 401872936,
+        bet_type: "spread",
+        description: "Green Bay Packers -3.5 (GB @ NYJ)",
+        side: "away",
+        team_side: null,
+        // Home-perspective: an away backer on GB -3.5 stores +3.5.
+        line_taken: 3.5,
+        odds: -110,
+        units: 1,
+        result: "loss",
+        payout_units: -1,
+        clv: 0,
+        closing_line: 3.5,
+        voided_at: null,
+      },
+    ],
+  });
+
+describe("correctBetLine", () => {
+  beforeEach(() => {
+    db = gbSeed();
+    signedInAs = admin;
+  });
+
+  it("re-settles a loss into the push it should have been", async () => {
+    const { correctBetLine } = await import("../app/actions/admin-wagers");
+
+    const res = await correctBetLine(262, -3);
+
+    expect(res.ok).toBe(true);
+    expect(res.result).toBe("push");
+
+    const row = db.rows("bets")[0];
+    // Stored home-perspective again: the away backer's -3 is +3 on the row.
+    expect(row.line_taken).toBe(3);
+    expect(row.result).toBe("push");
+    expect(row.payout_units).toBe(0);
+    // Took -3, closed -3.5: half a point the right way, and the grader's own
+    // number rather than one computed here.
+    expect(row.clv).toBe(0.5);
+    expect(row.closing_line).toBe(3.5);
+  });
+
+  it("keeps the row's identity — same id, same placed_at, same owner", async () => {
+    const { correctBetLine } = await import("../app/actions/admin-wagers");
+    const before = { ...db.rows("bets")[0] };
+    await correctBetLine(262, -3);
+    const after = db.rows("bets")[0];
+    expect(after.id).toBe(before.id);
+    expect(after.user_id).toBe(before.user_id);
+    expect(after.units).toBe(before.units);
+    expect(after.odds).toBe(before.odds);
+  });
+
+  it("rewrites the number in the description and leaves the rest alone", async () => {
+    const { correctBetLine } = await import("../app/actions/admin-wagers");
+    await correctBetLine(262, -3);
+    expect(db.rows("bets")[0].description).toBe("Green Bay Packers -3 (GB @ NYJ)");
+  });
+
+  it("archives the row as it stood, before changing it", async () => {
+    const { correctBetLine } = await import("../app/actions/admin-wagers");
+    await correctBetLine(262, -3);
+
+    const archived = db.rows("bet_corrections");
+    expect(archived).toHaveLength(1);
+    expect(archived[0].bet_id).toBe(262);
+    expect(archived[0].corrected_by).toBe(admin);
+    expect(archived[0].old_line).toBe(-3.5);
+    expect(archived[0].new_line).toBe(-3);
+    // The pre-correction row, verdict included — that is what makes this
+    // reversible by hand.
+    const payload = archived[0].payload as Record<string, unknown>;
+    expect(payload.line_taken).toBe(3.5);
+    expect(payload.result).toBe("loss");
+    expect(payload.description).toBe("Green Bay Packers -3.5 (GB @ NYJ)");
+  });
+
+  it("changes nothing when the archive write fails", async () => {
+    const { correctBetLine } = await import("../app/actions/admin-wagers");
+    db.failures.set("bet_corrections:insert", "archive is down");
+
+    const res = await correctBetLine(262, -3);
+
+    expect(res.ok).toBe(false);
+    expect(res.message).toMatch(/archive write failed/);
+    const row = db.rows("bets")[0];
+    expect(row.line_taken).toBe(3.5);
+    expect(row.result).toBe("loss");
+  });
+
+  it("refuses a non-admin, and touches nothing", async () => {
+    signedInAs = notAdmin;
+    const { correctBetLine } = await import("../app/actions/admin-wagers");
+    const res = await correctBetLine(262, -3);
+    expect(res.ok).toBe(false);
+    expect(res.message).toBe("Admins only");
+    expect(db.rows("bets")[0].line_taken).toBe(3.5);
+    expect(db.rows("bet_corrections")).toHaveLength(0);
+  });
+
+  it("refuses a quarter-point — books hang halves, so that is a typo", async () => {
+    const { correctBetLine } = await import("../app/actions/admin-wagers");
+    const res = await correctBetLine(262, -3.25);
+    expect(res.ok).toBe(false);
+    expect(res.message).toMatch(/half-points/);
+    expect(db.rows("bets")[0].line_taken).toBe(3.5);
+  });
+
+  it("refuses a bet type that carries no line", async () => {
+    db.rows("bets")[0].bet_type = "moneyline";
+    const { correctBetLine } = await import("../app/actions/admin-wagers");
+    const res = await correctBetLine(262, -3);
+    expect(res.ok).toBe(false);
+    expect(res.message).toMatch(/carries no line/);
+    expect(db.rows("bet_corrections")).toHaveLength(0);
+  });
+
+  it("refuses a voided bet", async () => {
+    db.rows("bets")[0].voided_at = "2026-09-20T18:00:00.000Z";
+    const { correctBetLine } = await import("../app/actions/admin-wagers");
+    const res = await correctBetLine(262, -3);
+    expect(res.ok).toBe(false);
+    expect(res.message).toMatch(/voided/);
+  });
+
+  it("is a no-op on the number the row already carries", async () => {
+    const { correctBetLine } = await import("../app/actions/admin-wagers");
+    const res = await correctBetLine(262, -3.5);
+    expect(res.ok).toBe(true);
+    expect(res.message).toBe("Already that number");
+    expect(db.rows("bet_corrections")).toHaveLength(0);
+    expect(db.rows("bets")[0].result).toBe("loss");
+  });
+
+  it("leaves a corrected bet open when its game is not final", async () => {
+    db.rows("games")[0].status = "in_progress";
+    const { correctBetLine } = await import("../app/actions/admin-wagers");
+    const res = await correctBetLine(262, -3);
+    expect(res.ok).toBe(true);
+    expect(res.result).toBeNull();
+    expect(db.rows("bets")[0].result).toBeNull();
+    expect(db.rows("bets")[0].line_taken).toBe(3);
+  });
+});
+
+describe("correctedDescription", () => {
+  it("swaps the number when it appears exactly once", async () => {
+    const { correctedDescription } = await import("./bet-line");
+    expect(correctedDescription("Green Bay Packers -3.5 (GB @ NYJ)", -3.5, -3)).toBe(
+      "Green Bay Packers -3 (GB @ NYJ)",
+    );
+    expect(correctedDescription("UNC +6.5", 6.5, 7)).toBe("UNC +7");
+  });
+
+  it("leaves the sentence alone when the number is not in it, or is in it twice", async () => {
+    const { correctedDescription } = await import("./bet-line");
+    // Hand-typed, no number to find.
+    expect(correctedDescription("packers game", -3.5, -3)).toBe("packers game");
+    // Ambiguous: which -3.5 did they mean?
+    expect(correctedDescription("GB -3.5 / NYJ -3.5", -3.5, -3)).toBe("GB -3.5 / NYJ -3.5");
+  });
+
+  it("does not match inside a longer number", async () => {
+    const { correctedDescription } = await import("./bet-line");
+    // "-3" must not eat the "-3.5" it prefixes.
+    expect(correctedDescription("Team -3.5 (x)", -3, -2.5)).toBe("Team -3.5 (x)");
+    // "13.5" must not match inside "213.5".
+    expect(correctedDescription("Over 213.5", 13.5, 14)).toBe("Over 213.5");
+  });
+});

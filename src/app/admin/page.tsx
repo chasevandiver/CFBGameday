@@ -5,6 +5,7 @@ import { AppNav } from "../../components/AppNav";
 import { GameStatusPanel, type AdminGameView } from "../../components/GameStatusPanel";
 import { InviteForm } from "../../components/InviteForm";
 import { PitchPanel } from "../../components/PitchPanel";
+import { betTypeTakesLine, ticketBetLine } from "../../lib/bet-line";
 import { WagersPanel, type AdminWagerView } from "../../components/WagersPanel";
 import {
   NotificationsPanel,
@@ -92,7 +93,12 @@ export default async function AdminPage() {
       // is_admin gate above — same reasoning as job_runs.
       service
         .from("bets")
-        .select("id, user_id, description, placed_at, result, voided_at", { count: "exact" })
+        /* bet_type / side / line_taken are ADM-3's: the correction control has
+           to show the number the ticket reads before it asks for a new one. */
+        .select(
+          "id, user_id, description, placed_at, result, voided_at, bet_type, side, line_taken",
+          { count: "exact" },
+        )
         .order("placed_at", { ascending: false })
         .limit(20),
       service
@@ -227,6 +233,9 @@ export default async function AdminPage() {
       placed_at: string;
       result: string | null;
       voided_at: string | null;
+      bet_type: string;
+      side: string | null;
+      line_taken: number | string | null;
     }>).map((b) => ({
       id: b.id,
       kind: "bet" as const,
@@ -236,6 +245,12 @@ export default async function AdminPage() {
       at: b.placed_at,
       result: b.voided_at ? "void" : b.result,
       voided: b.voided_at !== null,
+      // ADM-3. Offered only where there is a number to correct: a voided row
+      // has no live line, and a moneyline or a future never had one.
+      line:
+        b.voided_at === null && betTypeTakesLine(b.bet_type)
+          ? ticketBetLine(b.bet_type, b.side, b.line_taken === null ? null : Number(b.line_taken))
+          : null,
     })),
     ...((recentPicks ?? []) as Array<{
       id: number;
@@ -254,6 +269,9 @@ export default async function AdminPage() {
       at: p.locked_at ?? "",
       result: p.result,
       voided: p.result === "void",
+      // A pick's line is `make_pick`'s, taken from the consensus at pick time
+      // rather than from a book, so there is no ticket to disagree with it.
+      line: null,
     })),
   ]
     .sort((a, b) => b.at.localeCompare(a.at))

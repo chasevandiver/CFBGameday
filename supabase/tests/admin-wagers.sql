@@ -129,6 +129,21 @@ select public.expect_denied('and cannot write one either', :ann::uuid,
   'permission denied');
 
 -- ---------------------------------------------------------------------------
+\echo '# bet_corrections is deny-all too (ADM-3, migration 0084)'
+-- ---------------------------------------------------------------------------
+-- Same posture as deleted_wagers and for the same reason: it holds whole rows
+-- of other people's bets, written by the service role and read by /admin
+-- behind its own is_admin gate. A correction archive a user could edit would
+-- record whatever they wanted it to.
+select public.expect_denied('anon cannot read the correction archive', null,
+  'select 1 from bet_corrections', 'permission denied');
+select public.expect_denied('a signed-in user cannot read the correction archive', :ann::uuid,
+  'select 1 from bet_corrections', 'permission denied');
+select public.expect_denied('and cannot write one either', :ann::uuid,
+  $q$insert into bet_corrections (bet_id, payload) values (1, '{}'::jsonb)$q$,
+  'permission denied');
+
+-- ---------------------------------------------------------------------------
 \echo '# admin_remove_pick refuses everyone but an admin of that group'
 -- ---------------------------------------------------------------------------
 \o /dev/null

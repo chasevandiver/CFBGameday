@@ -6661,6 +6661,38 @@ changelog's Sep 4 entry.
       the fix is about the wait, not about that row.*
 
 
+- [x] **ADM-3** No way to correct the line a bet was logged at. Owner,
+      2026-09-21: "Hayden and I had Green Bay -3 and not 3.5, but Eric had
+      Green Bay -3.5. Our site has Green Bay by 3.5. Can we update that for
+      both Hayden and I." Green Bay won 20–17, so the two rows at −3.5 were
+      graded losses where −3 is a push. **The site's 3.5 was correct** — it is
+      the real DraftKings close, captured three minutes before kick; the defect
+      is only that the rows inherited the market's number instead of the
+      book's.
+      **`bets_void_only` (0045) leaves no path for it:** a signed-in user may
+      void, retag or mark a future and nothing else, so the choices were delete
+      and re-log — losing `placed_at`, `logged_by` and the row's place in the
+      ledger, which is what the UCLA row the night before had to do — or a
+      direct UPDATE against production, which is what these two took.
+      **Shipped 2026-09-21.** `correctBetLine` behind ADM-1's `requireAdmin` +
+      service-role pair: read, archive, write, re-settle. The archive is
+      `bet_corrections` (migration **0084**), deny-all like `deleted_wagers`,
+      holding the whole pre-correction row — a sibling to 0046's narrowing, so
+      nothing is rewritten without a record either. Re-grading goes through
+      SETTLE-1's `settleBetsOnFinalGame`, so a corrected bet is settled by the
+      grader rather than by a second opinion, and an unfinished game leaves the
+      row open. The line only: units, odds and side are the bettor's, and
+      widening this to "edit a bet" would make append-only a suggestion. It
+      refuses a quarter-point, a voided row, and a type with no line.
+      `SPREAD_STYLE`/`storedLine` moved to `src/lib/bet-line.ts` with a
+      `ticketBetLine` inverse. 25 tests, 3 of them SQL.
+      **Seen rendered** — 375px, dark and light, collapsed and editing,
+      `scrollWidth` 375 in all four. The editing form wraps to its own line
+      because beside the description it truncated it to "Green Bay Pa…".
+      *Bets 262 and 268 were already corrected by hand on the 20th, to the same
+      values this code produces; Eric has no row on that game.*
+
+
 ## 5. Not built, by choice
 
 Additive features, no defect behind any of them. Verified still open 2026-08-12.

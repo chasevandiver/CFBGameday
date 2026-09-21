@@ -226,6 +226,70 @@ shipping it.
 
 ## Log
 
+### Sep 21 — ADM-3: an admin can correct the line a bet was logged at
+
+Owner, after doing it by hand twice in two days: "Hayden and I had Green Bay -3
+and not 3.5, but Eric had Green Bay -3.5. Our site has Green Bay by 3.5. Can we
+update that for both Hayden and I."
+
+The site's 3.5 was right — DraftKings opened 6.5, moved to 4.5 on the 16th and
+sat at 3.5 through the 16:57 UTC close pass three minutes before kick. What was
+wrong is that two rows inherited the market's number instead of the one the
+book actually hung. Green Bay won 20–17, so −3.5 is the loss they were graded
+and −3 is a push: bets 262 and 268, one unit each, both settled against the
+wrong side of the number.
+
+**There was no way to fix that in the app.** `bets_void_only` (0045) is what
+makes the ledger append-only in practice — a signed-in user may void, retag or
+mark a future and nothing else — so the two routes were to delete and re-log,
+which throws away `placed_at`, `logged_by` and the row's place in the ledger,
+or a direct UPDATE against production. The UCLA row the night before took the
+first; these two took the second.
+
+**Fix.** `correctBetLine(betId, ticketLine)` in `actions/admin-wagers.ts`, behind
+the same `requireAdmin` + service-role pair ADM-1 uses and for the same reason
+(the trigger passes the service role through, which is exactly why the app-level
+gate has to come first). It reads, archives, writes, then re-settles:
+
+- **Archive before write**, the ADM-1 ordering, because the ordering is the
+  guarantee. A new table, `bet_corrections` (migration 0084), deny-all like
+  `deleted_wagers`, holding the whole pre-correction row plus both numbers. Not
+  a `kind` on `deleted_wagers`: that table means "this row is gone" and an
+  operator has to be able to trust it. So 0046's narrowing gets a sibling —
+  nothing is removed without a record *and* nothing is rewritten without one.
+- **Re-settle through `settleBetsOnFinalGame`**, SETTLE-1's function, the one
+  the log path and the scheduled pass already call. A corrected bet is graded by
+  the grader rather than by a second opinion, and a game that is not final
+  settles nothing and leaves the row open, which is correct.
+- **The line only.** Units, odds and the side are what the bettor typed and are
+  not in question; widening this to "edit a bet" would make append-only a
+  suggestion. Refuses a quarter-point (books hang halves, so it is a typo), a
+  voided row, and a `moneyline` or `future`, which carry no line at all.
+- **The description follows the number** when the old one appears in it exactly
+  once, formatted as `fmtSpread` writes it, and is left alone otherwise — a
+  hand-typed sentence or an ambiguous double match is not worth guessing at.
+
+`SPREAD_STYLE`/`storedLine` moved out of `actions/bets.ts` into
+`src/lib/bet-line.ts` with a `ticketBetLine` inverse, since the control has to
+show the operator the number the ticket reads before asking for a new one, and
+two copies of a sign rule is how away spreads graded backwards the first time.
+
+The control is the current line itself rather than a word like "edit" — the
+number is what the operator is checking. It answers with the verdict, not the
+number: "now a push" is the thing being confirmed. Seen rendered at 375px in
+both themes, collapsed and editing, `scrollWidth` 375 in all four. The editing
+form takes a line of its own inside a wrapping row, because beside the
+description it squeezed it to "Green Bay Pa…" — which is the one moment the
+operator most needs to know which row they are about to change.
+
+25 new tests, including the GB case end to end (−3.5 loss → −3 push, 0.00
+units, CLV +0.50 against a 3.5 close) and three SQL assertions that the new
+archive is unreachable from both API roles.
+
+**Already applied by hand, before this shipped:** bets 262 and 268 were
+corrected by direct UPDATE on Sep 20, with the same values this code produces —
+the test asserts them. Eric has no row on that game; his ledger is untouched.
+
 ### Sep 20 — SETTLE-1: a bet logged after the final had nothing to settle it
 
 Owner, Sunday evening: "I had gotten on my book UCLA at -13.5 even though we

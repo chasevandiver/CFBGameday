@@ -1,7 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import {
+  betTypeTakesLine,
+  correctedDescription,
+  storedBetLine,
+  ticketBetLine,
+} from "../../lib/bet-line";
 import type { PickMarket } from "../../lib/grade";
+import { settleBetsOnFinalGame } from "../../lib/settle-bets";
 import { createClient } from "../../lib/supabase/server";
 import { createServiceClient } from "../../lib/supabase/service";
 import { isCurrentUserAdmin } from "../../lib/admin";
@@ -203,4 +210,137 @@ export async function adminRemovePick(
   revalidatePath("/slate");
   revalidatePath(`/game/${gameId}`);
   return { ok: true, removed: typeof data === "number" ? data : 0 };
+}
+
+export interface CorrectLineResult {
+  ok: boolean;
+  message?: string;
+  /** What the row settled to after the correction, or null if it is still open. */
+  result?: string | null;
+  /** The bettor's number now on the row, for the control's confirmation line. */
+  line?: number;
+}
+
+/**
+ * ADM-3 — correct the line a bet was logged at, and re-settle it.
+ *
+ * The case, twice in two days: the book hung a number the site did not have,
+ * and the row carried the site's. UCLA −14 where the ticket read −13.5 is a
+ * push where the bettor won; GB −3.5 where the ticket read −3 is a loss where
+ * the bettor pushed. Until this existed the only routes were to delete and
+ * re-log — which loses `placed_at`, the original `logged_by`, and the row's
+ * place in the ledger's order — or a direct UPDATE against production.
+ *
+ * ## What it is not
+ *
+ * Not a general bet editor. The line is the one field a book can disagree with
+ * us about *after* the fact and that changes the result; units, odds and the
+ * side are what the bettor typed and are not in question here. Widening this
+ * to "edit a bet" would make the append-only ledger a suggestion.
+ *
+ * ## Order, and why it is this order
+ *
+ * Read, archive, write, re-settle. The archive lands before anything is
+ * changed, so a failed archive leaves the row untouched (the ADM-1 ordering,
+ * and the same reason: the ordering IS the guarantee). The result, CLV,
+ * closing line and payout are cleared in the same update that writes the line,
+ * so there is no instant where a stale verdict sits beside a new number.
+ *
+ * Re-settlement is `settleBetsOnFinalGame`, not arithmetic done here — the
+ * same function the log path and the scheduled pass call, so a corrected bet
+ * is graded by the grader rather than by a second opinion. A game that is not
+ * final settles nothing and the row is simply open again, which is correct.
+ */
+export async function correctBetLine(
+  betId: number,
+  ticketLine: number,
+): Promise<CorrectLineResult> {
+  const supabase = await createClient();
+  const auth = await requireAdmin(supabase);
+  if ("denied" in auth) return { ok: false, message: auth.denied };
+
+  if (!Number.isFinite(ticketLine)) return { ok: false, message: "Enter a number" };
+  // Books hang halves. A line that is not on a half-point is a typo far more
+  // often than it is a real number, and the grader would settle it anyway.
+  if (Math.round(ticketLine * 2) !== ticketLine * 2) {
+    return { ok: false, message: "Lines go in half-points" };
+  }
+
+  const service = createServiceClient();
+
+  const { data: bet, error: readErr } = await service
+    .from("bets")
+    .select("*")
+    .eq("id", betId)
+    .maybeSingle();
+  if (readErr) return { ok: false, message: readErr.message };
+  if (!bet) return { ok: false, message: "That bet is gone" };
+
+  if (bet.voided_at !== null) {
+    return { ok: false, message: "That bet is voided — there is no line to correct" };
+  }
+  if (!betTypeTakesLine(bet.bet_type)) {
+    return {
+      ok: false,
+      message: `A ${bet.bet_type} bet carries no line`,
+    };
+  }
+
+  const stored = storedBetLine(bet.bet_type, bet.side, ticketLine);
+  const oldTicket = ticketBetLine(bet.bet_type, bet.side, bet.line_taken === null ? null : Number(bet.line_taken));
+  if (stored !== null && Number(bet.line_taken) === stored) {
+    return { ok: true, result: bet.result, line: ticketLine, message: "Already that number" };
+  }
+
+  const { error: archiveErr } = await service.from("bet_corrections").insert({
+    bet_id: bet.id,
+    payload: bet,
+    old_line: oldTicket,
+    new_line: ticketLine,
+    corrected_by: auth.userId,
+    note: "correctBetLine",
+  });
+  if (archiveErr) {
+    return { ok: false, message: `Not corrected — the archive write failed: ${archiveErr.message}` };
+  }
+
+  const { error: updErr } = await service
+    .from("bets")
+    .update({
+      line_taken: stored,
+      description:
+        oldTicket === null
+          ? bet.description
+          : correctedDescription(bet.description, oldTicket, ticketLine),
+      // Cleared together with the line: the old verdict was about the old
+      // number. `settleBetsOnFinalGame` below only looks at `result is null`
+      // rows, so this is also what makes the row eligible to be graded again.
+      result: null,
+      clv: null,
+      closing_line: null,
+      payout_units: null,
+    })
+    .eq("id", bet.id);
+  if (updErr) return { ok: false, message: updErr.message };
+
+  // The grader's own math, on the game's own snapshots. A failure here leaves
+  // a corrected row open rather than wrong, and the sweeps pick it up — so it
+  // is reported, not raised.
+  let settled: string | null = null;
+  if (bet.game_id !== null) {
+    try {
+      await settleBetsOnFinalGame(service, bet.game_id);
+      const { data: after } = await service
+        .from("bets")
+        .select("result")
+        .eq("id", bet.id)
+        .maybeSingle();
+      settled = (after?.result as string | null) ?? null;
+    } catch (err) {
+      console.error("correctBetLine: re-settle failed:", err instanceof Error ? err.message : err);
+    }
+  }
+
+  revalidateWagerSurfaces();
+  return { ok: true, result: settled, line: ticketLine };
 }
