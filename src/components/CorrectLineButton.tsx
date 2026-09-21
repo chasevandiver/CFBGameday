@@ -75,8 +75,15 @@ export function CorrectLineButton({
         >
           {line === null ? "set line" : fmtSpread(line)}
         </button>
+        {/* Always mounted, the `ShareImageButton` pattern: a live region that
+            appears at the same instant its content does is not reliably
+            announced, and the confirmation is the whole point of the control.
+            The visible copy is aria-hidden so it is not read twice. */}
+        <span role="status" aria-live="polite" className="sr-only">
+          {settled ? `now ${settled}` : ""}
+        </span>
         {settled && (
-          <span role="status" className="text-xs text-dim">
+          <span aria-hidden="true" className="text-xs text-dim">
             now {settled}
           </span>
         )}
@@ -93,6 +100,13 @@ export function CorrectLineButton({
         type="number"
         step="0.5"
         inputMode="decimal"
+        name="line"
+        /* Not an auth field, and a password manager offering to fill a point
+           spread is noise on every row. */
+        autoComplete="off"
+        /* The justified case: one input, revealed by the operator tapping the
+           number they came here to change. Without it the tap costs a second
+           one. */
         autoFocus
         value={value}
         disabled={pending}
