@@ -3067,6 +3067,16 @@ still unchecked here is still not launch work.
       the DECAY-1 gates plus the August K lesson (the 0.7–0.8 bucket). If it
       passes, shipping changes `blendWithPrior`'s role, not just a number, so
       it means a MODEL_VERSION bump and a ratings replay mid-season. · M
+      **Ran 2026-10-08 (runs 37791788609 / 37791793111): PASSES.** Every
+      wide-window gate passes, and `2023-2025` agrees in sign. No-blend at
+      K 0.35: wks 1–8 NLL fit 0.4677 → 0.4629, holdout 0.4540 → 0.4453; MAE
+      13.16 → 13.09; calibration no worse; weeks 9+ within the bar. One caveat:
+      on 2023-2025 alone, weeks 9+ are 0.0018 worse, inside one SE.
+      **Waiting on the owner:** ship `priorDecayKnots [[0,1],[1,0]]` +
+      `kFactor 0.35` as 2026.7.0? Sunday's `ratings-update` replays the season
+      from priors, so it would rewrite 2026's weekly ratings on its first run;
+      frozen receipts keep their version. The decisions table has the smaller
+      variant (no-blend, K left at 0.30) and why it is a separate call.
 
 **Brand rollout** — icon and install surfaces landed 2026-08-12, then the
 traced vector, the palette and the display face the same day (`docs/CHANGELOG.md`).
