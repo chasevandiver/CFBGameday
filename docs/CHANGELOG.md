@@ -303,6 +303,41 @@ same direction K pinned at 0.4 in August. A wider grid would only rediscover
 the edge, so the next experiment is an arm with no blend and K refit
 (DECAY-2), registered separately. Nothing in production changes.
 
+### Oct 8 — FREEZE-1: the midweek games get receipts (`freeze-daily`)
+
+**Owner, reading the record by week.** "We need to freeze the midweek games
+and get the model predictions on those." Week 6's three Tue/Wed games were
+played with no receipt: the only freezes were Thursday 09:00 / Friday 03:00
+UTC, `freezeJob` takes `status = 'scheduled'` games in the slate week, and by
+Thursday they were final. Filed as FREEZE-1 on Aug 21 with a decided design;
+only the stopgap ever shipped.
+
+**What shipped — the decided design.** `freeze-daily`, cron `30 9 * * *`:
+every scheduled game in the season whose own kickoff is inside the next 40h
+(`FREEZE_LEAD_HOURS`), slate pointer ignored, already-frozen games skipped —
+the same skip the weekly run uses, so whichever run reaches a game first owns
+its one receipt. Pricing is the weekly run's code path unchanged, except
+`paramsForWeek` is now read per game (a daily run can span two weeks; identity
+today either way). Read-only rehearsal: `freeze-daily-dry-run`. Watchdog:
+red after 30h without an `ok` run, never-ran exempt, as the streak.
+
+**What did not change, on purpose.** The weekly Thursday/Friday slots stay and
+still stamp the weekend: retiring them would move every Saturday receipt from
+Thursday morning to Friday (~31h pre-kick) mid-season and ahead of the Friday
+`questions` run. What *does* move is Thursday-night games — Wednesday morning
+(~37h) where the stopgap gave them ~13h — which is the decided design's point:
+each receipt the same distance from its own kick.
+
+**Not backfilled.** 401871090, 401871051, 401871066 stay without receipts. A
+number priced after the result is not a receipt (SPEC §2.5).
+
+**Tests.** 7 new in `jobs-core.test.ts` on week 6's real kickoffs (Monday
+takes Tuesday, Tuesday takes Wednesday, Wednesday takes the Thursday nighter,
+Thursday's run cannot reach Saturday, a 14h-late run still lands, kicked and
+frozen games skip, TBD waits for the weekly run) plus the watchdog lane.
+Typecheck, lint and the full suite clean (2,174). `jobs-yml.test.ts` passes
+with the new cron routed.
+
 ### Sep 15 — WEEK-3: the week-by-week records go live
 
 **Owner, with WEEK-1 in hand.** "So it only shows when everything is graded? I
