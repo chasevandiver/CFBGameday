@@ -2289,6 +2289,46 @@ async function tuneNoBlend(seasons: SeasonData[], teamIdsByName: Map<string, num
       `Recency: ${recencyOk ? "PASSES" : "FAILS"}\n` +
       `Gate 3: re-run with --seasons=2023-2025 and require the same sign before believing any of this.`,
   );
+  /* Hit rates, by season — information only, decided by nothing above. The
+     owner's question once DECAY-2 passed was "what's the hit percentage",
+     which NLL does not answer in his units. SU: the model's favourite won.
+     ATS: the model's side of the stored CFBD line (the replay's market
+     number, close-ish), pushes excluded, as `gradeAts` grades it. Flagged:
+     the same, restricted to |model − line| ≥ edgeThreshold. Neither is a
+     betting claim — see "Why edges are not bets". */
+  const hits = (preds: ReplayPrediction[]) => {
+    const su = preds.filter((p) => p.favoriteWon !== null);
+    const lined = preds.filter((p) => p.vegasSpread !== null);
+    const ats = gradeAts(lined, (p) => p.vegasSpread);
+    const flagged = gradeAts(
+      lined.filter((p) => Math.abs(-p.margin - (p.vegasSpread as number)) >= DEFAULT_PARAMS.edgeThreshold),
+      (p) => p.vegasSpread,
+    );
+    const pct = (w: number, l: number) => (w + l === 0 ? "  n/a" : `${((100 * w) / (w + l)).toFixed(1)}%`);
+    return {
+      su: `${pct(su.filter((p) => p.favoriteWon).length, su.filter((p) => !p.favoriteWon).length)} (${su.length})`,
+      ats: `${pct(ats.wins, ats.losses)} ${ats.wins}-${ats.losses}-${ats.pushes}`,
+      flagged: `${pct(flagged.wins, flagged.losses)} ${flagged.wins}-${flagged.losses}`,
+    };
+  };
+  const hitArms: Array<[string, Row]> = [
+    ["incumbent", incumbent],
+    [`no-blend K=${best.k}`, best],
+  ];
+  console.log(
+    `\nHit rates (information only). SU = model favourite won (n); ATS = model side vs the stored line, W-L-P; ` +
+      `flagged = |model − line| ≥ ${DEFAULT_PARAMS.edgeThreshold}.`,
+  );
+  for (const scope of [...SCORED.map(String), "all"]) {
+    for (const [label, r] of hitArms) {
+      const preds = scope === "all" ? r.all : r.all.filter((p) => p.season === Number(scope));
+      const h = hits(preds);
+      console.log(
+        `  ${scope.padEnd(4)}  ${label.padEnd(16)}  SU ${h.su.padEnd(14)}  ATS ${h.ats.padEnd(22)}  flagged ${h.flagged}`,
+      );
+    }
+  }
+
   console.log(
     gate1 && gate2 && gateH && gateL && gateM && gateT && gateC && eraOk && recencyOk
       ? `→ All local gates pass. Shipping is an owner call: priorDecayKnots = ${JSON.stringify(NO_BLEND_KNOTS)}, ` +
