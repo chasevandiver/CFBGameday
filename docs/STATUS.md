@@ -3692,6 +3692,9 @@ rather than absorbed silently.*
       question (~mid-October earliest). The box tracks the surface; the
       decision itself is registered-not-run in the changelog decisions table,
       and no parameter moves on either outcome.
+      **Decided 2026-10-08: abandoned.** n = 363 leans, avg CLV vs opener
+      −0.10 (4+ bucket −0.12, n 213), against the ≤ +0.3 abandon bar. See the
+      decisions table.
 - [ ] **02:M-07 / 03:M-9b** "incl. adj" beside adjusted spreads + an admin
       warning that the spec's magnitudes are unvalidated · S
 - [ ] **02:M-08** In-sample caveat on the Receipts explainer · S
