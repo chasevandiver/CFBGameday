@@ -3028,7 +3028,7 @@ what they turned out to be. The intent of this section is unchanged: what is
 still unchecked here is still not launch work.
 
 **Model, in season**
-- [ ] **DECAY-1 — fit `priorDecayKnots`, the one schedule no tuner has ever
+- [x] **DECAY-1 — fit `priorDecayKnots`, the one schedule no tuner has ever
       touched.** Owner, 2026-10-08, five weeks in: are the ratings up to date?
       Live, they rebuild every Sunday and track FPI more closely each week (sd of
       our-minus-FPI 6.07 wk 2 → 4.25 wk 6), but lag hardest where the prior was
@@ -3045,6 +3045,26 @@ still unchecked here is still not launch work.
       an owner call: scaled knots in DEFAULT_PARAMS, MODEL_VERSION bump, ratings
       replay. Meanwhile the supported lever for UMass-shaped misses is an admin
       adjustment, with the numbers above as its reason. · S
+      **Ran 2026-10-08 (runs 37788940249 / 37788946120): rejected.** Faster
+      decay is monotonically better on both windows, in every era and in the
+      holdout. Wide: wks 1–8 NLL 0.4677 → 0.4639 fit, 0.4540 → 0.4477 holdout,
+      MAE −0.10. But the argmin pins at the grid edge (s = 3), and on 2023-2025
+      weeks 9+ and one calibration bucket fail. Knots stand. See the decisions
+      table and DECAY-2 for why the edge is a mechanism.
+- [ ] **DECAY-2 — the blend counts the prior twice.** Found by DECAY-1. The
+      "results" rating that `blendWithPrior` mixes with is an Elo seeded from
+      the prior, in `replaySeason` and in `ratingsUpdateJob` alike. So the
+      published rating is prior + (1−w) × this season's updates: the season
+      runs at an effective K of 0.3·(1−w), which is 0.15 at week 4 and 0.2 at
+      week 6. That is why UMass moved +8.7 after beating us by 30.5 a game,
+      why `--tune-decay` pinned at "almost no blend", and plausibly why K
+      pinned at 0.4 in August.
+      **Proposed experiment, not yet registered (owner call):** a no-blend arm
+      (w ≡ 0 after the prior seeds the Elo) crossed with a K grid wide enough
+      not to pin (0.15–0.5), on the same production-shaped chain, judged on
+      the DECAY-1 gates plus the August K lesson (the 0.7–0.8 bucket). If it
+      passes, shipping changes `blendWithPrior`'s role, not just a number, so
+      it means a MODEL_VERSION bump and a ratings replay mid-season. · M
 
 **Brand rollout** — icon and install surfaces landed 2026-08-12, then the
 traced vector, the palette and the display face the same day (`docs/CHANGELOG.md`).
