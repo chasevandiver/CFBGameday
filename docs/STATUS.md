@@ -3059,7 +3059,9 @@ still unchecked here is still not launch work.
       week 6. That is why UMass moved +8.7 after beating us by 30.5 a game,
       why `--tune-decay` pinned at "almost no blend", and plausibly why K
       pinned at 0.4 in August.
-      **Proposed experiment, not yet registered (owner call):** a no-blend arm
+      **Owner call 2026-10-08: run it. Registered as `--tune-no-blend`**
+      (decisions table; rule committed before the first run). Originally
+      proposed as: a no-blend arm
       (w ≡ 0 after the prior seeds the Elo) crossed with a K grid wide enough
       not to pin (0.15–0.5), on the same production-shaped chain, judged on
       the DECAY-1 gates plus the August K lesson (the 0.7–0.8 bucket). If it

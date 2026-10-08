@@ -72,6 +72,7 @@ export const FEED_REQUIREMENTS: Record<string, FeedKey[]> = {
   "tune-coaching-split": ["ratings/sp", "talent"],
   "tune-qb-exit": ["ratings/sp", "talent", "player/returning"],
   "tune-decay": ["ratings/sp", "talent", "player/returning"],
+  "tune-no-blend": ["ratings/sp", "talent", "player/returning"],
   "tune-coaching-quality": ["ratings/sp", "talent"],
   "tune-churn": ["ratings/sp", "talent", "player/returning"],
   "tune-anchors": ["ratings/sp", "talent", "ratings/elo@wk1", "rankings@wk1"],

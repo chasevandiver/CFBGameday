@@ -24,3 +24,14 @@ export function scaleDecayKnots(knots: DecayKnots, speed: number): DecayKnots {
   if (!(speed > 0)) throw new Error(`decay speed must be positive, got ${speed}`);
   return knots.map(([week, weight]) => [week / speed, weight]);
 }
+
+/**
+ * DECAY-2's arm: weight 1 before any game, 0 from week 1. The in-season
+ * "results" rating is an Elo seeded from the prior, so with these knots the
+ * published rating is that Elo alone and the prior enters exactly once — as
+ * the seed — instead of once as the seed and again through the blend.
+ */
+export const NO_BLEND_KNOTS: DecayKnots = [
+  [0, 1],
+  [1, 0],
+];

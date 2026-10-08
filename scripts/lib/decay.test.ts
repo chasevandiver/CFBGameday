@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_PARAMS, priorWeight } from "../../src/model/ratings";
-import { scaleDecayKnots } from "./decay";
+import { NO_BLEND_KNOTS, scaleDecayKnots } from "./decay";
 
 const at = (speed: number) => ({
   ...DEFAULT_PARAMS,
@@ -32,5 +32,14 @@ describe("scaleDecayKnots (--tune-decay's family)", () => {
   it("refuses a speed that is not positive", () => {
     expect(() => scaleDecayKnots(DEFAULT_PARAMS.priorDecayKnots, 0)).toThrow();
     expect(() => scaleDecayKnots(DEFAULT_PARAMS.priorDecayKnots, -1)).toThrow();
+  });
+});
+
+describe("NO_BLEND_KNOTS (DECAY-2's arm)", () => {
+  const noBlend = { ...DEFAULT_PARAMS, priorDecayKnots: NO_BLEND_KNOTS };
+
+  it("is the prior before any game and the seeded Elo alone from week 1", () => {
+    expect(priorWeight(0, noBlend)).toBe(1);
+    for (let week = 1; week <= 16; week++) expect(priorWeight(week, noBlend)).toBe(0);
   });
 });
