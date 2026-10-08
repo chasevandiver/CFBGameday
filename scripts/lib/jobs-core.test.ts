@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { CfbdScoreboardGame } from "../../src/lib/cfbd";
 import { consensusFromSnapshots } from "../../src/lib/consensus";
-import { closingConsensus, detectCoverFlips, freezableGames, recordJobRun, settleCanceledRun, SNAPSHOT_COLS, SCOREBOARD_COLS, scoreboardPatch, watchdogVerdict, type ScoreboardRow } from "./jobs-core";
+import { closingConsensus, detectCoverFlips, FREEZE_LEAD_HOURS, freezableGames, leadFreezableGames, recordJobRun, settleCanceledRun, SNAPSHOT_COLS, SCOREBOARD_COLS, scoreboardPatch, watchdogVerdict, type ScoreboardRow } from "./jobs-core";
 
 describe("SNAPSHOT_COLS", () => {
   it("selects spread_open, which the opener silently falls back without", () => {
@@ -207,8 +207,62 @@ describe("freezableGames (the merged Week 0/1 shape)", () => {
   });
 });
 
+describe("leadFreezableGames (FREEZE-1, the daily per-game freeze)", () => {
+  // 2026 week 6 as it was played: three midweek games and no receipt for any
+  // of them, because the only freeze was Thursday's and they were final by then.
+  const g = (id: number, start_ts: string | null) => ({ id, start_ts });
+  const week6 = [
+    g(401871090, "2026-10-07T00:00:00Z"), // Tuesday night CT
+    g(401871051, "2026-10-07T23:00:00Z"), // Wednesday
+    g(401871066, "2026-10-07T23:30:00Z"), // Wednesday
+    g(10, "2026-10-08T23:30:00Z"), // Thursday night
+    g(11, "2026-10-09T23:00:00Z"), // Friday night
+    g(12, "2026-10-10T16:00:00Z"), // Saturday noon
+  ];
+  const none = new Set<number>();
+  const at = (iso: string) => Date.parse(iso);
+  const run = (iso: string, frozen = none) =>
+    leadFreezableGames(week6, frozen, at(iso), FREEZE_LEAD_HOURS).map((x) => x.id);
+
+  it("Monday's run takes the Tuesday game, Tuesday's the two Wednesday games", () => {
+    expect(run("2026-10-05T09:30:00Z")).toEqual([401871090]);
+    expect(run("2026-10-06T09:30:00Z", new Set([401871090]))).toEqual([401871051, 401871066]);
+  });
+
+  it("the Thursday nighter freezes Wednesday morning; the weekend waits for Thursday", () => {
+    expect(run("2026-10-07T09:30:00Z", new Set([401871090, 401871051, 401871066]))).toEqual([10]);
+  });
+
+  it("never reaches a Saturday game before the weekly Thursday run does", () => {
+    // Thursday's daily run sees out to Saturday 01:30 UTC — Friday night, not
+    // the Saturday slate, which the 09:00 weekly freeze has already taken.
+    expect(run("2026-10-08T09:30:00Z", new Set([401871090, 401871051, 401871066, 10]))).toEqual([11]);
+  });
+
+  it("a run Actions delays by 14h still lands before the kick", () => {
+    // Monday's 09:30 run starting at 23:30 UTC — the Tuesday game is 24.5h
+    // out and still inside the lead. Observed Actions delay on the Thursday
+    // freeze this season has run to ~7h.
+    expect(run("2026-10-05T23:30:00Z")).toEqual([401871090]);
+  });
+
+  it("never freezes a game that has kicked, or one already frozen", () => {
+    expect(run("2026-10-07T00:00:01Z")).toEqual([401871051, 401871066]);
+    expect(run("2026-10-06T09:30:00Z", new Set([401871051, 401871066]))).toEqual([401871090]);
+  });
+
+  it("leaves a TBD kickoff to the weekly run", () => {
+    expect(leadFreezableGames([g(9, null)], none, at("2026-10-05T09:30:00Z"), FREEZE_LEAD_HOURS)).toEqual([]);
+  });
+});
+
 describe("watchdogVerdict (audit 07/OPS-1c)", () => {
   const fresh = { refreshLines: 2, syncGames: 2, scoreboard: 0.5 };
+  it("flags freeze-daily silent past 30h, but not before its first run (FREEZE-1)", () => {
+    expect(watchdogVerdict({ ...fresh, freezeDaily: 31 }, false)[0]).toMatch(/freeze-daily/);
+    expect(watchdogVerdict({ ...fresh, freezeDaily: Infinity }, false)).toEqual([]);
+    expect(watchdogVerdict({ ...fresh, freezeDaily: 20 }, false)).toEqual([]);
+  });
   it("is quiet when everything is fresh and nothing is live", () => {
     expect(watchdogVerdict(fresh, false)).toEqual([]);
     expect(watchdogVerdict(fresh, true)).toEqual([]);

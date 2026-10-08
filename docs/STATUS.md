@@ -1374,7 +1374,7 @@ deliberate deferrals, each recorded below with what it would take.
       until this reaches `main` and a `sync-games` runs", which was true when
       written and stopped being true two minutes after the merge.)*
 
-- [ ] **FREEZE-1 — a midweek game never gets a receipt.** Found 2026-08-21 while
+- [x] **FREEZE-1 — a midweek game never gets a receipt.** Found 2026-08-21 while
       measuring what WEEK0-1 was about to cost, and it is the same seam from the
       other side. `jobs.yml` has exactly **one** freeze cron — `0 3 * * 5`,
       Friday 03:00 UTC = **10 pm CT Thursday** — and `freezeJob` only takes games
@@ -1439,6 +1439,31 @@ deliberate deferrals, each recorded below with what it would take.
       SLATE-3 below — one is when receipts are stamped, the other is what
       shows before stamping; build together Mon–Wed with the CORE consensus
       decision. · **stopgap live; permanent build due Sep 3** · M
+      **It cost three receipts before it shipped.** The permanent build never
+      landed, and week 6 played Tue Oct 6 (401871090) and Wed Oct 7
+      (401871051, 401871066) with lines on file since Oct 4 and no receipt —
+      found 2026-10-08 reading the record by week. Not backfilled: a receipt
+      priced after the result is not a receipt (SPEC §2.5), and FREEZE-3's
+      recovery only ever restored market context, never the model's number.
+      **Shipped 2026-10-08: `freeze-daily`, the decided per-game design, with
+      one deliberate departure.** Daily cron `30 9 * * *` (after `sync-games`)
+      freezes every scheduled game in the season whose own kickoff is inside
+      the next **40h** (`FREEZE_LEAD_HOURS`), ignoring the slate pointer —
+      `leadFreezableGames`, pinned on week 6's real schedule. Tuesday games
+      freeze Monday morning, Wednesday's Tuesday, a Thursday nighter Wednesday
+      (~37h, where the stopgap gave it ~13h). 40h > 24h means two runs always
+      straddle a kick's 40h–16h window, so an Actions delay under 16h cannot
+      skip a game (observed this season: up to ~7h on the Thursday run).
+      Watched: `watchdogVerdict` goes red at 30h without an `ok` run.
+      **The departure: the weekly slots did NOT retire.** Thursday 09:00 +
+      Friday 03:00 still stamp the weekend, so every Saturday receipt in 2026
+      keeps the timing weeks 0–5 were priced on; the daily run cannot reach a
+      Saturday game first (Thursday's lead ends Sat ~01:30 UTC). Retiring them
+      would move Saturday freezes to Friday morning (~31h) and ahead of the
+      Friday `questions` run — a separate call if ever wanted.
+      Rehearsable before it writes: `freeze-daily-dry-run`. Remaining 2026
+      exposure it closes: **24 Tuesday + 5 Wednesday games, first Tue Oct 13**
+      — must be on `main` before Mon Oct 12 09:30 UTC.
 - [ ] **LIVE-8 — CFBD says only `/scoreboard` and `/live/plays` are live;
       audit of what that touches.** Owner intel 2026-08-26 (CFBD Discord).
       Audited every CFBD call against it:
