@@ -239,6 +239,18 @@ and totals inside their bars. Every era wants 0.30–0.35. `2023-2025` agrees in
 sign; on that window alone weeks 9+ are 0.0018 worse, inside one SE. Full
 numbers are in the decisions table.
 
+**Hit rates, owner question.** These are printed by the tuner (run 37792749144) and do not decide anything.
+2016–19 + 2021–25 (2015 is the SP+ warm-up, 2020 is chain-only), 7,691 games:
+straight-up **75.2% → 75.6%**; ATS vs the stored line **49.8% → 49.4%**;
+flagged edges **49.0% → 49.4%**. **2026 weeks 0–5**: the incumbent column is
+the live receipts. The updated column re-runs `ratingsUpdateJob` and the freeze
+locally on the live inputs; the incumbent re-run reproduces 363 of 390 stored
+spreads exactly and 386 within 0.5, and the misses are mostly week 0. Results:
+SU **81.7% → 82.1%**, ATS vs the freeze line **48.0% → 49.2%**, flagged
+**45.9% → 47.2%**, MAE **14.43 → 14.10**. The gain is in picking winners and
+in margin error, not in beating the spread. Neither model clears 52.4%, which
+is what "Why edges are not bets" predicts.
+
 **Not shipped.** A pass makes it eligible, and the rest is the owner's call.
 The change is two numbers in DEFAULT_PARAMS, `priorDecayKnots [[0,1],[1,0]]`
 and `kFactor 0.35`, plus a MODEL_VERSION bump. The Sunday `ratings-update`
