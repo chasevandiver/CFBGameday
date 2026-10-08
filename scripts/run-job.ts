@@ -1,6 +1,6 @@
 /**
  * CLI entry for scheduled jobs (GitHub Actions calls this).
- * Usage: npx tsx scripts/run-job.ts <scoreboard|weather|ratings-update|freeze|sync-rankings>
+ * Usage: npx tsx scripts/run-job.ts <scoreboard|weather|ratings-update|freeze|freeze-daily|sync-rankings>
  * (refresh-lines and sync-games have their own scripts with extra flags.)
  */
 
@@ -8,6 +8,7 @@ import { cfbdCallCount } from "../src/lib/cfbd";
 import { createServiceClient } from "../src/lib/supabase/service";
 import {
   cfbScoringJob,
+  FREEZE_LEAD_HOURS,
   freezeGroupWeeksJob,
   freezeJob,
   gradeSeasonFinals,
@@ -43,6 +44,13 @@ async function main() {
        job here that cannot be rehearsed by running it, because `predictions`
        is append-only and a second run skips what the first one wrote. */
     "freeze-dry-run": (db: Parameters<typeof freezeJob>[0]) => freezeJob(db, { dryRun: true }),
+    /* FREEZE-1: the per-game daily freeze. Every game kicking inside the next
+       40h, whatever week the slate pointer says — the run that reaches the
+       Tuesday/Wednesday games the Thursday freeze never could. */
+    "freeze-daily": (db: Parameters<typeof freezeJob>[0]) =>
+      freezeJob(db, { leadHours: FREEZE_LEAD_HOURS }),
+    "freeze-daily-dry-run": (db: Parameters<typeof freezeJob>[0]) =>
+      freezeJob(db, { leadHours: FREEZE_LEAD_HOURS, dryRun: true }),
     "freeze-groups": freezeGroupWeeksJob,
     "sync-rankings": syncRankingsJob,
     "sync-systems": syncSystemsJob,

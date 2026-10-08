@@ -335,6 +335,8 @@ export function watchdogVerdict(
     sixPack?: number;
     /** TAPE-2 et al. Daily and unconditional, like the streak. */
     dailyPuzzles?: number;
+    /** FREEZE-1. Daily and unconditional — a no-op run still records `ok`. */
+    freezeDaily?: number;
   },
   gameLive: boolean,
   /** Any scheduled game inside the next week. Gates the weekly notify jobs. */
@@ -359,6 +361,15 @@ export function watchdogVerdict(
   // 30h is a real absence and trips normally.
   if (agesH.streak !== undefined && Number.isFinite(agesH.streak) && agesH.streak > 30)
     problems.push(`streak: no successful run in ${Math.round(agesH.streak)}h`);
+  /* FREEZE-1. The hole this job closes was silent for the same reason: a
+     game that never got a receipt reports nothing. Same daily horizon and
+     same never-ran exemption as the streak. */
+  if (
+    agesH.freezeDaily !== undefined &&
+    Number.isFinite(agesH.freezeDaily) &&
+    agesH.freezeDaily > 30
+  )
+    problems.push(`freeze-daily: no successful run in ${Math.round(agesH.freezeDaily)}h`);
   /* The lane Guess the Game could never have. Its puzzle was computed on read,
      so there was no job to be late and its empty deck went unnoticed for weeks
      (GTG-1). `daily-puzzles` banks a fortnight and fails below four days, so
@@ -516,6 +527,7 @@ export async function watchdogJob(db: SupabaseClient): Promise<Json> {
       streak: await lastOkAgeH("streak"),
       sixPack: await lastOkAgeH("six-pack"),
       dailyPuzzles: await lastOkAgeH("daily-puzzles"),
+      freezeDaily: await lastOkAgeH("freeze-daily"),
     },
     (live ?? []).length > 0,
     (upcoming ?? []).length > 0,
@@ -1979,30 +1991,71 @@ export function freezableGames<G extends { id: number; start_ts: string | null }
   });
 }
 
+/** FREEZE-1's lead: the Thursday-night→Saturday gap the decided design kept. */
+export const FREEZE_LEAD_HOURS = 40;
+
+/**
+ * FREEZE-1. The daily run's rule: a scheduled game freezes once its OWN
+ * kickoff is inside `leadHours`, and never after it has kicked. With a run
+ * every 24h and a 40h lead, every game is caught by at least one run between
+ * 40h and 16h before it starts — so a run Actions delays by up to 16h still
+ * lands in time, and a Tuesday MAC game freezes Monday morning on Sunday's
+ * ratings instead of never. A TBD kickoff is not this rule's to guess at; the
+ * weekly run still takes those.
+ */
+export function leadFreezableGames<G extends { id: number; start_ts: string | null }>(
+  games: G[],
+  alreadyFrozen: ReadonlySet<number>,
+  now: number,
+  leadHours: number,
+): G[] {
+  return games.filter((g) => {
+    if (alreadyFrozen.has(g.id) || g.start_ts === null) return false;
+    const kick = Date.parse(g.start_ts);
+    return kick > now && kick - now <= leadHours * 3600_000;
+  });
+}
+
 /**
  * Thursday job: freeze predictions for the upcoming week (receipts), pricing
  * with current ratings + team HFA + admin-CONFIRMED rating adjustments.
+ *
+ * `leadHours` is the daily per-game run (FREEZE-1, `freeze-daily`): it ignores
+ * the slate pointer and takes every scheduled game in the season kicking
+ * inside the lead. The weekly Thursday run is unchanged and still stamps the
+ * weekend; the two share the already-frozen skip, so whichever reaches a game
+ * first owns its receipt and the other passes over it.
  */
 export async function freezeJob(
   db: SupabaseClient,
-  opts: { dryRun?: boolean } = {},
+  opts: { dryRun?: boolean; leadHours?: number } = {},
 ): Promise<Json> {
-  const { week, seasonType } = await fetchCurrentSlate(db, SEASON);
+  const daily = opts.leadHours !== undefined;
+  const now = Date.now();
+  const slate = daily ? null : await fetchCurrentSlate(db, SEASON);
 
-  const { data: gameRows } = await db
+  let gameQuery = db
     .from("games")
-    .select("id, home_team_id, away_team_id, neutral_site, status, start_ts")
+    .select("id, week, home_team_id, away_team_id, neutral_site, status, start_ts")
     .eq("season_id", SEASON)
-    .eq("week", week)
-    .eq("season_type", seasonType)
     .eq("status", "scheduled");
+  gameQuery = slate
+    ? gameQuery.eq("week", slate.week).eq("season_type", slate.seasonType)
+    : gameQuery
+        .gt("start_ts", new Date(now).toISOString())
+        .lte("start_ts", new Date(now + (opts.leadHours as number) * 3600_000).toISOString());
+  const { data: gameRows } = await gameQuery;
   const games = (gameRows ?? []) as Array<{
     id: number;
+    week: number;
     home_team_id: number;
     away_team_id: number;
     neutral_site: boolean;
     start_ts: string | null;
   }>;
+  // What job_runs.detail reports as the run's week: the slate for the weekly
+  // run; for the daily one, the weeks it actually reached (often none).
+  const week = slate ? slate.week : [...new Set(games.map((g) => g.week))].sort((a, b) => a - b);
   if (games.length === 0) return { week, frozen: 0 };
 
   // One game, one freeze, the Thursday before IT kicks. The old gate checked
@@ -2023,7 +2076,9 @@ export async function freezeJob(
   const alreadyFrozen = new Set(
     ((frozenRows ?? []) as Array<{ game_id: number }>).map((r) => r.game_id),
   );
-  const toFreeze = freezableGames(games, alreadyFrozen, Date.now(), horizonDays, idleOverridden());
+  const toFreeze = daily
+    ? leadFreezableGames(games, alreadyFrozen, now, opts.leadHours as number)
+    : freezableGames(games, alreadyFrozen, now, horizonDays, idleOverridden());
   if (toFreeze.length === 0) {
     return {
       week,
@@ -2137,12 +2192,12 @@ export async function freezeJob(
   // the preseason builder so the two write paths can't drift (src/model).
   const totalsAreReal = splitInformative([...latest.values()]);
 
-  // Early-season pricing widens sigma (and softens the win-prob slope) while
-  // the preseason prior is still doing the work — identity until fit.
-  const params = paramsForWeek(week, DEFAULT_PARAMS);
-
   const rows: Json[] = [];
   for (const g of toFreeze) {
+    // Early-season pricing widens sigma (and softens the win-prob slope) while
+    // the preseason prior is still doing the work — identity until fit. Per
+    // game, because the daily run can reach games from two different weeks.
+    const params = paramsForWeek(g.week, DEFAULT_PARAMS);
     const homeR = latest.get(g.home_team_id);
     const awayR = latest.get(g.away_team_id);
     if (homeR === undefined && awayR === undefined) continue;

@@ -116,6 +116,9 @@ on:
           # append-only and a second run skips the games the first one froze.
           # Read-only: it prices the batch, prints every row, writes nothing.
           - freeze-dry-run
+          # FREEZE-1: the per-game daily freeze, and its read-only rehearsal.
+          - freeze-daily
+          - freeze-daily-dry-run
           - freeze-groups
           - questions
           - verdicts
@@ -339,8 +342,21 @@ on:
     # an idempotent sweeper: already-frozen games skip, so it costs nothing
     # and catches a TBD kickoff that firmed up after Thursday morning. Both
     # slots retire when the per-game ~40h daily freeze ships (due Sep 3).
+    # It shipped 2026-10-08 (below) and they did NOT retire: the weekly run
+    # stays the one that stamps the weekend, so Saturday receipts keep the
+    # Thursday timing every week of 2026 so far was priced on.
     - cron: "0 9 * * 4"
     - cron: "0 3 * * 5"
+    # FREEZE-1: per-game daily freeze, 09:30 UTC — after sync-games (09:00)
+    # has firmed up kickoff times. Takes every scheduled game kicking inside
+    # the next 40h, so a Tuesday/Wednesday MAC game freezes Monday/Tuesday
+    # morning and a Thursday nighter Wednesday morning, instead of never
+    # (week 6's three were played without a receipt). 40h > 24h means two
+    # consecutive runs always straddle a kick's 40h–16h window, so an Actions
+    # delay under 16h cannot skip a game. Ratings are current: the Sunday
+    # 13:00 ratings-update precedes the first run that can reach a next-week
+    # game (Monday's — Sunday's lead ends Monday ~01:30 UTC).
+    - cron: "30 9 * * *"
     # Three Questions per game, Friday morning after the freeze (LLM; green
     # no-op until the ANTHROPIC_API_KEY secret exists)
     - cron: "0 9 * * 5"
@@ -494,6 +510,7 @@ jobs:
             "0 15 * * 0") echo "task=backup" >> "$GITHUB_OUTPUT" ;;
             "0 6 1 * *") echo "task=keepalive" >> "$GITHUB_OUTPUT" ;;
             "0 9 * * 4"|"0 3 * * 5") echo "task=freeze" >> "$GITHUB_OUTPUT" ;;
+            "30 9 * * *") echo "task=freeze-daily" >> "$GITHUB_OUTPUT" ;;
             "0 9 * * 5") echo "task=questions" >> "$GITHUB_OUTPUT" ;;
             "30 11 * * *") echo "task=team-news" >> "$GITHUB_OUTPUT" ;;
             "45 11 * * *") echo "task=notes" >> "$GITHUB_OUTPUT" ;;
@@ -546,7 +563,7 @@ jobs:
             nfl-sync-games) npx tsx scripts/nfl-sync-games.ts ;;
             nfl-refresh-lines) npx tsx scripts/nfl-refresh-lines.ts ;;
             scoreboard-loop) npx tsx scripts/scoreboard-loop.ts --minutes 240 ;;
-            sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze|freeze-dry-run|freeze-groups|watchdog|notify-picks-due|notify-log-bets|nfl-grade|nfl-scoring|cfb-scoring|guess-lines|streak|six-pack|daily-puzzles|team-news|notes|backfill-games|backfill-lines|backfill-rankings) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
+            sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze|freeze-dry-run|freeze-groups|freeze-daily|freeze-daily-dry-run|watchdog|notify-picks-due|notify-log-bets|nfl-grade|nfl-scoring|cfb-scoring|guess-lines|streak|six-pack|daily-puzzles|team-news|notes|backfill-games|backfill-lines|backfill-rankings) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
             # Keep-alive: touch nothing, just make the run green so GitHub's
             # 60-day inactivity timer resets. No DB, no CFBD.
             keepalive) echo "keep-alive tick $(date -u +%Y-%m-%d) — resets the Actions inactivity clock" ;;
