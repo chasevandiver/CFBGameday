@@ -21,6 +21,7 @@
  *   npx tsx scripts/backtest.ts --tune-team-hfa              # is a per-team home edge real? (02:M-05)
  *   npx tsx scripts/backtest.ts --tune-anchors               # week-1 Elo / preseason poll anchor weights
  *   npx tsx scripts/backtest.ts --tune-prior                 # preseason carryover weight
+ *   npx tsx scripts/backtest.ts --tune-decay                 # how fast the prior hands over to results
  *   npx tsx scripts/backtest.ts --tune-sp-blend              # prior-year baseline: replay finals vs final SP+
  *   npx tsx scripts/backtest.ts --tune-talent-source         # /talent unpublished: stale composite vs recruiting classes
  *   npx tsx scripts/backtest.ts --diagnose-edges             # THE EDGE GATE: market MAE + encompassing regression
@@ -88,7 +89,8 @@ import {
   splitWindow,
   type SeasonWindow,
 } from "./lib/window";
-import { eraFlip, erasIn, latestEraIn } from "./lib/eras";
+import { eraFlip, erasIn, latestEraIn, type EraId } from "./lib/eras";
+import { scaleDecayKnots } from "./lib/decay";
 import { CoverageError, assertFeedCoverage, loadCoverageManifest } from "./lib/coverage";
 
 /**
@@ -1845,6 +1847,257 @@ async function tuneQbExit(seasons: SeasonData[], teamIdsByName: Map<string, numb
 }
 
 /**
+ * --tune-decay: how fast should the preseason prior hand over to results?
+ *
+ * Owner, 2026-10-08, five weeks into 2026: "I wanted to see if the model was
+ * going to get better / if our ratings seem up to date." The live table said
+ * they lag exactly where the prior was most wrong — UMass had beaten our
+ * spread by 30.5 a game over five games and its rating had moved +8.7, with
+ * SP+ and FPI 15–22 points above us. At week 6 the prior still carries 0.325
+ * of the rating, and `priorDecayKnots` is the one schedule in DEFAULT_PARAMS
+ * that has never been fitted: its provenance is "Spec §2.2".
+ *
+ * Family (scripts/lib/decay.ts): the spec's own curve at speed s,
+ * w_s(week) = w_spec(week × s). s = 1 is identity. K stays 0.3 — it was
+ * refit on the old schedule and its own tuner is the place to re-ask it.
+ *
+ * Chain is production-shaped and identical across arms except for the
+ * schedule: prior-year blend (0.5 replay finals + 0.5 SP+ final) × 0.7 +
+ * talent × 0.3 + churn at DEFAULT_PARAMS + the shipped healthy-succession
+ * coaching term — the --tune-qb-exit baseline without its class. The decay
+ * changes finals too (at the 0.05 floor, a little), so every arm replays the
+ * whole chain rather than reusing identity priors.
+ *
+ * Pre-registered, written before any run:
+ *   Selection: NLL over weeks 1–8 of the FIT seasons (scored, pre-2024) —
+ *     the weeks the schedule acts on (weight 1.0 → 0.15).
+ *   Gate 1 (interior): argmin is not a grid edge (0.5 or 3.0).
+ *   Gate 2 (size): fit ΔNLL wks 1–8 ≥ 0.003 vs identity.
+ *   Gate H (holdout 2024–25): wks 1–8 Δ same sign and ≥ half the fit Δ.
+ *   Gate M (margin): wks 1–8 MAE not worse than identity by > 0.03.
+ *   Gate L (late): weeks 9+ NLL not worse by > 0.001.
+ *   Gate C (calibration): no wks 1–8 win-prob bucket with n ≥ 100 moves more
+ *     than 2.0 points farther from its predicted rate — the K = 0.4 lesson,
+ *     where NLL won while the 0.7–0.8 bucket went 1.6 → 6.2 points off.
+ *   Era-flip: per-era argmins (wks 1–8 NLL, all scored seasons) within one
+ *     grid step, else era-dependent, ship nothing.
+ *   Gate 3: same sign on --seasons=2023-2025 before believing any of it.
+ * A pass ships nothing by itself: shipping is the scaled knots in
+ * DEFAULT_PARAMS, a MODEL_VERSION bump and the ratings replay — owner call.
+ */
+async function tuneDecay(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
+  const { cfbd } = await import("../src/lib/cfbd");
+  const { cached } = await import("./lib/replay");
+  const coachRows = await cached(
+    "coaches-history",
+    () => cfbd.coaches({ minYear: 2001, maxYear: SEASONS[SEASONS.length - 1] }),
+    true,
+  );
+  const transitions = new Map<number, Map<string, CoachTransition>>();
+  for (const s of SEASONS) transitions.set(s, buildCoachTransitions(coachRows, s));
+  const schoolById = new Map([...teamIdsByName].map(([school, id]) => [id, school]));
+  const { talentBySeason, spFinalBySeason } = await loadPriorInputs(teamIdsByName);
+  const retBySeason = new Map<number, Map<number, number>>();
+  for (const season of SEASONS) {
+    const rows = await cached(`returning-${season}`, () => cfbd.returningProduction(season), true);
+    const map = new Map<number, number>();
+    for (const r of rows) {
+      const id = teamIdsByName.get(r.team);
+      if (id !== undefined && r.percentPPA !== null) map.set(id, r.percentPPA);
+    }
+    retBySeason.set(season, map);
+  }
+
+  const replayAt = (speed: number): ReplayPrediction[] => {
+    const params: ModelParams = {
+      ...DEFAULT_PARAMS,
+      priorDecayKnots: scaleDecayKnots(DEFAULT_PARAMS.priorDecayKnots, speed),
+    };
+    let priors = priorsFromSp(seasons[0].prevSp, teamIdsByName);
+    const scored: ReplayPrediction[] = [];
+    for (const season of seasons) {
+      const { predictions, finalRatings } = replaySeason(season, priors, params);
+      if (SCORED.includes(season.season)) scored.push(...predictions);
+      const next = season.season + 1;
+      const spFinal = spFinalBySeason.get(season.season)!;
+      const talent = talentBySeason.get(season.season)!;
+      const ret = retBySeason.get(next) ?? retBySeason.get(season.season)!;
+      const trans = transitions.get(next);
+      const out = new Map<number, number>();
+      for (const [teamId, rating] of finalRatings) {
+        const sp = spFinal.get(teamId);
+        const base = sp !== undefined ? 0.5 * rating + 0.5 * sp : rating;
+        const tal = talent.get(teamId) ?? -8;
+        const churn = churnAdjustment(
+          {
+            returningProduction: ret.get(teamId) ?? 0.6,
+            qbReturns: null,
+            olReturningShare: 0.5,
+            netPortalPoints: 0,
+            blueChipFreshmen: 0,
+            talentBaseline: tal,
+          },
+          DEFAULT_PARAMS,
+        );
+        const preCoaching = 0.7 * base + 0.3 * tal + churn;
+        const t = trans?.get(schoolById.get(teamId) ?? "");
+        out.set(
+          teamId,
+          preCoaching +
+            coachingAdjustmentContinuous(
+              { newHc: t?.newHc ?? false, overPerf: t?.overPerf ?? null, priorRating: preCoaching },
+              DEFAULT_PARAMS,
+            ),
+        );
+      }
+      priors = out;
+    }
+    return scored;
+  };
+
+  const GRID = [0.5, 0.67, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
+  const HOLDOUT_FROM = 2024;
+  const fitSeasons = SCORED.filter((s) => s < HOLDOUT_FROM);
+  const holdSeasons = SCORED.filter((s) => s >= HOLDOUT_FROM);
+  const useHoldout = fitSeasons.length >= 3 && holdSeasons.length >= 1;
+  const early = (preds: ReplayPrediction[], set: readonly number[] = SCORED) =>
+    preds.filter((p) => p.week >= 1 && p.week <= 8 && set.includes(p.season));
+  const late = (preds: ReplayPrediction[]) => preds.filter((p) => p.week >= 9);
+  const maeEarly = (preds: ReplayPrediction[]) =>
+    maeOf(early(preds).map((p) => p.actualMargin - p.margin));
+  /** Signed distance from perfect, per win-prob bucket with n ≥ 100, wks 1–8. */
+  const calibration = (preds: ReplayPrediction[]) => {
+    const graded = early(preds).filter((p) => p.favoriteWon !== null);
+    const out = new Map<string, { n: number; off: number }>();
+    for (const [lo, hi] of [[0.5, 0.6], [0.6, 0.7], [0.7, 0.8], [0.8, 0.9], [0.9, 1.01]] as const) {
+      const b = graded.filter((p) => p.favWinProb >= lo && p.favWinProb < hi);
+      if (b.length < 100) continue;
+      const predicted = mean(b.map((p) => p.favWinProb));
+      const actual = b.filter((p) => p.favoriteWon).length / b.length;
+      out.set(`${lo.toFixed(1)}–${Math.min(hi, 1).toFixed(1)}`, { n: b.length, off: (actual - predicted) * 100 });
+    }
+    return out;
+  };
+
+  console.log(
+    `\n== --tune-decay == w_s(week) = w_spec(week × s); s = 1 is the shipped schedule.\n` +
+      `Spec knots ${JSON.stringify(DEFAULT_PARAMS.priorDecayKnots)}. Prior weight at weeks 2/4/6/8 by s:`,
+  );
+  for (const s of GRID) {
+    const p = { ...DEFAULT_PARAMS, priorDecayKnots: scaleDecayKnots(DEFAULT_PARAMS.priorDecayKnots, s) };
+    console.log(
+      `  s ${s.toFixed(2).padStart(4)}   ` + [2, 4, 6, 8].map((w) => priorWeight(w, p).toFixed(3)).join("  "),
+    );
+  }
+  console.log(
+    useHoldout
+      ? `\nSelection on FIT wks 1–8 NLL (${fitSeasons.join(", ")}); holdout ${holdSeasons.join(", ")}.`
+      : `\nNo pre-${HOLDOUT_FROM} scored seasons — selection on all wks 1–8 NLL, Gate H n/a here.`,
+  );
+  console.log("   s     fit NLL   hold NLL   all 1–8   wks 9+ NLL   1–8 MAE   wks 1–4 NLL   wks 5–8 NLL");
+
+  const rows: Array<{ s: number; all: ReplayPrediction[]; fit: number; hold: number }> = [];
+  for (const s of GRID) {
+    const all = replayAt(s);
+    const fit = nll(early(all, useHoldout ? fitSeasons : SCORED));
+    const hold = useHoldout ? nll(early(all, holdSeasons)) : NaN;
+    rows.push({ s, all, fit, hold });
+    console.log(
+      `${s.toFixed(2).padStart(5)}    ${fit.toFixed(4)}     ${useHoldout ? hold.toFixed(4) : "  n/a "}     ` +
+        `${nll(early(all)).toFixed(4)}    ${nll(late(all)).toFixed(4)}      ${maeEarly(all).toFixed(2)}      ` +
+        `${nll(all.filter((p) => p.week >= 1 && p.week <= 4)).toFixed(4)}        ` +
+        `${nll(all.filter((p) => p.week >= 5 && p.week <= 8)).toFixed(4)}`,
+    );
+  }
+  const identity = rows.find((r) => r.s === 1)!;
+  const best = rows.reduce((a, b) => (b.fit < a.fit ? b : a));
+
+  const fitDelta = identity.fit - best.fit;
+  const holdDelta = useHoldout ? identity.hold - best.hold : NaN;
+  const maeDelta = maeEarly(best.all) - maeEarly(identity.all);
+  const lateDelta = nll(late(identity.all)) - nll(late(best.all)); // positive = late got BETTER
+  const calId = calibration(identity.all);
+  const calBest = calibration(best.all);
+  const calMoves = [...calId].map(([bucket, id]) => {
+    const b = calBest.get(bucket);
+    return { bucket, id: id.off, best: b?.off ?? NaN, worse: b ? Math.abs(b.off) - Math.abs(id.off) : 0 };
+  });
+
+  const gate1 = best.s !== GRID[0] && best.s !== GRID[GRID.length - 1];
+  const gate2 = fitDelta >= 0.003;
+  const gateH = !useHoldout || (holdDelta > 0 && holdDelta >= fitDelta / 2);
+  const gateM = maeDelta <= 0.03;
+  const gateL = lateDelta >= -0.001;
+  const gateC = calMoves.every((c) => !(c.worse > 2.0));
+
+  console.log(
+    `\nwks 1–8 calibration (actual − predicted, points), buckets with n ≥ 100:\n` +
+      calMoves
+        .map((c) => `  ${c.bucket}   identity ${c.id >= 0 ? "+" : ""}${c.id.toFixed(1)}   s=${best.s} ${c.best >= 0 ? "+" : ""}${c.best.toFixed(1)}`)
+        .join("\n"),
+  );
+
+  // The era-flip rule, evaluated: argmin of wks 1–8 NLL within each era.
+  const byEra: Array<{ era: EraId; argmin: number; s: number }> = [];
+  for (const { era, seasons: eraSeasons } of erasIn(SCORED)) {
+    const scores = rows.map((r) => nll(early(r.all, eraSeasons)));
+    const bestIdx = scores.indexOf(Math.min(...scores));
+    byEra.push({ era: era.id, argmin: bestIdx, s: GRID[bestIdx] });
+  }
+  const flip = eraFlip(byEra, 1); // on grid INDEX: one step = one neighbour
+  const latest = latestEraIn(SCORED);
+  let recencyOk = true;
+  if (byEra.length >= 2) {
+    console.log(
+      `Per-era argmin s: ${byEra.map((b) => `${b.era} ${b.s}`).join("  ")} — ` +
+        (flip.agree
+          ? "within one grid step: the eras agree."
+          : "WIDER than one grid step: era-dependent. Pre-registered outcome — ship nothing."),
+    );
+  }
+  if (latest) {
+    const recent = (r: { all: ReplayPrediction[] }) => early(r.all, latest.seasons);
+    const idRecent = recent(identity);
+    const se =
+      Math.sqrt(
+        mean(idRecent.filter((p) => p.favoriteWon !== null).map((p) => {
+          const l = -Math.log(p.favoriteWon ? p.favWinProb : 1 - p.favWinProb);
+          return l * l;
+        })) - nll(idRecent) ** 2,
+      ) / Math.sqrt(idRecent.filter((p) => p.favoriteWon !== null).length);
+    const d = nll(recent(best)) - nll(idRecent);
+    recencyOk = d <= se;
+    console.log(
+      `Recency (${latest.id} only, wks 1–8): winner ${d >= 0 ? "+" : ""}${d.toFixed(4)} vs identity, 1 SE ${se.toFixed(4)} — ` +
+        (d <= se ? "passes." : "FAILS: worse than the incumbent by more than 1 SE in the newest era."),
+    );
+  }
+  console.log(
+    `\nBest: s=${best.s} (fit NLL ${best.fit.toFixed(4)}, identity ${identity.fit.toFixed(4)}, Δ ${fitDelta.toFixed(4)}` +
+      (useHoldout ? `; holdout Δ ${holdDelta.toFixed(4)}` : "") +
+      `; wks 1–8 MAE Δ ${maeDelta >= 0 ? "+" : ""}${maeDelta.toFixed(3)}; wks 9+ Δ ${lateDelta.toFixed(4)})\n` +
+      `Gate 1 (interior): ${gate1 ? "PASSES" : `FAILS — pinned at s=${best.s}, unconverged`}\n` +
+      `Gate 2 (fit ΔNLL ≥ 0.003): ${gate2 ? "PASSES" : "FAILS"}\n` +
+      `Gate H (holdout same sign, ≥ half): ${useHoldout ? (gateH ? "PASSES" : "FAILS") : "n/a on this window"}\n` +
+      `Gate M (wks 1–8 MAE not worse by > 0.03): ${gateM ? "PASSES" : "FAILS"}\n` +
+      `Gate L (weeks 9+ not worse by > 0.001): ${gateL ? "PASSES" : "FAILS — the early gain is borrowed from November"}\n` +
+      `Gate C (no bucket > 2.0 pts farther off): ${gateC ? "PASSES" : "FAILS — NLL bought with calibration"}\n` +
+      `Era-flip: ${byEra.length < 2 ? "n/a (one era)" : flip.agree ? "PASSES" : "FAILS"}\n` +
+      `Recency: ${recencyOk ? "PASSES" : "FAILS"}\n` +
+      `Gate 3: re-run with --seasons=2023-2025 and require the same sign before believing any of this.`,
+  );
+  console.log(
+    best.s === 1
+      ? "→ The spec's schedule is the argmin. Record the row; the knots stay, now fitted rather than assumed."
+      : gate1 && gate2 && gateH && gateM && gateL && gateC && recencyOk && (byEra.length < 2 || flip.agree)
+        ? `→ All local gates pass. Shipping is an owner call: priorDecayKnots = ` +
+          `${JSON.stringify(scaleDecayKnots(DEFAULT_PARAMS.priorDecayKnots, best.s).map(([w, v]) => [Math.round(w * 100) / 100, v]))}` +
+          `, MODEL_VERSION bump, ratings replay — on this row plus Gate 3.`
+        : "→ Rejected on the gates above. Record the row; the spec schedule stands.",
+  );
+}
+
+/**
  * --tune-coaching-quality: the LSU question (owner, 2026-08-26) — within the
  * healthy-succession class the shipped −6 charges Lane Kiffin the same as a
  * first-time coordinator. The pooled run found the overPerf slope inert, but
@@ -3303,6 +3556,7 @@ async function main() {
   const tuneFcsFlag = process.argv.includes("--tune-fcs");
   const tuneTeamHfaFlag = process.argv.includes("--tune-team-hfa");
   const tuneTalentSourceFlag = process.argv.includes("--tune-talent-source");
+  const tuneDecayFlag = process.argv.includes("--tune-decay");
   // Isolation switch for the FBS-membership fix (BT-3). Admission is ON by
   // default and always should be — a frozen pool is simply wrong on any window
   // wider than the one it was frozen at. This exists so the fix can be MEASURED
@@ -3336,6 +3590,7 @@ async function main() {
       ["tune-fcs", tuneFcsFlag],
       ["tune-team-hfa", tuneTeamHfaFlag],
       ["tune-talent-source", tuneTalentSourceFlag],
+      ["tune-decay", tuneDecayFlag],
       ["diagnose-edges", diagnose],
       ["diagnose-tiers", diagnoseTiersFlag],
       ["tune-tier-recenter", tuneTierRecenterFlag],
@@ -3446,6 +3701,10 @@ async function main() {
   }
   if (tuneQbExitFlag) {
     await tuneQbExit(seasons, teamIdsByName);
+    return;
+  }
+  if (tuneDecayFlag) {
+    await tuneDecay(seasons, teamIdsByName);
     return;
   }
   if (tuneCoachingQualityFlag) {

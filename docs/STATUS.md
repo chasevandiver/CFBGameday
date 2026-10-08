@@ -3027,6 +3027,25 @@ forward on 2026-08-13** by owner decision, which are ticked in place below with
 what they turned out to be. The intent of this section is unchanged: what is
 still unchecked here is still not launch work.
 
+**Model, in season**
+- [ ] **DECAY-1 — fit `priorDecayKnots`, the one schedule no tuner has ever
+      touched.** Owner, 2026-10-08, five weeks in: are the ratings up to date?
+      Live, they rebuild every Sunday and track FPI more closely each week (sd of
+      our-minus-FPI 6.07 wk 2 → 4.25 wk 6), but lag hardest where the prior was
+      most wrong: UMass beat our frozen spread by **30.5/game over 5 games** and
+      moved −37.4 → −28.7 (SP+ −6.2, FPI −13.1); Oregon State +23.1/game,
+      Oklahoma State +21.8. At week 6 the prior still carries 0.325 of every
+      rating, and the knots' provenance is "Spec §2.2" — hand-written.
+      **Built 2026-10-08: `--tune-decay`** (`scripts/lib/decay.ts`): the spec's
+      curve at speed s, w_s(week) = w_spec(week × s), s = 1 identity, grid
+      0.5–3.0, on the production-shaped chain, K held at 0.3. Rule
+      pre-registered in the code and in the decisions table before any run.
+      **Next:** dispatch `backtest` with `experiment = tune-decay` at the default
+      window, then at `2023-2025` (Gate 3); record the row either way. A pass is
+      an owner call: scaled knots in DEFAULT_PARAMS, MODEL_VERSION bump, ratings
+      replay. Meanwhile the supported lever for UMass-shaped misses is an admin
+      adjustment, with the numbers above as its reason. · S
+
 **Brand rollout** — icon and install surfaces landed 2026-08-12, then the
 traced vector, the palette and the display face the same day (`docs/CHANGELOG.md`).
 Two items remain open; the closed ones are kept for the record.
