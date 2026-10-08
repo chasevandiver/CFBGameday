@@ -78,7 +78,14 @@
 // windows — see the decisions table. Owner call 2026-08-26, three days before
 // Week 0, over the alternative of hand adjustments ("I don't like the idea of
 // manually adjusting the model at all").
-export const MODEL_VERSION = "2026.6.0";
+// 2026.7.0: the prior blend goes (priorDecayKnots [[0,1],[1,0]]) and K is
+// refit to 0.35 — DECAY-2. `blendWithPrior` mixed the prior with an Elo that
+// was itself seeded from the prior, so the prior counted twice and the season
+// ran at an effective K of 0.3·(1 − w): 0.15 at week 4. --tune-no-blend
+// passed every pre-registered gate (wks 1–8 NLL 0.4677 → 0.4629 fit,
+// 0.4540 → 0.4453 holdout; all-weeks MAE 13.16 → 13.09; calibration no
+// worse; 2023-2025 same sign). Owner call 2026-10-08, mid-season, for week 7.
+export const MODEL_VERSION = "2026.7.0";
 
 /**
  * Did this model version price totals for real? Rows frozen before 2026.3.0
@@ -191,7 +198,10 @@ export interface ModelParams {
 }
 
 export const DEFAULT_PARAMS: ModelParams = {
-  kFactor: 0.3,
+  // 0.35 with the blend removed (DECAY-2, `--tune-no-blend`, 2026.7.0). The
+  // 0.3 below was fitted WITH the blend, which ran it at 0.3·(1 − w) for half
+  // the season; refit without it, every era wants 0.30–0.35.
+  kFactor: 0.35,
   marginCap: 28,
   // 3.0, up from 2.3 (--tune-hfa, K held at its validated 0.3). The old value
   // left the model systematically under-predicting the home side: mean SIGNED
@@ -246,11 +256,14 @@ export const DEFAULT_PARAMS: ModelParams = {
   teamHfaBlend: 0,
   priorRatingWeight: 0.7,
   talentWeight: 0.3,
+  // No blend (DECAY-2, 2026.7.0): weight 1 before any game, 0 from week 1.
+  // The in-season Elo is seeded FROM the prior, so the prior still enters —
+  // once, as the seed — and fades as results accumulate rather than on a
+  // schedule. The spec's 1.0 → 0.5 → 0.15 → 0.05 knots counted it twice;
+  // --tune-decay pinned at its fastest edge trying to remove them.
   priorDecayKnots: [
-    [0, 1.0],
-    [4, 0.5],
-    [8, 0.15],
-    [12, 0.05],
+    [0, 1],
+    [1, 0],
   ],
   marginSigma: 16.8,
   winProbSlope: 0.101,

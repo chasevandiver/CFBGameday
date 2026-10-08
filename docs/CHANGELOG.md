@@ -27,12 +27,18 @@ carries the number that killed it.
 
 ## Current state
 
-**`MODEL_VERSION` 2026.6.0** (`src/model/ratings.ts`) — 2026.5.0 plus the
+**`MODEL_VERSION` 2026.7.0** (`src/model/ratings.ts`) — 2026.6.0 with the prior
+blend removed and K refit to **0.35** (DECAY-2, Oct 8, below). The preseason
+prior seeds the in-season Elo and is no longer blended back in, because the
+blend counted it twice. Passed every pre-registered gate of `--tune-no-blend`.
+Owner call mid-season, for week 7. Receipts frozen through week 6 stay
+2026.6.0.
+*(2026.6.0 was 2026.5.0 plus the 
 healthy-succession coaching term (`newHcHealthyIntercept` **−6**, Aug 26,
 below): a new head coach inheriting a pre-coaching preseason rating ≥ 0 costs
 six points in year one, fitted by `--tune-coaching-split` with every
 pre-registered gate passing on both windows. 19 teams move in 2026 (Utah,
-Ole Miss, Penn State, LSU, Michigan, Kansas State, Florida, Arkansas, …).
+Ole Miss, Penn State, LSU, Michigan, Kansas State, Florida, Arkansas, …).)*
 *(2026.5.0 was 2026.4.1 plus the market-anchored tier recentre in the
 preseason build — Aug 12, below — which removes a measured +9.8-point
 cross-classification lean from the 2026 openers.)*
@@ -56,12 +62,12 @@ run by hand. See Open items for what it is waiting on.
 
 | Parameter | Value | Provenance |
 |---|---|---|
-| `kFactor` | 0.3 | Fitted, 2023–25 grid |
+| `kFactor` | **0.35** | Fitted `--tune-no-blend` (2026.7.0), refit with the blend removed. Was 0.3, fitted on a 2023–25 grid with the blend |
 | `marginCap` | 28 | Spec §2.2 |
 | `baseHfa` | **3.0** | Fitted `--tune-hfa` (was 2.3; see decisions) |
 | `teamHfaBlend` | **0** | **Identity — tested, rejected.** Was 0.5 from Spec §2.3, never validated by any replay until `--tune-team-hfa` ran 2026-08-18. Gate 0 (split-half r = **−0.196**, n = 134) says there is no per-team signal; the grid degrades monotonically with the blend. 02:M-05 / 03:M-1v closed on evidence |
 | `priorRatingWeight` / `talentWeight` | 0.70 / 0.30 | Fitted `--tune-prior` |
-| `priorDecayKnots` | `[0,1.0] [4,0.5] [8,0.15] [12,0.05]` | Spec §2.2 |
+| `priorDecayKnots` | **`[0,1] [1,0]`: no blend** | Fitted `--tune-no-blend` (2026.7.0). Was the Spec §2.2 schedule `[0,1.0] [4,0.5] [8,0.15] [12,0.05]`, which counted the prior twice. `--tune-decay` (rejected, edge-pinned) found it; DECAY-2 removed it |
 | `marginSigma` | 16.8 | Fitted σ |
 | `winProbSlope` | 0.101 | 1.7/σ |
 | `edgeThreshold` / `bigEdgeThreshold` | 2 / 4 | Spec §2.4 — **information only**, not bets |
@@ -125,7 +131,9 @@ and must say so. See "The window changed" below.
 | `--tune-prior` re-fit `2015-2025/warmup1/covid-chain` + `2023-2025/warmup1/covid-chain` (E4) | Owner hypothesis, 2026-08-19: 0.70 scoreboard carryover is too high in the portal era — raised after the SP+ comparison (our board deviates from SP+ 2026 along prior-year rating, corr +0.18, not talent, +0.04; all three stored week-1 market lines sided with SP+'s direction). Grid widened to 0.30 **before** the run so a low optimum could not pin at the old 0.5 floor. Wide window (n=2794 early games): NLL **monotone worse as carryover falls** — 0.30 → 0.4306/14.78, 0.50 → 0.4179/14.35, **0.70 → 0.4117/14.10**, argmin 0.80 → 0.4110 (grid EDGE, Δ vs 0.70 only 0.0007 against a 0.003 bar). E4-only (n=616): interior argmin 0.65 at 0.3798 with 0.70 at 0.3801 — Δ 0.0003, noise. Era-flip: wide argmin 0.80 vs E4 argmin 0.65, three grid steps apart. | **Rejected — 0.70 stands, and the hypothesis is refuted in the direction it was posed.** Lower carryover is worse everywhere, at every step, in both windows; the pooled data mildly wants MORE (but at an edge, under the bar, and era-flipped, so nothing ships). The board's lean toward proven 2025 results over talent is the model earning early-week points, not a bug. The deviations from SP+ remain honest disagreements — graded from week 1 by the frozen receipts and CLV. |
 | `--tune-sp-blend` re-fit `2015-2025/warmup1/covid-chain` + `2023-2025/warmup1/covid-chain` (E4) | α = 0.5 is the argmin at BOTH windows: wide 0.4095 (vs 0.4106 pure SP+, 0.4121 pure replay), E4 0.3793. Interior, eras agree exactly. | **Confirmed — `REPLAY_SHARE` stays 0.5**, now re-earned on eleven seasons instead of carried from three. Notably α=0 (leaning fully on SP+'s opponent-adjusted final) is worse than the 50/50, which is more independent evidence against regressing harder toward SP+-style inputs. |
 | Fun Mode exemptions (owner decision 2026-08-20, not an experiment) | Owner request: "make this feel like Football Season… optional toggles… we can disregard any safeguards from the repo… not corny or cheesy or AI slop." Two standing rules are **exempted for the opt-in Fun Mode surfaces only** (FUN-1…FUN-12): the "motion means money" scope decision — fun-mode pieces may animate games the viewer holds nothing on — and, in exactly one place, the no-new-fonts rule (`Permanent_Marker` for crowd-sign posterboard, used by `.fun-sign-body` and nothing else). | **Granted, scoped, recorded.** The exemption travels with the toggles: everything defaults off, so the default app still obeys both rules verbatim. NOT exempted, and checked in review: the CSS-only reduced-motion clamp (every fun-mode animation is plain CSS), league rules (The Panel flips only RLS-visible picks), brand voice (§16 — collegiate pageantry, no casino), and no-layout-shift for content. Kill switch is the master toggle; the taste verdicts land here under FUN-12. |
-| Opener test (03:M-5) | **Registered, not yet decided.** Surface shipped 2026-08-17: Receipts grades every frozen lean opener → close (`openerClv`), 4+ bucket broken out. Backtest residual it tests: 4+ bucket **51.8%, avg CLV +0.27**, every bucket positive — real drift, all absorbed by the close. | Pending, rule fixed before any 2026 data: strategy conversation only at avg CLV vs opener ≥ **+1.0** over n ≥ 200 leans (~mid-Oct earliest); **abandon** at ≤ +0.3 by n = 200 — that replicates the backtest. Read-side only; no parameter moves on either outcome. CFBD's opener is when-posted, not a bettable price, so even a pass is evidence, not a wager. |
+| Opener test (03:M-5) | **Decided 2026-10-08 on 2026 receipts, n = 363 leans** (frozen weeks 0–5 with an opener and a close; model on the opener excluded). Avg CLV vs opener **−0.10** (SE 0.11). By disagreement with the opener: < 2 pts **+0.06** (n 79); 2–4 **−0.22** (n 71); **4+ −0.12** (n 213, 95-117 graded at the opener = 44.8%). Backtest residual it tested: 4+ bucket 51.8%, avg CLV +0.27. | **Abandoned, by the rule registered before any 2026 data.** The rule said avg CLV vs opener ≤ +0.3 by n = 200 abandons it, and the result is −0.10 at n = 363. The model's disagreement with the opener does not predict line movement: the market drifts slightly *away* from our side, and the backtest's +0.27 did not survive contact with a live season. No parameter moves. Closes the last open "edges as strategy" question. The model's leans stay information only. |
+| `--tune-decay` (DECAY-1, owner question 2026-10-08: "are our ratings up to date?") — wide `2015-2025/warmup1/covid-chain` + `2023-2025/warmup1/covid-chain` | Family: the spec's curve at speed s, w_s(week) = w_spec(week × s), s = 1 identity, grid 0.5–3.0, production-shaped chain, K 0.3. **Monotone: faster is better at every step, in every era, in the holdout.** Wide: fit wks 1–8 NLL **0.4677 → 0.4639** at s = 3 (Δ 0.0038), holdout 2024–25 **0.4540 → 0.4477** (Δ 0.0064), wks 1–8 MAE **13.42 → 13.33**, wks 9+ 0.5200 → 0.5203, all four era argmins s = 3, worst calibration move 0.7–0.8 bucket +1.6 → +3.3. `2023-2025`: same sign, Δ 0.0062, MAE 13.16 → 12.96, but wks 9+ **0.5218 → 0.5233** and the 0.5–0.6 bucket **+0.5 → +3.7**. Runs 37788940249 / 37788946120. | **Rejected — the spec knots stand.** Gate 1 fails on both windows: argmin pinned at the grid edge (s = 3, prior weight 0.05 from week 4). On `2023-2025` Gates L and C fail too. Pre-registered outcome, recorded as such. **But the edge has a mechanism, not just a direction:** the "results" rating the blend mixes with is not results-only — in `replaySeason` and in `ratingsUpdateJob` it is an Elo *seeded from the prior* (`offense = prior/2`, then K updates). So `w·prior + (1−w)·results` = prior + (1−w)·(season's accumulated updates): the blend counts the prior twice and runs the season's updates at an effective K of 0.3·(1−w) — 0.15 at week 4, 0.2 at week 6. The tuner pinning at "no blend" is that double count asking to be removed, and it is the same direction K = 0.4 pinned in August. A wider grid would not answer it. The next question is a different arm — no blend at all, with K refit, because removing the damping changes what K means. That needs its own pre-registered row (DECAY-2). |
+| `--tune-no-blend` (DECAY-2, owner call 2026-10-08: "yes run DECAY-2") — wide `2015-2025/warmup1/covid-chain` + `2023-2025/warmup1/covid-chain` | Arms on `productionChain`: incumbent (spec knots, K 0.3) vs **no-blend** (knots `[[0,1],[1,0]]` — the rating is the prior-seeded Elo from week 1, so the prior enters once, as the seed) × K 0.10–0.50; blended × K printed as information. Rule committed in 29819b3 before the first run. **Wide: no-blend wins at every K from 0.15 up, against the blended arm at the same K.** Selected K = **0.35** (fit all-weeks NLL 0.4846, tied with 0.30 to four places). Against the incumbent: fit wks 1–8 NLL **0.4677 → 0.4629** (Δ 0.0048), holdout 2024–25 **0.4540 → 0.4453** (Δ 0.0087), wks 9+ 0.5200 → 0.5206 (−0.0006, inside the 0.001 bar), wks 1–8 MAE **13.42 → 13.31**, all-weeks MAE **13.16 → 13.09**, totals 13.41 → 13.40. All-weeks calibration buckets −2.2/−0.1/+1.3/+3.0/+0.2 → −1.3/−1.0/+1.6/+1.0/+0.5: none more than 0.9 farther off, two closer. Era argmins 0.35/0.35/0.30/0.35. E4 −0.0042 (1 SE 0.0104). **`2023-2025`: same sign**, wks 1–8 Δ 0.0082, MAE 1–8 −0.23, all −0.11, totals +0.035; that window's own late gate fails, with wks 9+ **0.5218 → 0.5236** (−0.0018). Runs 37791788609 / 37791793111. | **Passes the registered rule. SHIPPED as 2026.7.0, owner call 2026-10-08** ("if it's better then yes want to ship"). Every wide-window gate passes, and Gate 3 (same sign on `2023-2025`) passes. The change itself: `priorDecayKnots = [[0,1],[1,0]]`, `kFactor = 0.35`, MODEL_VERSION bump, ratings replay. Stated caveat, not hidden: on the two-season window alone, weeks 9+ are 0.0018 worse. That is inside one E4 SE (0.0104), but it is the direction to watch in November receipts if it ships. Also worth knowing: no-blend at the *current* K 0.30 is within 0.0001 of the winner on the wide window. A ship-smaller variant exists. It is not what the rule selected, so taking it is a separate decision, not a reinterpretation. |
 
 ### Why edges are not bets
 
@@ -225,6 +233,75 @@ shipping it.
 ---
 
 ## Log
+
+### Oct 8 — DECAY-2: dropping the blend passes every registered gate
+
+`--tune-no-blend`, rule committed before the run (29819b3). The no-blend arm
+beats the blended arm at every K from 0.15 up on both windows, so the double
+count DECAY-1 named is real, not a K artefact. At the selected K = 0.35 it
+beats the incumbent on weeks 1–8 (fit 0.4677 → 0.4629, holdout 0.4540 → 0.4453),
+on margin MAE (13.16 → 13.09 all weeks) and on calibration, and holds weeks 9+
+and totals inside their bars. Every era wants 0.30–0.35. `2023-2025` agrees in
+sign; on that window alone weeks 9+ are 0.0018 worse, inside one SE. Full
+numbers are in the decisions table.
+
+**Hit rates, owner question.** These are printed by the tuner (run 37792749144) and do not decide anything.
+2016–19 + 2021–25 (2015 is the SP+ warm-up, 2020 is chain-only), 7,691 games:
+straight-up **75.2% → 75.6%**; ATS vs the stored line **49.8% → 49.4%**;
+flagged edges **49.0% → 49.4%**. **2026 weeks 0–5**: the incumbent column is
+the live receipts. The updated column re-runs `ratingsUpdateJob` and the freeze
+locally on the live inputs; the incumbent re-run reproduces 363 of 390 stored
+spreads exactly and 386 within 0.5, and the misses are mostly week 0. Results:
+SU **81.7% → 82.1%**, ATS vs the freeze line **48.0% → 49.2%**, flagged
+**45.9% → 47.2%**, MAE **14.43 → 14.10**. The gain is in picking winners and
+in margin error, not in beating the spread. Neither model clears 52.4%, which
+is what "Why edges are not bets" predicts.
+
+**Shipped as 2026.7.0, owner call the same day** ("Is DECAY-2 better than what
+we currently have? If it's better then yes want to ship"). The two tuners now
+pin their incumbent to the pre-ship model (`SPEC_DECAY_KNOTS`, `PRE_DECAY2_K`
+= 0.3), so their recorded rows stay reproducible. Seven tests that assumed the
+spec curve now pin it explicitly. One test bar moved: the tilt cap-binding
+drift fixture reads **0.525** at 2026.7.0, against a 0.5 bar and a stated claim
+of "well under a point". The bar is now 1, with the reason in the test. `/model`
+lists the new K and the decay, and adds both Oct 8 decisions.
+
+*(Written before the owner call, kept:)* A pass makes it eligible, and the rest is the owner's call.
+The change is two numbers in DEFAULT_PARAMS, `priorDecayKnots [[0,1],[1,0]]`
+and `kFactor 0.35`, plus a MODEL_VERSION bump. The Sunday `ratings-update`
+replays the season from the priors on every run, so the first run after a
+merge rewrites 2026's weekly ratings under the new rule. Frozen receipts are
+append-only and keep the version they were priced on.
+
+### Oct 8 — DECAY-1: `--tune-decay` runs, rejects, and finds the double count
+
+**Owner, five weeks in:** "Wasn't my model supposed to be better by week 4?"
+and then "build the decay tuner". `priorDecayKnots` was the one schedule in
+DEFAULT_PARAMS no tuner had touched. Live, the ratings rebuilt every Sunday and
+tracked FPI more closely each week, but they lagged hardest where the prior was
+most wrong. UMass had beaten our frozen spread by 30.5 a game over five games
+and moved +8.7.
+
+**The tuner** (`--tune-decay`, `scripts/lib/decay.ts`) searches one number,
+the speed s the spec's own curve runs at. Its gates were pre-registered in the
+code and in the decisions table before the first run.
+
+**The answer was monotone.** On the wide window every step faster improved
+weeks 1–8 NLL, on the fit seasons, on the 2024–25 holdout and inside every era,
+and 2023-2025 agreed on sign. The argmin is the grid edge (s = 3, prior weight
+0.05 from week 4), so Gate 1 fails on both windows, and on 2023-2025 weeks 9+
+and the 0.5–0.6 calibration bucket fail too. **Rejected; the knots stand.**
+Numbers are in the decisions table.
+
+**Why it pinned.** The blend is `w·prior + (1−w)·results`, but "results" is
+an Elo seeded from the prior in both the replay and production
+(`offense = prior/2`, then K updates). So the blend is the prior plus
+(1−w) × this season's accumulated updates: the prior counted twice, and the
+season running at an effective K of 0.3·(1−w). At week 6 that discounts
+everything the model has learned by a third, which is UMass. It is also the
+same direction K pinned at 0.4 in August. A wider grid would only rediscover
+the edge, so the next experiment is an arm with no blend and K refit
+(DECAY-2), registered separately. Nothing in production changes.
 
 ### Oct 8 — FREEZE-1: the midweek games get receipts (`freeze-daily`)
 

@@ -29,6 +29,8 @@ on:
           - tune-coaching
           - tune-coaching-split
           - tune-qb-exit
+          - tune-decay
+          - tune-no-blend
           - tune-coaching-quality
           - tune-anchors
           - tune-sp-blend
