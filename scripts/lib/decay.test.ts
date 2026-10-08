@@ -1,22 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_PARAMS, priorWeight } from "../../src/model/ratings";
-import { NO_BLEND_KNOTS, scaleDecayKnots } from "./decay";
+import { NO_BLEND_KNOTS, SPEC_DECAY_KNOTS, scaleDecayKnots } from "./decay";
 
+const spec = { ...DEFAULT_PARAMS, priorDecayKnots: SPEC_DECAY_KNOTS };
 const at = (speed: number) => ({
   ...DEFAULT_PARAMS,
-  priorDecayKnots: scaleDecayKnots(DEFAULT_PARAMS.priorDecayKnots, speed),
+  priorDecayKnots: scaleDecayKnots(SPEC_DECAY_KNOTS, speed),
 });
 
 describe("scaleDecayKnots (--tune-decay's family)", () => {
-  it("is the shipped schedule exactly at speed 1", () => {
+  it("is the spec schedule exactly at speed 1", () => {
     for (let week = 0; week <= 16; week++) {
-      expect(priorWeight(week, at(1))).toBe(priorWeight(week, DEFAULT_PARAMS));
+      expect(priorWeight(week, at(1))).toBe(priorWeight(week, spec));
     }
   });
 
   it("runs the same curve faster: w_s(week) = w(week × s)", () => {
     // Week 4 at 1.5× carries what week 6 carries today: halfway from 0.5 to 0.15.
-    expect(priorWeight(4, at(1.5))).toBeCloseTo(priorWeight(6, DEFAULT_PARAMS), 12);
+    expect(priorWeight(4, at(1.5))).toBeCloseTo(priorWeight(6, spec), 12);
     expect(priorWeight(4, at(1.5))).toBeCloseTo(0.325, 12);
     // ...and slower: week 5 at 0.8× carries what week 4 does today.
     expect(priorWeight(5, at(0.8))).toBeCloseTo(0.5, 12);
@@ -30,12 +31,16 @@ describe("scaleDecayKnots (--tune-decay's family)", () => {
   });
 
   it("refuses a speed that is not positive", () => {
-    expect(() => scaleDecayKnots(DEFAULT_PARAMS.priorDecayKnots, 0)).toThrow();
-    expect(() => scaleDecayKnots(DEFAULT_PARAMS.priorDecayKnots, -1)).toThrow();
+    expect(() => scaleDecayKnots(SPEC_DECAY_KNOTS, 0)).toThrow();
+    expect(() => scaleDecayKnots(SPEC_DECAY_KNOTS, -1)).toThrow();
   });
 });
 
-describe("NO_BLEND_KNOTS (DECAY-2's arm)", () => {
+describe("NO_BLEND_KNOTS (DECAY-2's arm, shipped as 2026.7.0)", () => {
+  it("is what DEFAULT_PARAMS ships", () => {
+    expect(DEFAULT_PARAMS.priorDecayKnots).toEqual(NO_BLEND_KNOTS);
+  });
+
   const noBlend = { ...DEFAULT_PARAMS, priorDecayKnots: NO_BLEND_KNOTS };
 
   it("is the prior before any game and the seeded Elo alone from week 1", () => {

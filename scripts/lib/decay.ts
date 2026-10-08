@@ -20,6 +20,16 @@
  */
 export type DecayKnots = Array<[week: number, weight: number]>;
 
+/** The Spec §2.2 schedule — DEFAULT_PARAMS until 2026.7.0 shipped
+ *  NO_BLEND_KNOTS. --tune-decay's family is defined on this curve, so it
+ *  stays reproducible after the default moved. */
+export const SPEC_DECAY_KNOTS: DecayKnots = [
+  [0, 1.0],
+  [4, 0.5],
+  [8, 0.15],
+  [12, 0.05],
+];
+
 export function scaleDecayKnots(knots: DecayKnots, speed: number): DecayKnots {
   if (!(speed > 0)) throw new Error(`decay speed must be positive, got ${speed}`);
   return knots.map(([week, weight]) => [week / speed, weight]);

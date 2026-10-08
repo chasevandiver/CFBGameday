@@ -91,7 +91,7 @@ import {
   type SeasonWindow,
 } from "./lib/window";
 import { eraFlip, erasIn, latestEraIn, type EraId } from "./lib/eras";
-import { NO_BLEND_KNOTS, scaleDecayKnots } from "./lib/decay";
+import { NO_BLEND_KNOTS, SPEC_DECAY_KNOTS, scaleDecayKnots } from "./lib/decay";
 import { CoverageError, assertFeedCoverage, loadCoverageManifest } from "./lib/coverage";
 
 /**
@@ -1962,12 +1962,19 @@ async function productionChain(
  * A pass ships nothing by itself: shipping is the scaled knots in
  * DEFAULT_PARAMS, a MODEL_VERSION bump and the ratings replay — owner call.
  */
+/** K as fitted WITH the spec blend — the incumbent both decay tuners were
+ *  registered against. DEFAULT_PARAMS.kFactor moved to 0.35 in 2026.7.0. */
+const PRE_DECAY2_K = 0.3;
+
 async function tuneDecay(seasons: SeasonData[], teamIdsByName: Map<string, number>) {
   const replayWith = await productionChain(seasons, teamIdsByName);
   const replayAt = (speed: number): ReplayPrediction[] =>
     replayWith({
       ...DEFAULT_PARAMS,
-      priorDecayKnots: scaleDecayKnots(DEFAULT_PARAMS.priorDecayKnots, speed),
+      // Pinned to the model this tuner was registered against (K 0.3 on the
+      // spec curve) so its recorded result stays reproducible after 2026.7.0.
+      kFactor: PRE_DECAY2_K,
+      priorDecayKnots: scaleDecayKnots(SPEC_DECAY_KNOTS, speed),
     });
 
   const GRID = [0.5, 0.67, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
@@ -1996,10 +2003,10 @@ async function tuneDecay(seasons: SeasonData[], teamIdsByName: Map<string, numbe
 
   console.log(
     `\n== --tune-decay == w_s(week) = w_spec(week × s); s = 1 is the shipped schedule.\n` +
-      `Spec knots ${JSON.stringify(DEFAULT_PARAMS.priorDecayKnots)}. Prior weight at weeks 2/4/6/8 by s:`,
+      `Spec knots ${JSON.stringify(SPEC_DECAY_KNOTS)}. Prior weight at weeks 2/4/6/8 by s:`,
   );
   for (const s of GRID) {
-    const p = { ...DEFAULT_PARAMS, priorDecayKnots: scaleDecayKnots(DEFAULT_PARAMS.priorDecayKnots, s) };
+    const p = { ...DEFAULT_PARAMS, priorDecayKnots: scaleDecayKnots(SPEC_DECAY_KNOTS, s) };
     console.log(
       `  s ${s.toFixed(2).padStart(4)}   ` + [2, 4, 6, 8].map((w) => priorWeight(w, p).toFixed(3)).join("  "),
     );
@@ -2106,7 +2113,7 @@ async function tuneDecay(seasons: SeasonData[], teamIdsByName: Map<string, numbe
       ? "→ The spec's schedule is the argmin. Record the row; the knots stay, now fitted rather than assumed."
       : gate1 && gate2 && gateH && gateM && gateL && gateC && recencyOk && (byEra.length < 2 || flip.agree)
         ? `→ All local gates pass. Shipping is an owner call: priorDecayKnots = ` +
-          `${JSON.stringify(scaleDecayKnots(DEFAULT_PARAMS.priorDecayKnots, best.s).map(([w, v]) => [Math.round(w * 100) / 100, v]))}` +
+          `${JSON.stringify(scaleDecayKnots(SPEC_DECAY_KNOTS, best.s).map(([w, v]) => [Math.round(w * 100) / 100, v]))}` +
           `, MODEL_VERSION bump, ratings replay — on this row plus Gate 3.`
         : "→ Rejected on the gates above. Record the row; the spec schedule stands.",
   );
@@ -2186,13 +2193,13 @@ async function tuneNoBlend(seasons: SeasonData[], teamIdsByName: Map<string, num
     all: replayWith({
       ...DEFAULT_PARAMS,
       kFactor: k,
-      ...(arm === "no-blend" ? { priorDecayKnots: NO_BLEND_KNOTS } : {}),
+      priorDecayKnots: arm === "no-blend" ? NO_BLEND_KNOTS : SPEC_DECAY_KNOTS,
     }),
   });
 
   console.log(
     `\n== --tune-no-blend (DECAY-2) == no-blend knots ${JSON.stringify(NO_BLEND_KNOTS)}: the rating is the\n` +
-      `prior-seeded Elo from week 1. Incumbent: knots ${JSON.stringify(DEFAULT_PARAMS.priorDecayKnots)}, K ${DEFAULT_PARAMS.kFactor}.\n` +
+      `prior-seeded Elo from week 1. Incumbent (2026.6.0): knots ${JSON.stringify(SPEC_DECAY_KNOTS)}, K ${PRE_DECAY2_K}.\n` +
       (useHoldout
         ? `Selection on FIT all-weeks NLL (${fitSeasons.join(", ")}); holdout ${holdSeasons.join(", ")}.`
         : `No pre-${HOLDOUT_FROM} scored seasons — selection on all scored seasons, Gate H n/a here.`),
@@ -2214,7 +2221,7 @@ async function tuneNoBlend(seasons: SeasonData[], teamIdsByName: Map<string, num
       );
     }
   }
-  const incumbent = rows.find((r) => r.arm === "blend" && r.k === DEFAULT_PARAMS.kFactor)!;
+  const incumbent = rows.find((r) => r.arm === "blend" && r.k === PRE_DECAY2_K)!;
   const noBlend = rows.filter((r) => r.arm === "no-blend");
   const best = noBlend.reduce((a, b) => (nll(inSet(b.all, fitSet)) < nll(inSet(a.all, fitSet)) ? b : a));
 

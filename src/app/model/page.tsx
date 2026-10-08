@@ -22,7 +22,8 @@ export const metadata = { title: "The Model" };
 // a broken table; update alongside docs/CHANGELOG.md.
 
 const PARAMS: Array<{ name: string; value: string; how: string }> = [
-  { name: "kFactor", value: "0.3", how: "Fitted, 2023–25 grid" },
+  { name: "kFactor", value: "0.35", how: "Refit 2026-10-08 with the prior blend removed (DECAY-2)" },
+  { name: "prior decay", value: "none after week 0", how: "The prior seeds the rating once; results take over from week 1 (DECAY-2)" },
   { name: "baseHfa", value: "3.0", how: "Fitted — was 2.3; the model was under-predicting home teams" },
   { name: "team HFA blend", value: "0.5, centered", how: "Mean pinned to baseHfa; per-team spread kept" },
   { name: "prior / talent weight", value: "0.70 / 0.30", how: "Fitted" },
@@ -40,6 +41,8 @@ const DECISIONS: Array<{ idea: string; verdict: "shipped" | "rejected"; number: 
   { idea: "Per-play (EPA) efficiency margin", verdict: "rejected", number: "0.010 MAE, NLL degraded" },
   { idea: "New-coach penalty", verdict: "rejected", number: "unconverged; prior already encodes it" },
   { idea: "Treat flagged edges as bets", verdict: "rejected", number: "b₁ = 0.035 (t=0.84); 49.2% ATS vs close" },
+  { idea: "Drop the double-counted prior blend, K 0.35", verdict: "shipped", number: "wks 1–8 holdout NLL 0.4540 → 0.4453" },
+  { idea: "Bet early when the model disagrees with the opener", verdict: "rejected", number: "2026: avg CLV vs opener −0.10, n = 363" },
 ];
 
 export default async function ModelPage() {

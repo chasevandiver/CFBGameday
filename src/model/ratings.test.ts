@@ -205,17 +205,29 @@ describe("in-season update", () => {
 });
 
 describe("prior decay", () => {
-  it("follows the spec knots and interpolates between them", () => {
-    expect(priorWeight(0)).toBe(1);
-    expect(priorWeight(4)).toBe(0.5);
-    expect(priorWeight(8)).toBeCloseTo(0.15);
-    expect(priorWeight(12)).toBe(0.05);
-    expect(priorWeight(14)).toBe(0.05); // beyond last knot stays flat
-    expect(priorWeight(2)).toBeCloseTo(0.75);
+  // The interpolation itself, on the Spec §2.2 knots — DEFAULT_PARAMS until
+  // 2026.7.0. The shipped default is no blend at all; see the next block.
+  const spec = {
+    ...DEFAULT_PARAMS,
+    priorDecayKnots: [[0, 1.0], [4, 0.5], [8, 0.15], [12, 0.05]] as Array<[number, number]>,
+  };
+  it("follows the knots it is given and interpolates between them", () => {
+    expect(priorWeight(0, spec)).toBe(1);
+    expect(priorWeight(4, spec)).toBe(0.5);
+    expect(priorWeight(8, spec)).toBeCloseTo(0.15);
+    expect(priorWeight(12, spec)).toBe(0.05);
+    expect(priorWeight(14, spec)).toBe(0.05); // beyond last knot stays flat
+    expect(priorWeight(2, spec)).toBeCloseTo(0.75);
   });
 
   it("blends prior and results by the week weight", () => {
-    expect(blendWithPrior(10, 0, 4)).toBeCloseTo(5);
+    expect(blendWithPrior(10, 0, 4, spec)).toBeCloseTo(5);
+  });
+
+  it("ships with no blend: the prior-seeded rating alone from week 1 (2026.7.0)", () => {
+    expect(priorWeight(0)).toBe(1);
+    for (const week of [1, 2, 4, 8, 12]) expect(priorWeight(week)).toBe(0);
+    expect(blendWithPrior(10, 3, 1)).toBe(3);
   });
 });
 
@@ -355,8 +367,8 @@ describe("updateSubRatings (spec §2.2 groundwork — display stays gated until 
     expect(upd.homeOffDelta).toBeGreaterThan(0);
     expect(upd.awayDefDelta).toBeCloseTo(-upd.homeOffDelta, 10);
     expect(upd.awayOffDelta).toBeCloseTo(0, 10);
-    // K·errHome/2 with K=0.3, err=10 → the off+def sum matches updateFromResult
-    expect(upd.homeOffDelta).toBeCloseTo((0.3 * 10) / 2, 10);
+    // K·errHome/2, err=10 → the off+def sum matches updateFromResult
+    expect(upd.homeOffDelta).toBeCloseTo((DEFAULT_PARAMS.kFactor * 10) / 2, 10);
   });
 
   it("caps blowout scoring errors at half the margin cap per side", () => {
@@ -368,8 +380,8 @@ describe("updateSubRatings (spec §2.2 groundwork — display stays gated until 
   it("off+def deltas per team sum to the overall margin update (invariant)", () => {
     const upd = updateSubRatings({ ...base, homePoints: 41.5, awayPoints: 19.5 });
     // margin error = errHome − errAway = 7 − (−3) = 10 → overall homeDelta = K·10/2
-    expect(upd.homeOffDelta + upd.homeDefDelta).toBeCloseTo((0.3 * 10) / 2, 10);
-    expect(upd.awayOffDelta + upd.awayDefDelta).toBeCloseTo(-(0.3 * 10) / 2, 10);
+    expect(upd.homeOffDelta + upd.homeDefDelta).toBeCloseTo((DEFAULT_PARAMS.kFactor * 10) / 2, 10);
+    expect(upd.awayOffDelta + upd.awayDefDelta).toBeCloseTo(-(DEFAULT_PARAMS.kFactor * 10) / 2, 10);
   });
 
   it("neutral sites drop the HFA split from expectations", () => {
@@ -391,8 +403,11 @@ describe("paramsForWeek (early-season uncertainty)", () => {
     }
   });
 
+  // Both on the spec knots: with the shipped no-blend schedule the prior's
+  // weight is 0 from week 1, so there is no decay curve for sigma to follow.
+  const specKnots: Array<[number, number]> = [[0, 1.0], [4, 0.5], [8, 0.15], [12, 0.05]];
   it("widens sigma most in week 0 and decays with the prior's weight", () => {
-    const p = { ...DEFAULT_PARAMS, priorSigmaExtra: 8 };
+    const p = { ...DEFAULT_PARAMS, priorSigmaExtra: 8, priorDecayKnots: specKnots };
     const wk0 = paramsForWeek(0, p);
     const wk4 = paramsForWeek(4, p);
     const wk12 = paramsForWeek(12, p);
@@ -406,7 +421,7 @@ describe("paramsForWeek (early-season uncertainty)", () => {
   });
 
   it("keeps the win-prob slope tied to sigma, so early probs are softer", () => {
-    const p = { ...DEFAULT_PARAMS, priorSigmaExtra: 8 };
+    const p = { ...DEFAULT_PARAMS, priorSigmaExtra: 8, priorDecayKnots: specKnots };
     const wk1 = paramsForWeek(1, p);
     expect(wk1.winProbSlope).toBeCloseTo(1.7 / wk1.marginSigma, 10);
 
