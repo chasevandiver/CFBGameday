@@ -69,7 +69,18 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
   const seasonId = Number(formData.get("season_id"));
   const gameIdRaw = String(formData.get("game_id") ?? "").trim();
   const sideRaw = String(formData.get("side") ?? "").trim();
-  const forRaw = String(formData.get("for_user") ?? "").trim();
+  /* LOGF-7: one entry can be several people's bet — "Hayden tailed Eric's
+     Colts +3" is the same row on two ledgers. Each `for_user` becomes its own
+     row; none at all is the caller, as it always was. */
+  const forIds = [
+    ...new Set(
+      formData
+        .getAll("for_user")
+        .map((v) => String(v).trim())
+        .filter((v) => v !== ""),
+    ),
+  ];
+  if (forIds.length > 10) return { ok: false, message: "Too many people on one bet" };
 
   if (!description) return { ok: false, message: "Describe the bet (e.g. “Michigan -3.5”)" };
   if (!Number.isFinite(units) || units <= 0) return { ok: false, message: "Units must be > 0" };
@@ -102,28 +113,137 @@ export async function logBet(formData: FormData): Promise<BetActionResult> {
   const teamSide =
     betType === "team_total" && ["home", "away"].includes(teamSideRaw) ? teamSideRaw : null;
 
-  const bettor = await resolveBettor(supabase, user.id, forRaw || null);
-  if ("refused" in bettor) return { ok: false, message: bettor.refused };
+  /* Every name is asked about before anything is written: one refusal stops
+     the whole entry, so a bet never lands on two of three ledgers. */
+  const bettors: Bettor[] = [];
+  for (const id of forIds.length > 0 ? forIds : [null]) {
+    const bettor = await resolveBettor(supabase, user.id, id);
+    if ("refused" in bettor) return { ok: false, message: bettor.refused };
+    bettors.push(bettor);
+  }
 
-  const { error } = await supabase.from("bets").insert({
-    season_id: gameSeasonId ?? seasonId,
-    user_id: bettor.userId,
-    logged_by: bettor.loggedBy,
-    game_id: gameId,
-    bet_type: betType,
-    description,
-    side,
-    team_side: teamSide,
-    line_taken: storedLine(betType, side, lineRaw === "" ? null : Number(lineRaw)),
-    odds,
-    units,
-    book: book || null,
-    confidence,
-  });
+  const { error } = await supabase.from("bets").insert(
+    bettors.map((bettor) => ({
+      season_id: gameSeasonId ?? seasonId,
+      user_id: bettor.userId,
+      logged_by: bettor.loggedBy,
+      game_id: gameId,
+      bet_type: betType,
+      description,
+      side,
+      team_side: teamSide,
+      line_taken: storedLine(betType, side, lineRaw === "" ? null : Number(lineRaw)),
+      odds,
+      units,
+      book: book || null,
+      confidence,
+    })),
+  );
 
   if (error) return { ok: false, message: error.message };
   revalidatePath("/ledger");
-  revalidateProxy(bettor);
+  for (const bettor of bettors) revalidateProxy(bettor);
+  return { ok: true };
+}
+
+/**
+ * Put an existing bet on somebody else's ledger too (LOGF-7).
+ *
+ * The week's "who bet what" page shows every member's bets; the most common
+ * thing the admin does there is notice that Hayden tailed Eric's Colts +3 and
+ * the tail never got logged. This copies the row — same game, market, side,
+ * stored line, price and stake — onto each named ledger. The same grant as
+ * `logBet` decides who may be named (yourself always; another member only for
+ * an admin of their betting group), asked before anything is written.
+ *
+ * A copy is a new bet in every respect: stamped `now()` by the insert
+ * sanitizer, so it lands after the source and reads as the tail it is; its
+ * confidence the neutral rung, since conviction is the bettor's, not the
+ * source's; graded by the same job. A target already holding the same side of
+ * the same market on the same game is refused — the double tap on a phone is
+ * far likelier than a deliberate second unit on an identical row, and the
+ * form is still there for the rare real one.
+ */
+export async function copyBet(betId: number, forUserIds: string[]): Promise<BetActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Sign in to log bets" };
+  if (!Number.isInteger(betId)) return { ok: false, message: "Bad bet" };
+  const targets = [...new Set(forUserIds)];
+  if (targets.length === 0) return { ok: false, message: "Copy it to whom?" };
+  if (targets.length > 10) return { ok: false, message: "Too many people at once" };
+
+  const { data: src } = await supabase
+    .from("bets")
+    .select("*")
+    .eq("id", betId)
+    .maybeSingle();
+  if (!src) return { ok: false, message: "Bad bet" };
+  const source = src as {
+    season_id: number;
+    game_id: number | null;
+    bet_type: string;
+    description: string;
+    side: string | null;
+    team_side: string | null;
+    line_taken: number | string | null;
+    odds: number;
+    units: number | string;
+    voided_at: string | null;
+  };
+  if (source.voided_at) return { ok: false, message: "That bet was voided" };
+  if (source.game_id === null) {
+    return { ok: false, message: "Only a bet on a game can be copied — log a future by hand" };
+  }
+
+  const bettors: Bettor[] = [];
+  for (const id of targets) {
+    const bettor = await resolveBettor(supabase, user.id, id);
+    if ("refused" in bettor) return { ok: false, message: bettor.refused };
+    bettors.push(bettor);
+  }
+
+  const { data: held } = await supabase
+    .from("bets")
+    .select("user_id, bet_type, side, voided_at")
+    .eq("game_id", source.game_id)
+    .in(
+      "user_id",
+      bettors.map((b) => b.userId),
+    );
+  const already = ((held ?? []) as Array<{
+    user_id: string;
+    bet_type: string;
+    side: string | null;
+    voided_at: string | null | undefined;
+  }>).some(
+    (h) => !h.voided_at && h.bet_type === source.bet_type && h.side === source.side,
+  );
+  if (already) return { ok: false, message: "Already on their ledger" };
+
+  const { error } = await supabase.from("bets").insert(
+    bettors.map((bettor) => ({
+      season_id: source.season_id,
+      user_id: bettor.userId,
+      logged_by: bettor.loggedBy,
+      game_id: source.game_id,
+      bet_type: source.bet_type,
+      description: source.description,
+      side: source.side,
+      team_side: source.team_side,
+      // Already stored home-perspective; copied as stored, not re-flipped.
+      line_taken: source.line_taken === null ? null : Number(source.line_taken),
+      odds: source.odds,
+      units: Number(source.units),
+      confidence: "bet",
+    })),
+  );
+
+  if (error) return { ok: false, message: error.message };
+  revalidatePath("/ledger");
+  revalidatePath("/groups", "layout");
   return { ok: true };
 }
 
@@ -258,7 +378,10 @@ export async function voidBet(
 
   if (error) return { ok: false, message: error.message };
   revalidatePath("/ledger");
-  revalidateProxy(bettor);
+  /* Every void, not only a proxy one (LOGF-7): your own bets are on the
+     group's sheet and its who-bet-what page too, and a void made from there
+     has to clear there. */
+  revalidatePath("/groups", "layout");
   // The slate cards and the game page both show logged bets now, so a void has
   // to clear there too — otherwise the chip lingers until the next poll heals it.
   revalidatePath("/slate");

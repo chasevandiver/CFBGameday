@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { joinSigned, lineSource, prefillFor, splitSigned, NO_PREFILL } from "./bet-form-prefill";
+import { autoDescription, joinSigned, lineSource, prefillFor, splitSigned, NO_PREFILL } from "./bet-form-prefill";
 
 const lines = { spread: -6.5, total: 52.5, mlHome: -260, mlAway: 210, status: "final" };
 
@@ -62,5 +62,49 @@ describe("the two halves of a signed number", () => {
     expect(joinSigned("-", "6.5")).toBe("-6.5");
     expect(Number(joinSigned("+", "6.5"))).toBe(6.5);
     expect(joinSigned("+", "  ")).toBe("");
+  });
+});
+
+describe("autoDescription (LOGF-7)", () => {
+  const game = { homeAbbr: "GB", awayAbbr: "CHI", homeName: "Green Bay Packers", awayName: "Chicago Bears" };
+  const fill = (lineSign: "-" | "+", lineMag: string, oddsSign: "-" | "+" = "-", oddsMag = "110") => ({
+    lineSign,
+    lineMag,
+    oddsSign,
+    oddsMag,
+  });
+
+  it("a spread reads the way the slate's slip writes it", () => {
+    expect(autoDescription(game, "spread", "home", fill("+", "1"))).toBe("Green Bay Packers +1 (CHI @ GB)");
+    expect(autoDescription(game, "spread", "away", fill("-", "1.5"))).toBe("Chicago Bears -1.5 (CHI @ GB)");
+  });
+
+  it("a pick'em says PK, and no number yet leaves the number off", () => {
+    expect(autoDescription(game, "spread", "home", fill("-", "0"))).toBe("Green Bay Packers PK (CHI @ GB)");
+    expect(autoDescription(game, "spread", "home", fill("-", ""))).toBe("Green Bay Packers (CHI @ GB)");
+  });
+
+  it("totals, moneylines and first halves", () => {
+    expect(autoDescription(game, "total", "under", fill("+", "44.5"))).toBe("Under 44.5 (CHI @ GB)");
+    expect(autoDescription(game, "moneyline", "away", fill("-", "", "+", "145"))).toBe(
+      "Chicago Bears ML +145 (CHI @ GB)",
+    );
+    expect(autoDescription(game, "first_half", "home", fill("-", "3.5"))).toBe(
+      "Green Bay Packers 1H -3.5 (CHI @ GB)",
+    );
+  });
+
+  it("falls back to abbreviations without names", () => {
+    expect(autoDescription({ homeAbbr: "GB", awayAbbr: "CHI" }, "spread", "home", fill("+", "1"))).toBe(
+      "GB +1 (CHI @ GB)",
+    );
+  });
+
+  it("says nothing until the selection says enough", () => {
+    expect(autoDescription(null, "spread", "home", fill("+", "1"))).toBeNull();
+    expect(autoDescription(game, "spread", "", fill("+", "1"))).toBeNull();
+    // whose team total is a separate question the person answers in the text
+    expect(autoDescription(game, "team_total", "over", fill("+", "24.5"))).toBeNull();
+    expect(autoDescription(game, "future", "", fill("+", ""))).toBeNull();
   });
 });

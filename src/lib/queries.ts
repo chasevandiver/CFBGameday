@@ -940,9 +940,15 @@ export async function fetchCurrentSeasonWeek(
 }
 
 /**
- * Games for the ledger's bet form: a rolling now−3d…now+9d window rather than
+ * Games for the ledger's bet form: a rolling now−8d…now+9d window rather than
  * "this week", so a bet can still be attached to last night's game after the
  * current-week pointer rolls over (audit #18).
+ *
+ * Eight days back, not three (LOGF-7): the form is how an admin logs a
+ * member's texted bets, and that happens "after the week is done" — a
+ * Wednesday catch-up on a Thursday-to-Monday week reaches back seven days, and
+ * at three the Saturday games had already left the list by Tuesday night. The
+ * form's search box and day groups are what keep the longer list usable.
  */
 export async function fetchBetFormGames(
   supabase: SupabaseClient,
@@ -950,6 +956,7 @@ export async function fetchBetFormGames(
 ): Promise<{
   data: Array<{
     id: number;
+    season_id: number;
     start_ts: string | null;
     home_team_id: number;
     away_team_id: number;
@@ -959,10 +966,10 @@ export async function fetchBetFormGames(
   const now = Date.now();
   const { data } = await supabase
     .from("games")
-    .select("id, start_ts, home_team_id, away_team_id, status")
+    .select("id, season_id, start_ts, home_team_id, away_team_id, status")
     // both leagues: the ledger is one book, and this week has games in each
     .in("season_id", seasonIdsForYear(seasonYearOf(seasonId)))
-    .gte("start_ts", new Date(now - 3 * 24 * 3600 * 1000).toISOString())
+    .gte("start_ts", new Date(now - 8 * 24 * 3600 * 1000).toISOString())
     .lte("start_ts", new Date(now + 9 * 24 * 3600 * 1000).toISOString())
     .order("start_ts", { ascending: true });
   return { data: data ?? [] };

@@ -6494,6 +6494,22 @@ changelog's Sep 4 entry.
       `lib/bet-form-prefill.ts` (8 tests) and `fetchBetFormOptions` reads
       the consensus in one query beside the teams; 7 jsdom cases on the
       form. Applies to the ledger's own form too — same component.
+- [x] **LOGF-7** Who bet what, and logging after the week. Owner report
+      2026-10-12: "No idea if Hayden's Green Bay +1 against the bears was
+      logged, if Hayden had tailed Erics the colts +3 … I also need an
+      easier way to add bets after kickoff as Hayden or Eric." Checked live
+      first: none of the three was logged. **Shipped 2026-10-12:**
+      `/groups/[slug]/bets` lists every member's bets for a Tuesday-to-Monday
+      week, both leagues, with an empty section for a member with none; under
+      each bet "+ name" copies it onto another member's ledger (`copyBet`,
+      the 0083 grant, duplicates refused) and "+ Me" tails it yourself. The
+      acting form gains a "Who" row so one entry logs for several members,
+      writes its own description from game, side and line, and lists games
+      eight days back (was three) in day/league groups with a team search.
+      Linked from the group home and from each week in Week by week. 29 new
+      tests (`actions/bets.test.ts`, `lib/week-bets.test.ts`,
+      `lib/bet-form-prefill.test.ts`, `components/BetForm.test.tsx`).
+      Not seen rendered (needs a signed-in member of a private group).
 - [x] **GRP-12** The betting group ran on the CFB calendar alone. Owner
       report 2026-09-10: "I think the betting groups are for cfb only, we need
       to make it to be nfl and cfb." Correct, and GRP-6 (Aug 22) had already
@@ -6762,6 +6778,13 @@ here so they aren't rediscovered as bugs.
   text thread says when. Tail/fade credit on the sheet follows `placed_at`, so
   a late-logged bet reads as tailing whoever logged first. **Recorded rather
   than queued.**
+- **A bet logged for two people at once credits the first one ticked**
+  (LOGF-7, 2026-10-12). One entry for several members is one insert, so the
+  rows share `placed_at` and the sheet's tiebreak is the row id — the member
+  ticked first. When neither held the bet before, that member reads as the
+  source and the other as tailing them. When the source's bet is already
+  logged, use "+ name" on the who-bet-what page instead: the copy lands
+  later and attributes correctly. **Recorded rather than queued.**
 - **The betting home's week jump drops `?for=`** (LOGF-2, 2026-09-04). Same
   shape as the survivor one below: `WeekJump` builds its links from a base
   path, and threading the member through it touches every group surface. The

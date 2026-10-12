@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { logBet } from "../app/actions/bets";
 import {
+  autoDescription,
   joinSigned,
   prefillFor,
   NO_PREFILL,
@@ -22,11 +23,37 @@ import {
 export interface BetFormGame {
   id: number;
   label: string;
+  /** "Sun Oct 11 · NFL" — the `<optgroup>` it files under. Absent: one flat list. */
+  group?: string;
   homeAbbr: string;
   awayAbbr: string;
+  /** Full names, for the search box and the written description. */
+  homeName?: string;
+  awayName?: string;
   /** The consensus the slate shows for this game, to suggest a number from. */
   lines?: BetFormLines;
 }
+
+/** One person the form can log for (LOGF-7). The caller's own id means "me". */
+export interface BetFormBettor {
+  id: string;
+  name: string;
+}
+
+/** Does a game match what was typed in the search box? Every word must hit. */
+export function gameMatches(g: BetFormGame, query: string): boolean {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return true;
+  const hay = [g.label, g.group, g.homeAbbr, g.awayAbbr, g.homeName, g.awayName]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return words.every((w) => hay.includes(w));
+}
+
+/** "Hayden", "Hayden and Eric", "Hayden, Eric and Chase". */
+const nameList = (names: string[]): string =>
+  names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 
 /**
  * Manual ledger entry with real labels — the old form was placeholder-only
@@ -36,11 +63,22 @@ export function BetForm({
   seasonId,
   games = [],
   forUserId = null,
+  bettors = [],
+  defaultBettorIds = [],
 }: {
   seasonId: number;
   games?: BetFormGame[];
   /** 0083: log as this member of a betting group you run, not as yourself. */
   forUserId?: string | null;
+  /**
+   * LOGF-7: everyone this form may log for — a betting-group admin and the
+   * members they run. With more than one, the form asks "who" and writes a
+   * row for each person ticked, so a bet Hayden tailed off Eric is one entry,
+   * not the same form filled twice. Each id is re-checked in the action.
+   */
+  bettors?: BetFormBettor[];
+  /** Who is ticked when the form opens, and again after each bet is logged. */
+  defaultBettorIds?: string[];
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
@@ -54,8 +92,31 @@ export function BetForm({
      types the number. Joined back together for the action, which reads them
      exactly as it always did. */
   const [fill, setFill] = useState<Prefill>(NO_PREFILL);
+  const [query, setQuery] = useState("");
+  const [who, setWho] = useState<string[]>(defaultBettorIds);
+  const choosing = bettors.length > 1;
 
   const game = games.find((g) => String(g.id) === gameId) ?? null;
+  const auto = autoDescription(game, betType, side, fill);
+
+  /* The list is eight days back and nine forward across both leagues — well
+     over a hundred games — so it is filed by day and league, and the search box
+     narrows it. The chosen game always stays in the list, or a narrowing
+     search would silently change the select's value under the person. */
+  const grouped = useMemo(() => {
+    const shown = games.filter((g) => String(g.id) === gameId || gameMatches(g, query));
+    const order: string[] = [];
+    const byGroup = new Map<string, BetFormGame[]>();
+    for (const g of shown) {
+      const key = g.group ?? "";
+      if (!byGroup.has(key)) {
+        byGroup.set(key, []);
+        order.push(key);
+      }
+      byGroup.get(key)!.push(g);
+    }
+    return { count: shown.length, groups: order.map((k) => ({ key: k, games: byGroup.get(k)! })) };
+  }, [games, gameId, query]);
 
   /* Re-suggest whenever the selection changes: picking a game, a market or a
      side is the moment the number is wanted, and a hand-edited number survives
@@ -75,6 +136,15 @@ export function BetForm({
     edit({ [which]: fill[which] === "-" ? "+" : "-" } as Partial<Prefill>);
 
   function submit(formData: FormData) {
+    // Typed wins; otherwise the form writes what it already knows (LOGF-7).
+    if (String(formData.get("description") ?? "").trim() === "" && auto) {
+      formData.set("description", auto);
+    }
+    if (choosing && who.length === 0) {
+      setMessage("Pick who this bet is for");
+      return;
+    }
+    const names = bettors.filter((b) => who.includes(b.id)).map((b) => b.name.split(" ")[0]);
     startTransition(async () => {
       setMessage(null);
       const res = await logBet(formData);
@@ -85,7 +155,12 @@ export function BetForm({
         setGameId("");
         setSide("");
         setFill(NO_PREFILL);
-        setMessage("Logged ✓");
+        setQuery("");
+        /* Back to whoever the form opened on: the next text in the thread is
+           usually the same person's, and a tail ticked for one bet should not
+           ride along onto the next one unasked. */
+        setWho(defaultBettorIds);
+        setMessage(choosing ? `Logged for ${nameList(names)} ✓` : "Logged ✓");
       }
     });
   }
@@ -108,35 +183,94 @@ export function BetForm({
   return (
     <form ref={formRef} action={submit} className="flex flex-col gap-3">
       <input type="hidden" name="season_id" value={seasonId} />
-      {forUserId && <input type="hidden" name="for_user" value={forUserId} />}
+      {choosing
+        ? who.map((id) => <input key={id} type="hidden" name="for_user" value={id} />)
+        : forUserId && <input type="hidden" name="for_user" value={forUserId} />}
 
-      <Field label="Bet" htmlFor="bet-description">
-        <input
-          id="bet-description"
-          name="description"
-          required
-          placeholder="Michigan -3.5 vs Ohio State"
-          className={input}
-        />
-      </Field>
+      {choosing && (
+        /* LOGF-7: who this bet is for. Several can be ticked — a tail is the
+           same bet on two ledgers — and each becomes its own row, signed by
+           the admin who typed it. Toggle buttons rather than checkboxes so
+           every target is 44px on a phone. */
+        <fieldset className="flex flex-col gap-1">
+          <legend className="mb-1 text-[10.5px] font-semibold uppercase tracking-wider text-chalk/55">
+            Who
+            <span className="ml-1.5 font-normal normal-case tracking-normal text-chalk/40">
+              tick everyone on it
+            </span>
+          </legend>
+          <div className="flex flex-wrap gap-1.5">
+            {bettors.map((b) => {
+              const on = who.includes(b.id);
+              return (
+                <button
+                  key={b.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() =>
+                    setWho((cur) => (on ? cur.filter((x) => x !== b.id) : [...cur, b.id]))
+                  }
+                  className={`stat flex min-h-11 items-center rounded-full border px-3 text-xs font-semibold ${
+                    on
+                      ? "border-accent bg-accent/15 text-accent"
+                      : "border-chalk/20 text-dim hover:border-chalk/50"
+                  }`}
+                >
+                  {on ? "✓ " : ""}
+                  {b.name}
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
+      )}
 
       {games.length > 0 && (
-        <Field label="Game" htmlFor="bet-game" hint="linking enables auto-grading + live tracking">
-          <select
-            id="bet-game"
-            name="game_id"
-            value={gameId}
-            onChange={(e) => reselect({ gameId: e.target.value })}
-            className={input}
-          >
-            <option value="">No game — future / other</option>
-            {games.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.label}
+        <>
+          <Field label="Find game" htmlFor="bet-game-search" hint="team, e.g. packers or gb">
+            <input
+              id="bet-game-search"
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search teams"
+              autoComplete="off"
+              className={input}
+            />
+          </Field>
+          <Field label="Game" htmlFor="bet-game" hint="linking enables auto-grading + live tracking">
+            <select
+              id="bet-game"
+              name="game_id"
+              value={gameId}
+              onChange={(e) => reselect({ gameId: e.target.value })}
+              className={input}
+            >
+              <option value="">
+                {query.trim() === ""
+                  ? "No game — future / other"
+                  : `${grouped.count} ${grouped.count === 1 ? "match" : "matches"} — choose one`}
               </option>
-            ))}
-          </select>
-        </Field>
+              {grouped.groups.map(({ key, games: list }) =>
+                key === "" ? (
+                  list.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.label}
+                    </option>
+                  ))
+                ) : (
+                  <optgroup key={key} label={key}>
+                    {list.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ),
+              )}
+            </select>
+          </Field>
+        </>
       )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -264,6 +398,20 @@ export function BetForm({
           <input id="bet-book" name="book" placeholder="DK, FD…" className={input} />
         </Field>
       </div>
+
+      {/* After the numbers, not before them (LOGF-7): with a game and a side
+          chosen the form writes this itself, and the placeholder shows exactly
+          what it will write. Typed text still wins — a parlay leg, a prop, a
+          future has no game to describe it from. */}
+      <Field label="Bet" htmlFor="bet-description" hint={auto ? "optional — filled in for you" : undefined}>
+        <input
+          id="bet-description"
+          name="description"
+          required={!auto}
+          placeholder={auto ?? "Michigan -3.5 vs Ohio State"}
+          className={input}
+        />
+      </Field>
 
       <button
         type="submit"

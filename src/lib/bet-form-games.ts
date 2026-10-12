@@ -11,6 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BetFormGame } from "../components/BetForm";
 import type { LineConsensusRow, TeamRow } from "./db-types";
 import { kickParts, tzLabel } from "./kick";
+import { sportOfSeasonId } from "./league";
 import { fetchBetFormGames } from "./queries";
 
 export const abbrOf = (t: TeamRow | undefined): string =>
@@ -24,6 +25,7 @@ export async function fetchBetFormOptions(
   const { data: weekGames } = await fetchBetFormGames(supabase, seasonId);
   const gameRows = (weekGames ?? []) as Array<{
     id: number;
+    season_id: number;
     start_ts: string | null;
     home_team_id: number;
     away_team_id: number;
@@ -48,11 +50,22 @@ export async function fetchBetFormOptions(
     const awayAbbr = abbrOf(teamById.get(g.away_team_id));
     const kick = g.start_ts ? kickParts(g.start_ts, tz) : null;
     const c = linesByGame.get(g.id);
+    /* LOGF-7: the window is eight days back now, so "Sun" alone names two
+       Sundays. The day and league become the option group the select files
+       the game under; the option itself keeps the matchup and the time. */
+    const date = g.start_ts
+      ? new Intl.DateTimeFormat("en-US", { timeZone: tz, month: "short", day: "numeric" }).format(
+          new Date(g.start_ts),
+        )
+      : null;
     return {
       id: g.id,
-      label: `${awayAbbr} @ ${homeAbbr}${kick ? ` · ${kick.day} ${kick.time} ${tzLabel(tz)}` : ""}`,
+      label: `${awayAbbr} @ ${homeAbbr}${kick ? ` · ${kick.time} ${tzLabel(tz)}` : ""}`,
+      group: `${kick && date ? `${kick.day} ${date}` : "TBD"} · ${sportOfSeasonId(g.season_id).toUpperCase()}`,
       homeAbbr,
       awayAbbr,
+      homeName: teamById.get(g.home_team_id)?.school ?? homeAbbr,
+      awayName: teamById.get(g.away_team_id)?.school ?? awayAbbr,
       lines: {
         spread: c?.spread === undefined || c.spread === null ? null : Number(c.spread),
         total: c?.total === undefined || c.total === null ? null : Number(c.total),
