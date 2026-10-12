@@ -1,4 +1,4 @@
-import { PenLine, Ticket, Users } from "lucide-react";
+import { ListChecks, PenLine, Ticket, Users } from "lucide-react";
 import Link from "next/link";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BetForm } from "../../../components/BetForm";
@@ -392,8 +392,9 @@ export async function BettingHome({
             You&rsquo;re logging bets for <span className="font-semibold">{actingFor.name}</span>
           </h2>
           <p className="mt-1 text-sm text-dim">
-            Everything logged here lands on their ledger, marked as logged by you. Tap an odds cell
-            on the slate to do it from the sheet, or type it in below.
+            Everything logged here lands on their ledger, marked as logged by you. Already kicked
+            off? Use the form below — it keeps every game from the last eight days. Tick more than
+            one name to log a tail for everyone on it at once.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Link
@@ -406,9 +407,16 @@ export async function BettingHome({
           </div>
           <div className="mt-4">
             <BetForm
+              /* Keyed on the member so switching chips resets who is ticked. */
+              key={actingFor.userId}
               seasonId={seasonId}
               games={formOptions?.games ?? []}
               forUserId={actingFor.userId}
+              bettors={[
+                { id: userId!, name: "Me" },
+                ...others.map((m) => ({ id: m.userId, name: m.name })),
+              ]}
+              defaultBettorIds={[actingFor.userId]}
             />
           </div>
           {theirOpen.length > 0 && (
@@ -446,6 +454,14 @@ export async function BettingHome({
           className="stat inline-flex min-h-11 items-center rounded-lg border border-chalk/20 px-3.5 text-sm text-chalk hover:border-chalk/50"
         >
           My ledger
+        </Link>
+        {/* LOGF-7: everybody's bets for a week, person by person, both leagues. */}
+        <Link
+          href={`/groups/${group.slug}/bets`}
+          className="stat inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-chalk/20 px-3.5 text-sm text-chalk hover:border-chalk/50"
+        >
+          <ListChecks size={14} aria-hidden />
+          Who bet what
         </Link>
         <WeekJump
           base={`/groups/${group.slug}`}

@@ -166,6 +166,17 @@ export function GroupWeekRecords({
                 <MemberRows members={w.members} slug={slug} />
               </div>
 
+              {/* LOGF-7: the records say who won the week; this says what they
+                  actually bet — and makes a bet that never got logged visible. */}
+              {slug && (
+                <Link
+                  href={`/groups/${slug}/bets?wk=${w.key}`}
+                  className="stat block border-t border-chalk/8 px-3.5 py-2.5 text-[11px] text-accent underline-offset-2 hover:underline"
+                >
+                  Every bet this week, by person →
+                </Link>
+              )}
+
               {/* The day cut, folded: a week is the question, a day is the
                   follow-up, and five day tables open by default would bury the
                   week they belong to. It opens itself on the day something is

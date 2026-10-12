@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { logBet } from "../app/actions/bets";
 import { BetForm, type BetFormGame } from "./BetForm";
 
 vi.mock("../app/actions/bets", () => ({
@@ -99,5 +100,94 @@ describe("BetForm suggestions (0083 follow-up)", () => {
     fireEvent.change(screen.getByLabelText(/^Side/), { target: { value: "home" } });
     expect(hidden("line_taken")).toBe("");
     expect(hidden("odds")).toBe("-110");
+  });
+});
+
+describe("BetForm for a betting-group admin (LOGF-7)", () => {
+  const bettors = [
+    { id: "me", name: "Me" },
+    { id: "hayden", name: "hayden.vinz" },
+    { id: "eric", name: "ericjamesglenn" },
+  ];
+  const forUsers = () =>
+    [...document.querySelectorAll('input[type="hidden"][name="for_user"]')].map(
+      (el) => (el as HTMLInputElement).value,
+    );
+
+  it("opens on the member chosen, and a tail is one more tap", () => {
+    render(<BetForm seasonId={2026} games={games} bettors={bettors} defaultBettorIds={["hayden"]} />);
+    expect(forUsers()).toEqual(["hayden"]);
+    fireEvent.click(screen.getByRole("button", { name: /ericjamesglenn/ }));
+    expect(forUsers()).toEqual(["hayden", "eric"]);
+    fireEvent.click(screen.getByRole("button", { name: /hayden\.vinz/ }));
+    expect(forUsers()).toEqual(["eric"]);
+  });
+
+  it("without a roster there is no who-picker and the single member still rides along", () => {
+    render(<BetForm seasonId={2026} games={games} forUserId="hayden" />);
+    expect(screen.queryByText("Who")).toBeNull();
+    expect(forUsers()).toEqual(["hayden"]);
+  });
+
+  it("the description writes itself from the game, side and number", () => {
+    render(
+      <BetForm
+        seasonId={2026}
+        games={[{ ...games[0], homeName: "Alabama", awayName: "Georgia" }]}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/^Game/), { target: { value: "401" } });
+    fireEvent.change(screen.getByLabelText(/^Side/), { target: { value: "away" } });
+    const desc = screen.getByLabelText(/^Bet/) as HTMLInputElement;
+    expect(desc.placeholder).toBe("Georgia +6.5 (UGA @ BAMA)");
+    expect(desc.required).toBe(false);
+  });
+
+  it("an empty description is sent as the written one, for everyone ticked", async () => {
+    render(
+      <BetForm
+        seasonId={2026}
+        games={[{ ...games[0], homeName: "Alabama", awayName: "Georgia" }]}
+        bettors={bettors}
+        defaultBettorIds={["hayden"]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /ericjamesglenn/ }));
+    fireEvent.change(screen.getByLabelText(/^Game/), { target: { value: "401" } });
+    fireEvent.change(screen.getByLabelText(/^Side/), { target: { value: "away" } });
+    fireEvent.change(screen.getByLabelText(/^Units/), { target: { value: "1" } });
+    fireEvent.submit(screen.getByRole("button", { name: "Log bet" }).closest("form")!);
+    await waitFor(() => expect(logBet).toHaveBeenCalled());
+    const fd = vi.mocked(logBet).mock.calls.at(-1)![0] as FormData;
+    expect(fd.get("description")).toBe("Georgia +6.5 (UGA @ BAMA)");
+    expect(fd.getAll("for_user")).toEqual(["hayden", "eric"]);
+    expect(await screen.findByText("Logged for hayden.vinz and ericjamesglenn ✓")).toBeTruthy();
+  });
+
+  it("with nothing to describe it from, the description is still required", () => {
+    render(<BetForm seasonId={2026} games={games} />);
+    expect((screen.getByLabelText(/^Bet/) as HTMLInputElement).required).toBe(true);
+  });
+
+  it("the search box narrows the game list by team, and files games by day", () => {
+    render(
+      <BetForm
+        seasonId={2026}
+        games={[
+          { ...games[0], group: "Sat Oct 10 · CFB", homeName: "Alabama", awayName: "Georgia" },
+          { ...games[1], group: "Sat Oct 10 · CFB", homeName: "Texas", awayName: "Oklahoma" },
+        ]}
+      />,
+    );
+    const options = () =>
+      [...(screen.getByLabelText(/^Game/) as HTMLSelectElement).querySelectorAll("option")]
+        .map((o) => o.value)
+        .filter(Boolean);
+    expect(options()).toEqual(["401", "402"]);
+    expect(document.querySelector('optgroup[label="Sat Oct 10 · CFB"]')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/^Find game/), { target: { value: "texas" } });
+    expect(options()).toEqual(["402"]);
+    fireEvent.change(screen.getByLabelText(/^Find game/), { target: { value: "uga bama" } });
+    expect(options()).toEqual(["401"]);
   });
 });

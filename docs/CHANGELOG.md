@@ -234,6 +234,64 @@ shipping it.
 
 ## Log
 
+### Oct 12 — LOGF-7: who bet what, and logging for a member after the week
+
+Owner, the Monday after NFL week 5: "I need an easier way to view what my
+friends Eric and Hayden have bet on after the week is done. No idea if
+Hayden's Green Bay +1 against the Bears was logged, if Hayden had tailed
+Eric's Colts +3 versus the Steelers bet or if I had logged Hayden's Ravens +3
+against the Falcons bet. I also need an easier way to add bets after kickoff
+as Hayden or Eric."
+
+**What the data said first.** Read live before building anything: none of
+the three was logged — the only Degens row on IND @ PIT, CHI @ GB and
+BAL @ ATL was Chase's own Bears -1.5. LOGF-2 was not the problem: 150 of
+Eric's and Hayden's 153 bets this season carry Chase's byline. The two gaps
+were that no screen answered "what did *this person* bet *this week*" — the
+sheet is one league's week by game, the week-by-week section is records, a
+member page is the whole season — and that the form a late bet has to go
+through dropped games after three days and asked for the bet twice (typed,
+then picked).
+
+**What shipped.**
+- **`/groups/[slug]/bets` — Who bet what.** One section per member for a
+  Tuesday-to-Monday week (the same bucket as the week-by-week section,
+  `?wk=<Tuesday>`), both leagues, with the score, tail/fade attribution from
+  the sheet's own classification, and the byline. A member with nothing gets
+  an empty section that says so, with "Log one for Hayden" for the admin. Under
+  each bet, "+ name" for every member who does not already hold it — the
+  admin's way to log a tail that was texted but never typed — and "+ Me" for
+  anyone. Defaults to this week, or last week on a quiet Tuesday. Linked
+  from the group home and from every week in Week by week.
+- **`copyBet`.** Same game, market, side, stored line, price and stake onto
+  each named ledger, through the same `can_log_bet_for` grant as `logBet`.
+  Confidence resets to the neutral rung; a target already holding that side
+  of that market is refused (the double tap). Stamped `now()` like any
+  insert, so the copy reads as the tail it is.
+- **The form logs for several people.** For an admin acting for a member, a
+  "Who" row (Me + every other member, the acting one ticked). `logBet`
+  writes one row per name, asks the grant for every name before writing
+  anything, and refuses the whole entry on one "no".
+- **The description writes itself** (`autoDescription`), in the slip's
+  spelling — "Green Bay Packers +1 (CHI @ GB)" — once game and side are
+  chosen. Moved below the numbers; typed text still wins; still required
+  where there is nothing to describe it from (no game, team totals, futures).
+- **The game list reaches eight days back, not three**, filed into day +
+  league `<optgroup>`s ("Sun Oct 11 · NFL") with a team search box above it.
+  Applies to the ledger's own form too — same component.
+- `voidBet` now refreshes the group pages on every void, not only a proxy
+  one, so a void made on the new page clears there.
+
+**Deliberately not done.** No backdated `placed_at` — still STATUS §6's
+residual. No database change: copy and multi-log use the 0083 grant as is.
+
+**Verified.** Vitest **2,210 across 149 files** (29 new: 8 on the action,
+10 pure for the week choice and copy targets, 5 on the description, 6 jsdom
+on the form — the submit case mutation-checked failing with the auto fill
+removed), typecheck, lint (two pre-existing warnings in untouched files) and
+`next build` green. **Not seen rendered**: the page needs a signed-in member
+of a private group, and this session has neither.
+
 ### Oct 8 — DECAY-2: dropping the blend passes every registered gate
 
 `--tune-no-blend`, rule committed before the run (29819b3). The no-blend arm

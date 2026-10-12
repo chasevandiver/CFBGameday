@@ -83,3 +83,49 @@ export function prefillFor(lines: BetFormLines | null, betType: string, side: st
   // grader captures no closing line for these either (jobs-core).
   return NO_PREFILL;
 }
+
+/** What `autoDescription` needs to know about the game. */
+export interface DescribedGame {
+  homeAbbr: string;
+  awayAbbr: string;
+  /** Full names when the form has them; the abbreviation stands in otherwise. */
+  homeName?: string;
+  awayName?: string;
+}
+
+/**
+ * The ledger description the form writes when nobody typed one (LOGF-7).
+ *
+ * The form already knows the game, the market, the side and the number, so
+ * asking for "Green Bay Packers +1" in a text box as well was asking for the
+ * bet twice. Spelled the way the slate's slip spells it — `SheetLine` writes
+ * "Chicago Bears -1.5 (CHI @ GB)" — so a member's ledger reads the same
+ * whichever way a row arrived. Null when the selection does not yet say
+ * enough (no game, no side), and for the markets whose subject is not the
+ * side: a team total needs to know whose total, which the form asks
+ * separately, so the person types that one.
+ */
+export function autoDescription(
+  game: DescribedGame | null,
+  betType: string,
+  side: string,
+  fill: Pick<Prefill, "lineSign" | "lineMag" | "oddsSign" | "oddsMag">,
+): string | null {
+  if (!game) return null;
+  const matchup = `(${game.awayAbbr} @ ${game.homeAbbr})`;
+  const team =
+    side === "home" ? (game.homeName ?? game.homeAbbr) : side === "away" ? (game.awayName ?? game.awayAbbr) : null;
+  const line = joinSigned(fill.lineSign, fill.lineMag);
+  const spreadText = (l: string) => (l === "" ? "" : Number(l) === 0 ? " PK" : ` ${l}`);
+  if (betType === "spread" && team) return `${team}${spreadText(line)} ${matchup}`;
+  if (betType === "first_half" && team) return `${team} 1H${spreadText(line)} ${matchup}`;
+  if (betType === "moneyline" && team) {
+    const odds = joinSigned(fill.oddsSign, fill.oddsMag);
+    return `${team} ML${odds === "" ? "" : ` ${odds}`} ${matchup}`;
+  }
+  if (betType === "total" && (side === "over" || side === "under")) {
+    const n = fill.lineMag.trim();
+    return `${side === "over" ? "Over" : "Under"}${n === "" ? "" : ` ${n}`} ${matchup}`;
+  }
+  return null;
+}
