@@ -234,6 +234,14 @@ shipping it.
 
 ## Log
 
+### Nov 8 — STATS-2: the teams that cost you, worst first
+
+`/ledger/stats` gains a **Lost the most backing** table beside Backing: teams
+you are down units on, biggest loss first, top ten. The Backing table is
+best-first and capped at ten, so the worst teams were the ones it cut. New
+comparator `byCostliest` (units ascending → losses → settled) in
+`src/lib/records.ts`, with tests. Not rendered with data before merge.
+
 ### Oct 12 — LOGF-7: who bet what, and logging for a member after the week
 
 Owner, the Monday after NFL week 5: "I need an easier way to view what my

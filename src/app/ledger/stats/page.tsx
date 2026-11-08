@@ -14,7 +14,7 @@ import {
 } from "../../../lib/bet-cuts";
 import { seasonIdsForYear, seasonYearOf } from "../../../lib/league";
 import { fetchCurrentSeasonWeek } from "../../../lib/queries";
-import { byLeagueRules, formatRecord, tally, tallyBy, type Tally } from "../../../lib/records";
+import { byCostliest, byLeagueRules, formatRecord, tally, tallyBy, type Tally } from "../../../lib/records";
 import { createClient } from "../../../lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -198,6 +198,12 @@ export default async function BetStatsPage() {
 
       <Group title="Teams">
         <TeamTable title="Backing" tallies={backed} teams={teams} />
+        <TeamTable
+          title="Lost the most backing"
+          tallies={backed}
+          teams={teams}
+          worstFirst
+        />
         <TeamTable title="Fading" tallies={faded} teams={teams} />
       </Group>
 
@@ -329,19 +335,30 @@ function CutTable({
   );
 }
 
-/** Teams sorted by League Rules #5, capped so one bad week doesn't fill a phone. */
+/**
+ * Teams sorted by League Rules #5, capped so one bad week doesn't fill a phone.
+ *
+ * `worstFirst` asks the other question — who cost you the most (owner request,
+ * 2026-11-08: "the record of teams I bet on and lost the most with"). Only
+ * teams you are down units on, biggest loss on top. It exists because the
+ * best-first table stops at ten, so with more than ten teams backed the worst
+ * ones were the rows it cut.
+ */
 function TeamTable({
   title,
   tallies,
   teams,
+  worstFirst = false,
 }: {
   title: string;
   tallies: Map<number, Tally>;
   teams: Map<number, TeamRow>;
+  worstFirst?: boolean;
 }) {
-  const rows = [...tallies.entries()]
+  const pool = [...tallies.entries()].filter(([, t]) => !worstFirst || t.units < 0);
+  const rows = pool
     .map(([id, t]) => [teams.get(id)?.school ?? `Team ${id}`, t] as [string, Tally])
-    .sort((a, b) => byLeagueRules(a[1], b[1]))
+    .sort((a, b) => (worstFirst ? byCostliest : byLeagueRules)(a[1], b[1]))
     .slice(0, 10);
   if (rows.length === 0) return null;
   return (
@@ -371,8 +388,12 @@ function TeamTable({
           ))}
         </tbody>
       </table>
-      {tallies.size > 10 && (
-        <p className="mt-1.5 text-[10px] text-dim">Top 10 of {tallies.size} by units.</p>
+      {pool.length > 10 && (
+        <p className="mt-1.5 text-[10px] text-dim">
+          {worstFirst
+            ? `Worst 10 of ${pool.length} teams you're down on.`
+            : `Top 10 of ${pool.length} by units.`}
+        </p>
       )}
     </div>
   );

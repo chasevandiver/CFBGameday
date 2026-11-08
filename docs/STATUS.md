@@ -3998,6 +3998,18 @@ silent about the wiring, which is the gap that let it sit for a day.
       `/`. **Not seen with data** — that needs a signed-in user with graded
       bets, and the database holds two bets total. The populated tables are
       unrendered and say so here rather than being claimed. · done
+- [x] **STATS-2 — "Lost the most backing": the teams that cost you, worst first.**
+      Owner request 2026-11-08: *"I want to see the record of teams I bet on
+      and lost the most with."* The Backing table sorts best-first and stops at
+      ten, so with more than ten teams backed the costliest ones were exactly
+      the rows it dropped (the owner had 50+ backed teams, 25+ of them in the
+      red, at the time). A third table in the Teams group: only teams you are
+      down units on, biggest loss on top, capped at ten with a line saying how
+      many there were. Sorted by a new `byCostliest` in `records.ts` — units
+      ascending, then losses, then bets settled — rather than `byLeagueRules`
+      reversed, which would float null-ROI rows to the top. Two unit tests.
+      **Not seen rendered** with data; the query behind it was checked against
+      the live ledger by hand and agreed. · done
 - [ ] **G10-v1** Copy-digest ShareButton: Thursday (frozen slate / edges / "N
       haven't picked") + Sunday (results / movers / CLV) — best paired with the
       group board's real first Saturday · S–M

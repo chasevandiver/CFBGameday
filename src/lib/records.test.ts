@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  byCostliest,
   byLeagueRules,
   EMPTY_TALLY,
   formatRecord,
@@ -210,5 +211,24 @@ describe("points — the pool's currency (POOL-6)", () => {
     const t = tally([{ result: "win", units: 1, payoutUnits: 2.5 }]);
     expect(t.units).toBe(2.5);
     expect(t.points).toBe(1);
+  });
+});
+
+describe("byCostliest", () => {
+  const t = (units: number, losses: number, decided: number): Tally => ({
+    ...EMPTY_TALLY,
+    units,
+    losses,
+    decided,
+  });
+
+  it("puts the biggest units loss first", () => {
+    const rows = [t(2, 1, 4), t(-3.3, 3, 3), t(-1.1, 2, 3)];
+    expect(rows.sort(byCostliest).map((r) => r.units)).toEqual([-3.3, -1.1, 2]);
+  });
+
+  it("breaks a units tie on losses, then on bets settled", () => {
+    expect([t(-2, 2, 3), t(-2, 4, 6)].sort(byCostliest)[0].losses).toBe(4);
+    expect([t(-2, 2, 3), t(-2, 2, 5)].sort(byCostliest)[0].decided).toBe(5);
   });
 });

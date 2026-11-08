@@ -264,6 +264,20 @@ export function byLeagueRules(a: Tally, b: Tally): number {
   );
 }
 
+/**
+ * The reverse question to League Rules #5: who cost you the most. Units lost
+ * first (most negative on top), then more losses, then more settled bets — so
+ * "0-3, −3.3u" sits above "1-2, −1.1u", and of two equal bleeds the one with
+ * the longer track record leads. Not `byLeagueRules` reversed: reversing it
+ * would float a null-ROI row to the top, and a tie in units should go to the
+ * row with more losses, not the lower CLV.
+ *
+ * Pass to `Array.prototype.sort` directly: `rows.sort(byCostliest)`.
+ */
+export function byCostliest(a: Tally, b: Tally): number {
+  return a.units - b.units || b.losses - a.losses || b.decided - a.decided;
+}
+
 /** "12-7-1", or "12-7" when nothing pushed. The push is information, not noise. */
 export function formatRecord(t: Tally): string {
   return t.pushes > 0
