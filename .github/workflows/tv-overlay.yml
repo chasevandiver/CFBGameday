@@ -1,0 +1,58 @@
+name: TV Overlay APK
+
+# Builds the Fire TV overlay app (tv-overlay/) and publishes it to the
+# `tv-overlay` release, which /tv/app redirects to for Downloader installs.
+
+on:
+  push:
+    paths:
+      - "tv-overlay/**"
+      - ".github/workflows/tv-overlay.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tv-overlay
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tv-overlay
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+
+      - name: Build APK
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Stage APK
+        run: cp app/build/outputs/apk/release/app-release.apk tv-overlay.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tv-overlay-apk
+          path: tv-overlay/tv-overlay.apk
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete tv-overlay --yes --cleanup-tag || true
+          gh release create tv-overlay tv-overlay.apk \
+            --target "${{ github.sha }}" \
+            --title "TV Overlay (build ${{ github.run_number }})" \
+            --notes "Fire TV overlay app. Install with Downloader: cfb-gameday.vercel.app/tv/app" \
+            --latest=false

@@ -234,6 +234,65 @@ shipping it.
 
 ## Log
 
+### Nov 10 — TV-4: readable from the couch
+
+- Line and clock up from 0.68em to 0.82em of the strip; the market spread on
+  games the viewer isn't on drops to 40% chalk so their own tickets lead.
+  The scroll stays (Chase's call over a paged strip).
+- Corner board: four games a page, not six, sized off whichever axis is
+  tighter (`min(5.1vw, 11vh)`); a cell's width is what runs out first.
+  HALFTIME reads HALF there. Overlay app's corner box widened to 28/34/42%
+  of the screen (was 24/30/38), since box width sets the text size.
+
+### Nov 10 — TV-3: cleaner chips, the line on every game
+
+Replaces TV-2's tint, ring and glyph badge, which read as clutter at couch
+distance.
+
+- `/api/ticker` adds `spread` (consensus, home-perspective, public like the
+  scores) and `stake`: the ticket `mine` grades, labelled by the shared
+  `betSideLabel` / `pickSideLabel` (so away spreads keep the sign fix), with
+  `tintFor`'s precedence: first gradable ledger bet, else first bet, else the
+  headline pick. Tests in `ticker.test.ts`.
+- On the TV, only the team the viewer is on changes colour: green covering,
+  gold on the number, red not, live and final alike. A totals ticket colours
+  its line instead. Every game shows a number: the viewer's ticket when they
+  have one, else the market spread written favourite-first.
+
+### Nov 10 — TV-2: your bets light up on the TV
+
+- `/api/ticker` takes `?k=<calendar key>` when there is no session and
+  resolves it on the service client (migration 0054's capability token, same
+  posture as `/api/calendar/[token]`). Both stake queries filter on
+  `user_id`, so what it can disclose is one viewer's own covering / not /
+  push / action verdicts. A bad key is the plain strip, never an error. No
+  migration: the key already exists for anyone who has opened /me.
+- `/tv/*` pass the page's own `?k=` through. Verdict = tint + ring + glyph
+  (✓ ✗ = $), since colour alone doesn't carry across a room. The viewer's
+  games sort first within live / upcoming / final, so the corner board's
+  first page is the one with their money on it.
+- /me gets an "On your TV" card with copyable links. Rotating the calendar
+  link resets them, by design: one key, one revocation.
+
+### Nov 10 — TV-1: the Slate on the living-room TV, over whatever is playing
+
+New surfaces, no model or data change.
+
+- **`/tv/ticker`** and **`/tv/corner`**: see-through, navless pages sized off
+  the viewport. The ticker is a scrolling broadcast strip; the corner is a
+  six-game scoreboard that rotates pages every 8s. Both read `/api/ticker`
+  (same feed and 30s/60s cadence as the in-app strip) with no realtime
+  channel, because they run for hours on a low-RAM stick.
+- **`tv-overlay/`**: a sideloaded Android app for Fire OS TVs that draws a web
+  page over other apps (`SYSTEM_ALERT_WINDOW`), controlled from a phone at
+  `http://<tv-ip>:7979`. It grants itself the permission through the TV's own
+  ADB on loopback, so setup needs no laptop. Built and published to the
+  `tv-overlay` release by `.github/workflows/tv-overlay.yml`; `/tv/app`
+  redirects there for Downloader installs.
+- Not verified on hardware at commit time: the overlay, the self-grant and the
+  boot start were built and packaged in CI but not run on a Fire TV. Vega OS
+  sticks (4K Select, 2026 HD) can't sideload and are out of scope.
+
 ### Oct 12 — LOGF-7: who bet what, and logging for a member after the week
 
 Owner, the Monday after NFL week 5: "I need an easier way to view what my

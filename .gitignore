@@ -48,3 +48,8 @@ next-env.d.ts
 
 # brand asset build: downloaded OFL fonts, re-fetched on demand
 .brand-cache/
+
+# tv-overlay (Android)
+/tv-overlay/.gradle/
+/tv-overlay/**/build/
+/tv-overlay/local.properties

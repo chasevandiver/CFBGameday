@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { demoTickerData } from "./demo-data";
-import { tickerMine } from "./ticker";
+import { tickerMine, tickerStake } from "./ticker";
 import type { MyBetView, MyPickView } from "./slate";
 
 const bet = (overrides: Partial<MyBetView> = {}): MyBetView => ({
@@ -62,5 +62,52 @@ describe("demoTickerData", () => {
     const mine = new Map(demoTickerData(NOW).games.map((g) => [g.id, g.mine]));
     expect(mine.get(9107)).toBe("on"); // picked in two pools, not kicked yet
     expect(mine.get(9103)).toBeNull(); // a final the viewer had nothing on
+  });
+});
+
+/* TV-3: the label the TV overlay prints, and which side it colours. Lines are
+   stored home-perspective, so an away ticket must print with its sign flipped. */
+describe("tickerStake", () => {
+  it("labels an away spread bet from the bettor's side", () => {
+    expect(
+      tickerStake([{ id: 1, betType: "spread", side: "away", line: 3.5 }], [], "UGA", "ALA"),
+    ).toEqual({ label: "ALA -3.5", side: "away" });
+  });
+
+  it("labels a home spread bet as stored", () => {
+    expect(
+      tickerStake([{ id: 1, betType: "spread", side: "home", line: -7 }], [], "TEX", "OU"),
+    ).toEqual({ label: "TEX -7", side: "home" });
+  });
+
+  it("labels a total with no team side", () => {
+    expect(
+      tickerStake([{ id: 1, betType: "total", side: "over", line: 54.5 }], [], "TEX", "OU"),
+    ).toEqual({ label: "O 54.5", side: "over" });
+  });
+
+  it("prefers a gradable bet over an ungradable one, and any bet over a pick", () => {
+    expect(
+      tickerStake(
+        [
+          { id: 1, betType: "team_total", side: "home", line: 30 },
+          { id: 2, betType: "moneyline", side: "home", line: null },
+        ],
+        [{ market: "spread", side: "away", line: 3 }],
+        "TCU",
+        "BAY",
+      ),
+    ).toEqual({ label: "TCU ML", side: "home" });
+  });
+
+  it("falls back to the headline pick", () => {
+    expect(tickerStake([], [{ market: "spread", side: "away", line: 3 }], "TCU", "BAY")).toEqual({
+      label: "BAY -3",
+      side: "away",
+    });
+  });
+
+  it("is null with nothing on the game", () => {
+    expect(tickerStake([], [], "TCU", "BAY")).toBeNull();
   });
 });

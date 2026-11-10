@@ -1,0 +1,225 @@
+/* TV overlay surfaces (/tv/*). These pages are drawn by the Fire TV overlay
+   app on top of whatever is playing, so the page itself must be see-through:
+   only the panel paints. Everything is sized off the viewport, because the
+   overlay window IS the viewport. */
+
+html,
+body {
+  background: transparent !important;
+  overflow: hidden !important;
+  min-height: 0 !important;
+  height: 100%;
+}
+body > footer {
+  display: none !important;
+}
+
+.tv-panel {
+  position: fixed;
+  inset: 0;
+  color: var(--text);
+  background: color-mix(in srgb, #0b0a08 88%, transparent);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  font-family: var(--font-display), var(--font-body), sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+}
+
+.tv-dot {
+  display: inline-block;
+  width: 0.36em;
+  height: 0.36em;
+  border-radius: 50%;
+  background: var(--live);
+  flex-shrink: 0;
+}
+.tv-tag {
+  font-size: 0.55em;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.45);
+  margin-right: 0.4em;
+}
+.tv-empty {
+  color: var(--text-dim);
+  font-size: 0.7em;
+  margin: auto;
+}
+
+/* The viewer's stake (TV-3): only the team they're on changes colour, in
+   the aura's vocabulary. A totals ticket colours its line instead. */
+.tv-v-covering {
+  color: var(--win);
+}
+.tv-v-losing {
+  color: var(--loss);
+}
+.tv-v-push {
+  color: var(--accent);
+}
+.tv-line {
+  font-size: 0.82em;
+  margin-left: 0.15em;
+}
+/* The market number on a game the viewer isn't on: there for reference,
+   quieter than their own tickets so those are what the eye finds. */
+.tv-line-market {
+  color: rgba(242, 238, 230, 0.4);
+}
+
+/* ── Ticker strip ─────────────────────────────────────────────────────── */
+
+.tv-strip {
+  display: flex;
+  align-items: center;
+  font-size: 46vh;
+  border-radius: 20vh;
+}
+.tv-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4em;
+  flex-shrink: 0;
+  height: 100%;
+  padding: 0 0.7em 0 0.9em;
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 100vh;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+.tv-week {
+  font-size: 0.6em;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.tv-viewport {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 2%, #000 98%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 2%, #000 98%, transparent);
+}
+.tv-track {
+  display: flex;
+  width: max-content;
+  animation: tv-scroll var(--tv-dur, 40s) linear infinite;
+  will-change: transform;
+}
+.tv-track[data-still] {
+  animation: none;
+}
+.tv-copy {
+  display: flex;
+  align-items: center;
+  padding-left: 0.9em;
+}
+.tv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  margin-right: 1.5em;
+  white-space: nowrap;
+}
+.tv-status {
+  font-size: 0.82em;
+  margin-left: 0.2em;
+}
+@keyframes tv-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* ── Corner scoreboard ────────────────────────────────────────────────── */
+
+.tv-board {
+  display: flex;
+  flex-direction: column;
+  padding: 4vh 4vw;
+  border-radius: 4vh;
+}
+.tv-board-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 7.5vh;
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.tv-board-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  color: var(--text);
+  font-weight: 600;
+}
+.tv-pages {
+  display: inline-flex;
+  gap: 0.25em;
+  margin-left: 0.5em;
+}
+.tv-pages span {
+  width: 0.3em;
+  height: 0.3em;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+}
+.tv-pages span[data-on] {
+  background: var(--accent);
+}
+.tv-board .tv-empty {
+  font-size: 7vh;
+}
+.tv-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: repeat(2, 1fr);
+  gap: 2.4vh 2.4vw;
+  margin-top: 3vh;
+  min-height: 0;
+}
+.tv-cell {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-content: center;
+  align-items: center;
+  column-gap: 0.35em;
+  row-gap: 0.3em;
+  padding: 0.3em 0.4em;
+  border-radius: 0.25em;
+  background: rgba(255, 255, 255, 0.045);
+  /* Width is what runs out first in a 2x2 box: a cell must hold "CLEM 24"
+     beside "CLEM -3.5". Sized off whichever axis is tighter, so nothing clips
+     at any box size or shape. */
+  font-size: min(5.1vw, 11vh);
+  line-height: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.tv-team {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.4em;
+  grid-column: 1;
+}
+.tv-cell-status,
+.tv-cell-line {
+  grid-column: 2;
+  font-size: 0.75em;
+  text-align: right;
+  white-space: nowrap;
+}
+.tv-cell-status {
+  grid-row: 1;
+}
+.tv-cell-line {
+  grid-row: 2;
+}
