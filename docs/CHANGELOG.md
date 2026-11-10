@@ -234,6 +234,25 @@ shipping it.
 
 ## Log
 
+### Nov 10 — TV-1: the Slate on the living-room TV, over whatever is playing
+
+New surfaces, no model or data change.
+
+- **`/tv/ticker`** and **`/tv/corner`**: see-through, navless pages sized off
+  the viewport. The ticker is a scrolling broadcast strip; the corner is a
+  six-game scoreboard that rotates pages every 8s. Both read `/api/ticker`
+  (same feed and 30s/60s cadence as the in-app strip) with no realtime
+  channel, because they run for hours on a low-RAM stick.
+- **`tv-overlay/`**: a sideloaded Android app for Fire OS TVs that draws a web
+  page over other apps (`SYSTEM_ALERT_WINDOW`), controlled from a phone at
+  `http://<tv-ip>:7979`. It grants itself the permission through the TV's own
+  ADB on loopback, so setup needs no laptop. Built and published to the
+  `tv-overlay` release by `.github/workflows/tv-overlay.yml`; `/tv/app`
+  redirects there for Downloader installs.
+- Not verified on hardware at commit time: the overlay, the self-grant and the
+  boot start were built and packaged in CI but not run on a Fire TV. Vega OS
+  sticks (4K Select, 2026 HD) can't sideload and are out of scope.
+
 ### Oct 12 — LOGF-7: who bet what, and logging for a member after the week
 
 Owner, the Monday after NFL week 5: "I need an easier way to view what my
