@@ -1,0 +1,196 @@
+/* TV overlay surfaces (/tv/*). These pages are drawn by the Fire TV overlay
+   app on top of whatever is playing, so the page itself must be see-through:
+   only the panel paints. Everything is sized off the viewport, because the
+   overlay window IS the viewport. */
+
+html,
+body {
+  background: transparent !important;
+  overflow: hidden !important;
+  min-height: 0 !important;
+  height: 100%;
+}
+body > footer {
+  display: none !important;
+}
+
+.tv-panel {
+  position: fixed;
+  inset: 0;
+  color: var(--text);
+  background: color-mix(in srgb, #0b0a08 88%, transparent);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  font-family: var(--font-display), var(--font-body), sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+}
+
+.tv-dot {
+  display: inline-block;
+  width: 0.36em;
+  height: 0.36em;
+  border-radius: 50%;
+  background: var(--live);
+  flex-shrink: 0;
+}
+.tv-tag {
+  font-size: 0.55em;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.45);
+  margin-right: 0.4em;
+}
+.tv-empty {
+  color: var(--text-dim);
+  font-size: 0.7em;
+  margin: auto;
+}
+
+/* ── Ticker strip ─────────────────────────────────────────────────────── */
+
+.tv-strip {
+  display: flex;
+  align-items: center;
+  font-size: 46vh;
+  border-radius: 20vh;
+}
+.tv-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4em;
+  flex-shrink: 0;
+  height: 100%;
+  padding: 0 0.7em 0 0.9em;
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 100vh;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+.tv-week {
+  font-size: 0.6em;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.tv-viewport {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 2%, #000 98%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 2%, #000 98%, transparent);
+}
+.tv-track {
+  display: flex;
+  width: max-content;
+  animation: tv-scroll var(--tv-dur, 40s) linear infinite;
+  will-change: transform;
+}
+.tv-track[data-still] {
+  animation: none;
+}
+.tv-copy {
+  display: flex;
+  align-items: center;
+  padding-left: 0.9em;
+}
+.tv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  margin-right: 1.5em;
+  white-space: nowrap;
+}
+.tv-status {
+  font-size: 0.68em;
+  margin-left: 0.2em;
+}
+@keyframes tv-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* ── Corner scoreboard ────────────────────────────────────────────────── */
+
+.tv-board {
+  display: flex;
+  flex-direction: column;
+  padding: 4vh 4vw;
+  border-radius: 4vh;
+}
+.tv-board-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 7.5vh;
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.tv-board-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  color: var(--text);
+  font-weight: 600;
+}
+.tv-pages {
+  display: inline-flex;
+  gap: 0.25em;
+  margin-left: 0.5em;
+}
+.tv-pages span {
+  width: 0.3em;
+  height: 0.3em;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+}
+.tv-pages span[data-on] {
+  background: var(--accent);
+}
+.tv-board .tv-empty {
+  font-size: 7vh;
+}
+.tv-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: repeat(3, 1fr);
+  gap: 2.4vh 2.4vw;
+  margin-top: 3vh;
+  min-height: 0;
+}
+.tv-cell {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: 1fr 1fr;
+  align-items: center;
+  column-gap: 0.5em;
+  padding: 0.25em 0.45em;
+  border-radius: 0.25em;
+  background: rgba(255, 255, 255, 0.045);
+  font-size: 7.4vh;
+  line-height: 1;
+  min-height: 0;
+}
+.tv-cell[data-live] {
+  box-shadow: inset 0.08em 0 0 var(--live);
+}
+.tv-team {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.4em;
+  grid-column: 1;
+}
+.tv-cell-status {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  font-size: 0.6em;
+  text-align: right;
+  white-space: nowrap;
+}
