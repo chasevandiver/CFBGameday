@@ -46,6 +46,44 @@ body > footer {
   margin: auto;
 }
 
+/* The viewer's stake (TV-2): one colour per verdict, set as --mine on any
+   element carrying data-mine, then spent as a tint, a ring and a glyph. */
+[data-mine="covering"] {
+  --mine: var(--win);
+}
+[data-mine="losing"] {
+  --mine: var(--loss);
+}
+[data-mine="push"] {
+  --mine: var(--accent);
+}
+[data-mine="on"] {
+  --mine: color-mix(in srgb, var(--text) 55%, transparent);
+}
+.tv-mine {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25em;
+  height: 1.25em;
+  padding: 0 0.2em;
+  border-radius: 0.3em;
+  background: var(--mine);
+  color: #0b0a08;
+  font-family: var(--font-body), sans-serif;
+  font-weight: 800;
+  font-size: 0.62em;
+  line-height: 1.25em;
+}
+.tv-chip[data-mine] {
+  padding: 0.08em 0.35em;
+  margin-left: -0.35em;
+  margin-right: calc(1.5em - 0.35em);
+  border-radius: 0.2em;
+  background: color-mix(in srgb, var(--mine) 16%, transparent);
+  box-shadow: inset 0 -0.09em 0 var(--mine);
+}
+
 /* ── Ticker strip ─────────────────────────────────────────────────────── */
 
 .tv-strip {
@@ -178,8 +216,15 @@ body > footer {
   line-height: 1;
   min-height: 0;
 }
-.tv-cell[data-live] {
-  box-shadow: inset 0.08em 0 0 var(--live);
+.tv-cell[data-mine] {
+  background: color-mix(in srgb, var(--mine) 14%, rgba(255, 255, 255, 0.03));
+  box-shadow: inset 0 0 0 0.05em var(--mine);
+}
+.tv-cell-status .tv-mine {
+  display: flex;
+  margin: 0.35em 0 0 auto;
+  width: max-content;
+  font-size: 1.1em;
 }
 .tv-team {
   display: flex;

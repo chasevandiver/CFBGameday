@@ -234,6 +234,21 @@ shipping it.
 
 ## Log
 
+### Nov 10 — TV-2: your bets light up on the TV
+
+- `/api/ticker` takes `?k=<calendar key>` when there is no session and
+  resolves it on the service client (migration 0054's capability token, same
+  posture as `/api/calendar/[token]`). Both stake queries filter on
+  `user_id`, so what it can disclose is one viewer's own covering / not /
+  push / action verdicts. A bad key is the plain strip, never an error. No
+  migration: the key already exists for anyone who has opened /me.
+- `/tv/*` pass the page's own `?k=` through. Verdict = tint + ring + glyph
+  (✓ ✗ = $), since colour alone doesn't carry across a room. The viewer's
+  games sort first within live / upcoming / final, so the corner board's
+  first page is the one with their money on it.
+- /me gets an "On your TV" card with copyable links. Rotating the calendar
+  link resets them, by design: one key, one revocation.
+
 ### Nov 10 — TV-1: the Slate on the living-room TV, over whatever is playing
 
 New surfaces, no model or data change.

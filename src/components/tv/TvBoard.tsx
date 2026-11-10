@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 import type { TickerGame } from "../../lib/ticker";
 import { leadingSide } from "../ScoreTicker";
-import { tvStatus } from "./TvChip";
+import { MineBadge, tvStatus } from "./TvChip";
 import { tvOrder, useTickerFeed } from "./use-ticker-feed";
 
 const PER_PAGE = 6;
@@ -75,11 +75,12 @@ function Cell({ g }: { g: TickerGame }) {
     </span>
   );
   return (
-    <div className="tv-cell" data-live={live ? "1" : undefined}>
+    <div className="tv-cell" data-mine={g.mine ?? undefined}>
       {row(g.awayAbbr, g.awayPoints, "away")}
       <span className={`tv-cell-status stat ${live ? "text-live" : "text-dim"}`}>
         {g.sport === "nfl" && <span className="tv-tag">NFL</span>}
         {tvStatus(g)}
+        <MineBadge mine={g.mine} />
       </span>
       {row(g.homeAbbr, g.homePoints, "home")}
     </div>

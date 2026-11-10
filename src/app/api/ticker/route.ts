@@ -1,21 +1,24 @@
-import { NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { NextResponse, type NextRequest } from "next/server";
 import type { GameRow, TeamRow } from "../../../lib/db-types";
 import { fetchCurrentSeasonWeek } from "../../../lib/queries";
 import type { SeasonType } from "../../../lib/season";
 import type { MyBetView, MyPickView } from "../../../lib/slate";
 import { tickerMine, type TickerData, type TickerGame, type TickerMine } from "../../../lib/ticker";
 import { createClient } from "../../../lib/supabase/server";
+import { createServiceClient } from "../../../lib/supabase/service";
 
 export const dynamic = "force-dynamic";
 
 const DAY_MS = 24 * 3600 * 1000;
 const SOON_MS = 4 * 3600 * 1000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Tiny gameday payload for the score ticker: live games, finals from the last
  * 24h, and kickoffs within 4h. Empty outside those windows (ticker hides).
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   const supabase = await createClient();
 
   // Public — the ticker is read-only scores (audit bug #5: used to 401 anon).
@@ -94,19 +97,43 @@ export async function GET() {
   // pick on, and how it's going. Signed-out gets the plain strip — the two
   // extra queries only run for a session, and RLS scopes both to own rows.
   const { data: auth } = await supabase.auth.getUser();
-  const userId = auth?.user?.id ?? null;
+  let userId = auth?.user?.id ?? null;
+  let mineDb: SupabaseClient = supabase;
+
+  /* TV-2: the Fire TV overlay can't sign in, so it carries the viewer's
+     calendar key as `?k=` (migration 0054: a capability token for a client
+     that cannot hold a session). Resolved on the service client, the same
+     posture as /api/calendar/[token]; both queries below filter on user_id
+     explicitly, so bypassing RLS discloses nothing beyond this viewer's own
+     verdicts. A bad or unknown key is the plain strip, never an error. */
+  if (userId === null) {
+    const k = req.nextUrl.searchParams.get("k");
+    if (k && UUID_RE.test(k) && rows.length > 0) {
+      const svc = createServiceClient();
+      const { data: tok } = await svc
+        .from("calendar_tokens")
+        .select("user_id")
+        .eq("token", k)
+        .maybeSingle();
+      if (tok) {
+        userId = tok.user_id as string;
+        mineDb = svc;
+      }
+    }
+  }
+
   const mineById = new Map<number, TickerMine | null>();
   if (userId !== null && rows.length > 0) {
     const gameIds = rows.map((g) => g.id);
     const [betsRes, picksRes] = await Promise.all([
-      supabase
+      mineDb
         .from("bets")
         .select("id, game_id, bet_type, side, line_taken")
         .in("game_id", gameIds)
         .eq("user_id", userId)
         .is("voided_at", null)
         .order("placed_at", { ascending: true }),
-      supabase
+      mineDb
         .from("picks")
         .select("game_id, market, side, line_at_pick")
         .in("game_id", gameIds)

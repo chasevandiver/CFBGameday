@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AppNav } from "../../components/AppNav";
 import { CalendarSettings } from "../../components/CalendarSettings";
+import { TvSettings } from "../../components/TvSettings";
 import { FunModeSettings } from "../../components/FunModeSettings";
 import { ProfileSettings, type FavTeam } from "../../components/ProfileSettings";
 import { PushSettings } from "../../components/PushSettings";
@@ -131,6 +132,7 @@ export default async function MePage() {
           </section>
         )}
         {typeof calendarToken === "string" && <CalendarSettings token={calendarToken} />}
+        {typeof calendarToken === "string" && <TvSettings token={calendarToken} />}
         {isAdmin && (
           <p className="mt-6 text-xs text-dim">
             <Link href="/admin" className="text-accent underline-offset-2 hover:underline">

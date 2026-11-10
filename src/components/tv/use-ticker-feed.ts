@@ -13,17 +13,20 @@ import { useLiveRefresh } from "../../lib/use-live-refresh";
 export function useTickerFeed(): TickerData | null {
   const [data, setData] = useState<TickerData | null>(null);
 
-  const load = useCallback(
-    () =>
-      void fetch("/api/ticker", { cache: "no-store" })
+  const load = useCallback(() => {
+    // The overlay can't sign in; `?k=` is the viewer's calendar key, which
+    // /api/ticker resolves to their bets and picks (TV-2). Read at call time
+    // from the page's own URL, so the key never sits in React state.
+    const k = new URLSearchParams(window.location.search).get("k");
+    const url = k ? `/api/ticker?k=${encodeURIComponent(k)}` : "/api/ticker";
+    return void fetch(url, { cache: "no-store" })
         .then(async (res) => {
           if (res.ok) setData((await res.json()) as TickerData);
         })
         .catch(() => {
           /* transient; the next poll retries */
-        }),
-    [],
-  );
+        });
+  }, []);
 
   useEffect(() => {
     load();
@@ -34,10 +37,12 @@ export function useTickerFeed(): TickerData | null {
   return data;
 }
 
-/** Live first, then the next kickoffs, then finals: what a viewer looks for. */
+/** Live first, then the next kickoffs, then finals: what a viewer looks for.
+ *  Within each, the viewer's own games lead, so the board's first page is the
+ *  one with their money on it. */
 export function tvOrder(games: TickerGame[]): TickerGame[] {
   const rank = (g: TickerGame) =>
-    g.status === "in_progress" ? 0 : g.status === "scheduled" ? 1 : 2;
+    (g.status === "in_progress" ? 0 : g.status === "scheduled" ? 2 : 4) + (g.mine ? 0 : 1);
   return [...games].sort(
     (a, b) => rank(a) - rank(b) || (a.startTs ?? "").localeCompare(b.startTs ?? ""),
   );
