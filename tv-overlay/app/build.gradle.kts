@@ -49,7 +49,14 @@ android {
         checkReleaseBuilds = false
     }
     packaging {
-        resources.excludes += setOf("META-INF/*.kotlin_module", "META-INF/versions/**")
+        resources.excludes += setOf(
+            "META-INF/*.kotlin_module",
+            "META-INF/versions/**",
+            "META-INF/LICENSE*",
+            "META-INF/NOTICE*",
+            "META-INF/DEPENDENCIES",
+            "META-INF/INDEX.LIST",
+        )
     }
 }
 
