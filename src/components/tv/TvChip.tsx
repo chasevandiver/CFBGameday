@@ -3,11 +3,12 @@ import type { TickerGame, TickerMine } from "../../lib/ticker";
 import { leadingSide } from "../ScoreTicker";
 
 /** Status text for a TV chip: clock while live, FINAL, or the kickoff time. */
-export function tvStatus(g: TickerGame): string {
+export function tvStatus(g: TickerGame, opts: { short?: boolean } = {}): string {
   if (g.status === "in_progress") {
-    return (
-      breakLabel(g.period, g.clock) ?? `${periodLabel(g.period)}${g.clock ? ` ${g.clock}` : ""}`
-    );
+    const brk = breakLabel(g.period, g.clock);
+    // The corner box has no room for HALFTIME beside a line; HALF says it.
+    if (brk === "HALFTIME" && opts.short) return "HALF";
+    return brk ?? `${periodLabel(g.period)}${g.clock ? ` ${g.clock}` : ""}`;
   }
   if (g.status === "final") return "FINAL";
   return g.startTs
@@ -66,7 +67,7 @@ export function lineClass(g: TickerGame, mine: boolean): string {
   const verdict = g.mine ? GRADED[g.mine] : undefined;
   const total = g.stake?.side === "over" || g.stake?.side === "under";
   if (verdict && total) return verdict;
-  return mine ? "text-chalk" : "text-dim";
+  return mine ? "text-chalk" : "tv-line-market";
 }
 
 export function VerdictWords({ g }: { g: TickerGame }) {

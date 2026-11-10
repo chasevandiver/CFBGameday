@@ -239,7 +239,8 @@ class OverlayService : Service() {
             h = (sh * when (c.size) { "s" -> 0.060f; "l" -> 0.095f; else -> 0.075f }).toInt()
             gravity = (if (c.position == "top") Gravity.TOP else Gravity.BOTTOM) or Gravity.START
         } else {
-            w = (sw * when (c.size) { "s" -> 0.24f; "l" -> 0.38f; else -> 0.30f }).toInt()
+            // Sized up for the couch: the box's width is what sets the text size.
+            w = (sw * when (c.size) { "s" -> 0.28f; "l" -> 0.42f; else -> 0.34f }).toInt()
             h = (w * 0.75f).toInt()
             gravity = when (c.position) {
                 "tl" -> Gravity.TOP or Gravity.START

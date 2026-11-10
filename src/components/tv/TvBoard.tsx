@@ -2,7 +2,7 @@
 
 /**
  * The picture-in-picture scoreboard for the Fire TV overlay (/tv/corner):
- * six games a page, live first, rotating every eight seconds when there are
+ * four games a page, live first, rotating every eight seconds when there are
  * more. Sized to the viewport, which the overlay app sets to the box.
  */
 
@@ -12,7 +12,7 @@ import { leadingSide } from "../ScoreTicker";
 import { lineClass, teamClass, tvLine, tvStatus, VerdictWords } from "./TvChip";
 import { tvOrder, useTickerFeed } from "./use-ticker-feed";
 
-const PER_PAGE = 6;
+const PER_PAGE = 4;
 const ROTATE_MS = 8_000;
 
 export function TvBoard() {
@@ -80,7 +80,7 @@ function Cell({ g }: { g: TickerGame }) {
       {row(g.awayAbbr, g.awayPoints, "away")}
       <span className={`tv-cell-status stat ${live ? "text-live" : "text-dim"}`}>
         {g.sport === "nfl" && <span className="tv-tag">NFL</span>}
-        {tvStatus(g)}
+        {tvStatus(g, { short: true })}
       </span>
       {row(g.homeAbbr, g.homePoints, "home")}
       <span className={`tv-cell-line stat ${line ? lineClass(g, line.mine) : ""}`}>

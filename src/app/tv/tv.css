@@ -58,8 +58,13 @@ body > footer {
   color: var(--accent);
 }
 .tv-line {
-  font-size: 0.68em;
+  font-size: 0.82em;
   margin-left: 0.15em;
+}
+/* The market number on a game the viewer isn't on: there for reference,
+   quieter than their own tickets so those are what the eye finds. */
+.tv-line-market {
+  color: rgba(242, 238, 230, 0.4);
 }
 
 /* ── Ticker strip ─────────────────────────────────────────────────────── */
@@ -119,7 +124,7 @@ body > footer {
   white-space: nowrap;
 }
 .tv-status {
-  font-size: 0.68em;
+  font-size: 0.82em;
   margin-left: 0.2em;
 }
 @keyframes tv-scroll {
@@ -176,7 +181,7 @@ body > footer {
   flex: 1;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
   gap: 2.4vh 2.4vw;
   margin-top: 3vh;
   min-height: 0;
@@ -184,15 +189,20 @@ body > footer {
 .tv-cell {
   display: grid;
   grid-template-columns: 1fr auto;
-  grid-template-rows: 1fr 1fr;
+  align-content: center;
   align-items: center;
-  column-gap: 0.5em;
-  padding: 0.25em 0.45em;
+  column-gap: 0.35em;
+  row-gap: 0.3em;
+  padding: 0.3em 0.4em;
   border-radius: 0.25em;
   background: rgba(255, 255, 255, 0.045);
-  font-size: 7.4vh;
+  /* Width is what runs out first in a 2x2 box: a cell must hold "CLEM 24"
+     beside "CLEM -3.5". Sized off whichever axis is tighter, so nothing clips
+     at any box size or shape. */
+  font-size: min(5.1vw, 11vh);
   line-height: 1;
   min-height: 0;
+  min-width: 0;
 }
 .tv-team {
   display: flex;
@@ -203,7 +213,7 @@ body > footer {
 .tv-cell-status,
 .tv-cell-line {
   grid-column: 2;
-  font-size: 0.6em;
+  font-size: 0.75em;
   text-align: right;
   white-space: nowrap;
 }

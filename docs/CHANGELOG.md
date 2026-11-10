@@ -234,6 +234,16 @@ shipping it.
 
 ## Log
 
+### Nov 10 — TV-4: readable from the couch
+
+- Line and clock up from 0.68em to 0.82em of the strip; the market spread on
+  games the viewer isn't on drops to 40% chalk so their own tickets lead.
+  The scroll stays (Chase's call over a paged strip).
+- Corner board: four games a page, not six, sized off whichever axis is
+  tighter (`min(5.1vw, 11vh)`); a cell's width is what runs out first.
+  HALFTIME reads HALF there. Overlay app's corner box widened to 28/34/42%
+  of the screen (was 24/30/38), since box width sets the text size.
+
 ### Nov 10 — TV-3: cleaner chips, the line on every game
 
 Replaces TV-2's tint, ring and glyph badge, which read as clutter at couch
