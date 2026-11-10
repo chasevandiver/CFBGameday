@@ -20,12 +20,12 @@ export function useTickerFeed(): TickerData | null {
     const k = new URLSearchParams(window.location.search).get("k");
     const url = k ? `/api/ticker?k=${encodeURIComponent(k)}` : "/api/ticker";
     return void fetch(url, { cache: "no-store" })
-        .then(async (res) => {
-          if (res.ok) setData((await res.json()) as TickerData);
-        })
-        .catch(() => {
-          /* transient; the next poll retries */
-        });
+      .then(async (res) => {
+        if (res.ok) setData((await res.json()) as TickerData);
+      })
+      .catch(() => {
+        /* transient; the next poll retries */
+      });
   }, []);
 
   useEffect(() => {

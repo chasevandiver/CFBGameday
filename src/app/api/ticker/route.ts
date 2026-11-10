@@ -4,7 +4,14 @@ import type { GameRow, TeamRow } from "../../../lib/db-types";
 import { fetchCurrentSeasonWeek } from "../../../lib/queries";
 import type { SeasonType } from "../../../lib/season";
 import type { MyBetView, MyPickView } from "../../../lib/slate";
-import { tickerMine, type TickerData, type TickerGame, type TickerMine } from "../../../lib/ticker";
+import {
+  tickerMine,
+  tickerStake,
+  type TickerData,
+  type TickerGame,
+  type TickerMine,
+  type TickerStake,
+} from "../../../lib/ticker";
 import { createClient } from "../../../lib/supabase/server";
 import { createServiceClient } from "../../../lib/supabase/service";
 
@@ -82,14 +89,35 @@ export async function GET(req: NextRequest) {
   });
 
   const teamIds = [...new Set(rows.flatMap((g) => [g.home_team_id, g.away_team_id]))];
-  const { data: teams } =
+  const [{ data: teams }, { data: consensus }] = await Promise.all([
     teamIds.length > 0
-      ? await supabase.from("teams").select("id, school, abbreviation").in("id", teamIds)
-      : { data: [] };
+      ? supabase.from("teams").select("id, school, abbreviation").in("id", teamIds)
+      : Promise.resolve({ data: [] }),
+    // The market number on each chip (TV-3). Public, like the scores.
+    rows.length > 0
+      ? supabase
+          .from("line_consensus")
+          .select("game_id, spread")
+          .in(
+            "game_id",
+            rows.map((g) => g.id),
+          )
+      : Promise.resolve({ data: [] }),
+  ]);
+  const spreadById = new Map(
+    ((consensus ?? []) as Array<{ game_id: number; spread: number | null }>).map((c) => [
+      c.game_id,
+      c.spread === null ? null : Number(c.spread),
+    ]),
+  );
   const abbrById = new Map(
     ((teams ?? []) as Array<Pick<TeamRow, "id" | "school" | "abbreviation">>).map((t) => [
       t.id,
-      t.abbreviation ?? t.school.replace(/[^A-Za-z]/g, "").slice(0, 4).toUpperCase(),
+      t.abbreviation ??
+        t.school
+          .replace(/[^A-Za-z]/g, "")
+          .slice(0, 4)
+          .toUpperCase(),
     ]),
   );
 
@@ -123,6 +151,7 @@ export async function GET(req: NextRequest) {
   }
 
   const mineById = new Map<number, TickerMine | null>();
+  const stakeById = new Map<number, TickerStake | null>();
   if (userId !== null && rows.length > 0) {
     const gameIds = rows.map((g) => g.id);
     const [betsRes, picksRes] = await Promise.all([
@@ -139,8 +168,19 @@ export async function GET(req: NextRequest) {
         .in("game_id", gameIds)
         .eq("user_id", userId),
     ]);
-    type BetRowSlim = { id: number; game_id: number; bet_type: string; side: string | null; line_taken: number | null };
-    type PickRowSlim = { game_id: number; market: MyPickView["market"]; side: string; line_at_pick: number | null };
+    type BetRowSlim = {
+      id: number;
+      game_id: number;
+      bet_type: string;
+      side: string | null;
+      line_taken: number | null;
+    };
+    type PickRowSlim = {
+      game_id: number;
+      market: MyPickView["market"];
+      side: string;
+      line_at_pick: number | null;
+    };
     const betsByGame = new Map<number, MyBetView[]>();
     for (const b of (betsRes.data ?? []) as BetRowSlim[]) {
       const view: MyBetView = {
@@ -161,6 +201,15 @@ export async function GET(req: NextRequest) {
       picksByGame.set(p.game_id, [...(picksByGame.get(p.game_id) ?? []), view]);
     }
     for (const g of rows) {
+      stakeById.set(
+        g.id,
+        tickerStake(
+          betsByGame.get(g.id) ?? [],
+          picksByGame.get(g.id) ?? [],
+          abbrById.get(g.home_team_id) ?? "?",
+          abbrById.get(g.away_team_id) ?? "?",
+        ),
+      );
       mineById.set(
         g.id,
         tickerMine(
@@ -185,10 +234,14 @@ export async function GET(req: NextRequest) {
     homePoints: g.home_points,
     awayPoints: g.away_points,
     mine: mineById.get(g.id) ?? null,
+    stake: stakeById.get(g.id) ?? null,
+    spread: spreadById.get(g.id) ?? null,
     // MIA is Miami on Saturday and the Dolphins on Sunday; the chip says which.
     ...(nflIds.has(g.id) ? { sport: "nfl" as const } : {}),
   }));
 
   const payload: TickerData = { seasonId, week, games };
-  return NextResponse.json(payload, { headers: { "cache-control": "no-store" } });
+  return NextResponse.json(payload, {
+    headers: { "cache-control": "no-store" },
+  });
 }

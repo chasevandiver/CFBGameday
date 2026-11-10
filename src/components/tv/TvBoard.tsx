@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 import type { TickerGame } from "../../lib/ticker";
 import { leadingSide } from "../ScoreTicker";
-import { MineBadge, tvStatus } from "./TvChip";
+import { lineClass, teamClass, tvLine, tvStatus, VerdictWords } from "./TvChip";
 import { tvOrder, useTickerFeed } from "./use-ticker-feed";
 
 const PER_PAGE = 6;
@@ -68,21 +68,25 @@ function Cell({ g }: { g: TickerGame }) {
   const live = g.status === "in_progress";
   const scored = live || g.status === "final";
   const lead = leadingSide(g);
+  const line = tvLine(g);
   const row = (abbr: string, pts: number | null, s: "home" | "away") => (
-    <span className={`tv-team ${lead !== null && lead !== s ? "text-chalk/45" : "text-chalk"}`}>
+    <span className={`tv-team ${teamClass(g, s)}`}>
       <span style={{ fontWeight: lead === s ? 700 : 500 }}>{abbr}</span>
       {scored && <span className="stat">{pts ?? 0}</span>}
     </span>
   );
   return (
-    <div className="tv-cell" data-mine={g.mine ?? undefined}>
+    <div className="tv-cell">
       {row(g.awayAbbr, g.awayPoints, "away")}
       <span className={`tv-cell-status stat ${live ? "text-live" : "text-dim"}`}>
         {g.sport === "nfl" && <span className="tv-tag">NFL</span>}
         {tvStatus(g)}
-        <MineBadge mine={g.mine} />
       </span>
       {row(g.homeAbbr, g.homePoints, "home")}
+      <span className={`tv-cell-line stat ${line ? lineClass(g, line.mine) : ""}`}>
+        {line?.text}
+      </span>
+      <VerdictWords g={g} />
     </div>
   );
 }

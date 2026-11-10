@@ -234,6 +234,21 @@ shipping it.
 
 ## Log
 
+### Nov 10 — TV-3: cleaner chips, the line on every game
+
+Replaces TV-2's tint, ring and glyph badge, which read as clutter at couch
+distance.
+
+- `/api/ticker` adds `spread` (consensus, home-perspective, public like the
+  scores) and `stake`: the ticket `mine` grades, labelled by the shared
+  `betSideLabel` / `pickSideLabel` (so away spreads keep the sign fix), with
+  `tintFor`'s precedence: first gradable ledger bet, else first bet, else the
+  headline pick. Tests in `ticker.test.ts`.
+- On the TV, only the team the viewer is on changes colour: green covering,
+  gold on the number, red not, live and final alike. A totals ticket colours
+  its line instead. Every game shows a number: the viewer's ticket when they
+  have one, else the market spread written favourite-first.
+
 ### Nov 10 — TV-2: your bets light up on the TV
 
 - `/api/ticker` takes `?k=<calendar key>` when there is no session and
