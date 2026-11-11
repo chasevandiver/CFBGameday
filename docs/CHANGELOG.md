@@ -234,6 +234,20 @@ shipping it.
 
 ## Log
 
+### Nov 11 — TV-12: ESPN fantasy on the strip
+
+- `/api/fantasy?league=&team=` reads ESPN's league feed (unofficial,
+  `lm-api-reads.fantasy.espn.com`; public leagues only, no cookies stored or
+  forwarded) and `src/lib/fantasy.ts` turns it into `FantasyData` (tested
+  against shapes trimmed from league 1129229, week 10): both sides' live
+  score, projection, ESPN's own win probability, record, and starters yet to
+  play / playing / done, from each NFL team's kickoff (bench and IR excluded,
+  byes count as done, a game counts as over 3.5h after kickoff).
+- The cards take `?ffl=<league>&fteam=<team>` and add a FANTASY section after
+  the summary: the viewer's matchup always (tile tinted green leading, orange
+  trailing, gold level, like a bet), the rest of the league only while NFL
+  games are on. Polled every 60s; ESPN updates about that often.
+
 ### Nov 11 — TV-11: the S mark on the strip
 
 The strip carried the wordmark alone, which §36-37 has backwards: the icon is
