@@ -1,6 +1,7 @@
 /** Payload for the slim gameday score-ticker strip (spec §7). */
 
 import { statusForBet, tintFor } from "./live-status";
+import { formatRecord, payoutAt, tally, type Wager, type WagerResult } from "./records";
 import {
   betSideLabel,
   headlinePick,
@@ -44,6 +45,15 @@ export interface TickerGame {
   stake?: TickerStake | null;
   /** Consensus spread, home-perspective (negative = home favoured). */
   spread?: number | null;
+  /** TV-10: school colour (#hex) and logo URL for the broadcast tiles. */
+  homeColor?: string | null;
+  awayColor?: string | null;
+  homeLogo?: string | null;
+  awayLogo?: string | null;
+  /** Network as the feed gives it ("ESPN2", "The CW Network"). */
+  tv?: string | null;
+  /** Consensus total (TV-9). */
+  total?: number | null;
   /** Live only (TV-8): who has the ball, and CFBD/ESPN's "2nd & 10 at OSU 34". */
   possession?: "home" | "away" | null;
   situation?: string | null;
@@ -52,10 +62,24 @@ export interface TickerGame {
   sport?: "nfl";
 }
 
+/**
+ * The viewer's ledger over the games in this payload (TV-9): finals graded by
+ * the Sunday grader when it has run, else from the final score at the bet's
+ * own line; units at the bet's real odds. Ledger bets only: picks are
+ * pick'em, not money. Null with no viewer or no bets in the window.
+ */
+export interface TickerSummary {
+  record: string;
+  units: number;
+  live: number;
+  upcoming: number;
+}
+
 export interface TickerData {
   seasonId: number;
   week: number;
   games: TickerGame[];
+  summary?: TickerSummary | null;
 }
 
 /**
@@ -115,4 +139,66 @@ export function tickerStake(
     };
   }
   return null;
+}
+
+/**
+ * TV-9: the viewer's ledger across the games in this payload. A final takes
+ * the Sunday grader's result and payout when it has run, else is graded here
+ * from the final score at the bet's own line and priced at its own odds, so a
+ * Tuesday-night win counts Tuesday night. Bets a score can't grade (team
+ * totals, halves) count once the grader settles them, not before.
+ */
+export function tickerSummary(
+  bets: Array<{
+    game_id: number;
+    bet_type: string;
+    side: string | null;
+    line_taken: number | null;
+    odds: number;
+    units: number;
+    result: WagerResult | "void" | null;
+    payout_units: number | null;
+  }>,
+  games: Array<{
+    id: number;
+    status: string;
+    home_points: number | null;
+    away_points: number | null;
+  }>,
+): TickerSummary | null {
+  if (bets.length === 0) return null;
+  const byId = new Map(games.map((g) => [g.id, g]));
+  const wagers: Wager[] = [];
+  let live = 0;
+  let upcoming = 0;
+  for (const b of bets) {
+    const g = byId.get(b.game_id);
+    if (!g || b.result === "void") continue;
+    if (g.status === "in_progress") live += 1;
+    else if (g.status === "scheduled") upcoming += 1;
+    if (g.status !== "final") continue;
+
+    let result: WagerResult | null = b.result;
+    if (result === null) {
+      const v = statusForBet(
+        {
+          betType: b.bet_type,
+          side: b.side,
+          line: b.line_taken === null ? null : Number(b.line_taken),
+        },
+        g.home_points ?? 0,
+        g.away_points ?? 0,
+      );
+      result =
+        v === null ? null : v.state === "winning" ? "win" : v.state === "losing" ? "loss" : "push";
+    }
+    if (result === null) continue;
+    wagers.push({
+      result,
+      units: b.units,
+      payoutUnits: b.payout_units ?? payoutAt(b.units, b.odds, result),
+    });
+  }
+  const t = tally(wagers);
+  return { record: formatRecord(t), units: Math.round(t.units * 100) / 100, live, upcoming };
 }

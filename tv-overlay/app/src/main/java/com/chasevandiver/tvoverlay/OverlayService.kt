@@ -76,6 +76,14 @@ class OverlayService : Service() {
         }
     }
 
+    /* Look for a newer build now and every six hours (TV-9). */
+    private val updateCheck = object : Runnable {
+        override fun run() {
+            kotlin.concurrent.thread(isDaemon = true) { Updater.check(this@OverlayService) }
+            main.postDelayed(this, 6 * 60 * 60 * 1000L)
+        }
+    }
+
     /* Burn-in guard: a static strip on an OLED for a whole Saturday leaves a
        ghost. Nudge the window a few pixels every two minutes. */
     private val drift = object : Runnable {
@@ -95,6 +103,7 @@ class OverlayService : Service() {
         server = ControlServer(this, PORT).also { it.start() }
         main.postDelayed(drift, 2 * 60 * 1000L)
         main.postDelayed(hourlyReload, 60 * 60 * 1000L)
+        main.post(updateCheck)
         if (store.config.visible) applyConfig()
     }
 
@@ -143,6 +152,10 @@ class OverlayService : Service() {
         .put("port", PORT)
         .put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
         .put("version", packageManager.getPackageInfo(packageName, 0).versionName)
+        .put("name", store.name)
+        .put("build", Updater.currentBuild(this))
+        .put("update", Updater.latestBuild ?: JSONObject.NULL)
+        .put("updateStatus", Updater.status ?: JSONObject.NULL)
 
     /** Runs on the UI thread and waits for it, so the HTTP reply reflects it. */
     private fun onMain(block: () -> Unit) {

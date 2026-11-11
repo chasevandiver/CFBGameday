@@ -238,18 +238,94 @@ body > footer {
   grid-row: 2;
 }
 
-/* ── Card strip (TV-8) ────────────────────────────────────────────────── */
+/* ── Broadcast cards (/tv/cards, TV-10) ─────────────────────────────────
+   Authored against public/design/tv-direction-f.html at a 50px strip, then
+   expressed in vh so Small / Medium / Large all scale together: 1px at 50px
+   tall = 2vh. Colours are the Field palette (.brand-surface) plus each
+   school's own colour from the feed. */
 
-.tv-card-area {
+.tvb {
+  align-items: stretch;
+  font-size: 40vh;
+  text-transform: none;
+  letter-spacing: 0;
+  background: linear-gradient(180deg, rgba(18, 24, 22, 0.94), rgba(3, 7, 6, 0.97));
+  border: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+.tvb::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2vh;
+  z-index: 3;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(232, 185, 61, 0.75) 30%,
+    rgba(232, 185, 61, 0.75) 70%,
+    transparent
+  );
+}
+.tvb-k {
+  font:
+    700 22vh var(--font-body),
+    sans-serif;
+  letter-spacing: 0.2em;
+  color: color-mix(in srgb, var(--text) 55%, transparent);
+  white-space: nowrap;
+}
+.tvb-gold {
+  color: var(--accent);
+}
+.tvb-dim {
+  color: color-mix(in srgb, var(--text) 45%, transparent);
+}
+.tvb-brand {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 28vh 0 26vh;
+  font:
+    400 30vh var(--font-display-brand),
+    serif;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.tvb-brand::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 24vh;
+  bottom: 24vh;
+  width: 1px;
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+}
+.tvb-label {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 14vh;
+  padding: 0 16vh 0 28vh;
+}
+.tvb-area {
   flex: 1;
-  height: 100%;
   min-width: 0;
   display: flex;
   align-items: center;
+  gap: 14vh;
+  padding: 0 14vh 0 6vh;
   overflow: hidden;
   transition: opacity 260ms linear;
 }
-.tv-card-measure {
+.tvb-area[data-fading] {
+  opacity: 0;
+}
+.tvb-measure {
   position: absolute;
   left: 0;
   top: 0;
@@ -257,77 +333,424 @@ body > footer {
   visibility: hidden;
   pointer-events: none;
 }
-.tv-card-area[data-fading] {
-  opacity: 0;
-}
-.tv-cards .tv-empty {
-  margin: 0 0 0 0.9em;
-}
-.tv-card {
+.tvb-count {
+  flex-shrink: 0;
   display: flex;
-  flex: none;
   align-items: center;
-  gap: 0.42em;
-  height: 100%;
-  padding: 0 0.75em 0 0.75em;
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
-  white-space: nowrap;
+  padding: 0 24vh;
+  font:
+    500 22vh var(--font-numeric),
+    monospace;
+  color: color-mix(in srgb, var(--text) 45%, transparent);
 }
-/* The viewer's own games: a gold edge, so "mine first" reads at a glance. */
-.tv-card[data-mine] {
-  box-shadow: inset 0.12em 0 0 var(--accent);
-}
-.tv-card-team {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.22em;
-}
-.tv-ball {
-  width: 0.78em;
-  height: 0.5em;
+.tvb-dot {
+  display: inline-block;
+  width: 12vh;
+  height: 12vh;
+  border-radius: 50%;
+  background: var(--live);
+  box-shadow:
+    0 0 0 5vh rgba(255, 75, 87, 0.22),
+    0 0 16vh rgba(255, 75, 87, 0.7);
   flex-shrink: 0;
 }
-.tv-card-sit {
-  font-size: 0.72em;
+.tvb-logo {
+  width: 50vh;
+  height: 50vh;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: drop-shadow(0 4vh 10vh rgba(0, 0, 0, 0.55));
 }
-.tv-field {
+.tvb-badge {
+  display: inline-grid;
+  place-items: center;
+  width: 50vh !important;
+  height: 50vh !important;
+  border-radius: 50%;
+  flex-shrink: 0;
+  font:
+    800 18vh var(--font-body),
+    sans-serif;
+  color: #fff;
+}
+.tvb-ball {
+  width: 24vh;
+  height: 16vh;
+  flex-shrink: 0;
+}
+
+/* Tile: every game. Team colours wash in from each end. */
+.tvb-tile {
   position: relative;
-  flex-shrink: 0;
-  width: 3.4em;
-  height: 0.36em;
-  border-radius: 0.08em;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 11vh;
+  height: 88vh;
+  padding: 0 16vh 8vh 14vh;
+  border-radius: 20vh;
+  overflow: hidden;
+  white-space: nowrap;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.025));
+  box-shadow: inset 0 0 0 2vh rgba(255, 255, 255, 0.08);
+}
+.tvb-tile > *:not(.tvb-wash):not(.tvb-field) {
+  position: relative;
+}
+.tvb-wash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.28) 0 7%,
-    rgba(52, 199, 123, 0.35) 7% 93%,
-    rgba(255, 255, 255, 0.28) 93%
+    color-mix(in srgb, var(--ta) 55%, transparent),
+    transparent 34%,
+    transparent 66%,
+    color-mix(in srgb, var(--th) 55%, transparent)
   );
 }
-.tv-field[data-red] {
-  box-shadow: 0 0 0 0.05em var(--live);
+.tvb-ab {
+  font:
+    600 36vh var(--font-display),
+    sans-serif;
+  letter-spacing: 0.05em;
+  color: #fff;
 }
-.tv-field-mid {
+.tvb-s {
+  min-width: 44vh;
+  text-align: center;
+  font:
+    700 52vh/1 var(--font-display),
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+}
+.tvb-trail {
+  color: rgba(255, 255, 255, 0.6);
+}
+.tvb-ctr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4vh;
+  min-width: 150vh;
+}
+.tvb-clk {
+  display: flex;
+  align-items: center;
+  gap: 12vh;
+  font:
+    600 36vh/1 var(--font-display),
+    sans-serif;
+  letter-spacing: 0.06em;
+  color: #fff;
+}
+.tvb-clk .tvb-dot {
+  width: 10vh;
+  height: 10vh;
+}
+.tvb-dd {
+  font:
+    600 22vh var(--font-body),
+    sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--text) 72%, transparent);
+}
+.tvb-red {
+  color: #ff8a92;
+}
+.tvb-ticket {
+  padding: 4vh 9vh;
+  border-radius: 8vh;
+  font:
+    500 26vh var(--font-numeric),
+    monospace;
+  color: var(--text);
+  background: rgba(232, 185, 61, 0.16);
+  box-shadow: inset 0 0 0 2vh rgba(232, 185, 61, 0.55);
+}
+.tvb-mkt {
+  font:
+    500 26vh var(--font-numeric),
+    monospace;
+  color: color-mix(in srgb, var(--text) 50%, transparent);
+}
+.tvb-bright {
+  color: color-mix(in srgb, var(--text) 80%, transparent);
+}
+.tvb-net {
+  padding: 5vh 9vh;
+  border-radius: 8vh;
+  font:
+    800 20vh var(--font-body),
+    sans-serif;
+  letter-spacing: 0.08em;
+  color: color-mix(in srgb, var(--text) 85%, transparent);
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 2vh rgba(255, 255, 255, 0.12);
+}
+.tvb-tag {
+  font:
+    700 18vh var(--font-body),
+    sans-serif;
+  letter-spacing: 0.12em;
+  color: color-mix(in srgb, var(--text) 50%, transparent);
+}
+.tvb-at {
+  font:
+    600 26vh var(--font-display),
+    sans-serif;
+  color: color-mix(in srgb, var(--text) 45%, transparent);
+}
+
+/* The field along the bottom of a live tile: end zones in school colours. */
+.tvb-field {
   position: absolute;
-  left: 50%;
-  top: 0;
+  left: 0;
+  right: 0;
   bottom: 0;
-  width: 1px;
-  background: rgba(255, 255, 255, 0.5);
+  height: 6vh;
+  display: flex;
 }
-/* x is 0-100 between the goal lines; the end zones take 7% each side. */
-.tv-field-ball {
+.tvb-ez {
+  width: 7%;
+}
+.tvb-turf {
+  position: relative;
+  flex: 1;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(52, 199, 123, 0.55) 0 9.6%,
+    rgba(244, 239, 226, 0.6) 9.6% 10%
+  );
+}
+.tvb-field.tvb-red .tvb-turf {
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(255, 75, 87, 0.6) 0 9.6%,
+    rgba(244, 239, 226, 0.6) 9.6% 10%
+  );
+}
+.tvb-spot {
   position: absolute;
-  top: 50%;
-  width: 0.36em;
-  height: 0.36em;
-  margin-left: -0.18em;
+  top: -6vh;
+  width: 18vh;
+  height: 18vh;
+  margin-left: -9vh;
   border-radius: 50%;
   background: var(--accent);
-  transform: translateY(-50%);
+  box-shadow: 0 0 16vh rgba(232, 185, 61, 0.95);
 }
-.tv-card-count {
-  flex-shrink: 0;
-  padding: 0 0.6em;
-  font-size: 0.6em;
-  color: var(--text-dim);
+
+/* States */
+.tvb-mine {
+  box-shadow:
+    inset 0 0 0 3vh rgba(232, 185, 61, 0.9),
+    0 0 28vh rgba(232, 185, 61, 0.12);
+}
+.tvb-rz {
+  box-shadow:
+    inset 0 0 0 3vh rgba(255, 75, 87, 0.95),
+    0 0 32vh rgba(255, 75, 87, 0.35);
+}
+.tvb-rzt {
+  padding: 4vh 10vh;
+  border-radius: 6vh;
+  font:
+    800 18vh var(--font-body),
+    sans-serif;
+  letter-spacing: 0.16em;
+  color: #fff;
+  background: var(--live);
+}
+/* The viewer's bet: the whole tile says how it's going. */
+.tvb-bet {
+  box-shadow:
+    inset 0 0 0 4vh var(--vc),
+    0 0 36vh color-mix(in srgb, var(--vc) 40%, transparent);
+}
+.tvb-bet .tvb-wash {
+  background: linear-gradient(
+    var(--vdir),
+    color-mix(in srgb, var(--vc) 42%, transparent),
+    color-mix(in srgb, var(--vc) 12%, transparent) 55%,
+    transparent 80%
+  );
+}
+.tvb-total .tvb-wash {
+  background: color-mix(in srgb, var(--vc) 20%, transparent);
+}
+.tvb-total .tvb-ticket {
+  background: var(--vc);
+  color: var(--accent-ink);
+  box-shadow: none;
+}
+.tvb-me {
+  color: var(--vc);
+}
+.tvb-s-v {
+  padding: 4vh 12vh 2vh;
+  border-radius: 10vh;
+  color: var(--accent-ink);
+  background: var(--vc);
+  box-shadow: 0 0 28vh color-mix(in srgb, var(--vc) 60%, transparent);
+}
+
+/* Up next */
+.tvb-ko {
+  font:
+    700 52vh/1 var(--font-display),
+    sans-serif;
+  color: var(--text);
+}
+.tvb-ko small {
+  margin-left: 4vh;
+  font:
+    600 26vh var(--font-display),
+    sans-serif;
+  color: color-mix(in srgb, var(--text) 60%, transparent);
+}
+
+/* Finals: grey except the viewer's */
+.tvb-fin .tvb-logo,
+.tvb-fin .tvb-badge {
+  filter: grayscale(1) brightness(1.2);
+  opacity: 0.55;
+}
+.tvb-fin.tvb-mine .tvb-logo,
+.tvb-fin.tvb-mine .tvb-badge {
+  filter: drop-shadow(0 4vh 10vh rgba(0, 0, 0, 0.55));
+  opacity: 1;
+}
+.tvb-fin .tvb-s {
+  color: color-mix(in srgb, var(--text) 55%, transparent);
+}
+.tvb-fin .tvb-s.tvb-w {
+  color: color-mix(in srgb, var(--text) 92%, transparent);
+}
+.tvb-res {
+  padding: 6vh 14vh;
+  border-radius: 8vh;
+  font:
+    800 24vh var(--font-body),
+    sans-serif;
+  letter-spacing: 0.14em;
+  color: var(--accent-ink);
+}
+
+/* Your night */
+.tvb-sum {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 32vh;
+  padding: 0 24vh;
+}
+.tvb-rec {
+  font:
+    700 76vh/1 var(--font-display),
+    sans-serif;
+  letter-spacing: 0.02em;
+  color: #fff;
+}
+.tvb-units {
+  padding: 6vh 18vh 4vh;
+  border-radius: 10vh;
+  font:
+    700 42vh/1 var(--font-display),
+    sans-serif;
+  color: var(--accent-ink);
+}
+.tvb-mini {
+  display: flex;
+  align-items: center;
+  gap: 14vh;
+  padding: 8vh 18vh;
+  border-radius: 14vh;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 2vh rgba(255, 255, 255, 0.07);
+}
+.tvb-mini .tvb-logo,
+.tvb-mini .tvb-badge {
+  width: 46vh !important;
+  height: 46vh !important;
+}
+.tvb-light {
+  width: 18vh;
+  height: 18vh;
+  border-radius: 50%;
+}
+
+/* Touchdown: the strip floods in the scoring school's colour. */
+.tvb-td {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 40vh;
+  padding: 0 50vh;
+  overflow: hidden;
+  background: linear-gradient(
+    90deg,
+    var(--tc),
+    color-mix(in srgb, var(--tc) 70%, #000) 70%,
+    var(--bg)
+  );
+}
+.tvb-td::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.18) 42%,
+    transparent 54%
+  );
+}
+.tvb-td::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    115deg,
+    rgba(255, 255, 255, 0.035) 0 28vh,
+    transparent 28vh 56vh
+  );
+}
+.tvb-td > * {
+  position: relative;
+  z-index: 1;
+}
+.tvb-td-word {
+  font:
+    italic 700 76vh/1 var(--font-display),
+    sans-serif;
+  letter-spacing: 0.14em;
+  color: #fff;
+  text-shadow: 0 4vh 24vh rgba(0, 0, 0, 0.35);
+}
+.tvb-td .tvb-logo,
+.tvb-td .tvb-badge {
+  width: 80vh !important;
+  height: 80vh !important;
+  filter: drop-shadow(0 0 24vh rgba(255, 255, 255, 0.35));
+}
+.tvb-td-team {
+  font:
+    700 54vh var(--font-display),
+    sans-serif;
+  letter-spacing: 0.06em;
+  color: #fff;
+}
+.tvb-td-score {
+  font:
+    700 64vh/1 var(--font-display),
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+}
+.tvb-push-right {
+  margin-left: auto;
 }

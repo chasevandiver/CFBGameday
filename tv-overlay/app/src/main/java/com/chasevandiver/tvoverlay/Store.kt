@@ -70,6 +70,11 @@ class Store(context: Context) {
         return config
     }
 
+    /** What this TV is called on the phone page, e.g. "Living room". */
+    var name: String
+        get() = prefs.getString("name", "") ?: ""
+        set(v) = prefs.edit().putString("name", v.trim().take(40)).apply()
+
     @Synchronized
     fun savePresets(list: JSONArray) {
         val clean = JSONArray()

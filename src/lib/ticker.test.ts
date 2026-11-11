@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { demoTickerData } from "./demo-data";
-import { tickerMine, tickerStake } from "./ticker";
+import { tickerMine, tickerStake, tickerSummary } from "./ticker";
 import type { MyBetView, MyPickView } from "./slate";
 
 const bet = (overrides: Partial<MyBetView> = {}): MyBetView => ({
@@ -109,5 +109,49 @@ describe("tickerStake", () => {
 
   it("is null with nothing on the game", () => {
     expect(tickerStake([], [], "TCU", "BAY")).toBeNull();
+  });
+});
+
+/* TV-9: the summary card's record and units. */
+describe("tickerSummary", () => {
+  const bet = (over: Partial<Parameters<typeof tickerSummary>[0][number]>) => ({
+    game_id: 1,
+    bet_type: "spread",
+    side: "away",
+    line_taken: 1.5,
+    odds: -110,
+    units: 1,
+    result: null,
+    payout_units: null,
+    ...over,
+  });
+  const games = [
+    { id: 1, status: "final", home_points: 34, away_points: 17 },
+    { id: 2, status: "final", home_points: 10, away_points: 24 },
+    { id: 3, status: "in_progress", home_points: 7, away_points: 7 },
+    { id: 4, status: "scheduled", home_points: null, away_points: null },
+  ];
+
+  it("grades finals from the score at the bet's own line and odds", () => {
+    const s = tickerSummary(
+      [
+        bet({ game_id: 1 }), // away +1.5, lost by 17: loss, -1u
+        bet({ game_id: 2, odds: 150, units: 2 }), // away +1.5, won by 14: win, +3u
+        bet({ game_id: 3 }),
+        bet({ game_id: 4 }),
+      ],
+      games,
+    );
+    expect(s).toEqual({ record: "1-1", units: 2, live: 1, upcoming: 1 });
+  });
+
+  it("prefers the grader's result and payout when it has run", () => {
+    const s = tickerSummary([bet({ game_id: 1, result: "win", payout_units: 0.91 })], games);
+    expect(s).toEqual({ record: "1-0", units: 0.91, live: 0, upcoming: 0 });
+  });
+
+  it("skips voids, and is null with no bets", () => {
+    expect(tickerSummary([bet({ game_id: 1, result: "void" })], games)?.record).toBe("0-0");
+    expect(tickerSummary([], games)).toBeNull();
   });
 });
