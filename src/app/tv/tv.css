@@ -58,7 +58,7 @@ body > footer {
   color: var(--accent);
 }
 .tv-line {
-  font-size: 0.82em;
+  font-size: 0.86em;
   margin-left: 0.15em;
 }
 /* The market number on a game the viewer isn't on: there for reference,
@@ -69,11 +69,14 @@ body > footer {
 
 /* ── Ticker strip ─────────────────────────────────────────────────────── */
 
+/* Docked flush to the top or bottom edge, full width (TV-6): square, with
+   hairlines instead of a frame, and type filling more of a thinner strip. */
 .tv-strip {
   display: flex;
   align-items: center;
-  font-size: 46vh;
-  border-radius: 20vh;
+  font-size: 68vh;
+  border-radius: 0;
+  border-width: 1px 0;
 }
 .tv-brand {
   display: flex;
@@ -81,12 +84,21 @@ body > footer {
   gap: 0.4em;
   flex-shrink: 0;
   height: 100%;
-  padding: 0 0.7em 0 0.9em;
+  padding: 0 0.5em 0 0.6em;
   color: var(--accent);
   font-weight: 700;
   letter-spacing: 0.08em;
   line-height: 100vh;
   border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+/* Burn-in guard for the one thing that never moves on the strip. */
+.tv-brand > span:first-child {
+  animation: tv-nudge 600s ease-in-out infinite alternate;
+}
+@keyframes tv-nudge {
+  to {
+    transform: translate3d(0.15em, 0, 0);
+  }
 }
 .tv-week {
   font-size: 0.6em;
@@ -99,14 +111,15 @@ body > footer {
   display: flex;
   align-items: center;
   overflow: hidden;
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 2%, #000 98%, transparent);
-  mask-image: linear-gradient(90deg, transparent, #000 2%, #000 98%, transparent);
+  /* No mask-image fade here: on a Fire TV's GPU a mask over moving content
+     re-rasterises the strip every frame and the crawl stutters (TV-5). */
 }
 .tv-track {
   display: flex;
   width: max-content;
   animation: tv-scroll var(--tv-dur, 40s) linear infinite;
   will-change: transform;
+  backface-visibility: hidden;
 }
 .tv-track[data-still] {
   animation: none;
@@ -124,15 +137,16 @@ body > footer {
   white-space: nowrap;
 }
 .tv-status {
-  font-size: 0.82em;
+  font-size: 0.86em;
   margin-left: 0.2em;
 }
+/* translate3d keeps the crawl on the compositor on older WebViews. */
 @keyframes tv-scroll {
   from {
-    transform: translateX(0);
+    transform: translate3d(0, 0, 0);
   }
   to {
-    transform: translateX(-50%);
+    transform: translate3d(-50%, 0, 0);
   }
 }
 
