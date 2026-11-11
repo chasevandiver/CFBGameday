@@ -4,6 +4,8 @@ import android.content.Context
 import dadb.AdbKeyPair
 import dadb.Dadb
 import java.io.File
+import java.net.InetSocketAddress
+import java.net.Socket
 
 /**
  * Fire OS 8 has no screen for the "display over other apps" permission, so it
@@ -12,39 +14,56 @@ import java.io.File
  * and run the one command. The first time, Fire OS shows an "Allow debugging?"
  * box; pick Always allow, then OK.
  *
- * Needs Settings > My Fire TV > Developer options > ADB debugging = ON.
+ * Needs Developer options > ADB debugging = ON.
+ *
+ * Every step reports through [progress] so the TV screen never looks frozen,
+ * and every failure, including a library that won't load on this Fire OS,
+ * comes back as text instead of a silent dead thread.
  */
 object SelfGrant {
-    fun run(ctx: Context): String {
+    private const val PORT = 5555
+
+    fun run(ctx: Context, progress: (String) -> Unit): String = try {
+        attempt(ctx, progress)
+    } catch (t: Throwable) {
+        "Something broke while granting (${t.javaClass.simpleName}: ${t.message}). Send a photo of this screen."
+    }
+
+    private fun attempt(ctx: Context, progress: (String) -> Unit): String {
+        // 1. Is anything listening? A closed port means ADB debugging is off,
+        //    and that answer should take one second, not a two-minute timeout.
+        val hosts = listOfNotNull("127.0.0.1", Net.localIp()).distinct()
+        progress("Step 1 of 3: looking for this TV's ADB on port $PORT…")
+        val host = hosts.firstOrNull { portOpen(it) }
+            ?: return "Step 1 failed: nothing is answering on port $PORT, so ADB debugging is off. " +
+                "Open Developer options, turn ADB debugging on (or off and back on), then try again."
+
+        // 2. Key for this app, made once and reused so "Always allow" sticks.
+        progress("Step 2 of 3: preparing a debugging key…")
         val dir = ctx.filesDir
         val priv = File(dir, "adbkey")
         val pub = File(dir, "adbkey.pub")
-        val keyPair = try {
-            if (!priv.exists() || !pub.exists()) AdbKeyPair.generate(priv, pub)
-            AdbKeyPair.read(priv, pub)
-        } catch (e: Exception) {
-            return "Couldn't create a debugging key: ${e.message}"
-        }
+        if (!priv.exists() || !pub.exists()) AdbKeyPair.generate(priv, pub)
+        val keyPair = AdbKeyPair.read(priv, pub)
 
-        val hosts = listOfNotNull("127.0.0.1", Net.localIp()).distinct()
-        var lastError: Exception? = null
-        for (host in hosts) {
-            try {
-                // 5s to connect; up to 90s for someone to answer the Allow box.
-                Dadb.create(host, 5555, keyPair, 5_000, 90_000).use { adb ->
-                    val cmd = "appops set ${ctx.packageName} SYSTEM_ALERT_WINDOW allow"
-                    val res = adb.shell(cmd)
-                    return if (res.exitCode == 0) {
-                        "Done. Overlay permission granted."
-                    } else {
-                        "ADB answered but the command failed: ${res.allOutput.trim()}"
-                    }
-                }
-            } catch (e: Exception) {
-                lastError = e
+        // 3. Connect and run the command. The Allow box appears here.
+        progress(
+            "Step 3 of 3: asking the TV for permission ($host). A box should pop up now: " +
+                "check Always allow, then pick OK. Waiting up to 60 seconds…",
+        )
+        Dadb.create(host, PORT, keyPair, 4_000, 60_000).use { adb ->
+            val res = adb.shell("appops set ${ctx.packageName} SYSTEM_ALERT_WINDOW allow")
+            return if (res.exitCode == 0) {
+                "Done. Overlay permission granted."
+            } else {
+                "The TV ran the command but said no (exit ${res.exitCode}): ${res.allOutput.trim()}"
             }
         }
-        return "Couldn't reach this TV's ADB (${lastError?.javaClass?.simpleName}: ${lastError?.message}). " +
-            "Turn on ADB debugging in Settings > My Fire TV > Developer options, then try again."
+    }
+
+    private fun portOpen(host: String): Boolean = try {
+        Socket().use { it.connect(InetSocketAddress(host, PORT), 1_500); true }
+    } catch (e: Exception) {
+        false
     }
 }
