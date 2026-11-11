@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
   }
 
   const GAME_COLS =
-    "id, status, start_ts, current_period, current_clock, home_points, away_points, home_team_id, away_team_id";
+    "id, status, start_ts, current_period, current_clock, home_points, away_points, home_team_id, away_team_id, current_situation, possession";
   const [{ data }, { data: nflData }] = await Promise.all([
     supabase
       .from("games")
@@ -73,6 +73,8 @@ export async function GET(req: NextRequest) {
     | "away_points"
     | "home_team_id"
     | "away_team_id"
+    | "current_situation"
+    | "possession"
   >;
   const now = Date.now();
   const nflIds = new Set(((nflData ?? []) as Row[]).map((g) => g.id));
@@ -236,6 +238,10 @@ export async function GET(req: NextRequest) {
     mine: mineById.get(g.id) ?? null,
     stake: stakeById.get(g.id) ?? null,
     spread: spreadById.get(g.id) ?? null,
+    // TV-8: the card view shows who has the ball and where. Only meaningful
+    // live; the sync nulls both at the final whistle.
+    possession: g.status === "in_progress" ? (g.possession ?? null) : null,
+    situation: g.status === "in_progress" ? (g.current_situation ?? null) : null,
     // MIA is Miami on Saturday and the Dolphins on Sunday; the chip says which.
     ...(nflIds.has(g.id) ? { sport: "nfl" as const } : {}),
   }));

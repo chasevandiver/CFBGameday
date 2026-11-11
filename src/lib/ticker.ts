@@ -44,6 +44,9 @@ export interface TickerGame {
   stake?: TickerStake | null;
   /** Consensus spread, home-perspective (negative = home favoured). */
   spread?: number | null;
+  /** Live only (TV-8): who has the ball, and CFBD/ESPN's "2nd & 10 at OSU 34". */
+  possession?: "home" | "away" | null;
+  situation?: string | null;
   /** Present (as "nfl") on NFL chips — MIA is Miami on Saturday and the
    *  Dolphins on Sunday, and the chip has to say which. Absent = CFB. */
   sport?: "nfl";
