@@ -238,7 +238,7 @@ class OverlayService : Service() {
             // score bugs (title-safe), so the strip sits under the game's own
             // scoreboard. Large trades a little of that margin for size.
             w = sw
-            h = (sh * when (c.size) { "s" -> 0.040f; "l" -> 0.062f; else -> 0.050f }).toInt()
+            h = (sh * when (c.size) { "s" -> 0.038f; "l" -> 0.058f; else -> 0.046f }).toInt()
             gravity = (if (c.position == "top") Gravity.TOP else Gravity.BOTTOM) or Gravity.START
             // No window drift: it would open a gap at the edge. The crawl moves
             // anyway, and the page nudges its one static label itself.

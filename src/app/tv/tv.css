@@ -58,7 +58,7 @@ body > footer {
   color: var(--accent);
 }
 .tv-line {
-  font-size: 0.82em;
+  font-size: 0.86em;
   margin-left: 0.15em;
 }
 /* The market number on a game the viewer isn't on: there for reference,
@@ -74,7 +74,7 @@ body > footer {
 .tv-strip {
   display: flex;
   align-items: center;
-  font-size: 58vh;
+  font-size: 68vh;
   border-radius: 0;
   border-width: 1px 0;
 }
@@ -84,7 +84,7 @@ body > footer {
   gap: 0.4em;
   flex-shrink: 0;
   height: 100%;
-  padding: 0 0.6em 0 0.8em;
+  padding: 0 0.5em 0 0.6em;
   color: var(--accent);
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -137,7 +137,7 @@ body > footer {
   white-space: nowrap;
 }
 .tv-status {
-  font-size: 0.82em;
+  font-size: 0.86em;
   margin-left: 0.2em;
 }
 /* translate3d keeps the crawl on the compositor on older WebViews. */
