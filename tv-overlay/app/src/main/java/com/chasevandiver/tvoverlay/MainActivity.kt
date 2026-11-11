@@ -70,11 +70,11 @@ class MainActivity : Activity() {
 
         col.addView(
             text(
-                "First time on this TV: Settings > Developer options > ADB debugging ON (on some " +
-                    "TVs it's under My Fire TV or Device & Software), then come back here and pick " +
-                    "Grant permission. If a box asks to allow debugging, check Always allow and pick OK. " +
-                    "If Grant permission keeps failing, try Open TV settings: some TVs have a " +
-                    "\"Display over other apps\" switch there.",
+                "First time on this TV: turn on ADB debugging in Settings > Developer options. " +
+                    "Then, on your phone, open the page for a DIFFERENT TV running TV Overlay and use " +
+                    "Set up other TVs to grant this one. When this TV asks to allow debugging, check " +
+                    "Always allow and pick OK. (Amazon blocks a TV from granting itself; Grant permission " +
+                    "only works on older Fire TV software.)",
                 15f, DIM,
             ),
             spaced(28),
@@ -107,7 +107,7 @@ class MainActivity : Activity() {
         grant.isEnabled = false
         message.text = "Starting…"
         thread {
-            val result = SelfGrant.run(this) { step -> runOnUiThread { message.text = step } }
+            val result = SelfGrant.grantSelf(this) { step -> runOnUiThread { message.text = step } }
             runOnUiThread {
                 grant.isEnabled = true
                 refresh()
