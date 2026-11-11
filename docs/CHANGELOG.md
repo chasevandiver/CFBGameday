@@ -234,6 +234,16 @@ shipping it.
 
 ## Log
 
+### Nov 10 — TV-6: ticker flush to the screen edge
+
+- The ticker window is full width at y = 0, top or bottom. Heights 4 / 5 /
+  6.2% of the screen: the bottom 5% is title-safe, which broadcasters keep
+  clear, so S and M sit under a game's own score bug. No window drift for
+  the ticker (it would open a gap at the edge); the page nudges its static
+  "THE SLATE" label by 0.15em over ten minutes instead. Corner box unchanged.
+- `/tv/ticker` goes square with top/bottom hairlines, type at 58vh of the
+  thinner strip.
+
 ### Nov 10 — TV-5: smoother crawl on real hardware
 
 First run on Chase's Fire TV: the strip worked but the crawl was choppy.

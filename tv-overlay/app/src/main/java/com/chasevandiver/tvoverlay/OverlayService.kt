@@ -226,18 +226,28 @@ class OverlayService : Service() {
             WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
 
         val (dx, dy) = DRIFT[driftStep]
-        // TVs crop the picture edge (overscan); stay inside the safe area.
-        val mx = (sw * 0.035f).toInt()
-        val my = (sh * 0.045f).toInt()
 
         val w: Int
         val h: Int
         val gravity: Int
+        val x: Int
+        val y: Int
         if (c.layout == "ticker") {
-            w = sw - 2 * mx
-            h = (sh * when (c.size) { "s" -> 0.060f; "l" -> 0.095f; else -> 0.075f }).toInt()
+            // Flush to the very top or bottom edge, full width (TV-6). Heights
+            // stay inside the bottom 5% that broadcasters keep clear of their
+            // score bugs (title-safe), so the strip sits under the game's own
+            // scoreboard. Large trades a little of that margin for size.
+            w = sw
+            h = (sh * when (c.size) { "s" -> 0.040f; "l" -> 0.062f; else -> 0.050f }).toInt()
             gravity = (if (c.position == "top") Gravity.TOP else Gravity.BOTTOM) or Gravity.START
+            // No window drift: it would open a gap at the edge. The crawl moves
+            // anyway, and the page nudges its one static label itself.
+            x = 0
+            y = 0
         } else {
+            // TVs crop the picture edge (overscan); the box stays inside the safe area.
+            val mx = (sw * 0.035f).toInt()
+            val my = (sh * 0.045f).toInt()
             // Sized up for the couch: the box's width is what sets the text size.
             w = (sw * when (c.size) { "s" -> 0.28f; "l" -> 0.42f; else -> 0.34f }).toInt()
             h = (w * 0.75f).toInt()
@@ -247,12 +257,14 @@ class OverlayService : Service() {
                 "br" -> Gravity.BOTTOM or Gravity.END
                 else -> Gravity.TOP or Gravity.END
             }
-        }
-
-        return WindowManager.LayoutParams(w, h, type, flags, PixelFormat.TRANSLUCENT).apply {
-            this.gravity = gravity
             x = mx + dx
             y = my + dy
+        }
+
+        return WindowManager.LayoutParams(w, h, type, flags, PixelFormat.TRANSLUCENT).also {
+            it.gravity = gravity
+            it.x = x
+            it.y = y
         }
     }
 

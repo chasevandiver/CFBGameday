@@ -69,11 +69,14 @@ body > footer {
 
 /* ── Ticker strip ─────────────────────────────────────────────────────── */
 
+/* Docked flush to the top or bottom edge, full width (TV-6): square, with
+   hairlines instead of a frame, and type filling more of a thinner strip. */
 .tv-strip {
   display: flex;
   align-items: center;
-  font-size: 46vh;
-  border-radius: 20vh;
+  font-size: 58vh;
+  border-radius: 0;
+  border-width: 1px 0;
 }
 .tv-brand {
   display: flex;
@@ -81,12 +84,21 @@ body > footer {
   gap: 0.4em;
   flex-shrink: 0;
   height: 100%;
-  padding: 0 0.7em 0 0.9em;
+  padding: 0 0.6em 0 0.8em;
   color: var(--accent);
   font-weight: 700;
   letter-spacing: 0.08em;
   line-height: 100vh;
   border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+/* Burn-in guard for the one thing that never moves on the strip. */
+.tv-brand > span:first-child {
+  animation: tv-nudge 600s ease-in-out infinite alternate;
+}
+@keyframes tv-nudge {
+  to {
+    transform: translate3d(0.15em, 0, 0);
+  }
 }
 .tv-week {
   font-size: 0.6em;
