@@ -234,6 +234,20 @@ shipping it.
 
 ## Log
 
+### Nov 10 — TV-5: smoother crawl on real hardware
+
+First run on Chase's Fire TV: the strip worked but the crawl was choppy.
+
+- Dropped the `mask-image` edge fade on the moving track; a mask over
+  animated content re-rasterises every frame on a TV GPU.
+- `translate3d` keyframes and `backface-visibility: hidden` to keep the
+  crawl on the compositor in older WebViews.
+- Crawl duration only changes when the strip's width moves by 25%+. A clock
+  ticking changed the width every poll, and a new `animation-duration`
+  mid-loop jumps the strip.
+- Overlay app: no `LAYER_TYPE_HARDWARE` on the WebView. Content that changes
+  every frame re-renders the layer every frame, then composites it again.
+
 ### Nov 10 — TV-4: readable from the couch
 
 - Line and clock up from 0.68em to 0.82em of the strip; the market spread on

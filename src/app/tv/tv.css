@@ -99,14 +99,15 @@ body > footer {
   display: flex;
   align-items: center;
   overflow: hidden;
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 2%, #000 98%, transparent);
-  mask-image: linear-gradient(90deg, transparent, #000 2%, #000 98%, transparent);
+  /* No mask-image fade here: on a Fire TV's GPU a mask over moving content
+     re-rasterises the strip every frame and the crawl stutters (TV-5). */
 }
 .tv-track {
   display: flex;
   width: max-content;
   animation: tv-scroll var(--tv-dur, 40s) linear infinite;
   will-change: transform;
+  backface-visibility: hidden;
 }
 .tv-track[data-still] {
   animation: none;
@@ -127,12 +128,13 @@ body > footer {
   font-size: 0.82em;
   margin-left: 0.2em;
 }
+/* translate3d keeps the crawl on the compositor on older WebViews. */
 @keyframes tv-scroll {
   from {
-    transform: translateX(0);
+    transform: translate3d(0, 0, 0);
   }
   to {
-    transform: translateX(-50%);
+    transform: translate3d(-50%, 0, 0);
   }
 }
 

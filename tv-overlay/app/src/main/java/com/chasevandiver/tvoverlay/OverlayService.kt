@@ -16,7 +16,6 @@ import android.os.Looper
 import android.provider.Settings
 import android.util.DisplayMetrics
 import android.view.Gravity
-import android.view.View
 import android.view.WindowManager
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -260,7 +259,8 @@ class OverlayService : Service() {
     @SuppressLint("SetJavaScriptEnabled")
     private fun makeWebView(): WebView = WebView(this).apply {
         setBackgroundColor(Color.TRANSPARENT)
-        setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        // No hardware layer: the page animates every frame, so a layer would be
+        // re-rendered every frame and then composited again. Stutters on TVs.
         isFocusable = false
         isFocusableInTouchMode = false
         isVerticalScrollBarEnabled = false

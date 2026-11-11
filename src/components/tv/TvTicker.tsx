@@ -28,7 +28,13 @@ export function TvTicker() {
       // Speed in strip-heights per second, so a bigger strip moves the same
       // amount of text past the eye on any TV.
       const pxPerSec = frame.clientHeight * 1.5;
-      setDuration(w <= frame.clientWidth ? 0 : Math.max(15, Math.round(w / pxPerSec)));
+      const next = w <= frame.clientWidth ? 0 : Math.max(15, Math.round(w / pxPerSec));
+      // Changing animation-duration mid-loop makes the crawl jump. A clock
+      // going 10:45 -> 9:59 nudges the width every poll, so hold the current
+      // speed unless the strip really changed (a game added or dropped).
+      setDuration((prev) =>
+        prev > 0 && next > 0 && Math.abs(next - prev) / prev < 0.25 ? prev : next,
+      );
     };
     const copy = copyRef.current;
     const ro = new ResizeObserver(measure);
