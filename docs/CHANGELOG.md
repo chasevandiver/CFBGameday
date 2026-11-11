@@ -234,6 +234,28 @@ shipping it.
 
 ## Log
 
+### Nov 10 — TV-9: totals, a bets summary, scoring alerts, all-TV control, app updates
+
+Chase's picks after the first night on the cards.
+
+- **Totals:** `/api/ticker` carries the consensus `total`; each card shows
+  both numbers, the viewer's ticket replacing the market it's on.
+- **Summary card:** first in every cycle. `tickerSummary` (lib/ticker.ts,
+  tested) tallies the viewer's ledger bets on the games in the payload:
+  the Sunday grader's result and payout when it has run, else graded from
+  the final score at the bet's own line and priced at its own odds with the
+  shared `records.ts` math. Ungradeable types wait for the grader. Finished
+  games the viewer was on say WON / LOST / PUSH.
+- **Scoring alerts:** when a poll shows points on one of the viewer's games,
+  that game takes the strip for 9s ("TOUCHDOWN OHIO"), then rotation resumes.
+  Named by the jump (6+ TD, 3 FG, 2 safety, 1 PAT). Nothing on first load.
+- **All TVs:** each TV can be named; the phone page sends to This TV or All
+  TVs, and the TV relays to the others it found (cached scan, 5 min).
+- **App updates:** the app reads the `tv-overlay` release (build N =
+  versionCode), offers Install update on the TV and the phone page, and
+  installs through a PackageInstaller session; Fire OS confirms on screen.
+  Needs one last Downloader install to get this build.
+
 ### Nov 10 — TV-8: game cards instead of a crawl
 
 A native crawl (TV-7, closed unmerged as PR #185) was choppier and uglier

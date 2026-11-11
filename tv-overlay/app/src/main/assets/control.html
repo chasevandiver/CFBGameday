@@ -45,12 +45,26 @@
 <body>
   <div class="top">
     <div>
-      <h1>TV Overlay</h1>
+      <h1 id="title">TV Overlay</h1>
       <div class="sub" id="device">Connecting…</div>
     </div>
     <div class="pill" id="pill">Hidden</div>
   </div>
   <div class="warn" id="warn" hidden></div>
+
+  <div class="warn" id="update" hidden style="background:#2a2410;border-color:#6b5a1a;color:#ffeab0">
+    <div id="updateText"></div>
+    <div style="display:flex; gap:8px; margin-top:10px">
+      <button id="updateThis" style="flex:1; text-align:center">Update this TV</button>
+      <button id="updateAll" style="flex:1; text-align:center">Update all TVs</button>
+    </div>
+  </div>
+
+  <h2>Send to</h2>
+  <div class="seg" id="target">
+    <button data-v="this">This TV</button>
+    <button data-v="all" id="allBtn">All TVs</button>
+  </div>
 
   <h2>Show</h2>
   <div class="grid" id="presets"></div>
@@ -107,6 +121,12 @@
   <div class="list" id="list"></div>
   <input type="text" id="presetName" placeholder="Name, like Fairway Picks" style="margin-top:12px">
   <button class="go" id="savePreset">Save what's showing as a button</button>
+  <h2>This TV's name</h2>
+  <div style="display:flex; gap:8px">
+    <input type="text" id="tvName" placeholder="Like Living room" autocomplete="off">
+    <button id="saveName" style="min-width:84px; text-align:center">Save</button>
+  </div>
+
   <p class="muted" style="margin-top:16px">Tip: add this page to your home screen so it opens like an app.</p>
 
 <script>
@@ -125,7 +145,12 @@
     render();
   }
 
-  const show = (fields) => api("/api/show", fields).catch(alertErr);
+  /* "This TV" or "All TVs" (TV-9): with All, this TV runs the command and
+     relays it to every other TV it found on the Wi-Fi. */
+  let target = "this";
+  let peerCount = 0;
+  const all = () => target === "all";
+  const show = (fields) => api("/api/show", { ...fields, all: all() }).catch(alertErr);
   const alertErr = (e) => { $("warn").hidden = false; $("warn").textContent = "Couldn't reach the TV. " + (e.message || ""); };
 
   function seg(id, value, onPick) {
@@ -139,7 +164,15 @@
 
   function render() {
     const s = state;
-    $("device").textContent = `${s.device} · ${s.ip ?? "?"}:${s.port}`;
+    $("title").textContent = s.name || "TV Overlay";
+    $("device").textContent = `${s.name ? s.device + " · " : ""}${s.ip ?? "?"}:${s.port} · build ${s.build}`;
+    if (document.activeElement !== $("tvName") && !$("tvName").value) $("tvName").value = s.name || "";
+    seg("target", target, (v) => { target = v; render(); });
+    $("allBtn").textContent = peerCount > 0 ? `All TVs (${peerCount + 1})` : "All TVs";
+    $("update").hidden = !s.update && !s.updateStatus;
+    $("updateText").textContent = s.updateStatus || (s.update ? `Update available: build ${s.update} (this TV has ${s.build}).` : "");
+    $("updateThis").hidden = !s.update;
+    $("updateAll").hidden = !s.update;
     $("pill").textContent = s.visible ? "On screen" : "Hidden";
     $("pill").classList.toggle("on", s.visible);
 
@@ -195,7 +228,12 @@
     });
   }
 
-  $("hideBtn").onclick = () => api("/api/hide", {}).catch(alertErr);
+  $("hideBtn").onclick = () => api("/api/hide", { all: all() }).catch(alertErr);
+  $("saveName").onclick = () => api("/api/name", { name: $("tvName").value.trim() }).catch(alertErr);
+  $("updateThis").onclick = () => api("/api/update", {}).catch(alertErr);
+  $("updateAll").onclick = () => api("/api/update", { all: true }).catch(alertErr);
+  // Count the other TVs once, for the All TVs button. The TV caches the scan.
+  fetch("/api/peers-cached").then((r) => r.json()).then((p) => { peerCount = p.length; if (state) render(); }).catch(() => {});
   $("opacity").onchange = (e) => show({ opacity: Number(e.target.value) });
   $("opacity").oninput = (e) => ($("opacityVal").textContent = e.target.value + "%");
   $("zoom").onchange = (e) => show({ zoom: Number(e.target.value) });
@@ -255,7 +293,7 @@
         const row = document.createElement("div");
         row.className = "item";
         row.innerHTML = "<div><b></b><small></small></div>";
-        row.querySelector("b").textContent = p.device || "Fire TV";
+        row.querySelector("b").textContent = p.name || p.device || "Fire TV";
         row.querySelector("small").textContent = `${p.ip} · ${p.canDraw ? "ready" : "needs permission"}`;
         const b = document.createElement("button");
         b.textContent = p.canDraw ? "Open" : "Grant";

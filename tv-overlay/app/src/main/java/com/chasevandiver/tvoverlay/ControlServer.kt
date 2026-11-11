@@ -112,16 +112,37 @@ class ControlServer(private val svc: OverlayService, private val port: Int) {
             method == "GET" && (path == "/" || path == "/index.html") ->
                 Triple("200 OK", "text/html; charset=utf-8", svc.assets.open("control.html").use { it.readBytes() })
             method == "GET" && path == "/api/state" -> ok()
+            // "all": true runs it here and relays it to every other TV (TV-9).
             method == "POST" && path == "/api/show" -> {
-                svc.show(if (body.isBlank()) JSONObject() else JSONObject(body)); ok()
+                val j = if (body.isBlank()) JSONObject() else JSONObject(body)
+                val all = j.optBoolean("all")
+                j.remove("all")
+                svc.show(j)
+                if (all) Peers.relay(path, j)
+                ok()
             }
-            method == "POST" && path == "/api/hide" -> { svc.hide(); ok() }
+            method == "POST" && path == "/api/hide" -> {
+                svc.hide()
+                if (body.isNotBlank() && JSONObject(body).optBoolean("all")) Peers.relay(path, JSONObject())
+                ok()
+            }
+            method == "POST" && path == "/api/name" -> {
+                svc.store.name = JSONObject(body).optString("name")
+                ok()
+            }
+            method == "POST" && path == "/api/update" -> {
+                Updater.install(svc)
+                if (body.isNotBlank() && JSONObject(body).optBoolean("all")) Peers.relay(path, JSONObject())
+                ok()
+            }
             method == "POST" && path == "/api/reload" -> { svc.reloadPage(); ok() }
             method == "POST" && path == "/api/presets" -> { svc.savePresets(JSONArray(body)); ok() }
             // Setting up other TVs: Amazon blocks a TV's apps from ADB-ing the
             // TV itself, so each TV grants the others.
             method == "GET" && path == "/api/peers" ->
-                Triple("200 OK", JSON, SelfGrant.findPeers().toString().toByteArray())
+                Triple("200 OK", JSON, Peers.list(refresh = true).toString().toByteArray())
+            method == "GET" && path == "/api/peers-cached" ->
+                Triple("200 OK", JSON, Peers.list().toString().toByteArray())
             method == "POST" && path == "/api/grant-peer" -> {
                 val ip = JSONObject(body).optString("ip").trim()
                 Triple("200 OK", JSON, SelfGrant.grantPeer(svc, ip).toString().toByteArray())

@@ -27,13 +27,16 @@ export function tvStatus(g: TickerGame, opts: { short?: boolean } = {}): string 
  */
 export function tvLine(g: TickerGame): { text: string; mine: boolean } | null {
   if (g.stake) return { text: g.stake.label, mine: true };
+  const m = marketSpread(g);
+  return m === null ? null : { text: m, mine: false };
+}
+
+/** The market spread, favourite first ("ALA -3.5", "PK"); null when unknown. */
+export function marketSpread(g: TickerGame): string | null {
   const s = g.spread;
   if (s === null || s === undefined) return null;
-  if (s === 0) return { text: "PK", mine: false };
-  return {
-    text: s < 0 ? `${g.homeAbbr} ${s}` : `${g.awayAbbr} -${s}`,
-    mine: false,
-  };
+  if (s === 0) return "PK";
+  return s < 0 ? `${g.homeAbbr} ${s}` : `${g.awayAbbr} -${s}`;
 }
 
 /* A verdict only once the score can give one; "on" (pregame, or a bet type a

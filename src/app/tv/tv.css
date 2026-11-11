@@ -331,3 +331,32 @@ body > footer {
   font-size: 0.6em;
   color: var(--text-dim);
 }
+
+/* ── Summary, results and scoring alerts (TV-9) ───────────────────────── */
+
+.tv-summary-label {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.8em;
+  letter-spacing: 0.08em;
+}
+.tv-result {
+  font-size: 0.86em;
+  font-weight: 700;
+}
+/* A scoring play on the viewer's game: the label leads, the game follows. */
+.tv-alert {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  padding-right: 0;
+  border-right: 0;
+}
+.tv-alert-what {
+  color: var(--accent);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+.tv-alert .tv-card {
+  padding-left: 0.4em;
+  border-right: 0;
+  box-shadow: none;
+}

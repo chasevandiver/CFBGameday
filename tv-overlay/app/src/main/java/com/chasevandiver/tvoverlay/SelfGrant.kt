@@ -97,7 +97,9 @@ object SelfGrant {
             val body = conn.inputStream.use { it.readBytes().toString(Charsets.UTF_8) }
             val s = JSONObject(body)
             JSONObject().put("ip", ip).put("device", s.optString("device"))
+                .put("name", s.optString("name"))
                 .put("canDraw", s.optBoolean("canDraw"))
+                .put("update", s.opt("update") ?: JSONObject.NULL)
         } catch (e: Exception) {
             null
         }

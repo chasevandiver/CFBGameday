@@ -26,6 +26,7 @@ class MainActivity : Activity() {
     private lateinit var message: TextView
     private lateinit var grant: Button
     private lateinit var settingsBtn: Button
+    private lateinit var updateBtn: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,6 +55,11 @@ class MainActivity : Activity() {
         row.addView(grant)
         settingsBtn = button("Open TV settings") { openOverlaySettings() }
         row.addView(settingsBtn)
+        updateBtn = button("Install update") {
+            Updater.install(this)
+            message.text = "Downloading the update… then pick Install."
+        }
+        row.addView(updateBtn)
         row.addView(button("Show CFB ticker") {
             OverlayService.instance?.show(JSONObject(store().presets.optJSONObject(0)?.toString() ?: "{}"))
             refresh()
@@ -98,6 +104,9 @@ class MainActivity : Activity() {
         grant.visibility = if (can) View.GONE else View.VISIBLE
         settingsBtn.visibility = if (can) View.GONE else View.VISIBLE
         if (can && message.text.isNullOrEmpty()) message.text = "Ready. Use your phone to pick what shows."
+        val update = Updater.latestBuild
+        updateBtn.visibility = if (update != null) View.VISIBLE else View.GONE
+        if (update != null) updateBtn.text = "Install update (build $update)"
         val ip = Net.localIp()
         address.text = if (ip != null) "http://$ip:${OverlayService.PORT}" else "Not on a network"
         if (message.text.isNullOrEmpty()) OverlayService.instance?.lastError?.let { message.text = it }
