@@ -237,3 +237,97 @@ body > footer {
 .tv-cell-line {
   grid-row: 2;
 }
+
+/* ── Card strip (TV-8) ────────────────────────────────────────────────── */
+
+.tv-card-area {
+  flex: 1;
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  transition: opacity 260ms linear;
+}
+.tv-card-measure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  visibility: hidden;
+  pointer-events: none;
+}
+.tv-card-area[data-fading] {
+  opacity: 0;
+}
+.tv-cards .tv-empty {
+  margin: 0 0 0 0.9em;
+}
+.tv-card {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.42em;
+  height: 100%;
+  padding: 0 0.75em 0 0.75em;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+}
+/* The viewer's own games: a gold edge, so "mine first" reads at a glance. */
+.tv-card[data-mine] {
+  box-shadow: inset 0.12em 0 0 var(--accent);
+}
+.tv-card-team {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22em;
+}
+.tv-ball {
+  width: 0.78em;
+  height: 0.5em;
+  flex-shrink: 0;
+}
+.tv-card-sit {
+  font-size: 0.72em;
+}
+.tv-field {
+  position: relative;
+  flex-shrink: 0;
+  width: 3.4em;
+  height: 0.36em;
+  border-radius: 0.08em;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.28) 0 7%,
+    rgba(52, 199, 123, 0.35) 7% 93%,
+    rgba(255, 255, 255, 0.28) 93%
+  );
+}
+.tv-field[data-red] {
+  box-shadow: 0 0 0 0.05em var(--live);
+}
+.tv-field-mid {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.5);
+}
+/* x is 0-100 between the goal lines; the end zones take 7% each side. */
+.tv-field-ball {
+  position: absolute;
+  top: 50%;
+  width: 0.36em;
+  height: 0.36em;
+  margin-left: -0.18em;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: translateY(-50%);
+}
+.tv-card-count {
+  flex-shrink: 0;
+  padding: 0 0.6em;
+  font-size: 0.6em;
+  color: var(--text-dim);
+}

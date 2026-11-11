@@ -234,6 +234,22 @@ shipping it.
 
 ## Log
 
+### Nov 10 — TV-8: game cards instead of a crawl
+
+A native crawl (TV-7, closed unmerged as PR #185) was choppier and uglier
+than the web one on Chase's TV: smooth continuous motion over live video
+isn't available on this hardware, web or native.
+
+- `/tv/cards`: the strip holds a page of games for 7s, then fades (260ms)
+  to the next. The viewer's games first (live, next, final), then the rest.
+  Pages are packed greedily by each card's measured width, so a live card
+  with detail gets the strip while finals and kickoffs pair up.
+- Live cards add the possession football, down and distance, and a small
+  field with the ball spot (`fieldPosition`) and a red-zone ring
+  (`isRedZone`). `/api/ticker` now carries `possession` and `situation`,
+  live only.
+- /me "On your TV" lists Game cards first. `/tv/ticker` stays.
+
 ### Nov 10 — TV-6: ticker flush to the screen edge
 
 - The ticker window is full width at y = 0, top or bottom. Heights at most

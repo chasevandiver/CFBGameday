@@ -9,6 +9,7 @@ import { useState } from "react";
  * Same key as the calendar card, so that card's Rotate resets these too.
  */
 const LINKS = [
+  { label: "Game cards", path: "/tv/cards" },
   { label: "Ticker strip", path: "/tv/ticker" },
   { label: "Corner scoreboard", path: "/tv/corner" },
 ] as const;
