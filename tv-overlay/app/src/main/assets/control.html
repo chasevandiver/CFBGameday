@@ -39,6 +39,7 @@
   .list button { min-height:40px; padding:8px 12px; font-size:14px; text-align:center; }
   .muted { color:var(--dim); font-size:13px; }
   .off { opacity:.45; pointer-events:none; }
+  button:disabled { opacity:.5; }
 </style>
 </head>
 <body>
@@ -92,6 +93,16 @@
   <input type="url" id="url" placeholder="https://your-site.vercel.app/tv" autocomplete="off" autocapitalize="off" spellcheck="false">
   <button class="go" id="showUrl">Show this page</button>
 
+  <h2>Set up other TVs</h2>
+  <p class="muted" style="margin-top:0">Amazon won't let a TV grant this app permission on itself, so this TV does it for the others. Each TV needs TV Overlay installed and ADB debugging on.</p>
+  <button class="go" id="findBtn">Find TVs on this Wi-Fi</button>
+  <div class="list" id="peers"></div>
+  <div style="display:flex; gap:8px; margin-top:12px">
+    <input type="text" id="peerIp" inputmode="decimal" placeholder="Or type a TV's IP, like 192.168.1.70" autocomplete="off">
+    <button id="peerGo" style="min-width:84px; text-align:center">Grant</button>
+  </div>
+  <div class="warn" id="peerMsg" hidden></div>
+
   <h2>Saved</h2>
   <div class="list" id="list"></div>
   <input type="text" id="presetName" placeholder="Name, like Fairway Picks" style="margin-top:12px">
@@ -133,7 +144,7 @@
     $("pill").classList.toggle("on", s.visible);
 
     const warn = !s.canDraw
-      ? "This TV hasn't granted the overlay permission yet. Open TV Overlay on the TV and pick Grant permission."
+      ? "This TV doesn't have overlay permission yet. Amazon won't let a TV grant itself, so open this page for a different TV and use Set up other TVs. Meanwhile this TV can still set up the others below."
       : s.error;
     $("warn").hidden = !warn;
     if (warn) $("warn").textContent = warn;
@@ -200,6 +211,69 @@
     if (!name || !state) return;
     const p = { name, url: state.url, layout: state.layout, position: state.position, size: state.size, zoom: state.zoom };
     api("/api/presets", [...state.presets, p]).then(() => ($("presetName").value = "")).catch(alertErr);
+  };
+
+  /* ── Set up other TVs ── */
+  function peerMsg(text, good) {
+    const m = $("peerMsg");
+    m.hidden = false;
+    m.textContent = text;
+    m.style.background = good ? "#173a22" : "#3a1c1c";
+    m.style.borderColor = good ? "#2a6b3a" : "#6b2a2a";
+    m.style.color = good ? "#d2ffdc" : "#ffd2d2";
+  }
+
+  async function grantPeer(ip, btn) {
+    if (btn) btn.disabled = true;
+    peerMsg(`Go to the TV at ${ip} now. When it asks to allow debugging, check Always allow and pick OK. Waiting up to a minute…`, true);
+    try {
+      const res = await fetch("/api/grant-peer", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ip }),
+      });
+      const r = await res.json();
+      peerMsg(r.ok ? `${ip}: done. That TV can show overlays now.` : `${ip}: ${r.message}`, r.ok);
+      if (r.ok) findPeers();
+    } catch (e) {
+      peerMsg("Lost touch with this TV while waiting. Try again.", false);
+    }
+    if (btn) btn.disabled = false;
+  }
+
+  async function findPeers() {
+    const list = $("peers");
+    $("findBtn").disabled = true;
+    $("findBtn").textContent = "Looking…";
+    list.innerHTML = "";
+    try {
+      const peers = await (await fetch("/api/peers")).json();
+      if (peers.length === 0) {
+        list.innerHTML = '<p class="muted">No other TVs found. Make sure TV Overlay has been opened once on them, or type an IP below.</p>';
+      }
+      peers.forEach((p) => {
+        const row = document.createElement("div");
+        row.className = "item";
+        row.innerHTML = "<div><b></b><small></small></div>";
+        row.querySelector("b").textContent = p.device || "Fire TV";
+        row.querySelector("small").textContent = `${p.ip} · ${p.canDraw ? "ready" : "needs permission"}`;
+        const b = document.createElement("button");
+        b.textContent = p.canDraw ? "Open" : "Grant";
+        b.onclick = () => (p.canDraw ? (location.href = `http://${p.ip}:7979/`) : grantPeer(p.ip, b));
+        row.appendChild(b);
+        list.appendChild(row);
+      });
+    } catch (e) {
+      list.innerHTML = '<p class="muted">Search failed. Try again.</p>';
+    }
+    $("findBtn").disabled = false;
+    $("findBtn").textContent = "Find TVs on this Wi-Fi";
+  }
+
+  $("findBtn").onclick = findPeers;
+  $("peerGo").onclick = () => {
+    const ip = $("peerIp").value.trim();
+    if (ip) grantPeer(ip, $("peerGo"));
   };
 
   async function poll() {

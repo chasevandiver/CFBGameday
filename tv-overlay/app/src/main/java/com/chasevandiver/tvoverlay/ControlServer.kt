@@ -20,6 +20,8 @@ import kotlin.concurrent.thread
  *   POST /api/hide
  *   POST /api/reload
  *   POST /api/presets  [ {name, url, layout, position, size, zoom}, ... ]
+ *   GET  /api/peers       other TVs on this Wi-Fi running the app
+ *   POST /api/grant-peer  {ip}  grant the overlay permission on that TV
  */
 class ControlServer(private val svc: OverlayService, private val port: Int) {
     @Volatile private var running = false
@@ -116,6 +118,14 @@ class ControlServer(private val svc: OverlayService, private val port: Int) {
             method == "POST" && path == "/api/hide" -> { svc.hide(); ok() }
             method == "POST" && path == "/api/reload" -> { svc.reloadPage(); ok() }
             method == "POST" && path == "/api/presets" -> { svc.savePresets(JSONArray(body)); ok() }
+            // Setting up other TVs: Amazon blocks a TV's apps from ADB-ing the
+            // TV itself, so each TV grants the others.
+            method == "GET" && path == "/api/peers" ->
+                Triple("200 OK", JSON, SelfGrant.findPeers().toString().toByteArray())
+            method == "POST" && path == "/api/grant-peer" -> {
+                val ip = JSONObject(body).optString("ip").trim()
+                Triple("200 OK", JSON, SelfGrant.grantPeer(svc, ip).toString().toByteArray())
+            }
             else -> Triple("404 Not Found", "text/plain", "not found".toByteArray())
         }
     }
