@@ -763,3 +763,17 @@ body > footer {
 .tvb-push-right {
   margin-left: auto;
 }
+
+/* Fantasy (TV-12): team names are the fun part, but they can run long. */
+.tvb-fname {
+  max-width: 460vh;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tvb-ff .tvb-logo {
+  border-radius: 10vh;
+  object-fit: cover;
+}
+.tvb-ff .tvb-s {
+  min-width: 70vh;
+}

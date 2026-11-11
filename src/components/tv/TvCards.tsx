@@ -25,6 +25,8 @@ import { fieldPosition, isRedZone, parseSituation } from "../../lib/slate";
 import { leadingSide } from "../ScoreTicker";
 import { marketSpread, tvStatus, VerdictWords } from "./TvChip";
 import { useTickerFeed } from "./use-ticker-feed";
+import { useFantasy } from "./use-fantasy";
+import type { FantasyMatchup } from "../../lib/fantasy";
 
 const HOLD_MS = 7_000;
 const FADE_MS = 260;
@@ -132,13 +134,16 @@ export function network(tv: string | null | undefined): string | null {
   return NETWORKS[first] ?? (first.length > 7 ? first.slice(0, 7) : first);
 }
 
-type Section = "bets" | "live" | "next" | "final";
+type Section = "fantasy" | "bets" | "live" | "next" | "final";
 export function sectionOf(g: TickerGame): Section {
   if (g.mine) return "bets";
   return g.status === "in_progress" ? "live" : g.status === "scheduled" ? "next" : "final";
 }
 
-type Item = { kind: "summary"; s: TickerSummary } | { kind: "game"; g: TickerGame };
+type Item =
+  | { kind: "summary"; s: TickerSummary }
+  | { kind: "fantasy"; m: FantasyMatchup }
+  | { kind: "game"; g: TickerGame };
 type Page = { section: Section | "summary"; items: number[] };
 
 /** Pack each run of same-section items on its own, so a page never mixes labels. */
@@ -169,11 +174,18 @@ const VERDICT: Record<string, string> = {
 export function TvCards() {
   const data = useTickerFeed();
   const games = data ? cardOrder(data.games) : [];
+  // TV-12: the viewer's fantasy matchup always; the rest of the league only
+  // while NFL games are on, so a college Saturday isn't padded with zeros.
+  const fantasy = useFantasy();
+  const fantasyShown = (fantasy?.matchups ?? []).filter((m) => m.mine || fantasy?.live);
   const items: Item[] = [
     ...(data?.summary ? [{ kind: "summary" as const, s: data.summary }] : []),
+    ...fantasyShown.map((m) => ({ kind: "fantasy" as const, m })),
     ...games.map((g) => ({ kind: "game" as const, g })),
   ];
-  const sections = items.map((it) => (it.kind === "summary" ? "summary" : sectionOf(it.g)));
+  const sections = items.map((it) =>
+    it.kind === "summary" ? "summary" : it.kind === "fantasy" ? "fantasy" : sectionOf(it.g),
+  );
 
   // ── Scoring alerts ──────────────────────────────────────────────────────
   const prevScores = useRef<Map<number, { h: number; a: number }> | null>(null);
@@ -203,6 +215,7 @@ export function TvCards() {
   // Re-pack whenever what the tiles say could change their width.
   const signature =
     (data?.summary ? `s:${JSON.stringify(data.summary)}|` : "") +
+    fantasyShown.map((m) => `f${m.id}:${m.a.score}:${m.b.score}:${m.final}`).join("|") +
     games
       .map(
         (g) =>
@@ -273,7 +286,7 @@ export function TvCards() {
       {/* Off-screen copy of every tile at its natural width, for packing. */}
       <div className="tvb-measure" ref={measureRef} aria-hidden>
         {items.map((it) => (
-          <ItemTile key={it.kind === "game" ? it.g.id : "summary"} item={it} games={games} />
+          <ItemTile key={itemKey(it)} item={it} games={games} />
         ))}
       </div>
       {current && current.section !== "summary" && <SectionLabel section={current.section} />}
@@ -281,9 +294,7 @@ export function TvCards() {
         {shown.length === 0 ? (
           <span className="tvb-k">{data ? "NO GAMES ON RIGHT NOW" : "LOADING SCORES"}</span>
         ) : (
-          shown.map((it) => (
-            <ItemTile key={it.kind === "game" ? it.g.id : "summary"} item={it} games={games} />
-          ))
+          shown.map((it) => <ItemTile key={itemKey(it)} item={it} games={games} />)
         )}
       </div>
       {pages > 1 && (
@@ -295,7 +306,12 @@ export function TvCards() {
   );
 }
 
+function itemKey(it: Item): string {
+  return it.kind === "game" ? `g${it.g.id}` : it.kind === "fantasy" ? `f${it.m.id}` : "summary";
+}
+
 function SectionLabel({ section }: { section: Section }) {
+  if (section === "fantasy") return <span className="tvb-label tvb-k tvb-gold">FANTASY</span>;
   if (section === "bets") return <span className="tvb-label tvb-k tvb-gold">YOUR BETS</span>;
   if (section === "live")
     return (
@@ -308,6 +324,7 @@ function SectionLabel({ section }: { section: Section }) {
 
 function ItemTile({ item, games }: { item: Item; games: TickerGame[] }) {
   if (item.kind === "summary") return <Summary s={item.s} games={games} />;
+  if (item.kind === "fantasy") return <FantasyTile m={item.m} />;
   const g = item.g;
   if (g.status === "in_progress") return <LiveTile g={g} />;
   if (g.status === "scheduled") return <NextTile g={g} />;
@@ -593,6 +610,80 @@ function Touchdown({ alert, g }: { alert: ScoreAlert; g: TickerGame }) {
       </span>
       {g.stake && <span className="tvb-ticket tvb-push-right">{g.stake.label}</span>}
       <VerdictWords g={g} />
+    </div>
+  );
+}
+
+/** "18.4" / "102": fantasy scores to one decimal, no trailing zero. */
+function pts(n: number): string {
+  return String(Math.round(n * 10) / 10);
+}
+
+/**
+ * A fantasy matchup in the broadcast tile (TV-12). The viewer's matchup reads
+ * like their bets: the tile, their name and their score go green leading,
+ * orange trailing, gold level. ESPN's win probability and the starters left
+ * to play sit in the middle where a game's clock would be.
+ */
+function FantasyTile({ m }: { m: FantasyMatchup }) {
+  const started = m.a.score > 0 || m.b.score > 0 || m.final;
+  const diff = m.a.score - m.b.score;
+  const verdict =
+    !m.mine || !started ? undefined : diff > 0 ? "covering" : diff < 0 ? "losing" : "push";
+  const v = verdict ? VERDICT[verdict] : undefined;
+  const style = (v ? { "--vc": v, "--vdir": "90deg" } : {}) as CSSProperties;
+  const prob = m.a.winProb;
+  const left = (s: FantasyMatchup["a"]) =>
+    s.playing > 0
+      ? `${s.playing} LIVE · ${s.toPlay} LEFT`
+      : s.toPlay > 0
+        ? `${s.toPlay} TO PLAY`
+        : "DONE";
+
+  const side = (s: FantasyMatchup["a"], me: boolean) => (
+    <>
+      <Logo src={s.logo} abbr={s.abbrev} color={null} size={28} />
+      <span className={`tvb-ab tvb-fname ${me && v ? "tvb-me" : ""}`}>{s.name}</span>
+    </>
+  );
+  const score = (s: FantasyMatchup["a"], me: boolean, other: FantasyMatchup["a"]) =>
+    me && v ? (
+      <span className="tvb-s tvb-s-v">{pts(s.score)}</span>
+    ) : (
+      <span className={`tvb-s ${started && s.score < other.score ? "tvb-trail" : ""}`}>
+        {pts(s.score)}
+      </span>
+    );
+
+  return (
+    <div className={`tvb-tile tvb-ff ${v ? "tvb-bet" : m.mine ? "tvb-mine" : ""}`} style={style}>
+      <span className="tvb-wash" />
+      {side(m.a, m.mine)}
+      {score(m.a, m.mine, m.b)}
+      <span className="tvb-ctr">
+        <span className="tvb-clk">
+          {m.final ? (
+            "FINAL"
+          ) : prob !== null ? (
+            <>
+              {m.a.playing + m.b.playing > 0 && <span className="tvb-dot" />}
+              {Math.round(prob * 100)}% WIN
+            </>
+          ) : (
+            "LIVE"
+          )}
+        </span>
+        <span className="tvb-dd">
+          {m.final ? `${m.a.record} · ${m.b.record}` : `PROJ ${pts(m.a.projected)} · ${left(m.a)}`}
+        </span>
+      </span>
+      {score(m.b, false, m.a)}
+      {side(m.b, false)}
+      {m.final && m.mine && v && (
+        <span className="tvb-res" style={{ background: v }}>
+          {diff > 0 ? "WON" : diff < 0 ? "LOST" : "TIE"}
+        </span>
+      )}
     </div>
   );
 }
