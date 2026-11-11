@@ -1,0 +1,103 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TV strip · D · Each moment looks different</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Graduate&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#020A08;--field:#08251C;--raised:#0E3B2C;--chalk:#F4EFE2;--gold:#E8B93D;--win:#34C77B;--loss:#E4572E;--live:#FF4B57}
+*{box-sizing:border-box} body{margin:0;background:#0b0d0c;color:var(--chalk);font-family:Archivo,system-ui,sans-serif;padding:20px 16px 40px}
+h1{font:700 20px Archivo;margin:0 0 4px} .intro{color:#a8a293;font-size:13px;margin:0 0 18px;max-width:640px;line-height:1.45}
+.label{font:600 11px Archivo;letter-spacing:.12em;text-transform:uppercase;color:#8f897c;margin:18px 0 6px}
+/* A slice of the TV: the strip is authored at 1080p (1920x50) and scaled to fit. */
+.tv{position:relative;width:100%;aspect-ratio:1920/170;overflow:hidden;border-radius:6px;background:linear-gradient(180deg,#3d6b3a,#2c5a2a 60%,#24461f);}
+.tv::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 118px,rgba(255,255,255,.22) 118px 121px)}
+.stage{position:absolute;left:0;bottom:0;width:1920px;height:50px;transform-origin:0 100%}
+.logo{width:30px;height:30px;object-fit:contain;flex:none}
+.badge{width:30px;height:30px;border-radius:50%;display:inline-grid;place-items:center;font:800 11px Archivo;flex:none}
+.num{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+
+.v-win{color:var(--win)!important}.v-loss{color:var(--loss)!important}.v-push{color:var(--gold)!important}
+.ball{width:16px;height:10px;border-radius:50%;background:#9A6430;box-shadow:inset 0 0 0 1px #5C3A18;position:relative;flex:none}
+.ball::after{content:"";position:absolute;left:4px;right:4px;top:4.5px;height:1px;background:#F4EFE6}
+.clk.live::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--live);margin-right:7px;vertical-align:2px}
+.dimt{color:rgba(244,239,226,.55)}
+
+.bar{position:absolute;inset:0;display:flex;align-items:stretch;background:rgba(2,10,8,.86);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid rgba(244,239,226,.1);overflow:hidden}
+.brand{display:flex;align-items:center;font:19px Graduate;color:var(--gold);letter-spacing:.04em;padding:0 16px;white-space:nowrap}
+.sep{width:1px;background:rgba(244,239,226,.12);margin:8px 0}
+.lbl{font:700 13px Archivo;letter-spacing:.16em;color:rgba(244,239,226,.55)}
+.v-win{color:var(--win)}
+/* Summary: a scoreboard */
+.sum{display:flex;align-items:center;gap:22px;padding:0 22px}
+.sum .rec{font:600 32px 'IBM Plex Mono'}
+.sum .u{font:600 32px 'IBM Plex Mono'}
+.dots{display:flex;gap:6px;align-items:center}.dots i{width:10px;height:10px;border-radius:50%;background:var(--live)}
+.dots i.n{background:transparent;box-shadow:inset 0 0 0 2px rgba(244,239,226,.5)}
+/* Hero: your live bet */
+.hero{flex:1;display:flex;align-items:stretch}
+.hero .tag{display:flex;align-items:center;padding:0 16px;background:var(--gold);color:var(--ink);font:800 14px Archivo;letter-spacing:.14em}
+.ht{display:flex;align-items:center;gap:10px;padding:0 18px 0 12px;font:700 25px Archivo}
+.ht .logo{width:34px;height:34px}
+.ht .num{font:600 34px 'IBM Plex Mono';margin-left:6px}
+.ht.trail{color:rgba(244,239,226,.55)}
+.ht.on{background:linear-gradient(90deg,var(--tc),transparent 92%)}
+.meter{display:flex;align-items:center;gap:14px;padding:0 20px}
+.meter .say{font:800 19px Archivo;letter-spacing:.06em}
+.track{position:relative;width:200px;height:10px;border-radius:5px;background:rgba(244,239,226,.12)}
+.track::after{content:"";position:absolute;left:50%;top:-4px;bottom:-4px;width:2px;background:rgba(244,239,226,.7)}
+.track b{position:absolute;top:0;bottom:0;border-radius:5px}
+.hmeta{display:flex;flex-direction:column;justify-content:center;gap:3px;padding:0 18px;margin-left:auto}
+.hmeta .r1{display:flex;gap:12px;align-items:center}
+.clk{font:600 18px 'IBM Plex Mono';color:rgba(244,239,226,.6)} .clk.live{color:var(--live)}
+.small{font:500 14px Archivo;color:rgba(244,239,226,.7);display:flex;gap:10px;align-items:center}
+.tick{font:500 16px 'IBM Plex Mono';color:rgba(244,239,226,.92)} .tick.dim{color:rgba(244,239,226,.4)}
+.fld{position:relative;width:70px;height:7px;border-radius:4px;background:linear-gradient(90deg,rgba(244,239,226,.28) 0 7%,rgba(52,199,123,.4) 7% 93%,rgba(244,239,226,.28) 93%)}
+.fld i{position:absolute;top:50%;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:50%;background:var(--gold)}
+/* Compact live */
+.cg{display:flex;align-items:center;gap:12px;padding:0 20px;border-right:1px solid rgba(244,239,226,.1);white-space:nowrap}
+.cg .t{display:flex;align-items:center;gap:7px;font:600 19px Archivo}
+.cg .t .logo{width:24px;height:24px}
+.cg .t .num{font:600 22px 'IBM Plex Mono'}
+.cg .t.trail{color:rgba(244,239,226,.5)}
+.cg.red{background:linear-gradient(90deg,rgba(255,75,87,.32),rgba(255,75,87,.06));box-shadow:inset 3px 0 0 var(--live)}
+.rz{font:800 13px Archivo;letter-spacing:.14em;color:#fff;background:var(--live);padding:3px 8px;border-radius:3px}
+/* Up next */
+.ng{display:flex;align-items:center;gap:14px;padding:0 22px;border-right:1px solid rgba(244,239,226,.1);white-space:nowrap}
+.ng .ko{font:600 24px 'IBM Plex Mono';color:var(--chalk)}
+.ng .ko small{display:block;font:700 10px Archivo;letter-spacing:.18em;color:rgba(244,239,226,.5)}
+.ng .t{display:flex;align-items:center;gap:7px;font:600 19px Archivo;color:rgba(244,239,226,.85)}
+.ng .t .logo{width:24px;height:24px}
+.ng.mine{box-shadow:inset 0 -3px 0 var(--gold)}
+/* Finals */
+.fg{display:flex;align-items:center;gap:10px;padding:0 18px;white-space:nowrap;border-right:1px solid rgba(244,239,226,.08)}
+.fg .t{display:flex;align-items:center;gap:6px;font:600 17px Archivo;color:rgba(244,239,226,.5)}
+.fg .t .logo{width:20px;height:20px;opacity:.6}
+.fg .t .num{font:500 18px 'IBM Plex Mono'}
+.fg .t.w{color:rgba(244,239,226,.75)}
+.fg .f{font:600 12px Archivo;letter-spacing:.14em;color:rgba(244,239,226,.4)}
+.stamp{display:flex;align-items:stretch;align-self:stretch;margin-left:6px}
+.stamp b{display:flex;align-items:center;padding:0 12px;font:800 16px Archivo;letter-spacing:.12em;color:var(--ink)}
+.stamp span{display:flex;align-items:center;padding:0 12px;font:600 17px 'IBM Plex Mono';background:rgba(244,239,226,.06)}
+.fg.mine .t{color:rgba(244,239,226,.85)} .fg.mine .t .logo{opacity:1}
+/* Touchdown */
+.td{position:absolute;inset:0;display:flex;align-items:center;gap:20px;padding:0 22px;color:#fff}
+.td .big{font:900 30px Archivo;letter-spacing:.18em}
+.td .logo{width:38px;height:38px}
+.td .tn{font:700 26px Archivo}
+.td .sc{font:600 30px 'IBM Plex Mono'}
+.td .cov{margin-left:auto;font:800 17px Archivo;letter-spacing:.08em;background:rgba(2,10,8,.55);padding:8px 14px;border-radius:4px;color:var(--win)}
+
+</style></head><body>
+<h1>TV strip · D · Each moment looks different</h1><p class="intro">Every page has its own shape. Your live bet takes the whole strip with a cover meter. Other live games are compact. Upcoming games lead with kickoff. Finals are dimmed except your results, which get a WON/LOST stamp. Red zone turns red. A touchdown on your bet floods the strip in the team's color.</p>
+<div class="label">Your bets summary</div><div class="tv"><div class="stage"><div class="bar"><span class="brand">THE SLATE</span><span class="sep"></span><div class="sum"><span class="lbl">YOUR NIGHT</span><span class="rec">1-1</span><span class="u v-win">+0.9U</span><span class="dots"><i></i><i></i><i class="n"></i></span><span class="lbl">2 LIVE · 1 UP NEXT</span></div></div></div></div>
+<div class="label">Your live bet: the strip is yours</div><div class="tv"><div class="stage"><div class="bar"><span class="brand">THE SLATE</span><span class="sep"></span><div class="hero"><span class="tag">YOUR BET</span><span class="ht on v-win" style="--tc:#024230"><span class="ball"></span><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/195.png" alt="Ohio" data-c="#024230" data-a="#ffffff" data-t="OHIO">OHIO<span class="num">17</span></span><span class="ht trail" style="--tc:#c41230"><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/193.png" alt="Miami (OH)" data-c="#c41230" data-a="#ffffff" data-t="M-OH">M-OH<span class="num">14</span></span><span class="meter"><span class="say" style="color:var(--win)">COVERING BY 4.5</span><span class="track"><b style="left:50%;width:16.071428571428573%;background:var(--win)"></b></span></span><span class="hmeta"><span class="r1"><span class="clk live">Q3 1:44</span><span class="tick">OHIO -1.5</span><span class="tick dim">O/U 44.5</span></span><span class="small">2nd & 7 · M-OH 34<span class="fld"><i style="left:63.76%"></i></span></span></span></div></div></div></div>
+<div class="label">Your live bet, losing</div><div class="tv"><div class="stage"><div class="bar"><span class="brand">THE SLATE</span><span class="sep"></span><div class="hero"><span class="tag">YOUR BET</span><span class="ht on v-loss" style="--tc:#002664"><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/2309.png" alt="Kent State" data-c="#002664" data-a="#eaab00" data-t="KENT">KENT<span class="num">21</span></span><span class="ht " style="--tc:#fd5000"><span class="ball"></span><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/189.png" alt="Bowling Green" data-c="#fd5000" data-a="#4f2c1d" data-t="BGSU">BGSU<span class="num">30</span></span><span class="meter"><span class="say" style="color:var(--loss)">DOWN 2.5</span><span class="track"><b style="right:50%;width:8.928571428571429%;background:var(--loss)"></b></span></span><span class="hmeta"><span class="r1"><span class="clk live">Q4 6:12</span><span class="tick">KENT +6.5</span><span class="tick dim">O/U 51.5</span></span><span class="small">1st & 10 · BGSU 45<span class="fld"><i style="left:54.3%"></i></span></span></span></div></div></div></div>
+<div class="label">Other live games: compact, two to a page</div><div class="tv"><div class="stage"><div class="bar"><span class="brand">THE SLATE</span><span class="sep"></span><span class="lbl" style="display:flex;align-items:center;padding:0 16px">LIVE</span><div class="cg"><span class="t "><span class="ball"></span><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/2628.png" alt="TCU" data-c="#4d1979" data-a="#ffffff" data-t="TCU">TCU<span class="num">24</span></span><span class="t trail"><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/239.png" alt="Baylor" data-c="#154734" data-a="#ffb81c" data-t="BAY">BAY<span class="num">20</span></span><span class="clk live">Q3 8:02</span><span class="small">3rd & 2 · TCU 41<span class="fld"><i style="left:42.26%"></i></span></span><span class="tick dim">BAY -2.5</span></div><div class="cg"><span class="t trail"><span class="ball"></span><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/99.png" alt="LSU" data-c="#461d7c" data-a="#fdd023" data-t="LSU">LSU<span class="num">10</span></span><span class="t "><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/333.png" alt="Alabama" data-c="#9e1b32" data-a="#ffffff" data-t="ALA">ALA<span class="num">14</span></span><span class="clk live">Q2 0:38</span><span class="small">1st & 10 · ALA 28<span class="fld"><i style="left:68.92%"></i></span></span><span class="tick dim">ALA -3.5</span></div></div></div></div>
+<div class="label">Red zone</div><div class="tv"><div class="stage"><div class="bar"><span class="brand">THE SLATE</span><span class="sep"></span><span class="lbl" style="display:flex;align-items:center;padding:0 16px">LIVE</span><div class="cg red"><span class="t trail"><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/2309.png" alt="Kent State" data-c="#002664" data-a="#eaab00" data-t="KENT">KENT<span class="num">28</span></span><span class="t "><span class="ball"></span><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/189.png" alt="Bowling Green" data-c="#fd5000" data-a="#4f2c1d" data-t="BGSU">BGSU<span class="num">33</span></span><span class="rz">RED ZONE</span><span class="clk live">Q4 1:43</span><span class="small">3rd & 4 · KENT 12<span class="fld red"><i style="left:17.32%"></i></span></span><span class="tick dim">BGSU -4</span></div></div></div></div>
+<div class="label">Up next: kickoff leads, no scores</div><div class="tv"><div class="stage"><div class="bar"><span class="brand">THE SLATE</span><span class="sep"></span><span class="lbl" style="display:flex;align-items:center;padding:0 16px">UP NEXT</span><div class="ng mine"><span class="ko"><small>KICKOFF</small>6:30 PM</span><span class="t"><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/99.png" alt="LSU" data-c="#461d7c" data-a="#fdd023" data-t="LSU">LSU</span><span class="lbl">AT</span><span class="t"><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/333.png" alt="Alabama" data-c="#9e1b32" data-a="#ffffff" data-t="ALA">ALA</span><span class="tick">ALA -3.5</span><span class="tick dim">O/U 54.5</span></div><div class="ng"><span class="ko"><small>KICKOFF</small>7:00 PM</span><span class="t"><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/2628.png" alt="TCU" data-c="#4d1979" data-a="#ffffff" data-t="TCU">TCU</span><span class="lbl">AT</span><span class="t"><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/239.png" alt="Baylor" data-c="#154734" data-a="#ffb81c" data-t="BAY">BAY</span><span class="tick dim">BAY -2.5</span><span class="tick dim">O/U 58.5</span></div></div></div></div>
+<div class="label">Finals: your results stamped, the rest dimmed</div><div class="tv"><div class="stage"><div class="bar"><span class="brand">THE SLATE</span><span class="sep"></span><span class="lbl" style="display:flex;align-items:center;padding:0 16px">FINAL</span><div class="fg mine"><span class="t w"><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/2711.png" alt="Western Michigan" data-c="#532e1f" data-a="#f1c500" data-t="WMU">WMU<span class="num">42</span></span><span class="t "><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/2006.png" alt="Akron" data-c="#041e42" data-a="#a89968" data-t="AKR">AKR<span class="num">14</span></span><span class=tick>AKR +15.5</span><span class="stamp"><b style="background:var(--loss)">LOST</b><span style="color:var(--loss)">-1.0U</span></span></div><div class="fg mine"><span class="t w"><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/195.png" alt="Ohio" data-c="#024230" data-a="#ffffff" data-t="OHIO">OHIO<span class="num">31</span></span><span class="t "><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/193.png" alt="Miami (OH)" data-c="#c41230" data-a="#ffffff" data-t="M-OH">M-OH<span class="num">17</span></span><span class=tick>OHIO -1.5</span><span class="stamp"><b style="background:var(--win)">WON</b><span style="color:var(--win)">+0.9U</span></span></div><div class="fg"><span class="t w"><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/2628.png" alt="TCU" data-c="#4d1979" data-a="#ffffff" data-t="TCU">TCU<span class="num">31</span></span><span class="t "><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/239.png" alt="Baylor" data-c="#154734" data-a="#ffb81c" data-t="BAY">BAY<span class="num">27</span></span></div></div></div></div>
+<div class="label">Touchdown on your bet</div><div class="tv"><div class="stage"><div class="bar" style="background:linear-gradient(90deg,#024230 0%,#024230 55%,rgba(2,10,8,.9));border-top:2px solid var(--gold)"><div class="td"><span class="big">TOUCHDOWN</span><img class="logo" src="https://cdn.collegefootballdata.com/logos/500/195.png" alt="Ohio" data-c="#024230" data-a="#ffffff" data-t="OHIO"><span class="tn">OHIO</span><span class="sc">24–14</span><span class="tick" style="color:#fff">OHIO -1.5</span><span class="cov">COVERING BY 11.5</span></div></div></div></div>
+<script>
+function fit(){document.querySelectorAll('.tv').forEach(tv=>{const s=tv.querySelector('.stage');s.style.transform='scale('+(tv.clientWidth/1920)+')';});}
+addEventListener('resize',fit);fit();
+document.querySelectorAll('img.logo').forEach(img=>img.addEventListener('error',()=>{const b=document.createElement('span');b.className='badge';b.style.background=img.dataset.c;b.style.color=img.dataset.a;b.textContent=img.dataset.t.slice(0,4);img.replaceWith(b);}));
+</script></body></html>
