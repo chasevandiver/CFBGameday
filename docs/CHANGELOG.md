@@ -234,6 +234,15 @@ shipping it.
 
 ## Log
 
+### Nov 11 — TV-11: the S mark on the strip
+
+The strip carried the wordmark alone, which §36-37 has backwards: the icon is
+the primary brand asset and the wordmark must not compete with it. The S
+(`public/brand/slate-mark.png`, the keyed supplied artwork, not redrawn) now
+leads the brand corner at ~3/4 strip height, wordmark beside it. Kept off the
+touchdown flood, which sits on a team colour (§37: no team colours).
+`public/design/tv-direction-f.html` updated to the whole-tile tint that shipped.
+
 ### Nov 11 — TV-10: the broadcast look
 
 Chosen from six directions in `public/design/tv-direction-{a..f}.html`; F won,

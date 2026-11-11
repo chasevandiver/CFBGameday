@@ -296,6 +296,15 @@ body > footer {
   color: var(--accent);
   white-space: nowrap;
 }
+.tvb-brand {
+  gap: 14vh;
+}
+/* The mark at about three quarters of the strip, at its own aspect. */
+.tvb-mark {
+  height: 74vh;
+  width: auto;
+  flex-shrink: 0;
+}
 .tvb-brand::after {
   content: "";
   position: absolute;
