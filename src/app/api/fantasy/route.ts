@@ -5,6 +5,29 @@ import { NextResponse, type NextRequest } from "next/server";
 const LEAGUE = 1129229;
 
 export async function GET(req: NextRequest) {
+  if (req.nextUrl.searchParams.get("probe") === "players") {
+    const base = "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/2026";
+    const lg = await (await fetch(`${base}/segments/0/leagues/${LEAGUE}?view=mMatchupScore&view=mScoreboard&view=mStatus`, { cache: "no-store" })).json();
+    const cur = lg.status.currentMatchupPeriod;
+    const m = lg.schedule.find((x: { matchupPeriodId: number; home: { teamId: number }; away?: { teamId: number } }) => x.matchupPeriodId === cur && (x.home.teamId === 1 || x.away?.teamId === 1));
+    const side = m.home.teamId === 1 ? m.home : m.away;
+    const entries = side.rosterForCurrentScoringPeriod.entries.map((e: { lineupSlotId: number; playerPoolEntry: { appliedStatTotal: number; player: Record<string, unknown> } }) => ({
+      slot: e.lineupSlotId,
+      pts: e.playerPoolEntry.appliedStatTotal,
+      name: e.playerPoolEntry.player.fullName,
+      pro: e.playerPoolEntry.player.proTeamId,
+      pos: e.playerPoolEntry.player.defaultPositionId,
+      keys: Object.keys(e.playerPoolEntry.player),
+    }));
+    const pro = await (await fetch(`${base}?view=proTeamSchedules_wl`, { cache: "no-store" })).json();
+    const teams = (pro.settings?.proTeams ?? []).map((t: { id: number; abbrev: string; byeWeek: number; proGamesByScoringPeriod?: Record<string, unknown[]> }) => ({
+      id: t.id,
+      abbrev: t.abbrev,
+      bye: t.byeWeek,
+      p10: t.proGamesByScoringPeriod?.[String(cur)],
+    }));
+    return NextResponse.json({ cur, matchupId: m.id, entries, proTeams: teams.slice(0, 34) });
+  }
   const season = req.nextUrl.searchParams.get("season") ?? "2026";
   const views = req.nextUrl.searchParams.getAll("view");
   const url =
