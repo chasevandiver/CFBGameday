@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The card strip for the Fire TV overlay (/tv/cards, TV-8, TV-9).
+ * The card strip for the Fire TV overlay (/tv/cards, TV-8, TV-9, TV-10).
  *
  * A continuous crawl stutters over live video on Fire TV hardware, web or
  * native (TV-5, TV-7). Cards don't move: a page of games holds for a few
@@ -11,13 +11,19 @@
  *
  * When one of the viewer's games scores, that game takes the whole strip for
  * a few seconds (TV-9), then the rotation picks up where it was.
+ *
+ * TV-10 is the broadcast look (public/design/tv-direction-f.html): every game
+ * is a tile with both logos, the clock and down in the middle, the channel,
+ * and a field along its bottom. The viewer's bets tint the whole tile by how
+ * they're going. Pages are grouped (your bets, live, up next, final) so the
+ * label at the left always names what's on screen.
  */
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { TickerGame, TickerSummary } from "../../lib/ticker";
 import { fieldPosition, isRedZone, parseSituation } from "../../lib/slate";
 import { leadingSide } from "../ScoreTicker";
-import { lineClass, marketSpread, teamClass, tvStatus, VerdictWords } from "./TvChip";
+import { marketSpread, tvStatus, VerdictWords } from "./TvChip";
 import { useTickerFeed } from "./use-ticker-feed";
 
 const HOLD_MS = 7_000;
@@ -111,7 +117,54 @@ function situationText(s: string | null | undefined): string | null {
   return `${DOWN[p.down] ?? p.down} & ${dist} · ${spot}`;
 }
 
+/** Network badges, short enough for a tile. */
+const NETWORKS: Record<string, string> = {
+  "The CW Network": "CW",
+  "ACC Network": "ACCN",
+  "SEC Network": "SECN",
+  "Big Ten Network": "BTN",
+  "USA Net": "USA",
+  Fox: "FOX",
+};
+export function network(tv: string | null | undefined): string | null {
+  if (!tv) return null;
+  const first = tv.split("|")[0].trim();
+  return NETWORKS[first] ?? (first.length > 7 ? first.slice(0, 7) : first);
+}
+
+type Section = "bets" | "live" | "next" | "final";
+export function sectionOf(g: TickerGame): Section {
+  if (g.mine) return "bets";
+  return g.status === "in_progress" ? "live" : g.status === "scheduled" ? "next" : "final";
+}
+
 type Item = { kind: "summary"; s: TickerSummary } | { kind: "game"; g: TickerGame };
+type Page = { section: Section | "summary"; items: number[] };
+
+/** Pack each run of same-section items on its own, so a page never mixes labels. */
+export function packSections(
+  sections: (Section | "summary")[],
+  widths: number[],
+  room: number,
+): Page[] {
+  const pages: Page[] = [];
+  let start = 0;
+  while (start < sections.length) {
+    let end = start;
+    while (end < sections.length && sections[end] === sections[start]) end++;
+    for (const pg of packPages(widths.slice(start, end), room)) {
+      pages.push({ section: sections[start], items: pg.map((i) => i + start) });
+    }
+    start = end;
+  }
+  return pages;
+}
+
+const VERDICT: Record<string, string> = {
+  covering: "var(--win)",
+  losing: "var(--loss)",
+  push: "var(--accent)",
+};
 
 export function TvCards() {
   const data = useTickerFeed();
@@ -120,6 +173,7 @@ export function TvCards() {
     ...(data?.summary ? [{ kind: "summary" as const, s: data.summary }] : []),
     ...games.map((g) => ({ kind: "game" as const, g })),
   ];
+  const sections = items.map((it) => (it.kind === "summary" ? "summary" : sectionOf(it.g)));
 
   // ── Scoring alerts ──────────────────────────────────────────────────────
   const prevScores = useRef<Map<number, { h: number; a: number }> | null>(null);
@@ -145,28 +199,36 @@ export function TvCards() {
   // ── Pages ───────────────────────────────────────────────────────────────
   const areaRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
-  const [layout, setLayout] = useState<number[][]>([]);
-  // Re-pack whenever what the cards say could change their width.
+  const [layout, setLayout] = useState<Page[]>([]);
+  // Re-pack whenever what the tiles say could change their width.
   const signature =
     (data?.summary ? `s:${JSON.stringify(data.summary)}|` : "") +
     games
       .map(
         (g) =>
-          `${g.id}:${g.status}:${g.situation ?? ""}:${g.possession ?? ""}:${g.mine ?? ""}:${g.total ?? ""}`,
+          `${g.id}:${g.status}:${g.situation ?? ""}:${g.possession ?? ""}:${g.mine ?? ""}:${g.total ?? ""}:${g.clock ?? ""}`,
       )
       .join("|");
+  const sectionKey = sections.join(",");
   useLayoutEffect(() => {
     const pack = () => {
       const area = areaRef.current;
       const meas = measureRef.current;
       if (!area || !meas) return;
       const widths = Array.from(meas.children).map((c) => (c as HTMLElement).offsetWidth);
-      setLayout(packPages(widths, area.clientWidth));
+      // The gap between tiles counts against the room on each page.
+      setLayout(
+        packSections(
+          sectionKey.split(",") as Page["section"][],
+          widths.map((w) => w + 7),
+          area.clientWidth - 7,
+        ),
+      );
     };
     pack();
     window.addEventListener("resize", pack);
     return () => window.removeEventListener("resize", pack);
-  }, [signature]);
+  }, [signature, sectionKey]);
 
   const pages = Math.max(1, layout.length);
   const [tick, setTick] = useState(0);
@@ -188,31 +250,38 @@ export function TvCards() {
   }, [pages]);
   // Derived, so a poll that shrinks the list can't strand us on a dead page.
   const page = tick % pages;
-  const shown = (layout[page] ?? []).map((i) => items[i]).filter(Boolean);
+  const current = layout[page];
+  const shown = (current?.items ?? []).map((i) => items[i]).filter(Boolean);
+
+  if (alert && alertGame) {
+    return (
+      <main className="tv-strip tv-panel tvb brand-surface">
+        <Touchdown key={alert.key} alert={alert} g={alertGame} />
+      </main>
+    );
+  }
 
   return (
-    <main className="tv-strip tv-panel tv-cards">
-      <div className="tv-brand">
-        <span>THE SLATE</span>
-        {data && <span className="tv-week">WK {data.week}</span>}
-      </div>
-      {/* Off-screen copy of every card at its natural width, for packing. */}
-      <div className="tv-card-measure" ref={measureRef} aria-hidden>
+    <main className="tv-strip tv-panel tvb brand-surface">
+      <div className="tvb-brand">THE SLATE</div>
+      {/* Off-screen copy of every tile at its natural width, for packing. */}
+      <div className="tvb-measure" ref={measureRef} aria-hidden>
         {items.map((it) => (
-          <ItemCard key={it.kind === "game" ? it.g.id : "summary"} item={it} />
+          <ItemTile key={it.kind === "game" ? it.g.id : "summary"} item={it} games={games} />
         ))}
       </div>
-      <div className="tv-card-area" ref={areaRef} data-fading={fading && !alert ? "1" : undefined}>
-        {alert && alertGame ? (
-          <AlertCard key={alert.key} alert={alert} g={alertGame} />
-        ) : shown.length === 0 ? (
-          <span className="tv-empty">{data ? "No games on right now" : "Loading scores"}</span>
+      {current && current.section !== "summary" && <SectionLabel section={current.section} />}
+      <div className="tvb-area" ref={areaRef} data-fading={fading ? "1" : undefined}>
+        {shown.length === 0 ? (
+          <span className="tvb-k">{data ? "NO GAMES ON RIGHT NOW" : "LOADING SCORES"}</span>
         ) : (
-          shown.map((it) => <ItemCard key={it.kind === "game" ? it.g.id : "summary"} item={it} />)
+          shown.map((it) => (
+            <ItemTile key={it.kind === "game" ? it.g.id : "summary"} item={it} games={games} />
+          ))
         )}
       </div>
-      {pages > 1 && !alert && (
-        <div className="tv-card-count stat" aria-hidden>
+      {pages > 1 && (
+        <div className="tvb-count" aria-hidden>
           {page + 1}/{pages}
         </div>
       )}
@@ -220,134 +289,64 @@ export function TvCards() {
   );
 }
 
-function ItemCard({ item }: { item: Item }) {
-  return item.kind === "summary" ? <SummaryCard s={item.s} /> : <Card g={item.g} />;
-}
-
-/** "+1.4U" / "-2U", one decimal at most. */
-function fmtUnits(u: number): string {
-  const r = Math.round(u * 10) / 10;
-  return `${r > 0 ? "+" : ""}${r}U`;
-}
-
-function SummaryCard({ s }: { s: TickerSummary }) {
-  const decided = s.record !== "0-0";
-  const unitCls = s.units > 0 ? "tv-v-covering" : s.units < 0 ? "tv-v-losing" : "text-dim";
-  return (
-    <div className="tv-card tv-summary" data-mine="1">
-      <span className="tv-summary-label">YOUR BETS</span>
-      {decided ? (
-        <>
-          <span className="stat text-chalk">{s.record}</span>
-          <span className={`stat ${unitCls}`}>{fmtUnits(s.units)}</span>
-        </>
-      ) : (
-        <span className="tv-card-sit text-dim">NO RESULTS YET</span>
-      )}
-      {s.live > 0 && <span className="tv-status stat text-live">{s.live} LIVE</span>}
-      {s.upcoming > 0 && <span className="tv-status stat text-dim">{s.upcoming} UP NEXT</span>}
-    </div>
-  );
-}
-
-/* The two numbers on a card: spread side and total. The viewer's ticket
-   replaces the market number it's on; the other market stays, dimmed. */
-function Markets({ g }: { g: TickerGame }) {
-  const totalTicket = g.stake?.side === "over" || g.stake?.side === "under";
-  const spreadMine = Boolean(g.stake && !totalTicket);
-  const spreadText = spreadMine ? g.stake!.label : marketSpread(g);
-  const totalText = totalTicket
-    ? g.stake!.label
-    : g.total !== null && g.total !== undefined
-      ? `O/U ${g.total}`
-      : null;
-  return (
-    <>
-      {spreadText && (
-        <span className={`tv-line stat ${spreadMine ? lineClass(g, true) : "tv-line-market"}`}>
-          {spreadText}
-        </span>
-      )}
-      {totalText && (
-        <span className={`tv-line stat ${totalTicket ? lineClass(g, true) : "tv-line-market"}`}>
-          {totalText}
-        </span>
-      )}
-    </>
-  );
-}
-
-/** WON / LOST / PUSH on a finished game the viewer had money on. */
-function Result({ g }: { g: TickerGame }) {
-  if (g.status !== "final") return null;
-  const r =
-    g.mine === "covering"
-      ? ["WON", "tv-v-covering"]
-      : g.mine === "losing"
-        ? ["LOST", "tv-v-losing"]
-        : g.mine === "push"
-          ? ["PUSH", "tv-v-push"]
-          : null;
-  return r ? <span className={`tv-result stat ${r[1]}`}>{r[0]}</span> : null;
-}
-
-function Card({ g }: { g: TickerGame }) {
-  const live = g.status === "in_progress";
-  const scored = live || g.status === "final";
-  const lead = leadingSide(g);
-  const view = {
-    status: g.status,
-    possession: g.possession ?? null,
-    situation: g.situation ?? null,
-    home: { abbr: g.homeAbbr },
-    away: { abbr: g.awayAbbr },
-  };
-  const spot = live ? fieldPosition(view) : null;
-  const redZone = live && isRedZone(view);
-  const sit = live ? situationText(g.situation) : null;
-
-  const team = (abbr: string, pts: number | null, s: "home" | "away") => (
-    <span className={`tv-card-team ${teamClass(g, s)}`}>
-      {g.possession === s && <Ball />}
-      <span style={{ fontWeight: lead === s ? 700 : 500 }}>{abbr}</span>
-      {scored && <span className="stat">{pts ?? 0}</span>}
-    </span>
-  );
-
-  return (
-    <div className="tv-card" data-mine={g.mine ? "1" : undefined}>
-      {g.sport === "nfl" && <span className="tv-tag">NFL</span>}
-      {team(g.awayAbbr, g.awayPoints, "away")}
-      {team(g.homeAbbr, g.homePoints, "home")}
-      <Markets g={g} />
-      <span className={`tv-status stat ${live ? "text-live" : "text-dim"}`}>{tvStatus(g)}</span>
-      <Result g={g} />
-      {sit && (
-        <span className={`tv-card-sit ${redZone ? "text-live" : "text-chalk/80"}`}>{sit}</span>
-      )}
-      {spot && <Field x={spot.x} redZone={redZone} />}
-      <VerdictWords g={g} />
-    </div>
-  );
-}
-
-/** One of the viewer's games just scored: it takes the strip for a few seconds. */
-function AlertCard({ alert, g }: { alert: ScoreAlert; g: TickerGame }) {
-  const abbr = alert.side === "home" ? g.homeAbbr : g.awayAbbr;
-  return (
-    <div className="tv-card tv-alert" data-mine="1">
-      <span className="tv-alert-what">
-        {alert.label} {abbr}
+function SectionLabel({ section }: { section: Section }) {
+  if (section === "bets") return <span className="tvb-label tvb-k tvb-gold">YOUR BETS</span>;
+  if (section === "live")
+    return (
+      <span className="tvb-label tvb-k">
+        <span className="tvb-dot" /> LIVE
       </span>
-      <Card g={g} />
-    </div>
+    );
+  return <span className="tvb-label tvb-k">{section === "next" ? "UP NEXT" : "FINAL"}</span>;
+}
+
+function ItemTile({ item, games }: { item: Item; games: TickerGame[] }) {
+  if (item.kind === "summary") return <Summary s={item.s} games={games} />;
+  const g = item.g;
+  if (g.status === "in_progress") return <LiveTile g={g} />;
+  if (g.status === "scheduled") return <NextTile g={g} />;
+  return <FinalTile g={g} />;
+}
+
+/** School logo, or a badge in the school's colour when there is none. */
+function Logo({
+  src,
+  abbr,
+  color,
+  size,
+}: {
+  src?: string | null;
+  abbr: string;
+  color?: string | null;
+  size: number;
+}) {
+  const [broken, setBroken] = useState(false);
+  if (!src || broken) {
+    return (
+      <span
+        className="tvb-badge"
+        style={{ width: size, height: size, background: color ?? "var(--elev)" }}
+      >
+        {abbr.slice(0, 4)}
+      </span>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- remote logos on a TV; no optimiser round-trip
+    <img
+      className="tvb-logo"
+      src={src}
+      alt=""
+      width={size}
+      height={size}
+      onError={() => setBroken(true)}
+    />
   );
 }
 
-/** Possession marker, drawn in em so it scales with the strip. */
 function Ball() {
   return (
-    <svg className="tv-ball" viewBox="0 0 17 11" aria-label="has the ball" role="img">
+    <svg className="tvb-ball" viewBox="0 0 17 11" role="img" aria-label="has the ball">
       <ellipse
         cx="8.5"
         cy="5.5"
@@ -367,13 +366,227 @@ function Ball() {
   );
 }
 
-/** A tiny field: away end zone left, home right, the ball where it sits. */
-function Field({ x, redZone }: { x: number; redZone: boolean }) {
-  return (
-    <span className="tv-field" data-red={redZone ? "1" : undefined} aria-hidden>
-      <span className="tv-field-mid" />
-      {/* x is 0-100 between the goal lines; each end zone takes 7%. */}
-      <span className="tv-field-ball" style={{ left: `${7 + x * 0.86}%` }} />
+/** The viewer's ticket as a gold chip, else the market spread, dimmed. */
+function Line({ g }: { g: TickerGame }) {
+  if (g.stake) return <span className="tvb-ticket">{g.stake.label}</span>;
+  const m = marketSpread(g);
+  return m ? <span className="tvb-mkt">{m}</span> : null;
+}
+
+function Net({ g }: { g: TickerGame }) {
+  const n = network(g.tv);
+  return n ? <span className="tvb-net">{n}</span> : null;
+}
+
+/** Inline style for a tile: team colours, and the verdict when it's the viewer's. */
+function tileStyle(g: TickerGame): CSSProperties {
+  const style: Record<string, string> = {
+    "--ta": g.awayColor ?? "transparent",
+    "--th": g.homeColor ?? "transparent",
+  };
+  const v = g.mine ? VERDICT[g.mine] : undefined;
+  if (v) {
+    style["--vc"] = v;
+    style["--vdir"] = g.stake?.side === "home" ? "270deg" : "90deg";
+  }
+  return style as CSSProperties;
+}
+
+function LiveTile({ g }: { g: TickerGame }) {
+  const lead = leadingSide(g);
+  const graded = Boolean(g.mine && VERDICT[g.mine]);
+  const view = {
+    status: g.status,
+    possession: g.possession ?? null,
+    situation: g.situation ?? null,
+    home: { abbr: g.homeAbbr },
+    away: { abbr: g.awayAbbr },
+  };
+  const spot = fieldPosition(view);
+  const redZone = isRedZone(view);
+  const sit = situationText(g.situation);
+  const totalTicket = g.stake?.side === "over" || g.stake?.side === "under";
+
+  const score = (s: "home" | "away") => {
+    const pts = (s === "home" ? g.homePoints : g.awayPoints) ?? 0;
+    if (graded && !totalTicket && g.stake?.side === s) {
+      return <span className="tvb-s tvb-s-v">{pts}</span>;
+    }
+    return <span className={`tvb-s ${lead !== null && lead !== s ? "tvb-trail" : ""}`}>{pts}</span>;
+  };
+  const name = (s: "home" | "away") => (
+    <span className={`tvb-ab ${graded && g.stake?.side === s ? "tvb-me" : ""}`}>
+      {s === "home" ? g.homeAbbr : g.awayAbbr}
     </span>
+  );
+
+  const cls = [
+    "tvb-tile",
+    graded ? "tvb-bet" : g.stake ? "tvb-mine" : "",
+    graded && totalTicket ? "tvb-total" : "",
+    !graded && redZone ? "tvb-rz" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return (
+    <div className={cls} style={tileStyle(g)}>
+      <span className="tvb-wash" />
+      {g.sport === "nfl" && <span className="tvb-tag">NFL</span>}
+      <Logo src={g.awayLogo} abbr={g.awayAbbr} color={g.awayColor} size={28} />
+      {name("away")}
+      {g.possession === "away" && <Ball />}
+      {score("away")}
+      <span className="tvb-ctr">
+        <span className="tvb-clk">
+          <span className="tvb-dot" />
+          {tvStatus(g)}
+        </span>
+        {sit && <span className={`tvb-dd ${redZone ? "tvb-red" : ""}`}>{sit}</span>}
+      </span>
+      {score("home")}
+      {g.possession === "home" && <Ball />}
+      {name("home")}
+      <Logo src={g.homeLogo} abbr={g.homeAbbr} color={g.homeColor} size={28} />
+      {!graded && redZone && <span className="tvb-rzt">RED ZONE</span>}
+      <Line g={g} />
+      <Net g={g} />
+      {spot && (
+        <span className={`tvb-field ${redZone ? "tvb-red" : ""}`} aria-hidden>
+          <span className="tvb-ez" style={{ background: g.awayColor ?? undefined }} />
+          <span className="tvb-turf">
+            <span className="tvb-spot" style={{ left: `${spot.x}%` }} />
+          </span>
+          <span className="tvb-ez" style={{ background: g.homeColor ?? undefined }} />
+        </span>
+      )}
+      <VerdictWords g={g} />
+    </div>
+  );
+}
+
+function NextTile({ g }: { g: TickerGame }) {
+  const [time, mer] = tvStatus(g).split(" ");
+  return (
+    <div className={`tvb-tile ${g.stake ? "tvb-mine" : ""}`} style={tileStyle(g)}>
+      <span className="tvb-wash" />
+      <span className="tvb-ko">
+        {time}
+        {mer && <small>{mer}</small>}
+      </span>
+      <Logo src={g.awayLogo} abbr={g.awayAbbr} color={g.awayColor} size={26} />
+      <span className="tvb-ab">{g.awayAbbr}</span>
+      <span className="tvb-at">AT</span>
+      <Logo src={g.homeLogo} abbr={g.homeAbbr} color={g.homeColor} size={26} />
+      <span className="tvb-ab">{g.homeAbbr}</span>
+      <Line g={g} />
+      <Net g={g} />
+    </div>
+  );
+}
+
+function FinalTile({ g }: { g: TickerGame }) {
+  const lead = leadingSide(g);
+  const res =
+    g.mine === "covering"
+      ? "WON"
+      : g.mine === "losing"
+        ? "LOST"
+        : g.mine === "push"
+          ? "PUSH"
+          : null;
+  const v = g.mine ? VERDICT[g.mine] : undefined;
+  return (
+    <div className={`tvb-tile tvb-fin ${g.mine ? "tvb-mine" : ""}`} style={tileStyle(g)}>
+      <Logo src={g.awayLogo} abbr={g.awayAbbr} color={g.awayColor} size={24} />
+      <span className={`tvb-s ${lead === "away" ? "tvb-w" : ""}`}>{g.awayPoints ?? 0}</span>
+      <span className="tvb-at">–</span>
+      <span className={`tvb-s ${lead === "home" ? "tvb-w" : ""}`}>{g.homePoints ?? 0}</span>
+      <Logo src={g.homeLogo} abbr={g.homeAbbr} color={g.homeColor} size={24} />
+      <span className="tvb-k tvb-dim">FINAL</span>
+      {g.stake && <span className="tvb-mkt tvb-bright">{g.stake.label}</span>}
+      {res && v && (
+        <span className="tvb-res" style={{ background: v }}>
+          {res}
+        </span>
+      )}
+      <VerdictWords g={g} />
+    </div>
+  );
+}
+
+/** "+1.4U" / "-2U", one decimal at most. */
+function fmtUnits(u: number): string {
+  const r = Math.round(u * 10) / 10;
+  return `${r > 0 ? "+" : ""}${r}U`;
+}
+
+function Summary({ s, games }: { s: TickerSummary; games: TickerGame[] }) {
+  const live = games.filter((g) => g.mine && g.status === "in_progress");
+  const next = games.filter((g) => g.mine && g.status === "scheduled");
+  const ubg = s.units > 0 ? "var(--win)" : s.units < 0 ? "var(--loss)" : "var(--elev)";
+  return (
+    <div className="tvb-sum">
+      <span className="tvb-k">YOUR NIGHT</span>
+      <span className="tvb-rec">{s.record}</span>
+      <span className="tvb-units" style={{ background: ubg }}>
+        {fmtUnits(s.units)}
+      </span>
+      {live.length > 0 && <span className="tvb-k">LIVE</span>}
+      {live.map((g) => {
+        const mineAway = g.stake?.side === "away";
+        const v = g.mine ? (VERDICT[g.mine] ?? "var(--text-dim)") : "var(--text-dim)";
+        return (
+          <span key={g.id} className="tvb-mini">
+            <Logo
+              src={mineAway ? g.awayLogo : g.homeLogo}
+              abbr={mineAway ? g.awayAbbr : g.homeAbbr}
+              color={mineAway ? g.awayColor : g.homeColor}
+              size={24}
+            />
+            <span className="tvb-light" style={{ background: v, boxShadow: `0 0 8px ${v}` }} />
+          </span>
+        );
+      })}
+      {next.length > 0 && <span className="tvb-k">UP NEXT</span>}
+      {next.map((g) => {
+        const mineAway = g.stake?.side === "away";
+        return (
+          <span key={g.id} className="tvb-mini">
+            <Logo
+              src={mineAway ? g.awayLogo : g.homeLogo}
+              abbr={mineAway ? g.awayAbbr : g.homeAbbr}
+              color={mineAway ? g.awayColor : g.homeColor}
+              size={24}
+            />
+            <span className="tvb-k">{tvStatus(g).split(" ")[0]}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/** One of the viewer's games just scored: the strip floods in that school's colour. */
+function Touchdown({ alert, g }: { alert: ScoreAlert; g: TickerGame }) {
+  const home = alert.side === "home";
+  const color = (home ? g.homeColor : g.awayColor) ?? "var(--elev)";
+  return (
+    <div className="tvb-td" style={{ "--tc": color } as CSSProperties}>
+      <span className="tvb-td-word">{alert.label}</span>
+      <Logo
+        src={home ? g.homeLogo : g.awayLogo}
+        abbr={home ? g.homeAbbr : g.awayAbbr}
+        color={color}
+        size={40}
+      />
+      <span className="tvb-td-team">{home ? g.homeAbbr : g.awayAbbr}</span>
+      <span className="tvb-td-score">
+        {g.awayAbbr} {g.awayPoints ?? 0}
+        <span className="tvb-dim"> – </span>
+        {g.homePoints ?? 0} {g.homeAbbr}
+      </span>
+      {g.stake && <span className="tvb-ticket tvb-push-right">{g.stake.label}</span>}
+      <VerdictWords g={g} />
+    </div>
   );
 }

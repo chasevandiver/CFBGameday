@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
   }
 
   const GAME_COLS =
-    "id, status, start_ts, current_period, current_clock, home_points, away_points, home_team_id, away_team_id, current_situation, possession";
+    "id, status, start_ts, current_period, current_clock, home_points, away_points, home_team_id, away_team_id, current_situation, possession, tv";
   const [{ data }, { data: nflData }] = await Promise.all([
     supabase
       .from("games")
@@ -78,6 +78,7 @@ export async function GET(req: NextRequest) {
     | "away_team_id"
     | "current_situation"
     | "possession"
+    | "tv"
   >;
   const now = Date.now();
   const nflIds = new Set(((nflData ?? []) as Row[]).map((g) => g.id));
@@ -96,7 +97,7 @@ export async function GET(req: NextRequest) {
   const teamIds = [...new Set(rows.flatMap((g) => [g.home_team_id, g.away_team_id]))];
   const [{ data: teams }, { data: consensus }] = await Promise.all([
     teamIds.length > 0
-      ? supabase.from("teams").select("id, school, abbreviation").in("id", teamIds)
+      ? supabase.from("teams").select("id, school, abbreviation, color, logo_url").in("id", teamIds)
       : Promise.resolve({ data: [] }),
     // The market number on each chip (TV-3). Public, like the scores.
     rows.length > 0
@@ -116,6 +117,13 @@ export async function GET(req: NextRequest) {
   );
   const totalById = new Map(
     ((consensus ?? []) as ConsensusSlim[]).map((c) => [c.game_id, toNum(c.total)]),
+  );
+  // TV-10: the broadcast tiles need each school's logo and colour.
+  const lookById = new Map(
+    ((teams ?? []) as Array<Pick<TeamRow, "id" | "color" | "logo_url">>).map((t) => [
+      t.id,
+      { color: t.color ?? null, logo: t.logo_url ?? null },
+    ]),
   );
   const abbrById = new Map(
     ((teams ?? []) as Array<Pick<TeamRow, "id" | "school" | "abbreviation">>).map((t) => [
@@ -246,6 +254,11 @@ export async function GET(req: NextRequest) {
     awayAbbr: abbrById.get(g.away_team_id) ?? "?",
     homePoints: g.home_points,
     awayPoints: g.away_points,
+    homeColor: lookById.get(g.home_team_id)?.color ?? null,
+    awayColor: lookById.get(g.away_team_id)?.color ?? null,
+    homeLogo: lookById.get(g.home_team_id)?.logo ?? null,
+    awayLogo: lookById.get(g.away_team_id)?.logo ?? null,
+    tv: g.tv ?? null,
     mine: mineById.get(g.id) ?? null,
     stake: stakeById.get(g.id) ?? null,
     spread: spreadById.get(g.id) ?? null,

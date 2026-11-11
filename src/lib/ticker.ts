@@ -45,6 +45,13 @@ export interface TickerGame {
   stake?: TickerStake | null;
   /** Consensus spread, home-perspective (negative = home favoured). */
   spread?: number | null;
+  /** TV-10: school colour (#hex) and logo URL for the broadcast tiles. */
+  homeColor?: string | null;
+  awayColor?: string | null;
+  homeLogo?: string | null;
+  awayLogo?: string | null;
+  /** Network as the feed gives it ("ESPN2", "The CW Network"). */
+  tv?: string | null;
   /** Consensus total (TV-9). */
   total?: number | null;
   /** Live only (TV-8): who has the ball, and CFBD/ESPN's "2nd & 10 at OSU 34". */

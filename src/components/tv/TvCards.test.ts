@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { TickerGame } from "../../lib/ticker";
-import { cardOrder, newScores, packPages, scoreLabel } from "./TvCards";
+import {
+  cardOrder,
+  network,
+  newScores,
+  packPages,
+  packSections,
+  scoreLabel,
+  sectionOf,
+} from "./TvCards";
 
 const game = (over: Partial<TickerGame>): TickerGame => ({
   id: 1,
@@ -53,5 +61,32 @@ describe("TV cards (TV-8, TV-9)", () => {
     expect(newScores(prev, g, 5)).toEqual([
       { gameId: 1, side: "away", label: "TOUCHDOWN", key: 5 },
     ]);
+  });
+
+  it("never mixes sections on a page, so the label always matches", () => {
+    const pages = packSections(
+      ["summary", "bets", "bets", "bets", "live", "live"],
+      [400, 300, 300, 300, 300, 300],
+      700,
+    );
+    expect(pages).toEqual([
+      { section: "summary", items: [0] },
+      { section: "bets", items: [1, 2] },
+      { section: "bets", items: [3] },
+      { section: "live", items: [4, 5] },
+    ]);
+  });
+
+  it("sorts a game into its section: any bet is yours, whatever its status", () => {
+    expect(sectionOf(game({ mine: "on", status: "scheduled" }))).toBe("bets");
+    expect(sectionOf(game({ status: "in_progress" }))).toBe("live");
+    expect(sectionOf(game({ status: "scheduled" }))).toBe("next");
+    expect(sectionOf(game({ status: "final" }))).toBe("final");
+  });
+
+  it("shortens networks for the badge", () => {
+    expect(
+      ["The CW Network", "ACC Network", "ESPN | ESPN2", "Fox", "ESPN2", null].map(network),
+    ).toEqual(["CW", "ACCN", "ESPN", "FOX", "ESPN2", null]);
   });
 });

@@ -234,6 +234,28 @@ shipping it.
 
 ## Log
 
+### Nov 11 — TV-10: the broadcast look
+
+Chosen from six directions in `public/design/tv-direction-{a..f}.html`; F won,
+with one note from Chase: a highlighted number alone doesn't read as winning
+or losing from the couch.
+
+- Every game is a tile: both logos, the clock and down in the middle, the
+  network badge, and a field along the bottom with each school's end zone
+  and the ball. Team colours wash in from each end.
+- The viewer's bets tint the whole tile by verdict (outline, glow, their half
+  of the tile, their team and their score block); a totals ticket tints the
+  tile evenly and fills its line chip. Three to a page at Medium.
+- Pages are packed per section (your bets, live, up next, final) so the label
+  at the left always names what's on screen (`packSections`, tested).
+- Finals go grey except the viewer's, which get WON / LOST / PUSH. Touchdown
+  floods the strip in the scoring school's colour.
+- `/api/ticker` adds `homeColor/awayColor/homeLogo/awayLogo/tv`.
+- Uses the Field palette (`.brand-surface`), so losing is Penalty Orange.
+  Deviation, flagged: scores are Barlow Condensed (the existing display face)
+  rather than BRAND §12's Plex Mono; on a broadcast strip the condensed
+  numerals were the point of the direction. Lines and odds stay on the mono.
+
 ### Nov 10 — TV-9: totals, a bets summary, scoring alerts, all-TV control, app updates
 
 Chase's picks after the first night on the cards.
