@@ -16,6 +16,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.util.DisplayMetrics
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -61,7 +62,9 @@ class OverlayService : Service() {
     private var server: ControlServer? = null
     private var frame: FrameLayout? = null
     private var web: WebView? = null
+    private var ticker: TickerView? = null
     private var loadedUrl: String? = null
+    private var loadedNative = false
     private var driftStep = 0
 
     @Volatile
@@ -69,6 +72,13 @@ class OverlayService : Service() {
         private set
 
     private val retry = Runnable { web?.reload() }
+
+    /** The Slate's own ticker is drawn natively (TV-7); anything else is a web page. */
+    private fun isNativeTicker(c: OverlayConfig): Boolean = c.layout == "ticker" && try {
+        java.net.URL(c.url).path.trimEnd('/') == "/tv/ticker"
+    } catch (_: Exception) {
+        false
+    }
     private val hourlyReload = object : Runnable {
         override fun run() {
             web?.reload()
@@ -170,27 +180,40 @@ class OverlayService : Service() {
         lastError = null
         val params = layoutParams(c)
 
+        val native = isNativeTicker(c)
+        // A different page, or a switch between web and native, rebuilds the
+        // window's content; a move or resize only updates the layout.
+        if (frame != null && (loadedUrl != c.url || loadedNative != native)) removeOverlay()
+
         if (frame == null) {
             val f = FrameLayout(this).apply {
                 clipChildren = true
                 setBackgroundColor(Color.TRANSPARENT)
             }
-            val wv = makeWebView()
-            f.addView(wv)
+            val content: View = if (native) TickerView(this, c.url) else makeWebView()
+            f.addView(content)
             try {
                 wm.addView(f, params)
             } catch (e: Exception) {
                 lastError = "The TV refused to draw over other apps (${e.message})."
-                wv.destroy()
+                (content as? WebView)?.destroy()
                 return
             }
             frame = f
-            web = wv
-            loadedUrl = null
+            if (content is WebView) {
+                web = content
+                content.loadUrl(c.url)
+            } else {
+                ticker = content as TickerView
+            }
+            loadedUrl = c.url
+            loadedNative = native
         } else {
             wm.updateViewLayout(frame, params)
         }
+        frame?.alpha = c.opacity / 100f
 
+        ticker?.layoutParams = FrameLayout.LayoutParams(params.width, params.height)
         val wv = web ?: return
         val z = c.zoom / 100f
         wv.layoutParams = FrameLayout.LayoutParams((params.width / z).toInt(), (params.height / z).toInt())
@@ -198,12 +221,6 @@ class OverlayService : Service() {
         wv.pivotY = 0f
         wv.scaleX = z
         wv.scaleY = z
-        frame?.alpha = c.opacity / 100f
-
-        if (loadedUrl != c.url) {
-            loadedUrl = c.url
-            wv.loadUrl(c.url)
-        }
     }
 
     private fun layoutParams(c: OverlayConfig): WindowManager.LayoutParams {
@@ -297,6 +314,7 @@ class OverlayService : Service() {
         web?.destroy()
         frame = null
         web = null
+        ticker = null
         loadedUrl = null
     }
 

@@ -234,6 +234,20 @@ shipping it.
 
 ## Log
 
+### Nov 10 — TV-7: the overlay draws the Slate ticker natively
+
+TV-5's CSS fixes didn't cure the stutter on Chase's Fire TV: a WebView in an
+overlay window, over playing video, still drops frames on a CSS crawl.
+
+- `tv-overlay/…/TickerView.kt` reads `/api/ticker` (same `?k=`, same 30s/60s
+  cadence) and draws the chips with Canvas, crawl positioned from the vsync
+  timestamp. Used when the ticker layout points at `/tv/ticker`; every other
+  page, and the corner box, stays a WebView.
+- Its rules mirror `TvChip.tsx` (order, status text, the line, verdict
+  colour) and say so at the top; a change to one needs the other. System
+  fonts (Roboto Condensed, monospace) stand in for Barlow / Plex Mono.
+- `/tv/ticker` stays as the web version for browsers and other devices.
+
 ### Nov 10 — TV-6: ticker flush to the screen edge
 
 - The ticker window is full width at y = 0, top or bottom. Heights at most
