@@ -263,7 +263,13 @@ export function TvCards() {
 
   return (
     <main className="tv-strip tv-panel tvb brand-surface">
-      <div className="tvb-brand">THE SLATE</div>
+      <div className="tvb-brand">
+        {/* The S is the primary brand asset (BRAND §36-37); the wordmark sits
+            beside it and never competes. Supplied artwork, never redrawn. */}
+        {/* eslint-disable-next-line @next/next/no-img-element -- static brand asset, sized in vh */}
+        <img className="tvb-mark" src="/brand/slate-mark.png" alt="" />
+        <span>THE SLATE</span>
+      </div>
       {/* Off-screen copy of every tile at its natural width, for packing. */}
       <div className="tvb-measure" ref={measureRef} aria-hidden>
         {items.map((it) => (
