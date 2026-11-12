@@ -234,6 +234,14 @@ shipping it.
 
 ## Log
 
+### Nov 11 — TV-14: losing is red on the TV
+
+BUF -1.5 tied 7-7 in Q3 showed as an orange tile. Chase's original ask was
+green / gold / red, and over live video the Field palette's `--loss` orange
+(#e4572e) sat too close to the gold push. `.tv-panel` now overrides `--loss`
+to #ef2f3c, so the tile wash, edge, verdict text and the summary's units chip
+all go red. Overlay only; the site keeps the brand orange.
+
 ### Nov 11 — TV-13: fantasy links built for you; logo fallback fixed
 
 First night with fantasy on Chase's TV (MAC night, BUF -1.5 live):
