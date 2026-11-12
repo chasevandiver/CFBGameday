@@ -234,6 +234,15 @@ shipping it.
 
 ## Log
 
+### Nov 11 — TV-18: the touchdown banner names the schools and your bet
+
+The banner read "TOUCHDOWN · BUF · BUF 27 – 7 BALL" with the ticket as a small
+chip at the far right. `/api/ticker` now carries `homeName` / `awayName`
+(`teams.school`), and the banner reads "TOUCHDOWN · logo · BUFFALO 27 – 7 BALL
+STATE | YOUR BET [BUF -1.5]": scoring side bright, the other dimmed, and the
+ticket right after the score as a solid chip in the colour it's now running.
+The duplicate abbreviation beside the logo is gone.
+
 ### Nov 11 — TV-17: bet tiles get their team colours back
 
 On the TV the TV-15 bet tile read as bland beside the live tiles: the flat

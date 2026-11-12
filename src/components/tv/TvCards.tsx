@@ -594,6 +594,14 @@ function MiniBet({ g, when }: { g: TickerGame; when?: string }) {
 function Touchdown({ alert, g }: { alert: ScoreAlert; g: TickerGame }) {
   const home = alert.side === "home";
   const color = (home ? g.homeColor : g.awayColor) ?? "var(--elev)";
+  const v = g.mine ? VERDICT[g.mine] : undefined;
+  // TV-18: full names, the scoring side bright and the other dimmed, and the
+  // viewer's ticket as a solid chip in the colour it's now running.
+  const team = (s: "home" | "away") => (
+    <span className={`tvb-td-name ${alert.side === s ? "" : "tvb-td-other"}`}>
+      {(s === "home" ? g.homeName : g.awayName) ?? (s === "home" ? g.homeAbbr : g.awayAbbr)}
+    </span>
+  );
   return (
     <div className="tvb-td" style={{ "--tc": color } as CSSProperties}>
       <span className="tvb-td-word">{alert.label}</span>
@@ -603,13 +611,21 @@ function Touchdown({ alert, g }: { alert: ScoreAlert; g: TickerGame }) {
         color={color}
         size={40}
       />
-      <span className="tvb-td-team">{home ? g.homeAbbr : g.awayAbbr}</span>
       <span className="tvb-td-score">
-        {g.awayAbbr} {g.awayPoints ?? 0}
-        <span className="tvb-dim"> – </span>
-        {g.homePoints ?? 0} {g.homeAbbr}
+        {team("away")}
+        <span className="tvb-td-pts">{g.awayPoints ?? 0}</span>
+        <span className="tvb-td-dash">–</span>
+        <span className="tvb-td-pts">{g.homePoints ?? 0}</span>
+        {team("home")}
       </span>
-      {g.stake && <span className="tvb-ticket tvb-push-right">{g.stake.label}</span>}
+      {g.stake && (
+        <span className="tvb-td-bet">
+          <span className="tvb-td-cap">YOUR BET</span>
+          <span className="tvb-td-ticket" style={v ? ({ "--vc": v } as CSSProperties) : undefined}>
+            {g.stake.label}
+          </span>
+        </span>
+      )}
       <VerdictWords g={g} />
     </div>
   );
