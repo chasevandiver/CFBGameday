@@ -237,3 +237,19 @@ select pg_temp.chk('the launcher tables are closed to the API roles',
   not has_table_privilege('anon', 'public.loop_launches', 'SELECT')
   and not has_table_privilege('authenticated', 'public.loop_launches', 'SELECT')
   and not has_table_privilege('authenticated', 'public.loop_launcher_state', 'SELECT'));
+
+select '# the model''s record (0087)';
+
+\o /dev/null
+insert into cbb_model_stats (season_id, payload) values (202026, '{"ats":{"w":163,"l":119,"p":0}}');
+\o
+begin;
+  select test_as_anon();
+  select pg_temp.chk('a signed-out visitor can read the model''s record',
+    (select (payload->'ats'->>'w')::int = 163 from cbb_model_stats where season_id = 202026));
+rollback;
+select expect_denied('…and cannot rewrite it',
+  null, $$update cbb_model_stats set payload = '{}' where season_id = 202026$$, 'permission denied');
+select expect_denied('a signed-in member cannot rewrite it either',
+  '22222222-2222-2222-2222-222222222222'::uuid,
+  $$insert into cbb_model_stats (season_id, payload) values (2026, '{}')$$, 'permission denied');

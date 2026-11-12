@@ -33,6 +33,11 @@ import {
   snapshotChanged,
   type FeedFile,
 } from "../src/lib/cbb-feed";
+import {
+  buildCbbModelStats,
+  type FeedGradedRecord,
+  type FeedIndex,
+} from "../src/lib/cbb-model-stats";
 import { cbbSeasonIdFromEndYear } from "../src/lib/league";
 import { chunk, createSink, dropUnknownGames } from "./lib/ingest";
 import { recordJobRun } from "./lib/jobs-core";
@@ -173,6 +178,7 @@ async function run(
   for (const batch of chunk(newSnaps, 500)) await sink.insert("line_snapshots", batch);
 
   console.log(`  ${newPreds.length} predictions, ${newSnaps.length} snapshots appended`);
+  const stats = await syncModelStats(db, url, seasonId);
   return {
     slate_date: feed.slate_date ?? null,
     generated_at: feed.generated_at,
@@ -181,7 +187,51 @@ async function run(
     snapshots: newSnaps.length,
     unknown_games: preds.dropped.length,
     ...(distrusted ? { distrusted } : {}),
+    stats,
   };
+}
+
+/**
+ * The model's own record → `cbb_model_stats` (CBB-16).
+ *
+ * Two more files from the same host: `index.json` for the season summary and
+ * the season file for the per-day record. Best-effort by design — the picks
+ * and lines above are what a slate card is; a stats row a few hours stale is
+ * a stats row, and a failure here must not turn a successful import red. The
+ * outcome is reported in `job_runs.detail` so a run that keeps skipping is
+ * visible.
+ */
+async function syncModelStats(
+  db: NonNullable<ReturnType<typeof createSink>["db"]>,
+  slateUrl: string,
+  seasonId: number,
+): Promise<string> {
+  try {
+    const base = slateUrl.slice(0, slateUrl.lastIndexOf("/") + 1);
+    const get = async <T>(file: string): Promise<T> => {
+      const res = await fetch(base + file, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(30_000),
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error(`${file} answered ${res.status}`);
+      return (await res.json()) as T;
+    };
+    const index = await get<FeedIndex>("index.json");
+    // The file name comes from the feed; keep it to a bare file name so a
+    // malformed index cannot point this fetch somewhere else.
+    if (!/^[\w.-]+\.json$/.test(index.files?.season ?? "")) throw new Error("index names no season file");
+    const season = await get<{ records: FeedGradedRecord[] }>(index.files.season);
+    const payload = buildCbbModelStats(index, season.records ?? []);
+    const { error } = await db
+      .from("cbb_model_stats")
+      .upsert({ season_id: seasonId, payload, updated_at: new Date().toISOString() });
+    if (error) throw new Error(error.message);
+    return `ok ${payload.ats.w}-${payload.ats.l}`;
+  } catch (err) {
+    console.warn(`  model stats skipped: ${(err as Error).message}`);
+    return `skipped: ${(err as Error).message}`.slice(0, 160);
+  }
 }
 
 main().catch((err) => {

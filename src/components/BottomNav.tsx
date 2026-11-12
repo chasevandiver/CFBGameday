@@ -2,20 +2,24 @@
 
 import { MoreHorizontal } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { PRIMARY_ITEMS, SECONDARY_ITEMS, isNavItemActive } from "./nav-items";
+import { PRIMARY_ITEMS, SECONDARY_ITEMS, isBottomTabActive, isNavItemActive } from "./nav-items";
 
 /**
  * Mobile primary navigation, in the thumb zone (docs/DESIGN.md). Replaces the
  * horizontally scrolling top tab strip below `md`, where the last tabs sat
  * off-screen with no affordance and the targets were ~30px tall.
  *
- * Four routes hold a slot; the rest live behind More. The bar is fixed, so
+ * Six routes hold a slot (NAV-2); the rest live behind More. The bar is fixed, so
  * `body` reserves room for it in globals.css and the bet slip lifts above it.
  */
 export function BottomNav() {
   const pathname = usePathname();
+  /* NAV-2: four tabs share `/slate` and differ by `?sport=`, so the query
+     string is part of "where am I" here. The slate's league toggle is a full
+     page load, so this is always the URL the server rendered. */
+  const sport = useSearchParams().get("sport");
   const [open, setOpen] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLButtonElement>(null);
@@ -90,14 +94,23 @@ export function BottomNav() {
         }}
       >
         {PRIMARY_ITEMS.map((item) => {
-          const active = isNavItemActive(item, pathname);
+          const active = isBottomTabActive(item, pathname, sport);
           const Icon = item.icon!;
           return (
-            <Link
+            /* A plain <a> for the slate tabs, on purpose: SlateView seeds its
+               state once per mount, so a soft navigation between two leagues
+               changes the URL and leaves the old league on screen. The
+               SportToggle's comment in SlateView.tsx has the full account;
+               these four are the same switch in a second place. */
+            <NavLink
               key={item.href}
               href={item.href}
+              hard={item.slate !== undefined}
               aria-current={active ? "page" : undefined}
-              className={`flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-semibold transition-colors ${
+              /* `min-w-0` + the 10.5px label: seven slots at 390px are ~49px
+                 each, and the bar must not scroll or wrap. Still 56px tall,
+                 so every target clears the 44px floor in both directions. */
+              className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 text-[10.5px] font-semibold transition-colors ${
                 active
                   ? "text-chalk shadow-[inset_0_2px_0_var(--accent)]"
                   : "text-dim hover:text-chalk"
@@ -106,7 +119,7 @@ export function BottomNav() {
             >
               <Icon size={21} aria-hidden />
               {item.label}
-            </Link>
+            </NavLink>
           );
         })}
 
@@ -119,7 +132,7 @@ export function BottomNav() {
           /* The accent bar means "you are here", so it belongs to More only
              when a sheet route is current — not merely because it's open,
              which would light two tabs at once. */
-          className={`flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-semibold transition-colors ${
+          className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 text-[10.5px] font-semibold transition-colors ${
             moreActive
               ? "text-chalk shadow-[inset_0_2px_0_var(--accent)]"
               : open
@@ -133,5 +146,30 @@ export function BottomNav() {
         </button>
       </nav>
     </>
+  );
+}
+
+/** `<Link>`, or a plain anchor when the destination needs a full page load. */
+function NavLink({
+  hard,
+  href,
+  children,
+  ...rest
+}: {
+  hard: boolean;
+  href: string;
+  children: React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
+  "aria-current"?: "page" | undefined;
+}) {
+  return hard ? (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ) : (
+    <Link href={href} {...rest}>
+      {children}
+    </Link>
   );
 }

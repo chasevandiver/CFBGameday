@@ -12,6 +12,7 @@ import { spreadCoverSide, totalCoverSide } from "./cover";
 import type { PickMarket } from "./grade";
 import type { Sport } from "./league";
 import type { CbbLive } from "./cbb";
+import { BET_THRESHOLD, type CbbModelStats, type ModelHit } from "./cbb-model-stats";
 import { isDeadStatus } from "./void";
 
 export interface TeamView {
@@ -408,8 +409,27 @@ export interface GameView {
   hoops?: CbbLive | null;
   /** CBB only: the model's projected possessions per team (its pace). */
   tempo?: number | null;
+  /** CBB only: the model's own 0–100 confidence in its pick. */
+  confidence?: number | null;
+  /** CBB only: the season hit rate for the tier this game qualifies as. */
+  modelHit?: ModelHit | null;
   /** The event's banner — "NCAA Tournament - 1st Round", "Maui Invitational". */
   note?: string | null;
+}
+
+/**
+ * The side the basketball model would bet, or null when it would not.
+ *
+ * The cbbmodel feed bets only when its number beats the line by more than
+ * half a point; inside that it publishes a projection and no pick. Edge is
+ * model − market in home-perspective spreads, so a negative edge is the home
+ * side (the same rule `modelSideOf` applies to football's flagged edges —
+ * this one does not require a flag, because here every bet has a record).
+ */
+export function hoopsPickSide(g: Pick<GameView, "prediction">): "home" | "away" | null {
+  const edge = g.prediction?.edge ?? null;
+  if (edge === null || Math.abs(edge) <= BET_THRESHOLD) return null;
+  return edge < 0 ? "home" : "away";
 }
 
 /** True for a college basketball game. The one sport test the card makes. */
@@ -461,6 +481,8 @@ export interface SlateData {
    * per bucket; `fetchLiveSlate` computes them anyway, so it says so.
    */
   buckets?: { seasonId: number; week: number }[];
+  /** CBB only: the model's own season record and recent days (CBB-16). */
+  modelStats?: CbbModelStats | null;
 }
 
 export const isLive = (g: GameView) => g.status === "in_progress";

@@ -6,6 +6,7 @@ import type { SeasonType } from "../../lib/season";
 import { NFL_PLAYOFF_ROUNDS } from "../../lib/week-range";
 import { CBB_MAX_DAY, cbbDateOfDay, cbbDayIndex, cbbDayLabel, cbbTipSlot, isCbbLive } from "../../lib/cbb";
 import type { Sport } from "../../lib/league";
+import { hitPct, wlText, yesterdayOf } from "../../lib/cbb-model-stats";
 import { onBetsChanged } from "../../lib/bets-changed";
 import { useFocusedGames, useStarred, useViewerTz } from "../../lib/client-store";
 import { useRundown, weekDirection } from "../../lib/fun-mode";
@@ -17,6 +18,7 @@ import { useGamesRealtime } from "../../lib/use-games-realtime";
 import { useLiveRefresh } from "../../lib/use-live-refresh";
 import {
   displayRank,
+  hoopsPickSide,
   isDead,
   isFinal,
   isLive,
@@ -41,7 +43,11 @@ const SORTS = [
   { key: "spread-close", label: "Closest spread" },
   { key: "total", label: "Highest total" },
   { key: "edge", label: "Best edge" },
+  // CBB only (CBB-18): the model's own 0–100 confidence in its pick. Football
+  // predictions carry no such number, so the option is offered there never.
+  { key: "confidence", label: "Model confidence" },
 ] as const;
+const HOOPS_ONLY_SORTS: ReadonlySet<string> = new Set(["confidence"]);
 type SortKey = (typeof SORTS)[number]["key"];
 
 const SPREAD_RANGES = [
@@ -599,6 +605,11 @@ export function SlateView({
           return (b.lines.total ?? -1) - (a.lines.total ?? -1);
         case "edge":
           return absOr(b.prediction?.edge ?? null, -1) - absOr(a.prediction?.edge ?? null, -1);
+        case "confidence":
+          // Games the model has a pick on, most confident first; a game it
+          // would not bet sorts under every game it would, however sure it
+          // is of the winner, because the list is for finding plays.
+          return confidenceRank(b) - confidenceRank(a);
         default:
           return (a.startTs ?? "9999").localeCompare(b.startTs ?? "9999");
       }
@@ -669,6 +680,11 @@ export function SlateView({
   }, [sorted, sort, tz, sport]);
 
   const rankedCount = games.filter(hoops ? hasRankedTeam : isRankedMatchup).length;
+  // "Yesterday" relative to the board in view, so stepping back a day shows
+  // the day before that one rather than repeating the same figure.
+  const modelYesterday = hoops
+    ? yesterdayOf(data.modelStats ?? null, cbbDateOfDay(data.seasonId, week))
+    : null;
   const record = weekModelRecord(games);
   const finals = games.filter(isFinal).length;
 
@@ -779,7 +795,25 @@ export function SlateView({
           {hoops && <SummaryStat label="With a line" value={String(linedCount)} />}
           <SummaryStat label="Ranked" value={String(rankedCount)} />
           <SummaryStat label="Finals" value={`${finals}/${games.length}`} />
-          {record.wins + record.losses + record.pushes > 0 && (
+          {/* CBB-16: the model's own record, from its own feed — the season
+              and the last day it graded. A link, because the full breakdown
+              (by tier, by edge, by day) is a page of its own. */}
+          {hoops && data.modelStats && hitPct(data.modelStats.ats) !== null && (
+            <a href="/model/cbb" className="flex shrink-0 items-stretch gap-2">
+              <SummaryStat
+                label="Model ATS · season"
+                value={`${wlText(data.modelStats.ats)} · ${hitPct(data.modelStats.ats)}%`}
+              />
+              {modelYesterday && (
+                <SummaryStat
+                  label={`Model · ${cbbDayLabel(modelYesterday.date)}`}
+                  value={wlText(modelYesterday)}
+                  tone={modelYesterday.w >= modelYesterday.l ? "win" : "loss"}
+                />
+              )}
+            </a>
+          )}
+          {!hoops && record.wins + record.losses + record.pushes > 0 && (
             <SummaryStat
               label="Model ATS"
               value={`${record.wins}-${record.losses}${record.pushes ? `-${record.pushes}` : ""}`}
@@ -858,7 +892,9 @@ export function SlateView({
           <FilterSelect
             value={sort}
             onChange={(v) => setSort(v as SortKey)}
-            options={SORTS.map((s): [string, string] => [s.key, s.label])}
+            options={SORTS.filter((s) => hoops || !HOOPS_ONLY_SORTS.has(s.key)).map(
+              (s): [string, string] => [s.key, s.label],
+            )}
             label="Sort"
           />
         </div>
@@ -1082,6 +1118,12 @@ function isRankedMatchup(g: GameView): boolean {
   const hr = displayRank(g.home);
   const ar = displayRank(g.away);
   return hr !== null && hr <= 25 && ar !== null && ar <= 25;
+}
+
+/** Sort key for "Model confidence": picks above non-picks, then by confidence. */
+function confidenceRank(g: GameView): number {
+  const c = g.confidence ?? -1;
+  return hoopsPickSide(g) ? 1000 + c : c;
 }
 
 /** Basketball's "Ranked": either side in the AP Top 25. Two ranked teams

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import type { TickerData } from "../lib/ticker";
 import { AuthButton } from "./AuthButton";
@@ -49,7 +50,12 @@ export function AppNav({ demoTicker }: { demoTicker?: TickerData } = {}) {
           offset below it */}
       <ScoreTicker demo={demoTicker} />
       {/* primary nav below md — the top strip is desktop-only now */}
-      <BottomNav />
+      {/* The bar reads `?sport=` to tell its four slate tabs apart (NAV-2),
+          and a client component that reads the query string must sit under a
+          Suspense boundary or every statically rendered page fails to build. */}
+      <Suspense fallback={null}>
+        <BottomNav />
+      </Suspense>
     </>
   );
 }

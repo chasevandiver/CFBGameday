@@ -16,6 +16,7 @@ import {
 } from "../../lib/live-status";
 import { betPrefix, liveStake, pickPrefix, settledStake } from "../../lib/stake";
 import { watchLabel } from "../../lib/watch-on";
+import { wlText } from "../../lib/cbb-model-stats";
 import { RATING_SCALES, systemMargin } from "../../lib/rating-scales";
 import { isTdDelta, pulseCycle } from "../../lib/fun-mode";
 import { VtName, useVtOn } from "../../lib/react-vt";
@@ -32,6 +33,8 @@ import {
   isLive,
   isRedZone,
   headlinePick,
+  hoopsPickSide,
+  lineForSide,
   liveHomeWinProb,
   modelPicks,
   ouResult,
@@ -250,6 +253,8 @@ export function GameCard({
            takeover (FUN-5, globals.css) — inert unless html[data-fun-rivalry]
            is set, so the default card renders exactly as before. */
         data-rivalry={game.rivalry ? "" : undefined}
+        /* CBB-17: the court lines (globals.css). Inert on football. */
+        data-hoops={isHoops(game) ? "" : undefined}
         style={
           {
             animationDelay: `${Math.min(index * 30, 150)}ms`,
@@ -492,7 +497,10 @@ function CardHeader({
 function Kickoff({ iso, tz }: { iso: string; tz: string }) {
   const { day, time } = kickParts(iso, tz);
   return (
-    <span className="stat text-xs text-dim">
+    /* `shrink-0 whitespace-nowrap`: an event banner beside it ("Showdown in
+       St. Petersburg") must truncate, not push "8:00 PM" onto a second line —
+       the same rule the live clock in this row already follows. */
+    <span className="stat shrink-0 whitespace-nowrap text-xs text-dim">
       <span className="font-semibold text-chalk">{day}</span> {time}
     </span>
   );
@@ -709,9 +717,21 @@ function OddsColumnLabels({ game }: { game: GameView }) {
   return (
     /* widths track the cells below them — see OddsCell */
     <div className="mt-2 flex justify-end gap-1 text-[10.5px] font-semibold uppercase tracking-wider text-chalk/55">
-      <span className="w-11 text-center">Spread</span>
-      <span className="w-11 text-center">Total</span>
-      <span className="w-12 text-center">Money</span>
+      {isHoops(game) ? (
+        /* CBB-17: two wider columns. The feed carries no moneylines, so the
+           third column was a dash on every card — and it was costing the room
+           a three-digit total and a school's name both need. */
+        <>
+          <span className="w-14 text-center">Spread</span>
+          <span className="w-14 text-center">Total</span>
+        </>
+      ) : (
+        <>
+          <span className="w-11 text-center">Spread</span>
+          <span className="w-11 text-center">Total</span>
+          <span className="w-12 text-center">Money</span>
+        </>
+      )}
     </div>
   );
 }
@@ -737,6 +757,7 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
   const betOn = (betType: MyBetView["betType"], betSide: string) =>
     game.myBets.some((b) => b.betType === betType && b.side === betSide);
   const matchup = `${game.away.abbr} @ ${game.home.abbr}`;
+  const hoops = isHoops(game);
   const { spread, total, mlHome, mlAway } = game.lines;
   const teamSpread = spread === null ? null : side === "home" ? spread : -spread;
   const ml = side === "home" ? mlHome : mlAway;
@@ -775,6 +796,7 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
     <div className="flex shrink-0 gap-1">
       <OddsCell
         value={fmtSpread(teamSpread)}
+        roomy={hoops}
         active={inSlip(slip, game.id, "spread", side)}
         bet={betOn("spread", side)}
         disabled={dead || teamSpread === null}
@@ -788,6 +810,7 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
       />
       <OddsCell
         value={totalLabel}
+        roomy={hoops}
         active={inSlip(slip, game.id, "total", totalSide)}
         bet={betOn("total", totalSide)}
         disabled={dead || total === null}
@@ -799,6 +822,7 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
           )
         }
       />
+      {!hoops && (
       <OddsCell
         value={fmtMoneyline(ml)}
         active={inSlip(slip, game.id, "moneyline", side)}
@@ -810,6 +834,7 @@ function OddsCells({ game, side }: { game: GameView; side: "home" | "away" }) {
           toggle(sel("moneyline", side, `${team.abbr} ML`, `${team.school} ML (${matchup})`, null, ml ?? -110))
         }
       />
+      )}
     </div>
   );
 }
@@ -834,8 +859,11 @@ function OddsCell({
   aria,
   onToggle,
   wide = false,
+  roomy = false,
 }: {
   value: string;
+  /** CBB: a 56px cell, so "o158.5" sits inside it instead of touching both edges. */
+  roomy?: boolean;
   active: boolean;
   /** A logged ledger bet sits on this cell. The only state this grid marks:
    *  pool picks are the chips below, not a treatment on the odds. */
@@ -857,8 +885,8 @@ function OddsCell({
       aria-pressed={active}
       /* 44px tall: the readable size, and the tap-target floor docs/DESIGN.md
          sets — these were 32px, which the audit flagged as under-sized. */
-      className={`stat pointer-events-auto relative flex h-11 w-11 shrink-0 items-center justify-center rounded-md px-0.5 text-[13px] font-semibold transition-colors ${
-        wide ? "w-12" : ""
+      className={`stat pointer-events-auto relative flex h-11 shrink-0 items-center justify-center rounded-md px-0.5 text-[13px] font-semibold transition-colors ${
+        roomy ? "w-14" : wide ? "w-12" : "w-11"
       } ${
         active
           ? "bg-accent text-accent-ink ring-1 ring-inset ring-accent"
@@ -917,6 +945,93 @@ function WatchRating({ score }: { score: number | null }) {
   );
 }
 
+
+/**
+ * The basketball model's read on a pregame card (CBB-17), as three chips:
+ *
+ *   PICK  FAMU +6.5    the side to take, at the market's number
+ *   MODEL FAMU +1.3    what the model made the game, same team for comparison
+ *   CONF  76           the model's own 0–100 confidence
+ *
+ * Owner report, 2026-11-12: "it's kind of confusing to see what the
+ * recommended spread is." It was: the pick lived in a 10px sentence at the
+ * bottom of the card ("Model: HOU -26 · total 143 · JXST ATS") that named the
+ * model's number for one team and the pick for the other.
+ *
+ * The pick is filled for a best bet, outlined for a value play, plain
+ * otherwise — the same three weights the edge chip used. No pick chip at all
+ * when the model is within half a point of the line: that is the feed's own
+ * no-bet rule, and a card must not invent a recommendation the model did not
+ * make. The MODEL chip quotes the picked team's number (or the home team's,
+ * with no pick), so the two chips can be read against each other directly.
+ */
+function HoopsModelChips({ game }: { game: GameView }) {
+  const p = game.prediction;
+  if (!p) return null;
+  const side = hoopsPickSide(game);
+  const ref = side ?? "home";
+  const team = ref === "home" ? game.home : game.away;
+  const market = game.lines.spread ?? p.vegasSpread;
+  const tier = p.edgeFlag;
+  return (
+    <>
+      {side && market !== null && (
+        <span
+          className={`chip ${
+            tier === "BIG_EDGE"
+              ? "bg-edge text-white"
+              : tier === "EDGE"
+                ? "border border-edge/60 bg-edge/10 text-edge"
+                : "bg-chalk/10 text-chalk"
+          }`}
+        >
+          Pick
+          <span className="stat normal-case tracking-normal">
+            {team.abbr} {fmtSpread(lineForSide(side, market))}
+          </span>
+        </span>
+      )}
+      <span className="chip bg-elev text-chalk/75">
+        Model
+        <span className="stat normal-case tracking-normal">
+          {team.abbr} {fmtSpread(lineForSide(ref, Math.round(p.spread * 10) / 10))}
+        </span>
+      </span>
+      {game.confidence != null && (
+        <span className="chip bg-elev text-chalk/75" title="The model's own confidence in its pick, 0–100">
+          Conf
+          <span className="stat tracking-normal">{Math.round(game.confidence)}</span>
+        </span>
+      )}
+    </>
+  );
+}
+
+/**
+ * The season hit rate for what this game qualifies as: "Best bet · 52.5%
+ * (42-38)". Always with the record beside the rate — "50%" off a 10-10 tier
+ * and "58%" off 153-109 are different amounts of evidence, and the card has
+ * to let a reader see which one they are looking at. Says so plainly when the
+ * model has no bet here, or when its tier has nothing decided yet.
+ */
+function HoopsHitLine({ game }: { game: GameView }) {
+  const hit = game.modelHit;
+  if (!hoopsPickSide(game)) return <>Model: no bet — within half a point of the line</>;
+  if (!hit) return <>Model pick</>;
+  return (
+    <>
+      {hit.label}
+      {" · "}
+      {hit.pct === null ? (
+        "none graded yet"
+      ) : (
+        <>
+          <span className="text-chalk">{hit.pct}%</span> ATS this season ({wlText(hit.record)})
+        </>
+      )}
+    </>
+  );
+}
 
 /**
  * A logged bet, pregame: what you have on this game and a way out of it.
@@ -997,7 +1112,9 @@ function PregameFooter({
      renders when something will actually sit in it, mirroring each child's own
      null condition: chips only pregame-with-open-bets, edge only with a flag,
      consensus only when on, move and watchability only pregame. */
+  const hoops = isHoops(game);
   const hasTagRow =
+    (hoops && p !== null && !live) ||
     (!settled && betStatuses.some(({ bet }) => !bet.result)) ||
     (p?.edgeFlag ?? null) !== null ||
     (p?.consensus ?? false) ||
@@ -1021,7 +1138,17 @@ function PregameFooter({
               .map(({ bet }) => (
                 <BetChip key={bet.id} bet={bet} label={betPrefix(game, bet)} />
               ))}
-          <EdgeChip flag={p?.edgeFlag ?? null} edge={p?.edge ?? null} hoops={isHoops(game)} />
+          {hoops ? (
+            /* CBB-17: the model's read, said in the order a bettor asks it —
+               who to take, what the model made the game, how sure it is.
+               Replaces the edge chip and the watchability chip here: "Filler
+               28" answered a question about television, and on a board of
+               sixty games nobody is choosing by that. Your bet chips above
+               are unchanged. */
+            !live && p && <HoopsModelChips game={game} />
+          ) : (
+            <EdgeChip flag={p?.edgeFlag ?? null} edge={p?.edge ?? null} />
+          )}
           <ConsensusChip on={p?.consensus ?? false} />
           {/* SLATE-4, owner report 2026-08-23: "what is the up arrow 3? It
               looks weird." Pregame this sits among labelled chips and reads as
@@ -1031,7 +1158,7 @@ function PregameFooter({
               and the board has stopped (the same reason HUB-1 drops held-vs-now
               on a final). Gated like WatchRating beside it. */}
           {!live && !settled && <MoveIndicator move={move} open={game.lines.spreadOpen} />}
-          {!live && <WatchRating score={watch} />}
+          {!live && !hoops && <WatchRating score={watch} />}
         </div>
       </div>
       )}
@@ -1110,6 +1237,11 @@ function PregameFooter({
                  (model MAE 13.09 vs constant 13.72). O/U leans stay off —
                  50.8%/51.9% doesn't clear the 52.4% vig, so the total is
                  information, never a recommendation. */
+              hoops ? (
+                /* The chips above already say the pick, the model's spread
+                   and its confidence; this line is the evidence for them. */
+                <HoopsHitLine game={game} />
+              ) : (
               <>
                 {"Model: "}
                 <span className="text-chalk">
@@ -1131,6 +1263,7 @@ function PregameFooter({
                 )}
                 {!p!.frozen && <span className="text-chalk/40"> · unfrozen</span>}
               </>
+              )
             )}
           </p>
           {/* CBB-9: the model's score and pace, where football has weather.
@@ -1284,10 +1417,27 @@ function FinalFooter({ game }: { game: GameView }) {
     gradeChips.push(<ResultChip key="a" label="ATS" result={grade.ats ? "pass" : "fail"} />);
   // No model O/U chip: the model doesn't price totals yet (audit #4).
 
-  if (chips.length === 0 && gradeChips.length === 0) return null;
+  /* CBB-17: how a basketball final got there, by half. Football's equivalent
+     is a box score one tap away; a basketball game's whole shape is two
+     numbers a side, so it fits on the card. */
+  const line = isHoops(game) ? game.hoops : null;
+  const halves =
+    line && line.h.length >= 2 && line.a.length === line.h.length
+      ? line.h.map((h, i) => `${periodLabel(i + 1, "cbb")} ${line.a[i]}–${h}`).join(" · ")
+      : null;
+
+  if (chips.length === 0 && gradeChips.length === 0 && !halves) return null;
 
   return (
     <div className="mt-3 border-t border-chalk/8 pt-2.5">
+      {halves && (
+        <p className="stat mb-2 truncate text-[10.5px] leading-none text-dim">
+          <span className="sr-only">
+            By period, {game.away.abbr} first:{" "}
+          </span>
+          {halves}
+        </p>
+      )}
       {chips.length > 0 && <div className="flex flex-wrap gap-1.5">{chips}</div>}
       {gradeChips.length > 0 && (
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">

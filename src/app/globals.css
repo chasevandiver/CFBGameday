@@ -384,6 +384,24 @@ html[data-theme="light"] .panel {
   -webkit-backdrop-filter: none;
 }
 
+/* CBB-17: a basketball card carries the court. Two hairline arcs off the
+   right edge — the three-point line and the top of the key, seen from
+   half court — in the same `--line` every card border already uses, so it is
+   a watermark in the existing material rather than a new colour. Laid over
+   the glass as extra background layers; a football card has no `data-hoops`
+   and is untouched. The Fun Mode rivalry rule below replaces `background`
+   outright, but rivalries are a football seed and never meet this. */
+.card[data-hoops] {
+  /* Half the border's weight: the arcs pass behind numbers, and at full
+     `--line` they read as strokes through the win-probability bar. */
+  --court-line: color-mix(in srgb, var(--line) 50%, transparent);
+  background:
+    radial-gradient(circle at 100% 58%, transparent 0 46px, var(--court-line) 46px 47px, transparent 47px) no-repeat,
+    radial-gradient(circle at 100% 58%, transparent 0 118px, var(--court-line) 118px 119px, transparent 119px) no-repeat,
+    linear-gradient(180deg, var(--glass-sheen), transparent 88px),
+    var(--glass-surface);
+}
+
 .card-hover:hover {
   border-color: var(--line-strong);
   box-shadow: var(--shadow-card-hover);
