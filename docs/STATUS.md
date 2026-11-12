@@ -3024,6 +3024,129 @@ final, the NFL close pass (NFL-23), and 0044's 10-second pull.
 - [ ] **Aug 30** — **F17** Supervised watch of the first freeze → grade → CLV
       run. The first time the CLV path meets real rows.
 
+### 2.7 College basketball, 2026-11-12
+
+Owner request: a CBB section on the slate "like how we have the NFL with
+updated scores from ESPN", using the model and the spreads from the
+`chasevandiver/cbbmodel` repo. Scope called the same day: full v1, every game
+with a line as the default board, edge on every card, no groups except the
+existing betting group, TV overlay in v2. Built on branch
+`claude/happy-meitner-dvjtv1` in both repos. `docs/CHANGELOG.md` (Nov 12) has
+the narrative; this is the checklist.
+
+**Not yet true in production.** Everything checked below is code, tested
+in-session. The rollout rows at the bottom are what makes it live, and they
+are open.
+
+- [x] **CBB-1 — third league in the schema.** Migration `0086`: `sport = 'cbb'`
+      on seasons/teams/games; `teams.record` / `conf_record` / `poll_rank`;
+      `games.hoops` (line score, run, live win probability). `groups.leagues`
+      deliberately untouched — pick'em and survivor stay football.
+      `supabase/tests/cbb.sql`, 33 assertions on a real Postgres 16.
+- [x] **CBB-2 — a basketball "week" is a day.** `games.week` holds days since
+      Nov 1 on ESPN's board date (`src/lib/cbb.ts`), so every week-keyed
+      loader, pointer and realtime room works unchanged. Team and venue ids
+      are offset by 200000: ESPN gives a school ONE id across sports, so
+      without it Auburn basketball overwrites Auburn football.
+- [x] **CBB-3 — live scores.** `supabase/functions/cbb-scoreboard`, one ESPN
+      call for the whole Division I night, every 30 seconds behind a cron
+      gate (~5% of the edge-invocation quota; the NFL's 10s would be ~16%
+      here). Handles ESPN's board rolling to the next day under a live game.
+      **Not exercised against production yet** — see CBB-R2.
+- [x] **CBB-4 — schedule, model and lines.** `cbb-sync-games` (ESPN, yesterday
+      through a week out, teams and venues from the same boards) and
+      `cbb-sync-feed` (the cbbmodel feed → `predictions` + `line_snapshots`),
+      nine slots a day trailing the feed's own snapshots. Both dry-run clean
+      against the live sources: 67 games / 134 teams, and 48 feed records.
+- [x] **CBB-5 — bets settle.** `cbb-grade` through the shared `settleGames`;
+      first-half bets grade off the stored line score. The database
+      dispatches it when a finished game carries an open bet
+      (`launch_cbb_grade_if_needed`, throttled), with a morning backstop.
+- [x] **CBB-6 — watchdog.** Sync freshness and the edge heartbeat, kept apart
+      from football's. Also the fix this forced: the football gates now read
+      football seasons only, or a Tuesday basketball game would have paged
+      about a football loop that is correctly asleep. `edge-cfb` joined the
+      football beat list (it was deployed in September and never read).
+- [x] **CBB-7 — the feed's sign conventions, pinned.** Spreads agree with
+      this app; **edges are the other way round** (feed: market − model) and
+      are recomputed here, never copied. A spread that contradicts the feed's
+      own `favorite` field is dropped rather than stored — found on a real
+      record (Saint Joseph's vs South Florida, Nov 11) and fixed at its
+      source in cbbmodel too.
+- [x] **CBB-8 — the slate.** CBB tab; a day stepper where football has the
+      week selector; the board opens on games with a line, "All N games"
+      lifts it; a game you bet, a live game and a pinned game are never
+      hidden by the default.
+- [x] **CBB-9 — the card.** Halves and OT, HALFTIME after period 1, live
+      cover and total pace for every lined game, runs of 7+, ESPN's win
+      probability (football's model is never run on a basketball score), the
+      model's projected score and tempo, "Best bet" for the feed's top tier.
+      Rendered and checked on a 390px viewport against a real night's data.
+- [x] **CBB-10 — the game page.** Box score by half, team fouls and the
+      bonus, team stats, scorers — fetched on demand from ESPN's `/summary`
+      through `/api/hoops/[id]` (memoised 20s live / 1h final, basketball
+      games this database carries only). The bonus lives here and **not on
+      the slate card**: ESPN's scoreboard carries no fouls, and a per-game
+      summary call per tick is ~60 calls every 30 seconds on a Saturday.
+- [x] **CBB-11 — the money surfaces.** Betting group CBB tab and league
+      split, ledger, home-hub positions, bet form (basketball on a ±1.5-day
+      window so the list stays under the 1,000-row ceiling), share cards.
+- [x] **MIG-2 — two applied migrations and a deployed function were never
+      committed.** `0084_loop_launcher` and `0085_cfb_live_pull` ran on
+      production on Sep 5–6, and the `cfb-scoreboard` edge function they
+      schedule was deployed, with no file in the repo for any of them. Filed
+      verbatim from `schema_migrations.statements` and the deployed source.
+      Their longer header comments are not recoverable. Same defect as MIG-1.
+
+**Rollout — in this order.**
+
+- [ ] **CBB-R1 — apply `0086` to production.** Additive: three check
+      constraints widened, four nullable columns, two functions, two cron
+      jobs. Must land BEFORE the app or the jobs deploy — `SETTLE_COLS` and
+      `/api/game/[id]` select `games.hoops`.
+- [ ] **CBB-R2 — deploy `cbb-scoreboard`** (verify_jwt off, like its
+      siblings) and read one live night of `cron.job_run_details` and
+      `net._http_response`. The NFL function spent its whole first game
+      answering 403 (LIVE-1); this one has the same headers but has not met
+      ESPN from Supabase's egress yet.
+- [ ] **CBB-R3 — merge cbbmodel's branch**, so the feed re-exports with each
+      line snapshot and carries `model.tempo`. Until then the line on a card
+      moves once a day and the card shows no possessions figure.
+- [ ] **CBB-R4 — merge this branch, then dispatch `cbb-sync-reference` once**
+      and `cbb-sync` once. The reference job creates season `202026` and
+      marks it current; until it runs the CBB tab falls back to CFB.
+- [ ] **CBB-R5 — watch the first graded bet.** `launch_cbb_grade_if_needed`
+      has only run against the test cluster, which has no Vault; the real
+      dispatch path is exercised the first time someone bets a game.
+
+**Queued (v2).**
+
+- [ ] **CBB-12 — TV overlay and the score ticker.** Owner: v2. The ticker
+      route reads the CFB and NFL weeks only; nothing basketball reaches the
+      strip or the TV today.
+- [ ] **CBB-13 — bonus and team fouls on the slate card.** Needs a cheaper
+      source than `/summary`, or a watch-list (games someone has bet).
+- [ ] **CBB-14 — tomorrow's lines.** The feed publishes one day; a card for
+      tomorrow has no line or model number until the morning run.
+- [ ] **CBB-15 — a basketball model-record page.** `/model/stats` will list
+      season 202026 because it has frozen predictions, with football's
+      framing. The feed's own record (`index.json`) is the honest source.
+
+**Residuals — recorded, not queued.**
+
+- Runs are derived from 30-second score deltas, not play-by-play. Two-sided
+  scoring inside one tick clears the run unless ESPN's last play was a made
+  basket. A run can be missed; it is not invented.
+- ESPN re-designates home and away on some neutral-site games. A bet stored
+  as `side = 'home'` would follow the swap. Rare, and not handled.
+- `seasonIdsForYear(year)` pairs CBB with the football seasons of the year it
+  STARTS. Do not roll `CFB_SEASON` forward before the basketball title game
+  in April, or the ledger and the betting sheet stop reading the season
+  still being played.
+- The cbbmodel is not gated by this repo's backtest. Its numbers are an
+  imported opinion under their own `model_version` (`cbb-…`); its own feed
+  reports 57.9% ATS with closing-line value at −0.1 as of Nov 11.
+
 ---
 
 ## 3. Decisions owed by the owner

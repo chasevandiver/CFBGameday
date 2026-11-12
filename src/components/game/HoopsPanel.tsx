@@ -45,10 +45,13 @@ interface Props {
 }
 
 const TH = "stat px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wider text-chalk/50";
-const TD = "stat px-2 py-1.5 text-right text-sm tabular-nums text-chalk";
+// nowrap: "4-10" must not break at its hyphen into a two-line cell.
+const TD = "stat whitespace-nowrap px-2 py-1.5 text-right text-sm tabular-nums text-chalk";
 
-function bonusText(b: BonusState): string {
-  return b === "double" ? "Double bonus" : b === "bonus" ? "Bonus" : "";
+/** Said with the team's name: a bare "Bonus" beside a foul count reads as
+ *  belonging to the team that fouled, which is the opposite of the fact. */
+function bonusText(b: BonusState, abbr: string): string {
+  return b === "double" ? `${abbr} in double bonus` : b === "bonus" ? `${abbr} in bonus` : "";
 }
 
 export function HoopsPanel({ gameId, status, home, away, homePoints, awayPoints, lines }: Props) {
@@ -121,10 +124,10 @@ export function HoopsPanel({ gameId, status, home, away, homePoints, awayPoints,
   return (
     <>
       <section className="card mt-4 overflow-hidden">
-        <div className="flex items-center justify-between gap-2 border-b border-chalk/8 px-4 py-2.5">
-          <h2 className="text-sm text-accent">Box score</h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-chalk/8 px-4 py-2.5">
+          <h2 className="shrink-0 whitespace-nowrap text-sm text-accent">Box score</h2>
           {(read.cover || read.total !== null) && (
-            <span className="stat text-[11px] text-dim">
+            <span className="stat whitespace-nowrap text-[11px] text-dim">
               {read.cover &&
                 (coverTeam ? (
                   <>
@@ -201,7 +204,7 @@ export function HoopsPanel({ gameId, status, home, away, homePoints, awayPoints,
                 </p>
                 <p className="stat mt-0.5 flex min-h-5 items-baseline gap-2 text-sm text-chalk">
                   <span className="text-lg font-semibold tabular-nums">{t.foulsByHalf[halfIdx]}</span>
-                  {bonus && <span className="chip bg-chalk/10 text-chalk">{bonusText(bonus)}</span>}
+                  {bonus && <span className="chip bg-chalk/10 text-chalk">{bonusText(bonus, team.abbr)}</span>}
                 </p>
               </div>
             ))}
@@ -211,6 +214,11 @@ export function HoopsPanel({ gameId, status, home, away, homePoints, awayPoints,
 
       <section className="card mt-4 overflow-hidden">
         <h2 className="border-b border-chalk/8 px-4 py-2.5 text-sm text-accent">Team stats</h2>
+        {/* Column heads, above the numbers they name. */}
+        <div className="flex justify-between border-b border-chalk/8 px-4 py-1.5 text-[11px] font-semibold text-dim">
+          <span>{away.abbr}</span>
+          <span>{home.abbr}</span>
+        </div>
         <div className="px-4 py-1">
           <StatRow label="Field goals" away={shot(box.away.fg, box.away.fgPct)} home={shot(box.home.fg, box.home.fgPct)} />
           <StatRow label="Three-pointers" away={shot(box.away.three, box.away.threePct)} home={shot(box.home.three, box.home.threePct)} />
@@ -222,13 +230,11 @@ export function HoopsPanel({ gameId, status, home, away, homePoints, awayPoints,
           <StatRow label="Points in the paint" away={n(box.away.paintPoints)} home={n(box.home.paintPoints)} />
           <StatRow label="Largest lead" away={n(box.away.largestLead)} home={n(box.home.largestLead)} last />
         </div>
-        <div className="flex justify-between border-t border-chalk/8 px-4 py-2 text-[11px] font-semibold text-dim">
-          <span>{away.abbr}</span>
-          {box.leadChanges !== null && (
-            <span className="stat font-medium">{box.leadChanges} lead changes</span>
-          )}
-          <span>{home.abbr}</span>
-        </div>
+        {box.leadChanges !== null && (
+          <p className="stat border-t border-chalk/8 px-4 py-2 text-center text-[11px] text-dim">
+            {box.leadChanges} lead {box.leadChanges === 1 ? "change" : "changes"}
+          </p>
+        )}
       </section>
 
       <Scorers team={away} players={box.away.players} />
@@ -291,7 +297,7 @@ function Scorers({ team, players }: { team: TeamView; players: HoopsPlayerLine[]
           <tbody>
             {shown.map((p) => (
               <tr key={`${p.jersey}-${p.name}`} className="border-t border-chalk/8">
-                <td className="max-w-[9rem] truncate px-4 py-1.5 text-sm text-chalk">{p.name}</td>
+                <td className="max-w-[7rem] truncate px-4 py-1.5 text-sm text-chalk">{p.name}</td>
                 <td className={`${TD} text-dim`}>{p.min}</td>
                 <td className={`${TD} font-semibold`}>{p.pts}</td>
                 <td className={TD}>{p.reb}</td>

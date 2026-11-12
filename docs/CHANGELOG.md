@@ -234,6 +234,73 @@ shipping it.
 
 ## Log
 
+### Nov 12 — College basketball on the slate (CBB-1…CBB-11), and MIG-2
+
+Owner request, with football winding down: a CBB section "like how we have
+the NFL with updated scores from ESPN", using the model and spreads from the
+`cbbmodel` repo. `docs/STATUS.md` §2.7 is the checklist and the rollout order;
+**none of it is live until those rollout rows are done.**
+
+**The shape.** ESPN owns the schedule and the live score; the cbbmodel pick
+feed owns the model and the lines; they join on the ESPN event id. CBB is a
+third `sport` and a third seasons row (`202026`), the way the NFL is a second —
+no new tables.
+
+**The one structural decision: a basketball "week" is a day.** Every loader,
+pointer, poll and realtime room here is keyed on `(season, week)`. Rather than
+fork them, `games.week` holds days since Nov 1 on ESPN's board date for a
+basketball game. `fetchSlateView` returns one night unchanged; the number is
+never shown.
+
+**What was checked, and how.**
+
+- Parsers and the feed mapping are pinned to fixtures captured from the live
+  ESPN board and the live feed on Nov 11 (a halftime game, a game with 23
+  seconds left, an overtime final, a ranked blowout).
+- `cbb-sync-games` and `cbb-sync-feed` dry-run against the real sources: 67
+  games / 134 teams / 66 venues for Nov 11; 48 feed records, 1 distrusted.
+- 2,339 unit tests across 156 files, `npm run typecheck`, lint, `next build`.
+  **427 DB assertions**, 0 failed, on a real Postgres 16 with all 85
+  migrations — 33 new in `supabase/tests/cbb.sql`.
+- The slate and the game-page box were rendered at 390px from a real night's
+  data and looked at. Two defects found that way and fixed: `4-10` breaking at
+  its hyphen in the player table, and a bare "Bonus" chip that read as
+  belonging to the team that had fouled.
+
+**What was NOT checked.** The edge function has not run on Supabase (ESPN
+refused the NFL one's first night, LIVE-1). The grade dispatcher has only run
+on a cluster with no Vault. Desktop widths were not looked at. No real bet
+has been placed on a basketball game.
+
+**Found on the way.**
+
+- **A sign bug in the cbbmodel feed.** Saint Joseph's vs South Florida, Nov 11,
+  published as home −7.5 while its own `favorite` field names the away side:
+  ESPN swapped home and away on a neutral floor between two runs and the
+  earlier line was carried forward. One of 31 ESPN-sourced lines this season.
+  Fixed in cbbmodel; the importer also refuses any spread that contradicts
+  its own favourite (`trustedMarket`), since an append-only table does not
+  get to assume its source is fixed.
+- **MIG-2.** Production had two applied migrations (`0084_loop_launcher`,
+  `0085_cfb_live_pull`) and a deployed edge function (`cfb-scoreboard`) with
+  no file in the repo. Filed verbatim. The watchdog had never read that
+  function's heartbeat, so a Saturday where ESPN alone was carrying the
+  college slate would have read as nothing polling.
+- **The loop launcher would have run all winter.** `launch_live_loop_if_needed`
+  asks "is any game live?" with no sport in the question. With basketball
+  rows it would have dispatched the football loop every ten minutes of every
+  basketball evening to find nothing to do. `0086` makes it football-only.
+- **The watchdog's football gates** read `seasonIdsForYear`, which grew a
+  third entry. Left alone, a Tuesday basketball game would have armed the
+  football live-layer alarm nightly. They read football seasons only now.
+
+**The model.** Not this repo's, and not gated by its backtest: nothing in
+`DEFAULT_PARAMS` moved and no tuner ran. The numbers are imported under
+`model_version` `cbb-<feed version>`, flagged the way the feed flags them,
+and shown as information exactly as the football leans are. For the record,
+the feed's own summary on Nov 11: 139–101 ATS (57.9%) on 240 graded, closing-
+line value −0.1 on 192, totals 48.7%.
+
 ### Nov 11 — TV-19: ticker draws at the true screen edge
 
 On Chase's second TV the strip sat inset from the top and left while the
