@@ -234,6 +234,25 @@ shipping it.
 
 ## Log
 
+### Nov 11 — TV-15: bet tiles and the night card cleaned up
+
+On the TV (BUF -1.5 up 14-7) the bet tile and the night card looked worst
+on the strip. Causes, from the photos:
+- The bet side's abbreviation was painted `--vc` on a `--vc` wash, so the
+  team you bet on was the dimmest thing on the tile.
+- The bet side's score sat in a solid verdict box, so the tile no longer
+  matched the plain live tiles beside it.
+- The wash faded out at 80%, leaving a half-tinted tile that read as murk.
+- The night card's units chip at zero was `--accent-ink` on `--elev`
+  (dark on dark), and each live bet was a logo and a dot.
+
+Now a bet tile is one even verdict tint with a solid edge, all text white,
+and the ticket as a solid chip in the verdict colour. Finals with a ticket and
+the fantasy tile use the same look. The night card stacks the record over a
+YOUR NIGHT caption, puts zero units on a readable neutral chip, and shows each
+ticket as a mini bet tile (logo + line, tinted the same way; kickoff for
+games not started).
+
 ### Nov 11 — TV-14: losing is red on the TV
 
 BUF -1.5 tied 7-7 in Q3 showed as an orange tile. Chase's original ask was
