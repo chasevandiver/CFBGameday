@@ -145,6 +145,21 @@ describe("a live basketball card", () => {
 });
 
 describe("a basketball final", () => {
+  it("shows how it got there, by half, away first", () => {
+    const { container } = show(
+      game({
+        status: "final",
+        period: 3,
+        clock: null,
+        homePoints: 76,
+        awayPoints: 80,
+        lastPlay: null,
+        hoops: { h: [37, 33, 6], a: [31, 39, 10], run: null, wp: null },
+      }),
+    );
+    expect(container.textContent).toContain("1H 31–37 · 2H 39–33 · OT 10–6");
+  });
+
   it("says OT after two periods", () => {
     const { container } = show(
       game({ status: "final", period: 3, clock: null, homePoints: 76, awayPoints: 80, lastPlay: null }),
@@ -190,14 +205,63 @@ describe("a pregame basketball card", () => {
     const { container } = show(pre());
     expect(container.textContent).toMatch(/Proj:\s*PAC 69, LBSU 75/);
     expect(container.textContent).toMatch(/70\s*poss/);
-    expect(container.textContent).toContain("Model: LBSU -6.1");
   });
 
-  it("calls the feed's top tier what the feed calls it", () => {
+  /* CBB-17, owner report 2026-11-12: "it's kind of confusing to see what the
+     recommended spread is." The pick used to live in a 10px sentence that
+     named the model's number for one team and the pick for the other. */
+  it("says who to take, what the model made it and how sure it is, as chips", () => {
+    // market LBSU −4.5, model LBSU −6.1: the model is on the favourite
+    const { container } = show(pre({ confidence: 76.4 }));
+    expect(container.textContent).toMatch(/Pick\s*LBSU -4\.5/);
+    expect(container.textContent).toMatch(/Model\s*LBSU -6\.1/);
+    expect(container.textContent).toMatch(/Conf\s*76/);
+  });
+
+  it("quotes the model's number for the team it picked, not always the home team", () => {
+    // model makes it LBSU −2: on the dog at +4.5
     const base = pre().prediction!;
-    const { container } = show(pre({ prediction: { ...base, edge: -5.2, edgeFlag: "BIG_EDGE" } }));
-    expect(container.textContent).toContain("Best bet");
-    expect(container.textContent).not.toContain("Big Edge");
+    const { container } = show(pre({ prediction: { ...base, spread: -2, edge: 2.5 } }));
+    expect(container.textContent).toMatch(/Pick\s*PAC \+4\.5/);
+    expect(container.textContent).toMatch(/Model\s*PAC \+2/);
+  });
+
+  it("makes no pick inside half a point of the line — the feed's own no-bet rule", () => {
+    const base = pre().prediction!;
+    const { container } = show(pre({ prediction: { ...base, spread: -4.8, edge: -0.3 } }));
+    expect(container.textContent).not.toMatch(/Pick\s*(LBSU|PAC)/);
+    expect(container.textContent).toMatch(/Model\s*LBSU -4\.8/);
+    expect(container.textContent).toContain("no bet");
+  });
+
+  it("drops the watchability chip and the money column", () => {
+    const { container } = show(pre());
+    expect(container.textContent).not.toMatch(/Filler|Must-see|Good\d/);
+    expect(container.textContent).not.toContain("Money");
+    expect(container.querySelectorAll('button[aria-label*="moneyline"]')).toHaveLength(0);
+    // the cells that are left still log a bet
+    expect(container.querySelectorAll('button[aria-label*="add to bet slip"]')).toHaveLength(4);
+  });
+
+  it("prints the tier's season hit rate with its record beside it", () => {
+    const { container } = show(
+      pre({ modelHit: { label: "Best bet", record: { w: 42, l: 38, p: 0 }, pct: 52.5 } }),
+    );
+    expect(container.textContent).toMatch(/Best bet · 52\.5% ATS this season \(42-38\)/);
+  });
+
+  it("says a tier has nothing graded rather than printing 0%", () => {
+    const { container } = show(
+      pre({ modelHit: { label: "Low confidence", record: { w: 0, l: 0, p: 0 }, pct: null } }),
+    );
+    expect(container.textContent).toContain("Low confidence · none graded yet");
+    expect(container.textContent).not.toContain("0%");
+  });
+
+  it("keeps your logged bet on the card", () => {
+    const { container } = show(pre({ myBets: [{ id: 9, betType: "spread", side: "home", line: -4.5 }] }));
+    expect(container.textContent).toContain("LBSU -4.5");
+    expect(container.querySelector('button[aria-label^="Void bet"]')).not.toBeNull();
   });
 
   it("carries the event banner", () => {

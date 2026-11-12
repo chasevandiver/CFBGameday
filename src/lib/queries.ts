@@ -11,6 +11,7 @@ import type {
 } from "./db-types";
 import { hasCalibratedTotals } from "../model/ratings";
 import { isCbbModelVersion } from "./cbb-feed";
+import { isCbbModelStats, modelHitFor, type CbbModelStats } from "./cbb-model-stats";
 import { cbbDayIndex, easternDate, isCbbLive, isValidCbbDay } from "./cbb";
 import { pickPollRanks, pollShortName } from "./rankings";
 import { required } from "./db-result";
@@ -192,6 +193,7 @@ export async function fetchSlateView(
   const gameRows = games as GameRow[];
   const sport = sportOfSeasonId(seasonId);
   const hoops = sport === "cbb";
+  const modelStats = hoops ? await fetchCbbModelStats(supabase, seasonId) : null;
   const gameIds = gameRows.map((g) => g.id);
   const teamIds = [...new Set(gameRows.flatMap((g) => [g.home_team_id, g.away_team_id]))];
 
@@ -640,6 +642,8 @@ export async function fetchSlateView(
        it, and its version string is not a football version at all. */
     const totalsOk = pred !== null && (isCbbModelVersion(pred.model_version) || hasCalibratedTotals(pred.model_version));
     const tempo = (pred?.adjustments as { tempo?: unknown } | undefined)?.tempo;
+    const conf = (pred?.adjustments as { confidence?: unknown } | undefined)?.confidence;
+    const confidence = typeof conf === "number" ? conf : null;
     const weather = weatherByGame.get(game.id) ?? null;
     return [
       {
@@ -727,6 +731,14 @@ export async function fetchSlateView(
           ? {
               hoops: isCbbLive(game.hoops) ? game.hoops : null,
               tempo: typeof tempo === "number" ? tempo : null,
+              confidence,
+              modelHit: pred
+                ? modelHitFor(modelStats, {
+                    edge: pred.edge === null ? null : Number(pred.edge),
+                    edgeFlag: pred.edge_flag,
+                    confidence,
+                  })
+                : null,
               note: game.notes ?? null,
             }
           : {}),
@@ -742,7 +754,16 @@ export async function fetchSlateView(
     if (c.as_of !== null && (linesAsOf === null || c.as_of > linesAsOf)) linesAsOf = c.as_of;
   }
 
-  return { seasonId, sport, week, seasonType, fetchedAt, linesAsOf, games: views };
+  return {
+    seasonId,
+    sport,
+    week,
+    seasonType,
+    fetchedAt,
+    linesAsOf,
+    games: views,
+    ...(hoops ? { modelStats } : {}),
+  };
 }
 
 /**
@@ -990,6 +1011,25 @@ export async function fetchCurrentSeasonWeek(
   const value = { seasonId: season.id, ...pointer, minWeek: wk0 ? 0 : 1 };
   pointerCache.set(sport, { at: Date.now(), value });
   return value;
+}
+
+/**
+ * The basketball model's stored record (0087), or null — before the table
+ * exists, before the first sync, or on any read error. Enrichment, never
+ * load-bearing: a slate without a hit-rate line is still the slate.
+ */
+export async function fetchCbbModelStats(
+  supabase: SupabaseClient,
+  seasonId: number,
+): Promise<CbbModelStats | null> {
+  const { data, error } = await supabase
+    .from("cbb_model_stats")
+    .select("payload")
+    .eq("season_id", seasonId)
+    .maybeSingle();
+  if (error || !data) return null;
+  const payload = (data as { payload: unknown }).payload;
+  return isCbbModelStats(payload) ? payload : null;
 }
 
 /** Tonight's board stays "today" until 5am Eastern. */

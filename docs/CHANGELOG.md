@@ -234,6 +234,34 @@ shipping it.
 
 ## Log
 
+### Nov 12 — CBB second pass: the pick on the card, the model's record, a league bottom bar (CBB-16…18, NAV-2)
+
+Owner report after the first evening with the CBB slate live.
+
+- **The card says who to take.** Three chips where "Filler 28" was: `Pick KC
+  +14.5`, `Model KC +13.5`, `Conf 51`. The pick used to live in a 10px
+  sentence that quoted the model's number for one team and the pick for the
+  other. No pick chip when the model is within half a point of the line.
+- **Hit rate per card**, for the most specific tier the game qualifies as,
+  with the record beside it: `Medium confidence · 58.4% ATS this season
+  (153-109)`. A tier with nothing decided says so rather than printing 0%.
+- **Two odds columns, not three.** The feed has no moneylines. Cells went
+  44px → 56px, which is what stopped team names truncating.
+- **The model's record** in `cbb_model_stats` (0087), from the feed's own
+  summary. Strip on the slate, full page at `/model/cbb`.
+- **Sort by model confidence** on the CBB slate.
+- **Bottom bar:** Home · Slate (Live) · CFB · NFL · CBB · Groups · More.
+  Ledger and Games moved to More.
+
+Checked: 2,366 unit tests across 157 files, typecheck, lint, `next build`, 36
+assertions in `supabase/tests/cbb.sql`. Card and bottom bar rendered at 390px
+from tonight's board; one defect found that way (an event banner pushed the
+tip time onto two lines). **Not rendered:** `/model/cbb`.
+
+The record as the feed stated it that morning, for scale: 163-119 ATS
+(57.8%); best bets 42-38; value plays 65-65; high confidence 10-10; CLV −0.05
+on 226.
+
 ### Nov 12 — College basketball on the slate (CBB-1…CBB-11), and MIG-2
 
 Owner request, with football winding down: a CBB section "like how we have

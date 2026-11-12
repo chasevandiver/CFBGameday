@@ -3134,12 +3134,47 @@ are open.
       source than `/summary`, or a watch-list (games someone has bet).
 - [ ] **CBB-14 — tomorrow's lines.** The feed publishes one day; a card for
       tomorrow has no line or model number until the morning run.
-- [ ] **CBB-15 — a basketball model-record page.** `/model/stats` will list
-      season 202026 because it has frozen predictions, with football's
-      framing. The feed's own record (`index.json`) is the honest source.
+- [x] **CBB-15 — a basketball model-record page.** Shipped as CBB-16
+      (`/model/cbb`). The worry recorded here was wrong on one point:
+      `/model/stats` lists CFB seasons only (`.eq("sport", "cfb")`), so it
+      never showed season 202026.
+
+**Second pass, same day — owner report after first use.** "It's kind of
+confusing to see what the recommended spread is… the cards seem to be getting
+squished with all of the totals being over 100." Built on the same branch
+name, restarted from `main`.
+
+- [x] **CBB-16 — the model's record.** `cbb_model_stats` (migration `0087`),
+      written by `cbb-sync-feed` from the feed's own `index.json` and season
+      file; this app grades nothing. On the CBB slate's strip (season ATS and
+      the last graded day before the board in view) and as a page,
+      `/model/cbb`, reachable from More: by tier, by edge size, day by day.
+- [x] **CBB-17 — the card says the pick.** `Pick` / `Model` / `Conf` chips
+      where the watchability chip was, both numbers quoted for the same team.
+      No pick chip inside half a point of the line — the feed's no-bet rule.
+      Under them, the season hit rate for the most specific tier the game
+      qualifies as (best bet, else value play, else its confidence tier),
+      always with the record beside the rate. Spread and Total only, in 56px
+      cells: the feed has no moneylines, and that column was a dash costing
+      the room a three-digit total needs. Court lines on the card, half
+      scores on a final.
+- [x] **CBB-18 — sort by model confidence.** Picks first, most confident
+      first. Offered on the CBB slate only.
+- [x] **NAV-2 — the bottom bar is Home · Slate · CFB · NFL · CBB · Groups.**
+      Slate opens the cross-league Live view; Ledger and Games moved to More.
+      Seven cells at 390px are 56px each. The four slate tabs are told apart
+      by `?sport=` (`isBottomTabActive`), since they share a pathname.
+- [ ] **CBB-R6 — apply `0087` to production.** Until it lands the strip, the
+      page and the hit-rate line are empty; nothing errors.
+- [ ] **CBB-19 — `/model/cbb` has not been rendered.** It reads Postgres and
+      the local check had no database. The slate card and the bottom bar
+      were rendered at 390px from tonight's real data.
 
 **Residuals — recorded, not queued.**
 
+- The tier records overlap and are small in November: "high confidence" is
+  10-10 on the day this shipped. The card prints the record beside every
+  rate for that reason.
 - Runs are derived from 30-second score deltas, not play-by-play. Two-sided
   scoring inside one tick clears the run unless ESPN's last play was a made
   basket. A run can be missed; it is not invented.

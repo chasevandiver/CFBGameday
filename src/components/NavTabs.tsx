@@ -22,7 +22,7 @@ export function NavTabs() {
         return (
           <Link
             key={tab.href}
-            href={tab.href}
+            href={tab.desktopHref ?? tab.href}
             aria-current={active ? "page" : undefined}
             className={`shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
               active

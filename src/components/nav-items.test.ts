@@ -4,7 +4,9 @@ import {
   NAV_ITEMS,
   PRIMARY_ITEMS,
   SECONDARY_ITEMS,
+  isBottomTabActive,
   isNavItemActive,
+  slateViewOf,
   type NavItem,
 } from "./nav-items";
 
@@ -87,24 +89,41 @@ describe("nav slots", () => {
    * semantic change hides behind a green test. Changing either list should
    * take an edit here that says what changed and why.
    */
-  it("gives the bottom bar five primary items, Home first", () => {
-    // Five, deliberately (R3-E1). Edges paid for the fifth slot by giving up
-    // its desktop tab (UX-33, answered 2026-08-17). Six cells including More
-    // is ~62px each at 375px and ~53px at 320px, both inside DESIGN.md's 44px
-    // rule against a 64px bar.
-    //
-    // GROUPS AND GAMES SWAPPED 2026-08-21, owner call. The pool is what people
-    // open the app to do on a Saturday — picks, the crew, the board — and it
-    // was sitting one slot from the More sheet while the arcade held the
-    // middle of the thumb zone. Nothing about the count or the widths changes;
-    // this is which of the two is easier to reach with a thumb.
+  it("gives the bottom bar Home, Slate, the three leagues and Groups", () => {
+    // NAV-2, owner call 2026-11-12: "Home, Slate, CFB, NFL, CBB, Groups, and
+    // move everything else to More." Seven cells including More is ~56px each
+    // at 390px and ~46px at 320px — tighter than the five-item bar this
+    // replaced (R3-E1), and still inside DESIGN.md's 44px rule against a 64px
+    // bar. Ledger and Games gave up their slots and live behind More.
     expect(PRIMARY_ITEMS.map((i) => i.label)).toEqual([
       "Home",
       "Slate",
+      "CFB",
+      "NFL",
+      "CBB",
       "Groups",
-      "Ledger",
-      "Games",
     ]);
+    expect(SECONDARY_ITEMS.map((i) => i.label)).toEqual(
+      expect.arrayContaining(["Ledger", "Games", "CBB Model"]),
+    );
+  });
+
+  it("points each slate tab at its own view", () => {
+    const href = (label: string) => byLabel(label).href;
+    expect(href("Slate")).toBe("/slate?sport=live");
+    expect(href("CFB")).toBe("/slate");
+    expect(href("NFL")).toBe("/slate?sport=nfl");
+    expect(href("CBB")).toBe("/slate?sport=cbb");
+  });
+
+  it("keeps the desktop header at one Slate tab, on the default board", () => {
+    // The leagues are a click away on the page there and the header is full.
+    const labels = DESKTOP_ITEMS.map((i) => i.label);
+    expect(labels).toContain("Slate");
+    for (const l of ["CFB", "NFL", "CBB", "Home"]) expect(labels).not.toContain(l);
+    expect(byLabel("Slate").desktopHref).toBe("/slate");
+    // Ledger and Games left the bottom bar, not the header.
+    expect(labels).toEqual(expect.arrayContaining(["Ledger", "Games"]));
   });
 
   it("badges nothing at all", () => {
@@ -163,5 +182,45 @@ describe("nav slots", () => {
 
   it("gives every bottom-bar item an icon", () => {
     for (const item of PRIMARY_ITEMS) expect(item.icon).toBeDefined();
+  });
+});
+
+/**
+ * NAV-2. Four bottom tabs share `/slate` and differ only by `?sport=`. A path
+ * match alone lights all four at once, which is the same two-tabs-current
+ * defect the Home test above exists for, four wide.
+ */
+describe("isBottomTabActive", () => {
+  const lit = (pathname: string, sport: string | null) =>
+    PRIMARY_ITEMS.filter((i) => isBottomTabActive(i, pathname, sport)).map((i) => i.label);
+
+  it("lights exactly the league in view on the slate", () => {
+    expect(lit("/slate", null)).toEqual(["CFB"]);
+    expect(lit("/slate", "nfl")).toEqual(["NFL"]);
+    expect(lit("/slate", "cbb")).toEqual(["CBB"]);
+    expect(lit("/slate", "live")).toEqual(["Slate"]);
+  });
+
+  it("reads an unknown sport the way the slate page does — as CFB", () => {
+    expect(slateViewOf("nba")).toBe("cfb");
+    expect(lit("/slate", "nba")).toEqual(["CFB"]);
+  });
+
+  it("gives a game page to Slate, since its URL names no league", () => {
+    expect(lit("/game/401", null)).toEqual(["Slate"]);
+  });
+
+  it("leaves every other tab to the ordinary path match", () => {
+    expect(lit("/", null)).toEqual(["Home"]);
+    expect(lit("/groups/sunday-crew", null)).toEqual(["Groups"]);
+    // a More-sheet route lights nothing in the bar
+    expect(lit("/ledger", null)).toEqual([]);
+    expect(lit("/model/cbb", null)).toEqual([]);
+  });
+
+  it("keeps the two model pages apart in the More sheet", () => {
+    expect(isNavItemActive(byLabel("CBB Model"), "/model/cbb")).toBe(true);
+    expect(isNavItemActive(byLabel("Model"), "/model/cbb")).toBe(false);
+    expect(isNavItemActive(byLabel("Model"), "/model/stats")).toBe(true);
   });
 });
