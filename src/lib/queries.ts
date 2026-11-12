@@ -10,13 +10,22 @@ import type {
   TeamRow,
 } from "./db-types";
 import { hasCalibratedTotals } from "../model/ratings";
+import { isCbbModelVersion } from "./cbb-feed";
+import { cbbDayIndex, easternDate, isCbbLive, isValidCbbDay } from "./cbb";
 import { pickPollRanks, pollShortName } from "./rankings";
 import { required } from "./db-result";
 import { tallyBy } from "./records";
 import { toSheetBet } from "./betting-groups";
 import { classifyBets, recentForm, statsByMember, type GroupBetView } from "./tailing";
 import { fetchCurrentSlate, type SeasonType } from "./season";
-import { seasonIdsForYear, seasonYearOf, sportOfSeasonId, type Sport } from "./league";
+import {
+  cbbSeasonId,
+  footballSeasonIdsForYear,
+  seasonIdsForYear,
+  seasonYearOf,
+  sportOfSeasonId,
+  type Sport,
+} from "./league";
 import { atsRecord, ouRecord } from "./slate";
 import type {
   CrewPickView,
@@ -181,6 +190,8 @@ export async function fetchSlateView(
     return { seasonId, sport: sportOfSeasonId(seasonId), week, seasonType, fetchedAt, linesAsOf: null, games: [] };
 
   const gameRows = games as GameRow[];
+  const sport = sportOfSeasonId(seasonId);
+  const hoops = sport === "cbb";
   const gameIds = gameRows.map((g) => g.id);
   const teamIds = [...new Set(gameRows.flatMap((g) => [g.home_team_id, g.away_team_id]))];
 
@@ -193,9 +204,12 @@ export async function fetchSlateView(
    * the card renders; a game has on the order of ten scoring plays, so the
    * newest-per-game reduction happens here rather than in a view.
    */
-  const scoredIds = gameRows
-    .filter((g) => g.status === "in_progress" || g.status === "final")
-    .map((g) => g.id);
+  // Football only: a basketball game has no scoring summary to read.
+  const scoredIds = hoops
+    ? []
+    : gameRows
+        .filter((g) => g.status === "in_progress" || g.status === "final")
+        .map((g) => g.id);
   const venueIds = [...new Set(gameRows.map((g) => g.venue_id).filter((v): v is number => v !== null))];
 
   const [teamsRes, consensusRes, predsRes, picksRes, betsRes, weatherRes, venuesRes, seasonGamesRes, ratingsRes, pollsRes, crewPicksRes, profilesRes, systemsRes, rivalriesRes, sheetMembersRes, scoresRes] =
@@ -234,11 +248,17 @@ export async function fetchSlateView(
       venueIds.length > 0
         ? supabase.from("venues").select("id, dome").in("id", venueIds)
         : Promise.resolve({ data: [], error: null }),
-      supabase
-        .from("games")
-        .select("home_team_id, away_team_id, home_points, away_points, status, conference_game")
-        .eq("season_id", seasonId)
-        .eq("status", "final"),
+      /* Records, derived from the season's finals — for football. Basketball
+         reads them off the team row instead (0086): a season is ~5,800 games,
+         past the 1,000-row ceiling and far too much to pull on every poll,
+         and ESPN's board already states each team's record. */
+      hoops
+        ? Promise.resolve({ data: [], error: null })
+        : supabase
+            .from("games")
+            .select("home_team_id, away_team_id, home_points, away_points, status, conference_game")
+            .eq("season_id", seasonId)
+            .eq("status", "final"),
       supabase
         .from("latest_ratings")
         .select("team_id, week, overall")
@@ -548,6 +568,22 @@ export async function fetchSlateView(
     if (g.conference_game) credit(confRecords, winner, loser);
   }
 
+  if (hoops) {
+    // "12-3" as ESPN prints it. Stored as text because that is what the feed
+    // gives and what the card shows; parsed only to fit the shape football's
+    // derivation produces.
+    const parse = (r: string | null | undefined) => {
+      const m = r ? /^(\d+)-(\d+)$/.exec(r) : null;
+      return m ? { w: Number(m[1]), l: Number(m[2]) } : null;
+    };
+    for (const t of teams.values()) {
+      const rec = parse(t.record);
+      if (rec) records.set(t.id, rec);
+      const conf = parse(t.conf_record);
+      if (conf) confRecords.set(t.id, conf);
+    }
+  }
+
   // model ranks from each team's latest ratings row (latest_ratings view)
   const allRatings = (ratingsRes.data ?? []) as Array<{
     team_id: number;
@@ -560,10 +596,19 @@ export async function fetchSlateView(
     .forEach((r, i) => ranks.set(r.team_id, i + 1));
 
   // human-poll ranks: latest week, CFP > AP > Coaches
-  const { poll, byTeam: pollRanks } = pickPollRanks(
+  const football = pickPollRanks(
     (pollsRes.data ?? []) as Array<{ week: number; poll: string; team_id: number; rank: number }>,
   );
-  const pollName = pollShortName(poll);
+  // Basketball's AP rank rides on the team row with the record, from the same
+  // board; there is no poll_rankings sync for it and no need for one.
+  const pollRanks = hoops
+    ? new Map(
+        [...teams.values()]
+          .filter((t) => typeof t.poll_rank === "number")
+          .map((t) => [t.id, t.poll_rank as number]),
+      )
+    : football.byTeam;
+  const pollName = hoops ? "AP" : pollShortName(football.poll);
 
   const nullConsensus: LineConsensusRow = {
     game_id: 0,
@@ -589,10 +634,17 @@ export async function fetchSlateView(
       mlAway: c.ml_away === null ? null : Number(c.ml_away),
     };
     const pred = predByGame.get(game.id) ?? null;
+    /* `hasCalibratedTotals` is a statement about THIS repo's football model
+       versions (audit #4). A row imported from the cbbmodel feed carries that
+       model's own total and projected score, which are the point of showing
+       it, and its version string is not a football version at all. */
+    const totalsOk = pred !== null && (isCbbModelVersion(pred.model_version) || hasCalibratedTotals(pred.model_version));
+    const tempo = (pred?.adjustments as { tempo?: unknown } | undefined)?.tempo;
     const weather = weatherByGame.get(game.id) ?? null;
     return [
       {
         id: game.id,
+        sport,
         week: game.week,
         startTs: game.start_ts,
         status: game.status,
@@ -639,18 +691,9 @@ export async function fetchSlateView(
               spread: Number(pred.spread),
               // frozen rows are append-only history; totals from versions
               // that priced them as a constant must never render (audit #4)
-              total:
-                pred.total === null || !hasCalibratedTotals(pred.model_version)
-                  ? null
-                  : Number(pred.total),
-              homeScore:
-                pred.home_score === null || !hasCalibratedTotals(pred.model_version)
-                  ? null
-                  : Number(pred.home_score),
-              awayScore:
-                pred.away_score === null || !hasCalibratedTotals(pred.model_version)
-                  ? null
-                  : Number(pred.away_score),
+              total: pred.total === null || !totalsOk ? null : Number(pred.total),
+              homeScore: pred.home_score === null || !totalsOk ? null : Number(pred.home_score),
+              awayScore: pred.away_score === null || !totalsOk ? null : Number(pred.away_score),
               homeWinProb: Number(pred.home_win_prob),
               coverProb: pred.cover_prob === null ? null : Number(pred.cover_prob),
               vegasSpread: pred.vegas_spread === null ? null : snapToHalf(Number(pred.vegas_spread)),
@@ -680,6 +723,13 @@ export async function fetchSlateView(
             away: systemLatest.get(`${system}:${game.away_team_id}`) ?? null,
           }))
           .filter((s) => s.home !== null || s.away !== null),
+        ...(hoops
+          ? {
+              hoops: isCbbLive(game.hoops) ? game.hoops : null,
+              tempo: typeof tempo === "number" ? tempo : null,
+              note: game.notes ?? null,
+            }
+          : {}),
       },
     ];
   });
@@ -692,7 +742,7 @@ export async function fetchSlateView(
     if (c.as_of !== null && (linesAsOf === null || c.as_of > linesAsOf)) linesAsOf = c.as_of;
   }
 
-  return { seasonId, sport: sportOfSeasonId(seasonId), week, seasonType, fetchedAt, linesAsOf, games: views };
+  return { seasonId, sport, week, seasonType, fetchedAt, linesAsOf, games: views };
 }
 
 /**
@@ -933,10 +983,53 @@ export async function fetchCurrentSeasonWeek(
           .maybeSingle()
       : { data: null };
 
-  const pointer = await fetchCurrentSlate(supabase, season.id);
+  const pointer =
+    sport === "cbb"
+      ? await currentCbbDay(supabase, season.id)
+      : await fetchCurrentSlate(supabase, season.id);
   const value = { seasonId: season.id, ...pointer, minWeek: wk0 ? 0 : 1 };
   pointerCache.set(sport, { at: Date.now(), value });
   return value;
+}
+
+/** Tonight's board stays "today" until 5am Eastern. */
+const CBB_DAY_ROLLOVER_H = 5;
+
+/**
+ * Basketball's "current week", which is a day (see src/lib/cbb.ts).
+ *
+ * The clock decides, not `fetchCurrentSlate`. That pointer rolls forward the
+ * moment a slate's last game goes final — right for a football week, where
+ * the next thing anyone wants on Sunday morning is next Saturday. For a daily
+ * league it would swap tonight's finals for tomorrow's schedule at 1am, while
+ * people are still checking how their bets finished. So the day in view is
+ * the Eastern date as of five hours ago: tonight's slate holds through the
+ * last West Coast final and turns over before anyone wakes up.
+ *
+ * Falls back to the games pointer on a day with nothing scheduled — Christmas
+ * Eve, the gap before the Final Four, the whole offseason — so the slate
+ * lands on the next day that has games rather than on an empty board.
+ */
+async function currentCbbDay(
+  supabase: SupabaseClient,
+  seasonId: number,
+): Promise<{ week: number; seasonType: SeasonType }> {
+  const today = cbbDayIndex(
+    seasonId,
+    easternDate(new Date(Date.now() - CBB_DAY_ROLLOVER_H * 3600_000)),
+  );
+  if (today !== null && isValidCbbDay(today)) {
+    const { data } = await supabase
+      .from("games")
+      .select("id")
+      .eq("season_id", seasonId)
+      .eq("week", today)
+      .limit(1)
+      .maybeSingle();
+    if (data) return { week: today, seasonType: "regular" };
+  }
+  const pointer = await fetchCurrentSlate(supabase, seasonId);
+  return { week: pointer.week, seasonType: "regular" };
 }
 
 /**
@@ -964,16 +1057,50 @@ export async function fetchBetFormGames(
   }>;
 }> {
   const now = Date.now();
-  const { data } = await supabase
-    .from("games")
-    .select("id, season_id, start_ts, home_team_id, away_team_id, status")
-    // both leagues: the ledger is one book, and this week has games in each
-    .in("season_id", seasonIdsForYear(seasonYearOf(seasonId)))
-    .gte("start_ts", new Date(now - 8 * 24 * 3600 * 1000).toISOString())
-    .lte("start_ts", new Date(now + 9 * 24 * 3600 * 1000).toISOString())
-    .order("start_ts", { ascending: true });
-  return { data: data ?? [] };
+  const year = seasonYearOf(seasonId);
+  const cols = "id, season_id, start_ts, home_team_id, away_team_id, status";
+  const at = (days: number) => new Date(now + days * 24 * 3600 * 1000).toISOString();
+  const [football, hoops] = await Promise.all([
+    supabase
+      .from("games")
+      .select(cols)
+      // both football leagues: the ledger is one book, and this week has games in each
+      .in("season_id", footballSeasonIdsForYear(year))
+      .gte("start_ts", at(-8))
+      .lte("start_ts", at(9))
+      .order("start_ts", { ascending: true }),
+    /* Basketball on a window of its own (CBB-7). Seventeen days of Division I
+       is ~1,500 games — past the 1,000-row ceiling, so the read would silently
+       truncate, and a select nobody could use if it did not. Yesterday through
+       tomorrow is what a catch-up actually reaches for (a bet texted in last
+       night, tonight's card, tomorrow's early look), and the slate card is the
+       normal way to log one anyway. */
+    supabase
+      .from("games")
+      .select(cols)
+      .eq("season_id", cbbSeasonId(year))
+      .gte("start_ts", at(-CBB_FORM_DAYS_BACK))
+      .lte("start_ts", at(CBB_FORM_DAYS_AHEAD))
+      .order("start_ts", { ascending: true })
+      .limit(900),
+  ]);
+  type Row = {
+    id: number;
+    season_id: number;
+    start_ts: string | null;
+    home_team_id: number;
+    away_team_id: number;
+    status: string;
+  };
+  const data = [...((football.data ?? []) as Row[]), ...((hoops.data ?? []) as Row[])].sort((a, b) =>
+    (a.start_ts ?? "9999").localeCompare(b.start_ts ?? "9999"),
+  );
+  return { data };
 }
+
+/** How far the manual bet form reaches for a basketball game, in days. */
+export const CBB_FORM_DAYS_BACK = 1.5;
+export const CBB_FORM_DAYS_AHEAD = 1.5;
 
 /**
  * Games for the /admin void control (P1-1). Same rolling window as the bet
@@ -1002,8 +1129,12 @@ export async function fetchAdminGames(
     .from("games")
     .select("id, start_ts, status, home_team_id, away_team_id")
     // both leagues, for the same reason as the bet form: a void control that
-    // cannot reach a postponed NFL game cannot void the bets on it
-    .in("season_id", seasonIdsForYear(seasonYearOf(seasonId)))
+    // cannot reach a postponed NFL game cannot void the bets on it.
+    // Football only. A postponed BASKETBALL game needs no hand here — ESPN
+    // states the postponement outright and the daily sync marks it dead
+    // (cbb-sync-games), where CFBD publishes no such signal — and twelve days
+    // of Division I would bury the four games this list exists to find.
+    .in("season_id", footballSeasonIdsForYear(seasonYearOf(seasonId)))
     .gte("start_ts", new Date(now - 3 * 24 * 3600 * 1000).toISOString())
     .lte("start_ts", new Date(now + 9 * 24 * 3600 * 1000).toISOString())
     .order("start_ts", { ascending: true });

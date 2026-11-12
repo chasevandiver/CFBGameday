@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { groupLeagues, joinedLabel } from "./groups";
+import { groupFootballLeague, groupLeague, groupLeagues, joinedLabel, leagueQuery } from "./groups";
 
 /**
  * The roster came back empty for five days and nothing failed.
@@ -86,9 +86,24 @@ describe("groupLeagues", () => {
   /* GRP-12. A betting group's row stores the column default `{cfb}` and the
      RPC refuses to change it, so the pages used to run every betting group on
      the CFB calendar alone. The summary is where the kind decides. */
-  it("a betting group is always both leagues, whatever the row says", () => {
-    expect(groupLeagues("betting", ["cfb"])).toEqual(["cfb", "nfl"]);
-    expect(groupLeagues("betting", null)).toEqual(["cfb", "nfl"]);
+  it("a betting group is every league, whatever the row says", () => {
+    // Basketball joined in 0086. The row still says {cfb} and still cannot be
+    // changed; the sheet follows the bets, and the bets are in three leagues.
+    expect(groupLeagues("betting", ["cfb"])).toEqual(["cfb", "nfl", "cbb"]);
+    expect(groupLeagues("betting", null)).toEqual(["cfb", "nfl", "cbb"]);
+  });
+
+  it("basketball reaches a betting group's page and nothing else", () => {
+    const betting = groupLeagues("betting", ["cfb"]);
+    expect(groupLeague("cbb", betting)).toBe("cbb");
+    expect(groupLeague(undefined, betting)).toBe("cfb");
+    // A pick'em group's leagues are football by schema, so `?league=cbb` on
+    // one is a param it does not play and falls back like any other.
+    expect(groupLeague("cbb", groupLeagues("pickem", ["cfb", "nfl"]))).toBe("cfb");
+    expect(groupFootballLeague("cbb", betting)).toBe("cfb");
+    expect(groupFootballLeague("nfl", betting)).toBe("nfl");
+    expect(leagueQuery("cfb")).toBeNull();
+    expect(leagueQuery("cbb")).toBe("cbb");
   });
 
   it("a pick'em group keeps its admin-set scope", () => {

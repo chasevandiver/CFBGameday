@@ -16,6 +16,8 @@
  * hero states.
  */
 
+import { cbbTipSlot } from "./cbb";
+import type { Sport } from "./league";
 import { CONFIDENCE_TIERS, type ConfidenceTier } from "./db-types";
 import { DEFAULT_TZ, kickHeading, kickShort, kickSlot, nflKickSlot } from "./kick";
 
@@ -43,7 +45,7 @@ export interface ShareCardBet {
   /** ISO kickoff. Null for a future, or a game with no announced time. */
   kickTs: string | null;
   /** The NFL names its windows differently. Defaults to college. */
-  league?: "cfb" | "nfl";
+  league?: Sport;
 }
 
 export interface ShareCardPayload {
@@ -113,6 +115,7 @@ export function heroBet(bets: ShareCardBet[]): ShareCardBet | null {
 /** The broadcast window a bet belongs to, in its own league's vocabulary. */
 export function slotOf(bet: ShareCardBet): string | null {
   if (!bet.kickTs) return null;
+  if (bet.league === "cbb") return cbbTipSlot(bet.kickTs);
   return bet.league === "nfl" ? nflKickSlot(bet.kickTs) : kickSlot(bet.kickTs);
 }
 

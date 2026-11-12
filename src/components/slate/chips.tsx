@@ -26,9 +26,17 @@ export function RankBadge({ rank, poll }: { rank: number | null; poll?: string |
 export function EdgeChip({
   flag,
   edge,
+  hoops = false,
 }: {
   flag: "EDGE" | "BIG_EDGE" | null;
   edge: number | null;
+  /**
+   * College basketball: the filled chip reads "Best bet", the cbbmodel feed's
+   * own word. There the top tier is a BAND of edge, not the largest edges —
+   * that model flags a middling disagreement and distrusts a huge one — so
+   * "Big Edge 5.2" beside a plain "Edge 6.6" would read as a mistake.
+   */
+  hoops?: boolean;
 }) {
   if (!flag) return null;
   const delta = edge !== null ? ` ${fmtSpread(Math.round(Math.abs(edge) * 10) / 10)}` : "";
@@ -39,7 +47,7 @@ export function EdgeChip({
       }`}
       title={edge !== null ? `Model vs market: ${edge > 0 ? "+" : ""}${edge} pts` : undefined}
     >
-      {flag === "BIG_EDGE" ? "Big Edge" : "Edge"}
+      {flag === "BIG_EDGE" ? (hoops ? "Best bet" : "Big Edge") : "Edge"}
       {delta && <span className="stat normal-case tracking-normal">{delta.replace("+", "")}</span>}
     </span>
   );

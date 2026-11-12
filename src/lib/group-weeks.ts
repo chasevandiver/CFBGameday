@@ -31,7 +31,8 @@
  * needs a database.
  */
 
-import type { Sport } from "./league";
+import { cbbDateOfDay, cbbDayLabel, currentCbbSeasonId } from "./cbb";
+import type { GroupLeague, Sport } from "./league";
 import type { SeasonType } from "./season";
 import { NFL_PLAYOFF_ROUNDS, nflPlayoffLabel } from "./week-range";
 
@@ -41,7 +42,16 @@ export interface WeekRef {
 }
 
 /** Last week of the regular season, by league. */
-const LAST_REGULAR: Record<Sport, number> = { cfb: 16, nfl: 18 };
+const LAST_REGULAR: Record<GroupLeague, number> = { cfb: 16, nfl: 18 };
+
+/**
+ * Basketball's calendar, for the one place a group reads it: the betting
+ * group's sheet (0086). Its "weeks" are days (src/lib/cbb.ts), all `regular`.
+ * From day 1 — the season opens the first Monday of November — to the last
+ * day the title game can fall on.
+ */
+const CBB_FIRST_DAY = 1;
+const CBB_LAST_DAY = 160;
 
 /**
  * Every week a league's season addresses, in the order they are played.
@@ -54,6 +64,10 @@ const LAST_REGULAR: Record<Sport, number> = { cfb: 16, nfl: 18 };
  */
 export function seasonWeeks(sport: Sport, minWeek: number): WeekRef[] {
   const out: WeekRef[] = [];
+  if (sport === "cbb") {
+    for (let d = CBB_FIRST_DAY; d <= CBB_LAST_DAY; d++) out.push({ seasonType: "regular", week: d });
+    return out;
+  }
   if (sport === "nfl") {
     for (let w = 1; w <= 4; w++) out.push({ seasonType: "preseason", week: w });
   }
@@ -82,6 +96,10 @@ export const weekIndex = (weeks: WeekRef[], ref: WeekRef): number =>
  * was a preseason week rendering as "Week 2".
  */
 export function weekLabel(ref: WeekRef, sport: Sport): string {
+  // A basketball "week" is a day, and its name is its date. The season is the
+  // one being played — this label has no season id to read, and a betting
+  // sheet is only ever opened on the current one.
+  if (sport === "cbb") return cbbDayLabel(cbbDateOfDay(currentCbbSeasonId(), ref.week));
   if (ref.seasonType === "preseason") return `Preseason Week ${ref.week}`;
   if (ref.seasonType === "postseason") {
     return sport === "nfl" ? (nflPlayoffLabel(ref.week) ?? `Round ${ref.week}`) : "Bowls & CFP";
@@ -91,6 +109,7 @@ export function weekLabel(ref: WeekRef, sport: Sport): string {
 
 /** The same, for a `<select>` option or a chevron's aria-label. */
 export function shortWeekLabel(ref: WeekRef, sport: Sport): string {
+  if (sport === "cbb") return weekLabel(ref, sport);
   if (ref.seasonType === "preseason") return `Pre ${ref.week}`;
   return weekLabel(ref, sport);
 }

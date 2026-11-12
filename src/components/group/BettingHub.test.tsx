@@ -31,7 +31,7 @@ const member = (name: string): SheetMember =>
     userId: `u-${name}`,
     name,
     stats: stats(tally(8, 9, -1)),
-    leagueSplit: { cfb: tally(5, 8, -3.5), nfl: tally(3, 1, 2.5) },
+    leagueSplit: { cfb: tally(5, 8, -3.5), nfl: tally(3, 1, 2.5), cbb: tally(0, 0, 0) },
     form: { results: [], label: "level" as const },
     byLeague: {
       cfb: { stats: stats(tally(5, 8, -3.5)), form: { results: [], label: "cold" as const } },

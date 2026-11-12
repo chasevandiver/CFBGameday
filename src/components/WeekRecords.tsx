@@ -1,7 +1,7 @@
 import { Fragment } from "react";
 import { ChevronDown } from "lucide-react";
 import { formatRecord, type Tally } from "../lib/records";
-import type { LeagueSplit, SliceRecord } from "../lib/week-records";
+import { leagueParts, type LeagueSplit, type SliceRecord } from "../lib/week-records";
 
 /**
  * "Week by week" — one week per row, each opening onto its days.
@@ -106,11 +106,10 @@ export function StandingNote({ record }: { record: SliceRecord }) {
  * which appear only once both leagues have graded bets.
  */
 export function LeagueCaption({ split }: { split: LeagueSplit }) {
-  if (split.cfb.decided === 0 || split.nfl.decided === 0) return null;
-  const parts: Array<[string, Tally]> = [
-    ["CFB", split.cfb],
-    ["NFL", split.nfl],
-  ];
+  // Two or more leagues with something decided — basketball is the third
+  // since 0086, and a January week can be the NFL and CBB with no CFB at all.
+  const parts: Array<[string, Tally]> = leagueParts(split);
+  if (parts.length < 2) return null;
   /* Each league is one unbreakable run, so a caption too wide for the column
      breaks between CFB and NFL rather than mid-figure — a record split over two
      lines ("NFL 2-1" / "+2.6u") reads as two different numbers. */

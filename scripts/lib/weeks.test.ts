@@ -127,6 +127,8 @@ describe("every games writer applies the split", () => {
   /** Writers whose weeks do not come from CFBD's merged feed, and why. */
   const EXEMPT: Record<string, string> = {
     "nfl-sync-games.ts": "NFL weeks come from ESPN's own calendar; the NFL has no week 0",
+    "cbb-sync-games.ts":
+      "basketball's `week` is a day index from ESPN's board date (src/lib/cbb.ts); nothing of CFBD's is in it",
     "seed-fixtures.ts": "dev fixtures — invented games, invented weeks",
   };
 

@@ -6,11 +6,13 @@ import { AppNav } from "../../../components/AppNav";
 import { BoxScore } from "../../../components/game/BoxScore";
 import { GameHeader } from "../../../components/game/GameHeader";
 import { GameFlow } from "../../../components/game/GameFlow";
+import { HoopsPanel } from "../../../components/game/HoopsPanel";
 import { MovementChart } from "../../../components/game/MovementChart";
 import { ConsensusChip, EdgeChip } from "../../../components/slate/chips";
 import { DeleteWagerButton } from "../../../components/DeleteWagerButton";
 import { ScoringTimeline } from "../../../components/game/ScoringTimeline";
 import { pregameMarginFor } from "../../../lib/game-flow";
+import { cbbDateOfDay, cbbDayLabel, isCbbLive } from "../../../lib/cbb";
 import { sportOfSeasonId } from "../../../lib/league";
 import type { ScoringPlayRow } from "../../../lib/scoring";
 import { VoidBetButton } from "../../../components/VoidBetButton";
@@ -57,6 +59,7 @@ import { moneySplits } from "../../../lib/splits";
 import { ReactionBar } from "../../../components/ReactionBar";
 import { createClient } from "../../../lib/supabase/server";
 import { hasCalibratedTotals } from "../../../model/ratings";
+import { isCbbModelVersion } from "../../../lib/cbb-feed";
 import { isCurrentUserAdmin } from "../../../lib/admin";
 
 export const dynamic = "force-dynamic";
@@ -69,9 +72,11 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const supabase = await createClient();
   const { data: game } = await supabase
     .from("games")
-    .select("week, season_type, home_team_id, away_team_id")
+    .select("week, season_id, season_type, home_team_id, away_team_id")
     .eq("id", gameId)
-    .maybeSingle<Pick<GameRow, "week" | "season_type" | "home_team_id" | "away_team_id">>();
+    .maybeSingle<
+      Pick<GameRow, "week" | "season_id" | "season_type" | "home_team_id" | "away_team_id">
+    >();
   if (!game) return {};
   const { data: teams } = await supabase
     .from("teams")
@@ -83,7 +88,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const description = `${title} — lines, model number, picks, and live status on The Slate.`;
   return {
     title:
-      game.season_type === "postseason" ? `${title} · Postseason` : `${title} · Week ${game.week}`,
+      sportOfSeasonId(game.season_id) === "cbb"
+        ? // A basketball game's `week` is a day index (src/lib/cbb.ts);
+          // "Week 11" would be a number that means nothing to anyone.
+          `${title} · ${cbbDayLabel(cbbDateOfDay(game.season_id, game.week))}`
+        : game.season_type === "postseason"
+          ? `${title} · Postseason`
+          : `${title} · Week ${game.week}`,
     description,
     openGraph: { title, description },
   };
@@ -105,10 +116,12 @@ function toView(t: TeamRow, pollRank: number | null = null, poll: string | null 
     altColor: t.alt_color,
     logo: t.logo_url,
     rank: null,
-    pollRank,
-    poll,
-    record: null,
-    confRecord: null,
+    // Basketball carries its AP rank and record on the team row (0086);
+    // football's arrive from the poll sync and stay null here as before.
+    pollRank: pollRank ?? t.poll_rank ?? null,
+    poll: poll ?? (t.poll_rank != null ? "AP" : null),
+    record: t.record ?? null,
+    confRecord: t.conf_record ?? null,
   };
 }
 
@@ -132,6 +145,13 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
     .eq("id", gameId)
     .maybeSingle<GameRow>();
   if (!game) notFound();
+  const sport = sportOfSeasonId(game.season_id);
+  const hoops = sport === "cbb";
+  const slateHref = hoops
+    ? `/slate?sport=cbb&date=${cbbDateOfDay(game.season_id, game.week)}`
+    : sport === "nfl"
+      ? "/slate?sport=nfl"
+      : "/slate";
 
   const [teamsRes, linesRes, predRes, picksRes, scoringRes, betsRes, crewBetsRes, profilesRes, weatherRes, questionsRes, pollsRes, systemsRes, rivalryRes, newsRes, notesRes] = await Promise.all([
     supabase.from("teams").select("*").in("id", [game.home_team_id, game.away_team_id]),
@@ -225,7 +245,14 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   let prediction = predictions.find((p) => p.frozen) ?? predictions[0] ?? null;
   // append-only history: rows from pre-2026.3.0 versions priced totals as a
   // constant — never render those fields (audit #4)
-  if (prediction && !hasCalibratedTotals(prediction.model_version)) {
+  // Not the cbbmodel feed's rows: that gate is about this repo's football
+  // versions, and the feed's total and projected score are the reason to
+  // show it at all (same rule as fetchSlateView).
+  if (
+    prediction &&
+    !isCbbModelVersion(prediction.model_version) &&
+    !hasCalibratedTotals(prediction.model_version)
+  ) {
     prediction = { ...prediction, total: null, home_score: null, away_score: null };
   }
   const picks = (picksRes.data ?? []) as PickRow[]; // crew picks are never hidden (0010)
@@ -360,6 +387,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
   const rivalry = rivalryRes.data as { name: string | null; trophy: string | null } | null;
 
   const modelEdge = prediction?.edge === null || prediction === null ? null : Number(prediction.edge);
+  const modelTempo = (prediction?.adjustments as { tempo?: unknown } | undefined)?.tempo;
   const modelSide = prediction
     ? modelSideOf({ edge: modelEdge, edgeFlag: prediction.edge_flag })
     : null;
@@ -370,7 +398,9 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
       <AppNav />
       <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-5">
         <Link
-          href="/slate"
+          /* Back to the board this game came from — the league, and for
+             basketball the day, since "the slate" there is one night. */
+          href={slateHref}
           className="mb-3 inline-flex items-center gap-1.5 text-xs font-medium text-dim transition-colors hover:text-chalk"
         >
           <ArrowLeft size={13} aria-hidden /> Back to slate
@@ -415,8 +445,14 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             situation: game.current_situation,
             lastPlay: game.last_play,
             possession: game.possession,
+            hoops: isCbbLive(game.hoops) ? game.hoops : null,
           }}
         />
+        {game.notes && hoops && (
+          <p className="stat mt-2 text-center text-xs text-dim">
+            <span className="font-semibold text-accent">{game.notes}</span>
+          </p>
+        )}
 
         {rivalry?.name && (
           <p className="stat mt-2 text-center text-xs text-dim">
@@ -638,7 +674,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             <p className="text-sm text-dim">
               Nothing on this one. Tap an odds cell on the{" "}
               <Link
-                href="/slate"
+                href={slateHref}
                 className="font-medium text-accent underline-offset-2 hover:underline"
               >
                 slate
@@ -710,6 +746,25 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             shape everyone reads a football game in; the timeline underneath is
             the same story play by play. Both above the market, because the game
             is what the page is about and the numbers explain it. */}
+        {hoops ? (
+          /* Basketball's page is its own (CBB-10): halves, fouls and the
+             bonus, shooting, scorers. The football trio below reads a game by
+             quarter and by scoring play, and a basketball game has a hundred
+             of those. */
+          <HoopsPanel
+            gameId={game.id}
+            status={game.status}
+            home={home}
+            away={away}
+            homePoints={game.home_points}
+            awayPoints={game.away_points}
+            lines={{
+              spread: consensus.spread === null ? null : Number(consensus.spread),
+              total: consensus.total === null ? null : Number(consensus.total),
+            }}
+          />
+        ) : (
+          <>
         <BoxScore
           plays={scoringPlays}
           home={home}
@@ -735,13 +790,15 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             pregame={pregameMarginFor({
               frozenSpread: prediction ? Number(prediction.spread) : null,
               marketClose: consensus.spread === null ? null : Number(consensus.spread),
-              sport: sportOfSeasonId(game.season_id),
+              sport: sport === "nfl" ? "nfl" : "cfb",
             })}
             finalHome={game.home_points}
             finalAway={game.away_points}
           />
         )}
         <ScoringTimeline plays={scoringPlays} home={home} away={away} />
+          </>
+        )}
 
         {/* Odds table */}
         <section className="card mt-4 overflow-hidden">
@@ -818,7 +875,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-sm text-accent">Model projection</h2>
               <span className="flex gap-1.5">
-                <EdgeChip flag={prediction.edge_flag} edge={modelEdge} />
+                <EdgeChip flag={prediction.edge_flag} edge={modelEdge} hoops={hoops} />
                 <ConsensusChip on={prediction.consensus_flag} />
               </span>
             </div>
@@ -837,11 +894,21 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
                 displayed as projection only; O/U leans never clear the vig. */}
             <div className="stat mt-3 grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-4">
               <ProjStat label="Win prob" value={fmtPct(Number(prediction.home_win_prob))} sub={home.abbr} />
-              <ProjStat
-                label="Cover prob"
-                value={prediction.cover_prob === null ? "–" : fmtPct(Number(prediction.cover_prob))}
-                sub={`vs ${fmtSpread(prediction.vegas_spread === null ? null : Number(prediction.vegas_spread))}`}
-              />
+              {hoops ? (
+                /* The basketball model states no cover probability; its pace
+                   is the number the total hangs on, and takes the cell. */
+                <ProjStat
+                  label="Tempo"
+                  value={typeof modelTempo === "number" ? String(Math.round(modelTempo * 10) / 10) : "–"}
+                  sub="possessions"
+                />
+              ) : (
+                <ProjStat
+                  label="Cover prob"
+                  value={prediction.cover_prob === null ? "–" : fmtPct(Number(prediction.cover_prob))}
+                  sub={`vs ${fmtSpread(prediction.vegas_spread === null ? null : Number(prediction.vegas_spread))}`}
+                />
+              )}
               <ProjStat
                 label="Model total"
                 value={prediction.total === null ? "–" : fmtTotal(Math.round(Number(prediction.total) * 2) / 2)}

@@ -496,7 +496,28 @@ export async function fetchHomeData(
   const nflWeekGameIds = new Set(
     ((nflWeekGameRows ?? []) as Array<{ id: number }>).map((g) => g.id),
   );
-  const actionWeekGameIds = new Set([...weekGameIds, ...nflWeekGameIds]);
+  /* Basketball the same way (CBB-11): its current "week" is tonight's board,
+     and a bet on tonight's game is as much "what you have riding" as one on
+     Saturday's. Same guard as the NFL's — a home page must not 500 over a
+     league whose season row does not exist yet. Only the ids are read here;
+     the slate itself loads below, and only if a position rides on it. */
+  let cbbPointer: { seasonId: number; week: number; seasonType: SeasonType } | null = null;
+  try {
+    cbbPointer = await fetchCurrentSeasonWeek(supabase, "cbb");
+  } catch {
+    /* no CBB season configured */
+  }
+  const { data: cbbWeekGameRows } = cbbPointer
+    ? await supabase
+        .from("games")
+        .select("id")
+        .eq("season_id", cbbPointer.seasonId)
+        .eq("week", cbbPointer.week)
+    : { data: [] };
+  const cbbWeekGameIds = new Set(
+    ((cbbWeekGameRows ?? []) as Array<{ id: number }>).map((g) => g.id),
+  );
+  const actionWeekGameIds = new Set([...weekGameIds, ...nflWeekGameIds, ...cbbWeekGameIds]);
 
   // This week's Tuesday Drop (R2-B2). A missing table — a deploy that outran
   // migration 0056 — comes back as an error with null data, which reads as
@@ -759,7 +780,11 @@ export async function fetchHomeData(
     const wantsNfl =
       nflPointer &&
       ([...actionGameIds].some((id) => nflWeekGameIds.has(id)) || nflHeld.length > 0);
-    const [slate, nflSlate] = await Promise.all([
+    const cbbHeld = cbbPointer ? (heldBySeason.get(cbbPointer.seasonId) ?? []) : [];
+    const wantsCbb =
+      cbbPointer &&
+      ([...actionGameIds].some((id) => cbbWeekGameIds.has(id)) || cbbHeld.length > 0);
+    const [slate, nflSlate, cbbSlate] = await Promise.all([
       fetchSlateView(
         supabase,
         seasonId,
@@ -782,8 +807,24 @@ export async function fetchHomeData(
             heldBySeason.get(nflPointer.seasonId) ?? [],
           )
         : Promise.resolve(null),
+      wantsCbb && cbbPointer
+        ? fetchSlateView(
+            supabase,
+            cbbPointer.seasonId,
+            cbbPointer.week,
+            null,
+            "regular",
+            null,
+            null,
+            cbbHeld,
+          )
+        : Promise.resolve(null),
     ]);
-    const actionGames = [...slate.games, ...(nflSlate?.games ?? [])].filter((g) =>
+    const actionGames = [
+      ...slate.games,
+      ...(nflSlate?.games ?? []),
+      ...(cbbSlate?.games ?? []),
+    ].filter((g) =>
       actionGameIds.has(g.id),
     );
     positions = buildPositions(actionGames, homePicks, homeBets);

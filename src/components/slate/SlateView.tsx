@@ -1,9 +1,11 @@
 "use client";
 
-import { ChevronDown, MonitorPlay, RefreshCw, Search, SearchX, Ticket, Users } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, MonitorPlay, RefreshCw, Search, SearchX, Ticket, Users } from "lucide-react";
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties } from "react";
 import type { SeasonType } from "../../lib/season";
 import { NFL_PLAYOFF_ROUNDS } from "../../lib/week-range";
+import { CBB_MAX_DAY, cbbDateOfDay, cbbDayIndex, cbbDayLabel, cbbTipSlot, isCbbLive } from "../../lib/cbb";
+import type { Sport } from "../../lib/league";
 import { onBetsChanged } from "../../lib/bets-changed";
 import { useFocusedGames, useStarred, useViewerTz } from "../../lib/client-store";
 import { useRundown, weekDirection } from "../../lib/fun-mode";
@@ -116,6 +118,11 @@ export function SlateView({
   const [picksOnly, setPicksOnly] = useState(false);
   const [sort, setSort] = useState<SortKey>("kickoff");
   const [query, setQuery] = useState("");
+  /* CBB-8. A college basketball night is 60 to 150 games and most of them are
+     on nobody's radar, so the basketball board opens on the games a book has
+     hung a number on (owner call, 2026-11-12) and this lifts that to all of
+     Division I. Football never reads it: every football game has a line. */
+  const [allGames, setAllGames] = useState(false);
 
   /* ---- URL state: filters are shareable and survive refresh ------------- */
 
@@ -146,6 +153,7 @@ export function SlateView({
       if (q) setQuery(q);
       const d = sp.get("day");
       if (d) setDay(d);
+      if (sp.get("all") === "1") setAllGames(true);
       urlReady.current = true;
     }, 0);
     return () => clearTimeout(t);
@@ -209,6 +217,7 @@ export function SlateView({
                 situation: held.situation,
                 lastPlay: held.lastPlay,
                 possession: held.possession,
+                hoops: held.hoops,
               };
             }),
           }));
@@ -237,6 +246,10 @@ export function SlateView({
               situation: row.current_situation,
               lastPlay: row.last_play,
               possession: row.possession,
+              // Basketball's line score, run and win probability ride the
+              // same row. Guarded on the game being basketball so a football
+              // event (hoops: null) can never write the key onto its card.
+              ...(g.sport === "cbb" ? { hoops: isCbbLive(row.hoops) ? row.hoops : null } : {}),
             }
           : g,
       ),
@@ -379,10 +392,16 @@ export function SlateView({
     const sp = new URLSearchParams(window.location.search);
     // Every key below is re-decided from state on each run, so each one is
     // cleared first — otherwise a filter turned OFF would keep its stale value.
-    for (const k of ["st", "week", "conf", "tv", "spread", "ranked", "mine", "bets", "picks", "sort", "q", "day"]) {
+    for (const k of ["st", "week", "date", "all", "conf", "tv", "spread", "ranked", "mine", "bets", "picks", "sort", "q", "day"]) {
       sp.delete(k);
     }
-    if (seasonType === "postseason") {
+    if (sport === "cbb") {
+      // The date, not the day index: a link that says `date=2026-11-14` can be
+      // read, shared and typed, and `week=13` cannot. Omitted on today's
+      // board, as the week is on the current week.
+      if (week !== currentWeek) sp.set("date", cbbDateOfDay(data.seasonId, week));
+      if (allGames) sp.set("all", "1");
+    } else if (seasonType === "postseason") {
       sp.set("st", "post");
       // NFL-6: the round IS the week, so omitting it made every round share one
       // URL — unlinkable, and Back skipped straight past them because the
@@ -426,7 +445,7 @@ export function SlateView({
     // differ from the URL.
     lastNavRef.current = { week, seasonType };
     fromPopRef.current = false;
-  }, [week, seasonType, sport, currentWeek, conference, network, spreadRange, rankedOnly, betsOnly, picksOnly, sort, query, day]);
+  }, [week, seasonType, sport, currentWeek, conference, network, spreadRange, rankedOnly, betsOnly, picksOnly, sort, query, day, allGames, data.seasonId]);
 
   /* Back and Forward have to move the grid, not just the address bar.
    *
@@ -444,9 +463,19 @@ export function SlateView({
       // Absent `week` means the current week — the effect above omits it in
       // exactly that case, so the inverse has to restore it.
       const raw = sp.get("week");
+      // Basketball's history entries carry `date=` (see the writer above).
+      const dated = sport === "cbb" ? sp.get("date") : null;
+      const fromDate = dated ? cbbDayIndex(data.seasonId, dated) : null;
       // Absent `week` means the current week in the regular season, but round 1
       // in the postseason — the writer above omits it for CFB bowls.
-      const w = raw !== null ? Number(raw) : st === "postseason" ? 1 : currentWeek;
+      const w =
+        fromDate !== null
+          ? fromDate
+          : raw !== null
+            ? Number(raw)
+            : st === "postseason"
+              ? 1
+              : currentWeek;
       if (!Number.isFinite(w)) return;
       if (w === weekRef.current && st === seasonType) return;
       const apply = () => {
@@ -472,7 +501,7 @@ export function SlateView({
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, [demo, currentWeek, seasonType, refresh, vtOn]);
+  }, [demo, currentWeek, seasonType, refresh, vtOn, sport, data.seasonId]);
 
   /* ---- derived --------------------------------------------------------- */
 
@@ -498,15 +527,38 @@ export function SlateView({
     [games],
   );
 
+  /* CBB-8: which basketball games have a number. The default board is these;
+     a game you have money on, a game being played and a game on your Focus row
+     are never hidden by it, because "where did my bet go" is a worse failure
+     than a longer list. Off — showing everything — whenever nothing on the
+     board has a line yet (before the morning feed), so an early look at
+     tomorrow is the schedule rather than an empty page. */
+  const hoops = sport === "cbb" && !liveView;
+  const linedCount = useMemo(
+    () => games.filter((g) => g.lines.spread !== null || g.lines.total !== null).length,
+    [games],
+  );
+  const linedOnly = hoops && !allGames && linedCount > 0;
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const maxSpread = SPREAD_RANGES.find((r) => r.key === spreadRange)?.max ?? Infinity;
     return games.filter((g) => {
+      if (
+        linedOnly &&
+        g.lines.spread === null &&
+        g.lines.total === null &&
+        g.myBets.length === 0 &&
+        g.groupBets.length === 0 &&
+        !isLive(g) &&
+        !focusedIds.includes(g.id)
+      )
+        return false;
       if (day !== "all" && (!g.startTs || dayKey(g.startTs, tz) !== day)) return false;
       if (conference !== "all" && g.home.conference !== conference && g.away.conference !== conference)
         return false;
       if (network !== "all" && g.tv !== network) return false;
-      if (rankedOnly && !isRankedMatchup(g)) return false;
+      if (rankedOnly && !(hoops ? hasRankedTeam(g) : isRankedMatchup(g))) return false;
       // Independent, and OR'd when both are on: "show me everything I'm in on"
       // is still one tap away, but "show me only what I have money on" is now
       // expressible at all.
@@ -530,7 +582,7 @@ export function SlateView({
         return false;
       return true;
     });
-  }, [games, day, conference, network, rankedOnly, betsOnly, picksOnly, spreadRange, query, tz]);
+  }, [games, day, conference, network, rankedOnly, betsOnly, picksOnly, spreadRange, query, tz, linedOnly, hoops, focusedIds]);
 
   const sorted = useMemo(() => {
     const starredSet = new Set([...starred, ...favoriteTeamIds]);
@@ -590,9 +642,17 @@ export function SlateView({
       // for CFB Saturdays, Early/Late window/Primetime for NFL Sundays
       const slotOf = sport === "nfl" ? nflKickSlot : kickSlot;
       for (const g of upcoming) {
-        const title = g.startTs
-          ? `${dayTabLabel(g.startTs, tz)} · ${slotOf(g.startTs)}`
-          : "Kickoff TBD";
+        // A basketball board is one night, so the day is the page's own
+        // heading and the section says only which window: Afternoon, Evening
+        // or Late. Read off the game, not the slate, so the mixed Live view
+        // cannot mislabel one.
+        const title = !g.startTs
+          ? g.sport === "cbb"
+            ? "Tip TBD"
+            : "Kickoff TBD"
+          : g.sport === "cbb"
+            ? cbbTipSlot(g.startTs)
+            : `${dayTabLabel(g.startTs, tz)} · ${slotOf(g.startTs)}`;
         const last = slotted[slotted.length - 1];
         if (last && last.title === title) last.games.push(g);
         else slotted.push({ key: `pre-${slotted.length}`, title, games: [g] });
@@ -608,7 +668,7 @@ export function SlateView({
     ].filter((s) => s.games.length > 0);
   }, [sorted, sort, tz, sport]);
 
-  const rankedCount = games.filter(isRankedMatchup).length;
+  const rankedCount = games.filter(hoops ? hasRankedTeam : isRankedMatchup).length;
   const record = weekModelRecord(games);
   const finals = games.filter(isFinal).length;
 
@@ -654,23 +714,37 @@ export function SlateView({
               control still says "there is a choice here". */}
           {!liveView && (
             <>
-              <WeekSelect
-                week={week}
-                seasonType={seasonType}
-                sport={sport}
-                currentWeek={currentWeek}
-                minWeek={minWeek}
-                onChange={changeWeek}
-                disabled={demo}
-              />
+              {sport === "cbb" ? (
+                /* Basketball is played by the day, so the week selector and
+                   the day tabs — which exist to cut a Thursday-to-Monday
+                   football week into its days — collapse into one control. */
+                <DayNav
+                  seasonId={data.seasonId}
+                  day={week}
+                  today={currentWeek}
+                  onChange={changeWeek}
+                />
+              ) : (
+                <>
+                  <WeekSelect
+                    week={week}
+                    seasonType={seasonType}
+                    sport={sport}
+                    currentWeek={currentWeek}
+                    minWeek={minWeek}
+                    onChange={changeWeek}
+                    disabled={demo}
+                  />
 
-              {/* toggle buttons, not ARIA tabs — no tabpanel/arrow-key contract here */}
-              <div className="flex items-center gap-1" aria-label="Filter by day">
-                <DayTab label="All" active={day === "all"} onClick={() => setDay("all")} />
-                {dayTabs.map(({ key, label }) => (
-                  <DayTab key={key} label={label} active={day === key} onClick={() => setDay(key)} />
-                ))}
-              </div>
+                  {/* toggle buttons, not ARIA tabs — no tabpanel/arrow-key contract here */}
+                  <div className="flex items-center gap-1" aria-label="Filter by day">
+                    <DayTab label="All" active={day === "all"} onClick={() => setDay("all")} />
+                    {dayTabs.map(({ key, label }) => (
+                      <DayTab key={key} label={label} active={day === key} onClick={() => setDay(key)} />
+                    ))}
+                  </div>
+                </>
+              )}
             </>
           )}
 
@@ -701,6 +775,8 @@ export function SlateView({
       <div className="mx-auto mt-4 max-w-7xl">
         <div className="scroll-thin flex items-stretch gap-2 overflow-x-auto pb-1">
           <SummaryStat label="Games" value={String(games.length)} />
+          {/* How much of the night the default board is showing (CBB-8). */}
+          {hoops && <SummaryStat label="With a line" value={String(linedCount)} />}
           <SummaryStat label="Ranked" value={String(rankedCount)} />
           <SummaryStat label="Finals" value={`${finals}/${games.length}`} />
           {record.wins + record.losses + record.pushes > 0 && (
@@ -751,6 +827,17 @@ export function SlateView({
             onChange={setSpreadRange}
             options={SPREAD_RANGES.map((r): [string, string] => [r.key, r.label])}
           />
+          {/* CBB-8. Leads the toggles: it is the one that changes how many
+              games exist, where the others narrow what is already there. Shown
+              only while it would do something — a board with no lines yet is
+              already showing everything. */}
+          {hoops && linedCount > 0 && linedCount < games.length && (
+            <FilterToggle
+              label={`All ${games.length} games`}
+              active={allGames}
+              onClick={() => setAllGames(!allGames)}
+            />
+          )}
           <FilterToggle label="Ranked" active={rankedOnly} onClick={() => setRankedOnly(!rankedOnly)} />
           {/* The two products, side by side and independent. Icons because the
               distinction is the point and two words that both start with "my"
@@ -859,13 +946,20 @@ export function SlateView({
                posted", which would be wrong and alarming on a Tuesday. */
             <EmptyState
               title="Nothing is live right now"
-              hint="This view fills up the moment a game kicks off, in either league. Until then, CFB and NFL have the week's board."
+              hint="This view fills up the moment a game starts, in any league. Until then, CFB, NFL and CBB each have their own board."
             />
           ) : (
-            <EmptyState
-              title={`No games on the board for week ${week} yet`}
-              hint="Games appear here once the week's schedule is posted — check back closer to kickoff."
-            />
+            sport === "cbb" ? (
+              <EmptyState
+                title={`No games on ${cbbDayLabel(cbbDateOfDay(data.seasonId, week))}`}
+                hint="Nothing is scheduled that day, or the schedule has not been posted yet. The arrows step to the next day that has games."
+              />
+            ) : (
+              <EmptyState
+                title={`No games on the board for week ${week} yet`}
+                hint="Games appear here once the week's schedule is posted — check back closer to kickoff."
+              />
+            )
           )
         ) : sorted.length === 0 ? (
           <EmptyState
@@ -990,6 +1084,15 @@ function isRankedMatchup(g: GameView): boolean {
   return hr !== null && hr <= 25 && ar !== null && ar <= 25;
 }
 
+/** Basketball's "Ranked": either side in the AP Top 25. Two ranked teams
+ *  meeting is a few games a week; one ranked team playing is the night's
+ *  watch list, which is what the toggle is for there. */
+function hasRankedTeam(g: GameView): boolean {
+  const hr = displayRank(g.home);
+  const ar = displayRank(g.away);
+  return (hr !== null && hr <= 25) || (ar !== null && ar <= 25);
+}
+
 function absOr(v: number | null, fallback: number): number {
   return v === null ? fallback : Math.abs(v);
 }
@@ -1024,7 +1127,7 @@ function SportToggle({
   live,
   liveCount,
 }: {
-  sport: "cfb" | "nfl";
+  sport: Sport;
   /** UX-36: the cross-league Live view is selected. */
   live: boolean;
   /** Live games in the CURRENT view, used only to badge the segment. */
@@ -1075,7 +1178,89 @@ function SportToggle({
       >
         NFL
       </a>
+      <a
+        href="/slate?sport=cbb"
+        className={seg(!live && sport === "cbb")}
+        aria-current={!live && sport === "cbb" ? "page" : undefined}
+      >
+        CBB
+      </a>
     </nav>
+  );
+}
+
+/**
+ * The basketball board's day control: back a day, the date, forward a day,
+ * and a way home (CBB-8).
+ *
+ * A stepper rather than a long select because the question is almost always
+ * "last night" or "tomorrow" — one tap either way — and the date in the
+ * middle is still a select for the rarer jump to Saturday. The list is the
+ * two weeks behind and the week ahead (as far as the schedule is synced),
+ * plus whichever day is in view when a link lands outside that.
+ *
+ * Chevrons are 44px targets with 32px of ink, the SportToggle's trick, and
+ * the date is tabular so stepping through days moves nothing beside it.
+ */
+function DayNav({
+  seasonId,
+  day,
+  today,
+  onChange,
+}: {
+  seasonId: number;
+  /** The day in view, as stored in `games.week`. */
+  day: number;
+  /** The board's current day — see `currentCbbDay`. */
+  today: number;
+  onChange: (day: number) => void;
+}) {
+  const label = (d: number) => cbbDayLabel(cbbDateOfDay(seasonId, d));
+  const from = Math.max(0, Math.min(day, today - 14));
+  const to = Math.min(CBB_MAX_DAY, Math.max(day, today + 7));
+  const days = Array.from({ length: to - from + 1 }, (_, i) => from + i);
+  const step =
+    "flex min-h-11 -my-1.5 w-9 shrink-0 items-center justify-center rounded-lg text-dim transition-colors hover:bg-surface hover:text-chalk disabled:opacity-30 disabled:hover:bg-transparent";
+  return (
+    <div className="flex shrink-0 items-center gap-0.5">
+      <button
+        type="button"
+        className={step}
+        onClick={() => onChange(day - 1)}
+        disabled={day <= 0}
+        aria-label={`Previous day, ${label(day - 1)}`}
+      >
+        <ChevronLeft size={16} aria-hidden />
+      </button>
+      <label className="relative shrink-0">
+        <span className="sr-only">Day</span>
+        <select
+          value={day}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="display stat h-8 appearance-none rounded-lg border border-chalk/12 bg-surface pl-3 pr-8 text-base text-chalk focus:border-accent/60 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+        >
+          {days.map((d) => (
+            <option key={d} value={d}>
+              {d === today ? `Today · ${label(d)}` : label(d)}
+            </option>
+          ))}
+        </select>
+        <ChevronDown
+          size={14}
+          aria-hidden
+          className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-dim"
+        />
+      </label>
+      <button
+        type="button"
+        className={step}
+        onClick={() => onChange(day + 1)}
+        disabled={day >= CBB_MAX_DAY}
+        aria-label={`Next day, ${label(day + 1)}`}
+      >
+        <ChevronRight size={16} aria-hidden />
+      </button>
+    </div>
   );
 }
 
@@ -1090,7 +1275,7 @@ function WeekSelect({
 }: {
   week: number;
   seasonType: "preseason" | "regular" | "postseason";
-  sport: "cfb" | "nfl";
+  sport: Sport;
   currentWeek: number;
   /** 0 when the season has a Week 0 — the last Saturday of August. */
   minWeek?: number;

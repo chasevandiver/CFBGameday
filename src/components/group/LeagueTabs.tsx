@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Sport } from "../../lib/league";
 
 /**
- * CFB / NFL, for a group that plays both.
+ * CFB / NFL / CBB, for a group that plays more than one.
  *
  * The two leagues do not share a calendar — NFL week 2 and CFB week 3 are the
  * same weekend, the NFL has a preseason and four playoff rounds, CFB has a
@@ -39,14 +39,16 @@ export function LeagueTabs({
   if (leagues.length < 2) return null;
   const hrefFor = (l: Sport | null): string => {
     const qs = new URLSearchParams();
-    if (l !== null && (all || l === "nfl")) qs.set("league", l);
+    // CFB is the default and its links carry no param; every other league
+    // names itself, as does CFB once "All" has taken the bare route.
+    if (l !== null && (all || l !== "cfb")) qs.set("league", l);
     for (const [k, v] of Object.entries(extra)) if (v) qs.set(k, v);
     const q = qs.toString();
     return q ? `${base}?${q}` : base;
   };
   const tabs: Array<Sport | null> = [
     ...(all ? [null] : []),
-    ...(["cfb", "nfl"] as const).filter((l) => leagues.includes(l)),
+    ...(["cfb", "nfl", "cbb"] as const).filter((l) => leagues.includes(l)),
   ];
   return (
     <nav aria-label="League" className="mb-3 flex items-center gap-1">

@@ -1,0 +1,34 @@
+{
+ "conferences": [
+  {
+   "groupId": "50",
+   "shortName": "Division I",
+   "name": "NCAA Division I"
+  },
+  {
+   "groupId": "3",
+   "shortName": "A-10",
+   "name": "Atlantic 10 Conference"
+  },
+  {
+   "groupId": "2",
+   "shortName": "ACC",
+   "name": "Atlantic Coast Conference"
+  },
+  {
+   "groupId": "1",
+   "shortName": "Am. East",
+   "name": "America East Conference"
+  },
+  {
+   "groupId": "62",
+   "shortName": "American",
+   "name": "American Conference"
+  },
+  {
+   "groupId": "46",
+   "shortName": "Atlantic Sun",
+   "name": "Atlantic Sun Conference"
+  }
+ ]
+}

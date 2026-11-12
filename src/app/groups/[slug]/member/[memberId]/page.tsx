@@ -54,7 +54,7 @@ export default async function GroupMemberPage({
   const { slug, memberId } = await params;
   const { league: leagueParam } = await searchParams;
   const league: Sport | null =
-    leagueParam === "nfl" ? "nfl" : leagueParam === "cfb" ? "cfb" : null;
+    leagueParam === "nfl" || leagueParam === "cfb" || leagueParam === "cbb" ? leagueParam : null;
   const supabase = await createClient();
   const {
     data: { user },
@@ -144,7 +144,7 @@ export default async function GroupMemberPage({
       <AppNav />
       <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
         <Link
-          href={`/groups/${active.slug}${league === "nfl" ? "?league=nfl" : ""}`}
+          href={`/groups/${active.slug}${league === "nfl" || league === "cbb" ? `?league=${league}` : ""}`}
           className="stat inline-flex min-h-11 items-center gap-1.5 text-xs text-dim hover:text-chalk"
         >
           <ArrowLeft size={13} aria-hidden />
@@ -185,6 +185,9 @@ export default async function GroupMemberPage({
         <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
           <Stat label="CFB" t={member.leagueSplit.cfb} />
           <Stat label="NFL" t={member.leagueSplit.nfl} />
+          {/* Basketball, once they have bet any. A tile reading 0-0 from
+              August to November on every member's page would be noise. */}
+          {member.leagueSplit.cbb.decided > 0 && <Stat label="CBB" t={member.leagueSplit.cbb} />}
           <Stat label="They open" t={s.originated} hint="Bets where they were first in the group" />
           <Stat
             label="Others tailing them"

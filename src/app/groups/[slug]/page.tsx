@@ -74,7 +74,7 @@ export default async function GroupHomePage({
   /* A both-league group holds one board per league per week (separate
      group_week_config rows under separate season ids); ?league= says which is
      in view. A survivor pool carries its single league in the same column, so
-     it resolves the same way. A betting group is always both (`groupLeagues`):
+     it resolves the same way. A betting group is always all of them (`groupLeagues`):
      its sheet is one week of one league at a time, on that league's own
      calendar — this used to pin it to CFB, and a CFB week ends on Saturday
      night, so NFL Sundays never made the sheet (GRP-12). */
@@ -284,7 +284,9 @@ export default async function GroupHomePage({
           isAdmin={active.role === "admin"}
           signedIn={!!user}
           share={shareContext}
-          league={league}
+          // The betting branch returned above; a pick'em group's leagues are
+          // football by schema, so this narrows a type and changes no answer.
+          league={league === "nfl" ? "nfl" : "cfb"}
         />
 
         {/* ---- standings ---- */}

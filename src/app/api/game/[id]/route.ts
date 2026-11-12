@@ -21,7 +21,7 @@ export async function GET(
   const { data } = await supabase
     .from("games")
     .select(
-      "id, status, home_points, away_points, current_period, current_clock, current_situation, last_play, possession",
+      "id, status, home_points, away_points, current_period, current_clock, current_situation, last_play, possession, hoops",
     )
     .eq("id", gameId)
     .maybeSingle();

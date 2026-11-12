@@ -1,0 +1,206 @@
+{
+ "header": {
+  "schema_version": "1.0",
+  "kind": "slate",
+  "sport": "cbb",
+  "league": "NCAAM",
+  "sport_name": "College Basketball",
+  "model": {
+   "name": "courtside-edge",
+   "version": "4.1.0"
+  },
+  "generated_at": "2026-11-11T16:22:54.220588-05:00",
+  "season": 2027,
+  "season_label": "2026-27",
+  "slate_date": "2026-11-11"
+ },
+ "HOME_FAV_BEST_BET": {
+  "id": "cbb:401918992",
+  "sport": "cbb",
+  "season": 2027,
+  "slate_date": "2026-11-11",
+  "game_id": "401918992",
+  "start_time": "2026-11-11T20:00Z",
+  "status": "pending",
+  "home": {
+   "name": "Saint Joseph's Hawks",
+   "abbr": "JOES",
+   "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2603.png",
+   "record": "2-0",
+   "rank": null
+  },
+  "away": {
+   "name": "South Florida Bulls",
+   "abbr": "USF",
+   "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/58.png",
+   "record": "1-1",
+   "rank": null
+  },
+  "model": {
+   "version": "4.1.0",
+   "spread_home": 4.2,
+   "total": 146.0,
+   "home_score": 70.9,
+   "away_score": 75.1,
+   "home_win_prob": 35.2,
+   "confidence": 65.2,
+   "confidence_tier": "medium",
+   "pick": {
+    "team": "South Florida Bulls",
+    "abbr": "USF",
+    "side": "away"
+   }
+  },
+  "market": {
+   "spread_home": -7.5,
+   "total": 151.5,
+   "favorite": "USF -7.5",
+   "bookmaker": "espn",
+   "captured_at": null
+  },
+  "closing": null,
+  "edge": {
+   "spread": -11.7,
+   "total": -5.5,
+   "value_rating": 3.3,
+   "is_best_bet": true
+  },
+  "bet": {
+   "side": "away",
+   "cover_line": 7.5
+  },
+  "tags": [
+   "best_bet",
+   "value",
+   "tournament"
+  ]
+ },
+ "AWAY_FAV": {
+  "id": "cbb:401921005",
+  "sport": "cbb",
+  "season": 2027,
+  "slate_date": "2026-11-11",
+  "game_id": "401921005",
+  "start_time": "2026-11-11T17:00Z",
+  "status": "pending",
+  "home": {
+   "name": "Florida A&M Rattlers",
+   "abbr": "FAMU",
+   "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/50.png",
+   "record": "0-4",
+   "rank": null
+  },
+  "away": {
+   "name": "Kansas City Roos",
+   "abbr": "KC",
+   "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/140.png",
+   "record": "2-2",
+   "rank": null
+  },
+  "model": {
+   "version": "4.1.0",
+   "spread_home": 1.3,
+   "total": 151.8,
+   "home_score": 75.3,
+   "away_score": 76.5,
+   "home_win_prob": 45.4,
+   "confidence": 74.0,
+   "confidence_tier": "high",
+   "pick": {
+    "team": "Kansas City Roos",
+    "abbr": "KC",
+    "side": "away"
+   }
+  },
+  "market": {
+   "spread_home": 6.5,
+   "total": 143.5,
+   "favorite": "UMKC Kangaroos",
+   "bookmaker": "draftkings",
+   "captured_at": null
+  },
+  "closing": null,
+  "edge": {
+   "spread": 5.2,
+   "total": 8.3,
+   "value_rating": 5.2,
+   "is_best_bet": true
+  },
+  "bet": {
+   "side": "home",
+   "cover_line": -6.5
+  },
+  "tags": [
+   "best_bet",
+   "value",
+   "high_confidence",
+   "tournament"
+  ]
+ },
+ "NO_LINE": null,
+ "MOVED_CLOSE": {
+  "id": "cbb:401921133",
+  "sport": "cbb",
+  "season": 2027,
+  "slate_date": "2026-11-05",
+  "game_id": "401921133",
+  "start_time": "2026-11-06T02:00Z",
+  "status": "final",
+  "home": {
+   "name": "Texas Tech Red Raiders",
+   "abbr": "TTU",
+   "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2641.png",
+   "record": "1-0",
+   "rank": 19
+  },
+  "away": {
+   "name": "Bethune-Cookman Wildcats",
+   "abbr": "BCU",
+   "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2065.png",
+   "record": "0-1",
+   "rank": null
+  },
+  "model": {
+   "version": "4.1.0",
+   "spread_home": -21.9,
+   "total": 153.1,
+   "home_score": 87.5,
+   "away_score": 65.6,
+   "home_win_prob": 97.7,
+   "confidence": 65.0,
+   "confidence_tier": "medium",
+   "pick": {
+    "team": "Texas Tech Red Raiders",
+    "abbr": "TTU",
+    "side": "home"
+   }
+  },
+  "market": {
+   "spread_home": -28.5,
+   "total": 149.5,
+   "favorite": "Texas Tech Red Raiders",
+   "bookmaker": "fanduel",
+   "captured_at": null
+  },
+  "closing": {
+   "spread_home": -30.5,
+   "total": 149.5,
+   "favorite": "Texas Tech Red Raiders",
+   "bookmaker": "fanduel",
+   "captured_at": "2026-11-05T20:42:19.239171-05:00"
+  },
+  "edge": {
+   "spread": -6.6,
+   "total": 3.6,
+   "value_rating": 6.6,
+   "is_best_bet": false
+  },
+  "bet": {
+   "side": "away",
+   "cover_line": 28.5
+  },
+  "tags": [
+   "value"
+  ]
+ }
+}

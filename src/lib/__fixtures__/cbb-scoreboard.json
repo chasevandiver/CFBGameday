@@ -1,0 +1,725 @@
+{
+ "HALFTIME": {
+  "id": "401918054",
+  "name": "USC Trojans at California Golden Bears",
+  "date": "2026-11-12T04:00Z",
+  "season": {
+   "year": 2027,
+   "type": 2
+  },
+  "competitions": [
+   {
+    "neutralSite": false,
+    "timeValid": true,
+    "conferenceCompetition": false,
+    "venue": {
+     "id": "496",
+     "fullName": "Haas Pavilion",
+     "address": {
+      "city": "Berkeley",
+      "state": "CA"
+     },
+     "indoor": true
+    },
+    "broadcasts": [
+     {
+      "names": [
+       "ESPN2"
+      ]
+     }
+    ],
+    "notes": [],
+    "status": {
+     "displayClock": "0:00",
+     "period": 1,
+     "type": {
+      "name": "STATUS_HALFTIME",
+      "state": "in",
+      "completed": false
+     }
+    },
+    "situation": {
+     "lastPlay": {
+      "text": "End of 1st half",
+      "type": {
+       "text": "End Period"
+      },
+      "scoreValue": 0
+     }
+    },
+    "competitors": [
+     {
+      "homeAway": "home",
+      "score": "30",
+      "team": {
+       "id": "25",
+       "abbreviation": "CAL",
+       "displayName": "California Golden Bears",
+       "shortDisplayName": "California",
+       "location": "California",
+       "name": "Golden Bears",
+       "color": "041e42",
+       "alternateColor": "ffc72c",
+       "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/25.png",
+       "conferenceId": "2"
+      },
+      "linescores": [
+       {
+        "value": 30.0,
+        "period": 1
+       }
+      ],
+      "curatedRank": {
+       "current": 99
+      },
+      "records": [
+       {
+        "type": "total",
+        "summary": "2-1"
+       },
+       {
+        "type": "home",
+        "summary": "2-0"
+       },
+       {
+        "type": "road",
+        "summary": "0-0"
+       },
+       {
+        "type": "vsconf",
+        "summary": "0-0"
+       }
+      ]
+     },
+     {
+      "homeAway": "away",
+      "score": "39",
+      "team": {
+       "id": "30",
+       "abbreviation": "USC",
+       "displayName": "USC Trojans",
+       "shortDisplayName": "USC",
+       "location": "USC",
+       "name": "Trojans",
+       "color": "9d2235",
+       "alternateColor": "ffc72c",
+       "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/30.png",
+       "conferenceId": "7"
+      },
+      "linescores": [
+       {
+        "value": 39.0,
+        "period": 1
+       }
+      ],
+      "curatedRank": {
+       "current": 21
+      },
+      "records": [
+       {
+        "type": "total",
+        "summary": "2-0"
+       },
+       {
+        "type": "home",
+        "summary": "1-0"
+       },
+       {
+        "type": "road",
+        "summary": "0-0"
+       },
+       {
+        "type": "vsconf",
+        "summary": "0-0"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "LIVE": {
+  "id": "401917523",
+  "name": "Pacific Tigers at Long Beach State Beach",
+  "date": "2026-11-12T03:00Z",
+  "season": {
+   "year": 2027,
+   "type": 2
+  },
+  "competitions": [
+   {
+    "neutralSite": false,
+    "timeValid": true,
+    "conferenceCompetition": false,
+    "venue": {
+     "id": "539",
+     "fullName": "LBS Financial Credit Union Pyramid",
+     "address": {
+      "city": "Long Beach",
+      "state": "CA"
+     },
+     "indoor": true
+    },
+    "broadcasts": [
+     {
+      "names": [
+       "ESPN+"
+      ]
+     }
+    ],
+    "notes": [],
+    "status": {
+     "displayClock": "0:23",
+     "period": 2,
+     "type": {
+      "name": "STATUS_IN_PROGRESS",
+      "state": "in",
+      "completed": false
+     }
+    },
+    "situation": {
+     "lastPlay": {
+      "text": "Pacific Timeout",
+      "type": {
+       "text": "RegularTimeOut"
+      },
+      "scoreValue": 0,
+      "team": {
+       "id": "279"
+      },
+      "probability": {
+       "tiePercentage": 0.0,
+       "homeWinPercentage": 0.755,
+       "awayWinPercentage": 0.245
+      }
+     }
+    },
+    "competitors": [
+     {
+      "homeAway": "home",
+      "score": "60",
+      "team": {
+       "id": "299",
+       "abbreviation": "LBSU",
+       "displayName": "Long Beach State Beach",
+       "shortDisplayName": "Long Beach St",
+       "location": "Long Beach State",
+       "name": "Beach",
+       "color": "000000",
+       "alternateColor": "f1f2f3",
+       "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/299.png",
+       "conferenceId": "9"
+      },
+      "linescores": [
+       {
+        "value": 33.0,
+        "period": 1
+       },
+       {
+        "value": 27.0,
+        "period": 2
+       }
+      ],
+      "curatedRank": {
+       "current": 99
+      },
+      "records": [
+       {
+        "type": "total",
+        "summary": "0-2"
+       },
+       {
+        "type": "home",
+        "summary": "0-0"
+       },
+       {
+        "type": "road",
+        "summary": "0-2"
+       },
+       {
+        "type": "vsconf",
+        "summary": "0-0"
+       }
+      ]
+     },
+     {
+      "homeAway": "away",
+      "score": "57",
+      "team": {
+       "id": "279",
+       "abbreviation": "PAC",
+       "displayName": "Pacific Tigers",
+       "shortDisplayName": "Pacific",
+       "location": "Pacific",
+       "name": "Tigers",
+       "color": "F47820",
+       "alternateColor": "c2c3c0",
+       "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/279.png",
+       "conferenceId": "29"
+      },
+      "linescores": [
+       {
+        "value": 34.0,
+        "period": 1
+       },
+       {
+        "value": 23.0,
+        "period": 2
+       }
+      ],
+      "curatedRank": {
+       "current": 99
+      },
+      "records": [
+       {
+        "type": "total",
+        "summary": "2-0"
+       },
+       {
+        "type": "home",
+        "summary": "1-0"
+       },
+       {
+        "type": "road",
+        "summary": "1-0"
+       },
+       {
+        "type": "vsconf",
+        "summary": "0-0"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "FINAL_RANKED": {
+  "id": "401925702",
+  "name": "Jacksonville State Gamecocks at Houston Cougars",
+  "date": "2026-11-12T01:00Z",
+  "season": {
+   "year": 2027,
+   "type": 2
+  },
+  "competitions": [
+   {
+    "neutralSite": false,
+    "timeValid": true,
+    "conferenceCompetition": false,
+    "venue": {
+     "id": "2126",
+     "fullName": "Fertitta Center",
+     "address": {
+      "city": "Houston",
+      "state": "TX"
+     },
+     "indoor": true
+    },
+    "broadcasts": [
+     {
+      "names": [
+       "ESPN+"
+      ]
+     }
+    ],
+    "notes": [],
+    "status": {
+     "displayClock": "0:00",
+     "period": 2,
+     "type": {
+      "name": "STATUS_FINAL",
+      "state": "post",
+      "completed": true
+     }
+    },
+    "situation": null,
+    "competitors": [
+     {
+      "homeAway": "home",
+      "score": "92",
+      "team": {
+       "id": "248",
+       "abbreviation": "HOU",
+       "displayName": "Houston Cougars",
+       "shortDisplayName": "Houston",
+       "location": "Houston",
+       "name": "Cougars",
+       "color": "c8102e",
+       "alternateColor": "ffffff",
+       "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",
+       "conferenceId": "8"
+      },
+      "linescores": [
+       {
+        "value": 45.0,
+        "period": 1
+       },
+       {
+        "value": 47.0,
+        "period": 2
+       }
+      ],
+      "curatedRank": {
+       "current": 8
+      },
+      "records": [
+       {
+        "type": "total",
+        "summary": "3-0"
+       },
+       {
+        "type": "home",
+        "summary": "2-0"
+       },
+       {
+        "type": "road",
+        "summary": "0-0"
+       },
+       {
+        "type": "vsconf",
+        "summary": "0-0"
+       }
+      ]
+     },
+     {
+      "homeAway": "away",
+      "score": "46",
+      "team": {
+       "id": "55",
+       "abbreviation": "JXST",
+       "displayName": "Jacksonville State Gamecocks",
+       "shortDisplayName": "Jax State",
+       "location": "Jacksonville State",
+       "name": "Gamecocks",
+       "color": "cc0000",
+       "alternateColor": "000000",
+       "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/55.png",
+       "conferenceId": "11"
+      },
+      "linescores": [
+       {
+        "value": 23.0,
+        "period": 1
+       },
+       {
+        "value": 23.0,
+        "period": 2
+       }
+      ],
+      "curatedRank": {
+       "current": 99
+      },
+      "records": [
+       {
+        "type": "total",
+        "summary": "1-2"
+       },
+       {
+        "type": "home",
+        "summary": "1-0"
+       },
+       {
+        "type": "road",
+        "summary": "0-2"
+       },
+       {
+        "type": "vsconf",
+        "summary": "0-0"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "FINAL_NEUTRAL": {
+  "id": "401921005",
+  "name": "Kansas City Roos at Florida A&M Rattlers",
+  "date": "2026-11-11T17:00Z",
+  "season": {
+   "year": 2027,
+   "type": 2
+  },
+  "competitions": [
+   {
+    "neutralSite": true,
+    "timeValid": true,
+    "conferenceCompetition": false,
+    "venue": {
+     "id": "6017",
+     "fullName": "McArthur Center",
+     "address": {
+      "city": "St. Petersburg",
+      "state": "FL"
+     },
+     "indoor": true
+    },
+    "broadcasts": [
+     {
+      "names": [
+       "YouTube"
+      ]
+     }
+    ],
+    "notes": [
+     {
+      "headline": "Showdown in St. Pete"
+     }
+    ],
+    "status": {
+     "displayClock": "0:00",
+     "period": 2,
+     "type": {
+      "name": "STATUS_FINAL",
+      "state": "post",
+      "completed": true
+     }
+    },
+    "situation": null,
+    "competitors": [
+     {
+      "homeAway": "home",
+      "score": "65",
+      "team": {
+       "id": "50",
+       "abbreviation": "FAMU",
+       "displayName": "Florida A&M Rattlers",
+       "shortDisplayName": "Florida A&M",
+       "location": "Florida A&M",
+       "name": "Rattlers",
+       "color": "F89728",
+       "alternateColor": "00843d",
+       "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/50.png",
+       "conferenceId": "26"
+      },
+      "linescores": [
+       {
+        "value": 21.0,
+        "period": 1
+       },
+       {
+        "value": 44.0,
+        "period": 2
+       }
+      ],
+      "curatedRank": {
+       "current": 99
+      },
+      "records": [
+       {
+        "type": "total",
+        "summary": "0-4"
+       },
+       {
+        "type": "home",
+        "summary": "0-1"
+       },
+       {
+        "type": "road",
+        "summary": "0-1"
+       },
+       {
+        "type": "vsconf",
+        "summary": "0-0"
+       }
+      ]
+     },
+     {
+      "homeAway": "away",
+      "score": "87",
+      "team": {
+       "id": "140",
+       "abbreviation": "KC",
+       "displayName": "Kansas City Roos",
+       "shortDisplayName": "Kansas City",
+       "location": "Kansas City",
+       "name": "Roos",
+       "color": "004b87",
+       "alternateColor": "ffc72c",
+       "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/140.png",
+       "conferenceId": "49"
+      },
+      "linescores": [
+       {
+        "value": 51.0,
+        "period": 1
+       },
+       {
+        "value": 36.0,
+        "period": 2
+       }
+      ],
+      "curatedRank": {
+       "current": 99
+      },
+      "records": [
+       {
+        "type": "total",
+        "summary": "2-2"
+       },
+       {
+        "type": "home",
+        "summary": "1-0"
+       },
+       {
+        "type": "road",
+        "summary": "0-2"
+       },
+       {
+        "type": "vsconf",
+        "summary": "0-0"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "FINAL_OT": {
+  "id": "401919759",
+  "name": "Fairleigh Dickinson Knights at East Texas A&M Lions",
+  "date": "2026-11-11T16:30Z",
+  "season": {
+   "year": 2027,
+   "type": 2
+  },
+  "competitions": [
+   {
+    "neutralSite": false,
+    "timeValid": true,
+    "conferenceCompetition": false,
+    "venue": {
+     "id": "7339",
+     "fullName": "The Field House",
+     "address": {
+      "city": "Commerce",
+      "state": "TX"
+     },
+     "indoor": true
+    },
+    "broadcasts": [
+     {
+      "names": [
+       "ESPN+"
+      ]
+     }
+    ],
+    "notes": [],
+    "status": {
+     "displayClock": "0:00",
+     "period": 3,
+     "type": {
+      "name": "STATUS_FINAL",
+      "state": "post",
+      "completed": true
+     }
+    },
+    "situation": null,
+    "competitors": [
+     {
+      "homeAway": "home",
+      "score": "76",
+      "team": {
+       "id": "2837",
+       "abbreviation": "ETAM",
+       "displayName": "East Texas A&M Lions",
+       "shortDisplayName": "East Texas A&M",
+       "location": "East Texas A&M",
+       "name": "Lions",
+       "color": "000000",
+       "alternateColor": null,
+       "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2837.png",
+       "conferenceId": "25"
+      },
+      "linescores": [
+       {
+        "value": 37.0,
+        "period": 1
+       },
+       {
+        "value": 33.0,
+        "period": 2
+       },
+       {
+        "value": 6.0,
+        "period": 3
+       }
+      ],
+      "curatedRank": {
+       "current": 99
+      },
+      "records": [
+       {
+        "type": "total",
+        "summary": "2-1"
+       },
+       {
+        "type": "home",
+        "summary": "0-1"
+       },
+       {
+        "type": "road",
+        "summary": "2-0"
+       },
+       {
+        "type": "vsconf",
+        "summary": "0-0"
+       }
+      ]
+     },
+     {
+      "homeAway": "away",
+      "score": "80",
+      "team": {
+       "id": "161",
+       "abbreviation": "FDU",
+       "displayName": "Fairleigh Dickinson Knights",
+       "shortDisplayName": "FDU",
+       "location": "Fairleigh Dickinson",
+       "name": "Knights",
+       "color": "72293c",
+       "alternateColor": "28334a",
+       "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/161.png",
+       "conferenceId": "19"
+      },
+      "linescores": [
+       {
+        "value": 31.0,
+        "period": 1
+       },
+       {
+        "value": 39.0,
+        "period": 2
+       },
+       {
+        "value": 10.0,
+        "period": 3
+       }
+      ],
+      "curatedRank": {
+       "current": 99
+      },
+      "records": [
+       {
+        "type": "total",
+        "summary": "2-2"
+       },
+       {
+        "type": "home",
+        "summary": "1-0"
+       },
+       {
+        "type": "road",
+        "summary": "1-2"
+       },
+       {
+        "type": "vsconf",
+        "summary": "0-0"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

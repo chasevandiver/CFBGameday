@@ -3,7 +3,8 @@ import { AppNav } from "../../components/AppNav";
 import type { SignView } from "../../components/slate/CrowdSigns";
 import { SlateView } from "../../components/slate/SlateView";
 import { ACTIVE_GROUP_COOKIE, activeOfKind, resolveActiveGroup } from "../../lib/groups";
-import { seasonYearOf } from "../../lib/league";
+import { cbbDayIndex, isValidCbbDay } from "../../lib/cbb";
+import { seasonYearOf, type Sport } from "../../lib/league";
 import { resolveActingBettor } from "../../lib/log-for";
 import { fetchCurrentSeasonWeek, fetchLiveSlate, fetchSlateView } from "../../lib/queries";
 import { createClient } from "../../lib/supabase/server";
@@ -16,7 +17,15 @@ export const metadata = { title: "Slate" };
 export default async function SlatePage({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string; st?: string; g?: string; sport?: string; for?: string }>;
+  searchParams: Promise<{
+    week?: string;
+    st?: string;
+    g?: string;
+    sport?: string;
+    for?: string;
+    /** CBB only: the board date, `YYYY-MM-DD`. */
+    date?: string;
+  }>;
 }) {
   const supabase = await createClient();
   const {
@@ -29,6 +38,7 @@ export default async function SlatePage({
     g: groupParam,
     sport: sportParam,
     for: forParam,
+    date: dateParam,
   } = await searchParams;
   /* 0083: a betting-group admin opening the slate as one of their members.
      Resolved against the database's grant, never trusted from the URL; a
@@ -42,18 +52,36 @@ export default async function SlatePage({
   // other two are one league's week. Anything unrecognised is the default
   // league, as before.
   const liveView = sportParam === "live";
-  const sport = sportParam === "nfl" ? ("nfl" as const) : ("cfb" as const);
-  const { seasonId, week: currentWeek, seasonType, minWeek } = await fetchCurrentSeasonWeek(
-    supabase,
-    sport,
-  );
-  const parsed = Number(weekParam);
-  const hasWeekParam = isValidWeek(parsed);
+  const asked: Sport = sportParam === "nfl" ? "nfl" : sportParam === "cbb" ? "cbb" : "cfb";
+  /* Basketball needs its season row, and that row is created by a job run by
+     hand once a year (cbb-sync-reference). Before it exists the CBB tab falls
+     back to the football slate rather than throwing a 500 at the first person
+     to tap it; `fetchCurrentSeasonWeek` throwing for CFB is still a real
+     outage and still surfaces as one. */
+  const pointer =
+    asked === "cbb"
+      ? await fetchCurrentSeasonWeek(supabase, "cbb").then(
+          (p) => ({ sport: "cbb" as Sport, ...p }),
+          async () => ({ sport: "cfb" as Sport, ...(await fetchCurrentSeasonWeek(supabase, "cfb")) }),
+        )
+      : { sport: asked, ...(await fetchCurrentSeasonWeek(supabase, asked)) };
+  const { sport, seasonId, week: currentWeek, seasonType, minWeek } = pointer;
+  const hoops = sport === "cbb";
+  /* A basketball "week" is a day (src/lib/cbb.ts). The URL carries the date,
+     because a number of days since November 1 is not something anyone can
+     read, share or type; `?week=` is still honoured so the client's own
+     refresh and the Back button round-trip the stored value. */
+  const dayFromDate = hoops && dateParam ? cbbDayIndex(seasonId, dateParam) : null;
+  // `Number("")` is 0 and day 0 is a real day, so an empty `?week=` must not
+  // read as November 1. Football keeps its existing coercion untouched.
+  const parsed = hoops ? (dayFromDate ?? (weekParam ? Number(weekParam) : NaN)) : Number(weekParam);
+  const hasWeekParam = hoops ? isValidCbbDay(parsed) : isValidWeek(parsed);
   // ?st=post pins the bowls/CFP (or NFL playoffs) view; ?st=pre pins an NFL
   // preseason week; an explicit ?week= alone means the regular season;
   // otherwise the default follows the calendar through pre → regular → post.
-  const st =
-    stParam === "post"
+  const st = hoops
+    ? ("regular" as const)
+    : stParam === "post"
       ? ("postseason" as const)
       : stParam === "pre"
         ? ("preseason" as const)
@@ -124,7 +152,9 @@ export default async function SlatePage({
   // Signed-in and week-scoped only — the live view spans weeks and the wall
   // does not. Missing table (migration not applied yet) degrades to no wall.
   let signs: SignView[] = [];
-  if (user && !liveView) {
+  // Not on basketball: the wall is one per football week, and a wall per
+  // night of a 150-day season is a feature nobody asked for.
+  if (user && !liveView && !hoops) {
     const { data: signRows } = await supabase
       .from("crowd_signs")
       .select("user_id, body")
@@ -163,7 +193,7 @@ export default async function SlatePage({
           minWeek={minWeek}
           favoriteTeamIds={favoriteTeamIds}
           displayName={displayName}
-          signs={user && !liveView ? signs : null}
+          signs={user && !liveView && !hoops ? signs : null}
           signsWeek={week}
           poolName={pickemGroup?.name ?? null}
           actingFor={acting}

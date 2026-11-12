@@ -19,6 +19,9 @@
 import { normalizeProvider } from "./providers";
 
 const BASE_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/";
+/** College basketball (0084). Same host, same rules, same call counter. */
+const CBB_BASE_URL =
+  "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/";
 
 export class EspnError extends Error {
   constructor(
@@ -38,8 +41,8 @@ export function espnCallCount(): number {
 
 type Query = Record<string, string | number | boolean | undefined>;
 
-async function get<T>(endpoint: string, query: Query = {}): Promise<T> {
-  const url = new URL(endpoint, BASE_URL);
+async function get<T>(endpoint: string, query: Query = {}, base: string = BASE_URL): Promise<T> {
+  const url = new URL(endpoint, base);
   for (const [k, v] of Object.entries(query)) {
     if (v !== undefined) url.searchParams.set(k, String(v));
   }
@@ -139,7 +142,7 @@ export interface EspnEvent {
   status?: EspnStatus | null;
 }
 
-interface EspnStatus {
+export interface EspnStatus {
   displayClock?: string | null;
   period?: number | null;
   type?: {
@@ -329,7 +332,7 @@ export function parseEventOdds(
   };
 }
 
-function mapStatus(status: EspnStatus | null | undefined): NflScoreboardGame["status"] {
+export function mapStatus(status: EspnStatus | null | undefined): NflScoreboardGame["status"] {
   const name = status?.type?.name ?? "";
   if (name === "STATUS_POSTPONED") return "postponed";
   if (name === "STATUS_CANCELED" || name === "STATUS_FORFEIT") return "canceled";
@@ -346,7 +349,7 @@ function scoreOf(c: EspnCompetitor | undefined, started: boolean): number | null
 }
 
 /** Every distinct broadcast network, "NBC" or "CBS/Paramount+" style. */
-function tvOf(broadcasts: Array<{ names?: string[] | null }> | null | undefined): string | null {
+export function tvOf(broadcasts: Array<{ names?: string[] | null }> | null | undefined): string | null {
   const names = [...new Set((broadcasts ?? []).flatMap((b) => b.names ?? []))];
   return names.length ? names.join("/") : null;
 }
@@ -437,7 +440,7 @@ export function nflStoredWeek(
 }
 
 /** "a40227" → "#a40227"; passthrough for already-prefixed or null. */
-function hexColor(c: string | null | undefined): string | null {
+export function hexColor(c: string | null | undefined): string | null {
   if (!c) return null;
   return c.startsWith("#") ? c : `#${c}`;
 }
@@ -570,4 +573,27 @@ export const espn = {
         null,
     }));
   },
+};
+
+/**
+ * College basketball endpoints (0084). Wire shapes and the pure parsers live
+ * in `espn-cbb.ts`; the fetches are here because this is the only module
+ * allowed to talk to the host, and so every call lands on the same counter.
+ */
+export const espnCbb = {
+  /**
+   * One day's Division I board. `groups=50` is what makes it the whole
+   * division — without it ESPN returns the dozen-odd featured games and the
+   * rest of the night silently does not exist — and `limit` has to clear a
+   * 150-game Saturday. Omit `date` for ESPN's notion of today, which rolls
+   * over in the small hours Eastern rather than at midnight.
+   */
+  scoreboard: (date?: string) =>
+    get<unknown>("scoreboard", { groups: 50, limit: 400, dates: date }, CBB_BASE_URL),
+
+  /** Conference id → name. The board's teams carry only the id. */
+  conferences: () => get<unknown>("scoreboard/conferences", {}, CBB_BASE_URL),
+
+  /** One game's box score and play-by-play, for the game page. */
+  summary: (eventId: number) => get<unknown>("summary", { event: eventId }, CBB_BASE_URL),
 };

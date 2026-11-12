@@ -5,7 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useViewerTz } from "../../lib/client-store";
 import type { GameRow } from "../../lib/db-types";
 import type { PickMarket } from "../../lib/grade";
-import { breakLabel, DEFAULT_TZ, kickDateLong, kickParts, periodLabel, tzLabel } from "../../lib/kick";
+import { breakLabel, DEFAULT_TZ, kickDateLong, kickParts, overtimeSuffix, periodLabel, tzLabel } from "../../lib/kick";
+import { isCbbLive, type CbbLive } from "../../lib/cbb";
 import { statusForBet, statusForPick } from "../../lib/live-status";
 import { watchLabel } from "../../lib/watch-on";
 import {
@@ -40,6 +41,8 @@ export interface GameLiveState {
   situation: string | null;
   lastPlay: string | null;
   possession: "home" | "away" | null;
+  /** CBB only: line score, run and ESPN's live win probability. */
+  hoops?: CbbLive | null;
 }
 
 interface Props {
@@ -97,16 +100,21 @@ export function GameHeader({
   // Appended in the update handlers (never during render).
   const probOf = useCallback(
     (s: GameLiveState): number | null =>
-      s.status === "in_progress"
-        ? liveWinProb({
+      s.status !== "in_progress"
+        ? null
+        : sport === "cbb"
+          ? // ESPN's number: `liveWinProb` is a football model (four quarters,
+            // scoring in sevens) and would print a confident bar that means
+            // nothing for a basketball score. No number, no bar.
+            (s.hoops?.wp ?? null)
+          : liveWinProb({
             pregameMargin: prediction ? -prediction.spread : 0,
             homePoints: s.homePoints ?? 0,
             awayPoints: s.awayPoints ?? 0,
             period: s.period,
             clock: s.clock,
-          })
-        : null,
-    [prediction],
+          }),
+    [prediction, sport],
   );
   const [probHistory, setProbHistory] = useState<LinePoint[]>(() => {
     const p = probOf(initial);
@@ -123,6 +131,7 @@ export function GameHeader({
       current_situation: string | null;
       last_play: string | null;
       possession: "home" | "away" | null;
+      hoops?: unknown;
     }) => {
       const next: GameLiveState = {
         status: row.status,
@@ -133,6 +142,7 @@ export function GameHeader({
         situation: row.current_situation,
         lastPlay: row.last_play,
         possession: row.possession,
+        hoops: isCbbLive(row.hoops) ? row.hoops : null,
       };
       setG(next);
       const p = probOf(next);
@@ -236,9 +246,9 @@ export function GameHeader({
               <span className="flex items-center gap-2">
                 <LiveBadge />
                 <span className="font-semibold text-chalk">
-                  {breakLabel(g.period, g.clock) ?? (
+                  {breakLabel(g.period, g.clock, sport) ?? (
                     <>
-                      {periodLabel(g.period)}
+                      {periodLabel(g.period, sport)}
                       {g.clock ? ` · ${g.clock}` : ""}
                     </>
                   )}
@@ -247,14 +257,14 @@ export function GameHeader({
             ) : final ? (
               <span className="font-semibold uppercase">
                 Final
-                {g.period !== null && g.period > 4 ? ` / ${periodLabel(g.period)}` : ""}
+                {overtimeSuffix(g.period, sport)}
               </span>
             ) : dead ? (
               <span className="font-semibold uppercase text-push">{g.status}</span>
             ) : startTs ? (
               `${kickDateLong(startTs, viewerTz)} · ${kickParts(startTs, viewerTz).time} ${tzLabel(viewerTz)}`
             ) : (
-              "Kickoff TBD"
+              sport === "cbb" ? "Tip TBD" : "Kickoff TBD"
             )}
           </span>
           {tv && (
@@ -270,7 +280,7 @@ export function GameHeader({
         {/* score changes announced without re-reading the whole page */}
         <p className="sr-only" aria-live="polite">
           {live
-            ? `${away.abbr} ${aPts}, ${home.abbr} ${hPts}, ${breakLabel(g.period, g.clock) ?? periodLabel(g.period)}`
+            ? `${away.abbr} ${aPts}, ${home.abbr} ${hPts}, ${breakLabel(g.period, g.clock, sport) ?? periodLabel(g.period, sport)}`
             : final
               ? `Final: ${away.abbr} ${aPts}, ${home.abbr} ${hPts}`
               : ""}
@@ -312,7 +322,7 @@ export function GameHeader({
             {liveProb !== null && (
               <p className="stat mt-1.5 flex items-center justify-center gap-2 text-center text-[10.5px] leading-none text-dim">
                 <span>
-                  Live win probability
+                  {sport === "cbb" ? "ESPN win probability" : "Live win probability"}
                   {prediction && (
                     <>
                       {" · pregame "}

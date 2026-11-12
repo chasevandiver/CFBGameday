@@ -20,7 +20,8 @@ import {
   pointsCovered,
   type ScoringPlay,
 } from "../../src/lib/espn";
-import { nflTeamId, seasonIdsForYear, seasonYearOf } from "../../src/lib/league";
+import { cbbSeasonId, footballSeasonIdsForYear, nflTeamId, seasonYearOf } from "../../src/lib/league";
+import { cbbHalftime, isCbbLive } from "../../src/lib/cbb";
 import { cfbdScoringOffense, cfbdScoringPlays } from "../../src/lib/scoring";
 import { modelClv, roundClv, spreadClv, totalClv } from "../../src/lib/clv";
 import { consensusFromSnapshots, SNAPSHOT_COLS } from "../../src/lib/consensus";
@@ -337,6 +338,8 @@ export function watchdogVerdict(
     dailyPuzzles?: number;
     /** FREEZE-1. Daily and unconditional — a no-op run still records `ok`. */
     freezeDaily?: number;
+    /** CBB-6. Hours since the basketball sync last succeeded. */
+    cbbSync?: number;
   },
   gameLive: boolean,
   /** Any scheduled game inside the next week. Gates the weekly notify jobs. */
@@ -345,6 +348,14 @@ export function watchdogVerdict(
    *  when neither ever has. Omitted by a caller = not checked, like the NFL
    *  lane above, so an older caller cannot be broken by this argument. */
   liveBeatMin?: number,
+  /**
+   * CBB-6. Basketball's half of the same two questions, kept apart from
+   * football's because the leagues have different writers: a live basketball
+   * game is polled by the edge function alone, so its beat is its own, and a
+   * dead football loop must not be masked by a healthy basketball one (or the
+   * other way round). Omitted = not checked.
+   */
+  cbb?: { gameLive: boolean; gamesThisWeek: boolean; beatMin: number },
 ): string[] {
   const problems: string[] = [];
   if (agesH.refreshLines > 26)
@@ -457,6 +468,35 @@ export function watchdogVerdict(
   if ((agesH.nflGrade ?? 0) > NFL_MULTI_DAY)
     problems.push(`nfl-grade: no successful run in ${Math.round(agesH.nflGrade!)}h`);
 
+  /* The basketball lane (CBB-6). Watched from its first day, which the NFL
+     lane was not (NFL-22).
+
+     The sync is seasonal — it idles itself from May to October — so, like the
+     notify jobs, it is only owed while there is a game inside the week. 14h
+     because it runs nine times a day at most three hours apart, with one
+     overnight gap of nine; a whole missed half-day is the smallest absence
+     worth a page. Never-ran (Infinity) is exempt for the same reason the
+     streak's is: the gap between a deploy and a first cron closes itself.
+
+     The beat is the live layer's whole alarm here. There is no second writer
+     to fall back on, so five minutes of silence under a live game is the
+     scoreboard being frozen, not one of two feeds having a moment. */
+  if (cbb) {
+    if (
+      cbb.gamesThisWeek &&
+      agesH.cbbSync !== undefined &&
+      Number.isFinite(agesH.cbbSync) &&
+      agesH.cbbSync > 14
+    )
+      problems.push(`cbb-sync: basketball this week and no successful run in ${Math.round(agesH.cbbSync)}h`);
+    if (cbb.gameLive && cbb.beatMin > 5)
+      problems.push(
+        `cbb live scores: a basketball game is LIVE and the edge pull has not run in ${
+          Number.isFinite(cbb.beatMin) ? `${Math.round(cbb.beatMin)}m` : "any recorded run"
+        }`,
+      );
+  }
+
   return problems;
 }
 
@@ -497,7 +537,13 @@ export async function watchdogJob(db: SupabaseClient): Promise<Json> {
   // being played at the time) and would have been off again for every NFL-only
   // Sunday of the autumn. `seasonIdsForYear` is the existing helper for exactly
   // this read — one year, both leagues.
-  const seasons = seasonIdsForYear(SEASON);
+  //
+  // FOOTBALL's two, deliberately (CBB-6). `seasonIdsForYear` grew a third
+  // entry when basketball arrived, and left as it was this gate would have
+  // read a Tuesday-night basketball game as "a game is LIVE" and paged about
+  // a football loop that is correctly asleep — every evening until April.
+  // Basketball asks its own two questions below, of its own writer.
+  const seasons = footballSeasonIdsForYear(SEASON);
   const { data: live } = await db
     .from("games")
     .select("id")
@@ -513,8 +559,29 @@ export async function watchdogJob(db: SupabaseClient): Promise<Json> {
     .lte("start_ts", new Date(now + 7 * 24 * 3600_000).toISOString())
     .limit(1);
 
+  // Basketball (CBB-6). Its season is found by sport, not by the football
+  // year knob, because it straddles the new year and that knob may roll first.
+  const { data: cbbSeason } = await db
+    .from("seasons")
+    .select("id")
+    .eq("sport", "cbb")
+    .eq("is_current", true)
+    .maybeSingle();
+  const cbbSeasonRow = (cbbSeason as { id: number } | null)?.id ?? cbbSeasonId(SEASON);
+  const [{ data: cbbLive }, { data: cbbUpcoming }] = await Promise.all([
+    db.from("games").select("id").eq("season_id", cbbSeasonRow).eq("status", "in_progress").limit(1),
+    db
+      .from("games")
+      .select("id")
+      .eq("season_id", cbbSeasonRow)
+      .gte("start_ts", new Date(now).toISOString())
+      .lte("start_ts", new Date(now + 7 * 24 * 3600_000).toISOString())
+      .limit(1),
+  ]);
+
   const problems = watchdogVerdict(
     {
+      cbbSync: await lastOkAgeH("cbb-sync-games"),
       refreshLines: await lastOkAgeH("refresh-lines"),
       syncGames: await lastOkAgeH("sync-games"),
       scoreboard: await lastLaunchAgeH("scoreboard-loop"),
@@ -536,7 +603,16 @@ export async function watchdogJob(db: SupabaseClient): Promise<Json> {
     Math.min(
       await beatAgeMin(db, HEARTBEAT_SOURCES.loop),
       await beatAgeMin(db, HEARTBEAT_SOURCES.edge),
+      // LIVE-11's second CFB feed. Deployed on 2026-09-06 and missing from
+      // this list until its source was filed (MIG-2) — so a Saturday where
+      // ESPN was carrying the college slate alone read as nothing polling.
+      await beatAgeMin(db, HEARTBEAT_SOURCES.edgeCfb),
     ),
+    {
+      gameLive: (cbbLive ?? []).length > 0,
+      gamesThisWeek: (cbbUpcoming ?? []).length > 0,
+      beatMin: await beatAgeMin(db, HEARTBEAT_SOURCES.edgeCbb),
+    },
   );
   if (problems.length > 0) {
     // Buzz a phone before going red (OPS-2). The throw below is still what
@@ -555,6 +631,7 @@ export async function watchdogJob(db: SupabaseClient): Promise<Json> {
       "scoreboard-loop",
       "notify-picks-due",
       "notify-log-bets",
+      "cbb-sync-games",
       "nfl-sync-games",
       "nfl-refresh-lines",
       "nfl-lines-close",
@@ -610,6 +687,10 @@ export const HEARTBEAT_SOURCES = {
   loop: "actions-loop",
   /** The 10-second pg_cron → edge function path (0044). */
   edge: "edge-10s",
+  /** CFB's ESPN pull, every 30 seconds (0085, LIVE-11). */
+  edgeCfb: "edge-cfb",
+  /** College basketball's only live writer (0086). */
+  edgeCbb: "edge-cbb",
 } as const;
 
 export async function beat(
@@ -1446,7 +1527,38 @@ export async function gradeGames(db: SupabaseClient, gameIds: number[]): Promise
   return settleGames(db, (gameRows ?? []) as SettleGameRow[]);
 }
 
-export const SETTLE_COLS = "id, home_points, away_points, status, start_ts";
+/**
+ * College basketball settlement (CBB-5): the last few days' finished and dead
+ * games, through the same `settleGames` both football paths use.
+ *
+ * Not `gradeSeasonFinals`. A basketball season is ~5,800 games and that pass
+ * reads every one of them; this is dispatched by the database the moment a
+ * finished game is carrying an open bet (`launch_cbb_grade_if_needed`, 0086)
+ * and has to be over in seconds. Four days back is far more than a late final
+ * needs and still a few hundred rows. Idempotent like its siblings — every
+ * query underneath filters on `result is null`.
+ */
+export const CBB_GRADE_LOOKBACK_DAYS = 4;
+
+export async function cbbGradeJob(db: SupabaseClient, seasonId: number): Promise<Json> {
+  const since = new Date(Date.now() - CBB_GRADE_LOOKBACK_DAYS * 24 * 3600 * 1000).toISOString();
+  const gameRows = await pageAll<SettleGameRow>((from, to) =>
+    db
+      .from("games")
+      .select(SETTLE_COLS)
+      .eq("season_id", seasonId)
+      .gte("start_ts", since)
+      .in("status", ["final", "postponed", "canceled"])
+      .order("id")
+      .range(from, to),
+  ).catch((e: Error) => {
+    throw new Error(`cbb grading: games read failed: ${e.message}`);
+  });
+  const result = (await settleGames(db, gameRows)) as Record<string, Json>;
+  return { games: gameRows.length, ...result };
+}
+
+export const SETTLE_COLS = "id, home_points, away_points, status, start_ts, hoops";
 
 interface SettleGameRow {
   id: number;
@@ -1454,6 +1566,8 @@ interface SettleGameRow {
   away_points: number | null;
   status: string;
   start_ts: string | null;
+  /** CBB only (0086): the stored line score. Null on every football row. */
+  hoops?: unknown;
 }
 
 /**
@@ -1593,6 +1707,19 @@ async function settleGames(db: SupabaseClient, allGames: SettleGameRow[]): Promi
         );
         if (half) halfByGame.set(gid, half);
       }
+    }
+
+    // Basketball's halftime score is on the game row itself (CBB-5):
+    // `games.hoops.h[0]` / `.a[0]` is the first half, written from ESPN's own
+    // line score. A basketball game has no `scoring_plays` — a hundred-odd
+    // baskets a night is not a scoring summary — so without this every
+    // first-half bet on one would sit ungraded for manual settle. Only games
+    // the plays could not already prove are filled, so football is untouched.
+    for (const gid of fhGameIds) {
+      if (halfByGame.has(gid)) continue;
+      const hoops = gameById.get(gid)?.hoops;
+      const half = cbbHalftime(isCbbLive(hoops) ? hoops : null);
+      if (half) halfByGame.set(gid, half);
     }
 
     // Model CLV. The leans are published as information rather than bets, so
