@@ -48,6 +48,19 @@ body > footer {
   color: rgba(255, 255, 255, 0.45);
   margin-right: 0.4em;
 }
+/* TV-20: the basketball marker. The tag classes it rides on set a small,
+   letter-spaced font for "NFL"; a glyph wants neither, so it takes the size
+   of the scores beside it and sits on their baseline. */
+.tv-hoop {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.85em;
+  letter-spacing: 0;
+  vertical-align: -0.1em;
+}
+.tvb-tag.tv-hoop {
+  font-size: 30vh;
+}
 .tv-empty {
   color: var(--text-dim);
   font-size: 0.7em;

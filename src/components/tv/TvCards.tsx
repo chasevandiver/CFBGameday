@@ -23,7 +23,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from
 import type { TickerGame, TickerSummary } from "../../lib/ticker";
 import { fieldPosition, isRedZone, parseSituation } from "../../lib/slate";
 import { leadingSide } from "../ScoreTicker";
-import { marketSpread, tvStatus, VerdictWords } from "./TvChip";
+import { marketSpread, SportTag, tvStatus, VerdictWords } from "./TvChip";
 import { useTickerFeed } from "./use-ticker-feed";
 import { useFantasy } from "./use-fantasy";
 import type { FantasyMatchup } from "../../lib/fantasy";
@@ -95,6 +95,11 @@ export function newScores(
   const out: ScoreAlert[] = [];
   for (const g of games) {
     if (!g.mine || (g.status !== "in_progress" && g.status !== "final")) continue;
+    // TV-20, owner call: no banner when a basketball bet scores. A football
+    // score is an event, a handful a game; a basketball score is every
+    // thirty seconds, and a strip that took over the screen for each one
+    // would never show anything else.
+    if (g.sport === "cbb") continue;
     const p = prev.get(g.id);
     if (!p) continue;
     const dh = (g.homePoints ?? 0) - p.h;
@@ -455,7 +460,7 @@ function LiveTile({ g }: { g: TickerGame }) {
   return (
     <div className={cls} style={tileStyle(g)}>
       <span className="tvb-wash" />
-      {g.sport === "nfl" && <span className="tvb-tag">NFL</span>}
+      <SportTag g={g} className="tvb-tag" />
       <Logo src={g.awayLogo} abbr={g.awayAbbr} color={g.awayColor} size={28} />
       {name("away")}
       {g.possession === "away" && <Ball />}
@@ -493,6 +498,7 @@ function NextTile({ g }: { g: TickerGame }) {
   return (
     <div className={`tvb-tile ${g.stake ? "tvb-mine" : ""}`} style={tileStyle(g)}>
       <span className="tvb-wash" />
+      <SportTag g={g} className="tvb-tag" />
       <span className="tvb-ko">
         {time}
         {mer && <small>{mer}</small>}
@@ -524,12 +530,15 @@ function FinalTile({ g }: { g: TickerGame }) {
       className={`tvb-tile tvb-fin ${g.mine ? "tvb-mine" : ""} ${v ? "tvb-bet" : ""}`}
       style={tileStyle(g)}
     >
+      <SportTag g={g} className="tvb-tag" />
       <Logo src={g.awayLogo} abbr={g.awayAbbr} color={g.awayColor} size={24} />
       <span className={`tvb-s ${lead === "away" ? "tvb-w" : ""}`}>{g.awayPoints ?? 0}</span>
       <span className="tvb-at">–</span>
       <span className={`tvb-s ${lead === "home" ? "tvb-w" : ""}`}>{g.homePoints ?? 0}</span>
       <Logo src={g.homeLogo} abbr={g.homeAbbr} color={g.homeColor} size={24} />
-      <span className="tvb-k tvb-dim">FINAL</span>
+      {/* tvStatus, not the literal: a basketball final that needed overtime
+          says FINAL/OT (TV-20). Football's reads FINAL exactly as before. */}
+      <span className="tvb-k tvb-dim">{tvStatus(g)}</span>
       {g.stake && <span className="tvb-mkt tvb-bright">{g.stake.label}</span>}
       {res && v && (
         <span className="tvb-res" style={{ background: v }}>
@@ -577,6 +586,7 @@ function MiniBet({ g, when }: { g: TickerGame; when?: string }) {
   const v = g.mine ? VERDICT[g.mine] : undefined;
   return (
     <span className={`tvb-mini ${v ? "tvb-bet" : ""}`} style={tileStyle(g)}>
+      <SportTag g={g} className="tvb-tag" />
       <Logo
         src={away ? g.awayLogo : g.homeLogo}
         abbr={away ? g.awayAbbr : g.homeAbbr}

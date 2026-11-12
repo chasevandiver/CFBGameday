@@ -19,6 +19,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { breakLabel, periodLabel } from "../lib/kick";
+import { BasketballIcon } from "./nav-icons";
 import type { TickerData, TickerGame, TickerMine } from "../lib/ticker";
 import { useGamesRealtime } from "../lib/use-games-realtime";
 import { useLiveRefresh } from "../lib/use-live-refresh";
@@ -334,6 +335,13 @@ function ChipBody({ g }: { g: TickerGame }) {
           NFL
         </span>
       )}
+      {/* TV-20: a basketball game you have a bet on. A ball, not letters —
+          the same marker the TV overlay uses for it. */}
+      {g.sport === "cbb" && (
+        <span role="img" aria-label="College basketball" className="text-chalk/50">
+          <BasketballIcon size={11} aria-hidden />
+        </span>
+      )}
       <span className={sideClass(leading, "away")}>
         {g.awayAbbr} {live || final ? (g.awayPoints ?? 0) : ""}
       </span>
@@ -343,8 +351,8 @@ function ChipBody({ g }: { g: TickerGame }) {
       </span>
       <span className="text-[10px] uppercase">
         {live
-          ? (breakLabel(g.period, g.clock) ??
-            `${periodLabel(g.period)}${g.clock ? ` ${g.clock}` : ""}`)
+          ? (breakLabel(g.period, g.clock, g.sport) ??
+            `${periodLabel(g.period, g.sport)}${g.clock ? ` ${g.clock}` : ""}`)
           : final
             ? "Final"
             : g.startTs

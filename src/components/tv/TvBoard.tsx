@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 import type { TickerGame } from "../../lib/ticker";
 import { leadingSide } from "../ScoreTicker";
-import { lineClass, teamClass, tvLine, tvStatus, VerdictWords } from "./TvChip";
+import { lineClass, SportTag, teamClass, tvLine, tvStatus, VerdictWords } from "./TvChip";
 import { tvOrder, useTickerFeed } from "./use-ticker-feed";
 
 const PER_PAGE = 4;
@@ -79,7 +79,7 @@ function Cell({ g }: { g: TickerGame }) {
     <div className="tv-cell">
       {row(g.awayAbbr, g.awayPoints, "away")}
       <span className={`tv-cell-status stat ${live ? "text-live" : "text-dim"}`}>
-        {g.sport === "nfl" && <span className="tv-tag">NFL</span>}
+        <SportTag g={g} className="tv-tag" />
         {tvStatus(g, { short: true })}
       </span>
       {row(g.homeAbbr, g.homePoints, "home")}

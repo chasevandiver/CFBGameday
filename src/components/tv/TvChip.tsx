@@ -1,16 +1,19 @@
-import { breakLabel, periodLabel } from "../../lib/kick";
+import { breakLabel, overtimeSuffix, periodLabel } from "../../lib/kick";
+import { BasketballIcon } from "../nav-icons";
 import type { TickerGame, TickerMine } from "../../lib/ticker";
 import { leadingSide } from "../ScoreTicker";
 
 /** Status text for a TV chip: clock while live, FINAL, or the kickoff time. */
 export function tvStatus(g: TickerGame, opts: { short?: boolean } = {}): string {
   if (g.status === "in_progress") {
-    const brk = breakLabel(g.period, g.clock);
+    // The sport decides the vocabulary (TV-20): basketball is 1H / 2H / OT
+    // and its halftime follows period 1, where football's follows Q2.
+    const brk = breakLabel(g.period, g.clock, g.sport);
     // The corner box has no room for HALFTIME beside a line; HALF says it.
     if (brk === "HALFTIME" && opts.short) return "HALF";
-    return brk ?? `${periodLabel(g.period)}${g.clock ? ` ${g.clock}` : ""}`;
+    return brk ?? `${periodLabel(g.period, g.sport)}${g.clock ? ` ${g.clock}` : ""}`;
   }
-  if (g.status === "final") return "FINAL";
+  if (g.status === "final") return `FINAL${overtimeSuffix(g.period, g.sport).replace(" / ", "/")}`;
   return g.startTs
     ? new Intl.DateTimeFormat("en-US", {
         hour: "numeric",
@@ -92,7 +95,7 @@ export function TvChip({ g }: { g: TickerGame }) {
   return (
     <span className="tv-chip">
       {live && <span aria-label="Live" className="tv-dot live-dot" />}
-      {g.sport === "nfl" && <span className="tv-tag">NFL</span>}
+      <SportTag g={g} className="tv-tag" />
       {team(g.awayAbbr, g.awayPoints, "away")}
       {team(g.homeAbbr, g.homePoints, "home")}
       {line && <span className={`tv-line stat ${lineClass(g, line.mine)}`}>{line.text}</span>}
@@ -100,4 +103,24 @@ export function TvChip({ g }: { g: TickerGame }) {
       <VerdictWords g={g} />
     </span>
   );
+}
+
+/**
+ * What league a chip is, when it is not the default (college football).
+ *
+ * The NFL says so in letters, as it always has. College basketball is a ball
+ * (TV-20): the strip is read from a couch, and "ILL 61 PUR 58" in a row of
+ * football scores needs to say it is a different game before the numbers do.
+ * Sized in `em` so it scales with whichever surface's type it sits in, and
+ * named for assistive tech since the glyph is the whole label.
+ */
+export function SportTag({ g, className }: { g: TickerGame; className: string }) {
+  if (g.sport === "nfl") return <span className={className}>NFL</span>;
+  if (g.sport === "cbb")
+    return (
+      <span className={`${className} tv-hoop`} role="img" aria-label="College basketball">
+        <BasketballIcon size="1em" aria-hidden />
+      </span>
+    );
+  return null;
 }
