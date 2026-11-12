@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import type { TickerData, TickerGame } from "../../lib/ticker";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { newDeploy, type TickerData, type TickerGame } from "../../lib/ticker";
 import { useLiveRefresh } from "../../lib/use-live-refresh";
 
 /**
@@ -31,6 +31,18 @@ export function useTickerFeed(): TickerData | null {
   useEffect(() => {
     load();
   }, [load]);
+
+  // TV-16: the overlay runs for hours and the TV remote can't refresh it, so
+  // when a new deploy starts answering the feed, reload onto it.
+  const seenBuild = useRef<string | null>(null);
+  useEffect(() => {
+    const next = data?.build ?? null;
+    if (newDeploy(seenBuild.current, next)) {
+      window.location.reload();
+      return;
+    }
+    if (next) seenBuild.current = next;
+  }, [data]);
 
   const anyLive = data?.games.some((g) => g.status === "in_progress") ?? false;
   useLiveRefresh(load, anyLive ? 30_000 : 60_000);

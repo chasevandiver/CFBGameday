@@ -135,7 +135,11 @@ class ControlServer(private val svc: OverlayService, private val port: Int) {
                 if (body.isNotBlank() && JSONObject(body).optBoolean("all")) Peers.relay(path, JSONObject())
                 ok()
             }
-            method == "POST" && path == "/api/reload" -> { svc.reloadPage(); ok() }
+            method == "POST" && path == "/api/reload" -> {
+                svc.reloadPage()
+                if (body.isNotBlank() && JSONObject(body).optBoolean("all")) Peers.relay(path, JSONObject())
+                ok()
+            }
             method == "POST" && path == "/api/presets" -> { svc.savePresets(JSONArray(body)); ok() }
             // Setting up other TVs: Amazon blocks a TV's apps from ADB-ing the
             // TV itself, so each TV grants the others.

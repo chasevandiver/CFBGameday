@@ -80,6 +80,8 @@ export interface TickerData {
   week: number;
   games: TickerGame[];
   summary?: TickerSummary | null;
+  /** The deploy that served this (TV-16); null off Vercel. */
+  build?: string | null;
 }
 
 /**
@@ -201,4 +203,13 @@ export function tickerSummary(
   }
   const t = tally(wagers);
   return { record: formatRecord(t), units: Math.round(t.units * 100) / 100, live, upcoming };
+}
+
+/**
+ * TV-16: should a long-running overlay page reload itself? Only when it has
+ * seen one deploy and the feed now names a different one. A missing id (local
+ * dev, an early-return payload) never triggers it.
+ */
+export function newDeploy(seen: string | null, next: string | null | undefined): boolean {
+  return Boolean(seen && next && seen !== next);
 }

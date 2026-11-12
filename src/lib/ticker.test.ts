@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { demoTickerData } from "./demo-data";
-import { tickerMine, tickerStake, tickerSummary } from "./ticker";
+import { newDeploy, tickerMine, tickerStake, tickerSummary } from "./ticker";
 import type { MyBetView, MyPickView } from "./slate";
 
 const bet = (overrides: Partial<MyBetView> = {}): MyBetView => ({
@@ -153,5 +153,15 @@ describe("tickerSummary", () => {
   it("skips voids, and is null with no bets", () => {
     expect(tickerSummary([bet({ game_id: 1, result: "void" })], games)?.record).toBe("0-0");
     expect(tickerSummary([], games)).toBeNull();
+  });
+});
+
+describe("newDeploy (TV-16)", () => {
+  it("reloads only when a seen deploy is replaced by another", () => {
+    expect(newDeploy("abc", "def")).toBe(true);
+    expect(newDeploy("abc", "abc")).toBe(false);
+    expect(newDeploy(null, "abc")).toBe(false);
+    expect(newDeploy("abc", null)).toBe(false);
+    expect(newDeploy("abc", undefined)).toBe(false);
   });
 });
