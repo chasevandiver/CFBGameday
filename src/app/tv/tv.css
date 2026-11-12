@@ -598,8 +598,18 @@ body > footer {
     inset 0 0 0 3vh var(--vc),
     0 0 30vh color-mix(in srgb, var(--vc) 38%, transparent);
 }
+/* TV-17: the team colours still wash in from each end, over the verdict
+   tint, so a bet tile has the same depth as every other live tile. */
 .tvb-bet .tvb-wash {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 55%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 55%),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--ta) 60%, transparent),
+      transparent 30%,
+      transparent 70%,
+      color-mix(in srgb, var(--th) 60%, transparent)
+    );
 }
 .tvb-bet .tvb-ticket {
   font-weight: 700;
@@ -797,22 +807,60 @@ body > footer {
   height: 80vh !important;
   filter: drop-shadow(0 0 24vh rgba(255, 255, 255, 0.35));
 }
-.tvb-td-team {
-  font:
-    700 54vh var(--font-display),
-    sans-serif;
-  letter-spacing: 0.06em;
-  color: #fff;
-}
 .tvb-td-score {
+  display: flex;
+  align-items: center;
+  gap: 22vh;
+  min-width: 0;
   font:
-    700 64vh/1 var(--font-display),
+    700 56vh/1 var(--font-display),
     sans-serif;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: #fff;
+  white-space: nowrap;
 }
-.tvb-push-right {
-  margin-left: auto;
+.tvb-td-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 900vh;
+}
+.tvb-td-other {
+  color: rgba(255, 255, 255, 0.72);
+}
+.tvb-td-pts {
+  font-size: 70vh;
+}
+.tvb-td-dash {
+  color: rgba(255, 255, 255, 0.55);
+}
+.tvb-td-bet {
+  display: flex;
+  align-items: center;
+  gap: 16vh;
+  flex-shrink: 0;
+  padding-left: 40vh;
+  border-left: 2vh solid rgba(255, 255, 255, 0.25);
+}
+.tvb-td-cap {
+  font:
+    700 20vh var(--font-body),
+    sans-serif;
+  letter-spacing: 0.2em;
+  color: rgba(255, 255, 255, 0.8);
+}
+.tvb-td-ticket {
+  padding: 8vh 18vh 6vh;
+  border-radius: 10vh;
+  font:
+    700 40vh/1 var(--font-numeric),
+    monospace;
+  color: var(--accent-ink);
+  background: var(--vc, var(--accent));
+  box-shadow:
+    0 0 0 3vh rgba(0, 0, 0, 0.25),
+    0 0 26vh color-mix(in srgb, var(--vc, var(--accent)) 70%, transparent);
 }
 
 /* Fantasy (TV-12): team names are the fun part, but they can run long. */

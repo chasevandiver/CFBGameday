@@ -37,6 +37,9 @@ export interface TickerGame {
   clock: string | null;
   homeAbbr: string;
   awayAbbr: string;
+  /** Full school names (TV-18), for the touchdown banner. */
+  homeName?: string | null;
+  awayName?: string | null;
   homePoints: number | null;
   awayPoints: number | null;
   /** Only present for a signed-in viewer with something on the game. */

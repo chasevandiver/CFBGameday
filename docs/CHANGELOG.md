@@ -234,6 +234,24 @@ shipping it.
 
 ## Log
 
+### Nov 11 — TV-18: the touchdown banner names the schools and your bet
+
+The banner read "TOUCHDOWN · BUF · BUF 27 – 7 BALL" with the ticket as a small
+chip at the far right. `/api/ticker` now carries `homeName` / `awayName`
+(`teams.school`), and the banner reads "TOUCHDOWN · logo · BUFFALO 27 – 7 BALL
+STATE | YOUR BET [BUF -1.5]": scoring side bright, the other dimmed, and the
+ticket right after the score as a solid chip in the colour it's now running.
+The duplicate abbreviation beside the logo is gone.
+
+### Nov 11 — TV-17: bet tiles get their team colours back
+
+On the TV the TV-15 bet tile read as bland beside the live tiles: the flat
+verdict tint had replaced the school-colour washes every other tile carries.
+The washes now sit on top of the verdict tint at both ends (60%, fading by 30%),
+so the verdict still owns the edge, the middle and the ticket chip. The fantasy
+tile has no school colours and passes transparent ones. Zero units on the night
+card now reads EVEN; "0U" read as "OU" on the TV.
+
 ### Nov 11 — TV-16: the overlay reloads itself on a new deploy; Reload button
 
 After TV-15 merged, the TVs kept the old page: the WebView only reloads hourly,

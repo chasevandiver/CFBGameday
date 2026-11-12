@@ -125,6 +125,10 @@ export async function GET(req: NextRequest) {
       { color: t.color ?? null, logo: t.logo_url ?? null },
     ]),
   );
+  // TV-18: full school names, for the touchdown banner.
+  const nameById = new Map(
+    ((teams ?? []) as Array<Pick<TeamRow, "id" | "school">>).map((t) => [t.id, t.school]),
+  );
   const abbrById = new Map(
     ((teams ?? []) as Array<Pick<TeamRow, "id" | "school" | "abbreviation">>).map((t) => [
       t.id,
@@ -252,6 +256,8 @@ export async function GET(req: NextRequest) {
     clock: g.current_clock,
     homeAbbr: abbrById.get(g.home_team_id) ?? "?",
     awayAbbr: abbrById.get(g.away_team_id) ?? "?",
+    homeName: nameById.get(g.home_team_id) ?? null,
+    awayName: nameById.get(g.away_team_id) ?? null,
     homePoints: g.home_points,
     awayPoints: g.away_points,
     homeColor: lookById.get(g.home_team_id)?.color ?? null,
