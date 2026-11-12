@@ -233,10 +233,20 @@ class OverlayService : Service() {
             WindowManager.LayoutParams.TYPE_PHONE
         }
         // Never focusable or touchable: every remote press goes to the show.
+        // TV-19: a TV with Display > Calibrate Display pulled in (overscan) pushes
+        // ordinary windows inward, so the strip sat below the top edge on one TV.
+        // IN_OVERSCAN + NO_LIMITS let the ticker draw at the panel's true edge.
+        // The corner box keeps the inset; it wants to sit inside the safe area.
+        @Suppress("DEPRECATION")
+        val edge = if (c.layout == "ticker") {
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_OVERSCAN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        } else 0
         val flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
+            edge
 
         val (dx, dy) = DRIFT[driftStep]
 
