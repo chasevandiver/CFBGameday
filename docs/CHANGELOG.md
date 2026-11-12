@@ -234,6 +234,15 @@ shipping it.
 
 ## Log
 
+### Nov 11 — TV-19: ticker draws at the true screen edge
+
+On Chase's second TV the strip sat inset from the top and left while the
+other TV's was flush. Most likely that TV has Display > Calibrate Display
+pulled in: Fire OS then insets app windows (overscan) while live video still
+fills the panel. The ticker window now sets `FLAG_LAYOUT_IN_OVERSCAN` and
+`FLAG_LAYOUT_NO_LIMITS`, so it lands at the panel edge either way. The corner
+box keeps its safe-area inset. Unconfirmed on that TV until it updates.
+
 ### Nov 11 — TV-18: the touchdown banner names the schools and your bet
 
 The banner read "TOUCHDOWN · BUF · BUF 27 – 7 BALL" with the ticket as a small
