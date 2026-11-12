@@ -3100,15 +3100,21 @@ are open.
 
 **Rollout — in this order.**
 
-- [ ] **CBB-R1 — apply `0086` to production.** Additive: three check
-      constraints widened, four nullable columns, two functions, two cron
-      jobs. Must land BEFORE the app or the jobs deploy — `SETTLE_COLS` and
+- [x] **CBB-R1 — apply `0086` to production.** Applied 2026-11-12 as
+      `20261112143208`, with the owner's go-ahead. Read back from the live
+      database: the three sport checks admit `cbb`, `groups_leagues_sane`
+      does not, the four columns exist, both cron jobs are active, both
+      launchers answer `idle`, and `anon` cannot execute the dispatcher.
+      It had to land BEFORE the app or the jobs deploy — `SETTLE_COLS` and
       `/api/game/[id]` select `games.hoops`.
-- [ ] **CBB-R2 — deploy `cbb-scoreboard`** (verify_jwt off, like its
-      siblings) and read one live night of `cron.job_run_details` and
-      `net._http_response`. The NFL function spent its whole first game
-      answering 403 (LIVE-1); this one has the same headers but has not met
-      ESPN from Supabase's egress yet.
+- [ ] **CBB-R2 — `cbb-scoreboard` through a live night.** Deployed
+      2026-11-12 (version 1, verify_jwt off like its siblings); it boots and
+      answers `idle` in 0.85s with no basketball rows stored. **What is not
+      known yet is whether ESPN answers it from Supabase's egress** — the idle
+      gate returns before the fetch. The NFL function spent its whole first
+      game on 403 (LIVE-1). After the first night with games: read
+      `cron.job_run_details`, `net._http_response` and the `edge-cbb`
+      heartbeat.
 - [ ] **CBB-R3 — merge cbbmodel's branch**, so the feed re-exports with each
       line snapshot and carries `model.tempo`. Until then the line on a card
       moves once a day and the card shows no possessions figure.
