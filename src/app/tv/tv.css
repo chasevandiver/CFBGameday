@@ -584,37 +584,39 @@ body > footer {
   color: #fff;
   background: var(--live);
 }
-/* The viewer's bet: the whole tile says how it's going. */
+/* The viewer's bet: the whole tile says how it's going (TV-15). One even tint
+   across the tile, a solid edge, and the ticket as a solid chip in the same
+   colour. Text stays white: green-on-green and a boxed score both read as
+   mud from the couch. */
 .tvb-bet {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--vc) 38%, #06100c),
+    color-mix(in srgb, var(--vc) 24%, #040806)
+  );
   box-shadow:
-    inset 0 0 0 4vh var(--vc),
-    0 0 36vh color-mix(in srgb, var(--vc) 40%, transparent);
+    inset 0 0 0 3vh var(--vc),
+    0 0 30vh color-mix(in srgb, var(--vc) 38%, transparent);
 }
 .tvb-bet .tvb-wash {
-  background: linear-gradient(
-    var(--vdir),
-    color-mix(in srgb, var(--vc) 42%, transparent),
-    color-mix(in srgb, var(--vc) 12%, transparent) 55%,
-    transparent 80%
-  );
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 55%);
 }
-.tvb-total .tvb-wash {
-  background: color-mix(in srgb, var(--vc) 20%, transparent);
-}
-.tvb-total .tvb-ticket {
-  background: var(--vc);
+.tvb-bet .tvb-ticket {
+  font-weight: 700;
   color: var(--accent-ink);
-  box-shadow: none;
+  background: var(--vc);
+  box-shadow: 0 0 18vh color-mix(in srgb, var(--vc) 55%, transparent);
+}
+.tvb-bet .tvb-dd,
+.tvb-bet .tvb-trail {
+  color: rgba(255, 255, 255, 0.82);
+}
+.tvb-bet .tvb-net {
+  background: rgba(0, 0, 0, 0.28);
 }
 .tvb-me {
-  color: var(--vc);
-}
-.tvb-s-v {
-  padding: 4vh 12vh 2vh;
-  border-radius: 10vh;
-  color: var(--accent-ink);
-  background: var(--vc);
-  box-shadow: 0 0 28vh color-mix(in srgb, var(--vc) 60%, transparent);
+  color: #fff;
+  font-weight: 700;
 }
 
 /* Up next */
@@ -659,47 +661,85 @@ body > footer {
   color: var(--accent-ink);
 }
 
-/* Your night */
+/* Your night: record and units, then each ticket as a mini bet tile. */
 .tvb-sum {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 32vh;
-  padding: 0 24vh;
+  gap: 22vh;
+  padding: 0 20vh 0 16vh;
+}
+.tvb-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4vh;
 }
 .tvb-rec {
   font:
-    700 76vh/1 var(--font-display),
+    700 54vh/0.9 var(--font-display),
     sans-serif;
   letter-spacing: 0.02em;
   color: #fff;
 }
+.tvb-cap {
+  font:
+    700 16vh var(--font-body),
+    sans-serif;
+  letter-spacing: 0.2em;
+  color: var(--accent);
+}
 .tvb-units {
-  padding: 6vh 18vh 4vh;
+  padding: 7vh 16vh 5vh;
   border-radius: 10vh;
   font:
-    700 42vh/1 var(--font-display),
+    700 40vh/1 var(--font-display),
     sans-serif;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 2vh rgba(255, 255, 255, 0.16);
+}
+.tvb-units.tvb-up,
+.tvb-units.tvb-down {
   color: var(--accent-ink);
+  box-shadow: none;
+}
+.tvb-units.tvb-up {
+  background: var(--win);
+}
+.tvb-units.tvb-down {
+  background: var(--loss);
 }
 .tvb-mini {
   display: flex;
   align-items: center;
-  gap: 14vh;
-  padding: 8vh 18vh;
-  border-radius: 14vh;
-  background: rgba(255, 255, 255, 0.05);
-  box-shadow: inset 0 0 0 2vh rgba(255, 255, 255, 0.07);
+  gap: 12vh;
+  height: 72vh;
+  padding: 0 18vh 0 12vh;
+  border-radius: 16vh;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 2vh rgba(232, 185, 61, 0.55);
 }
 .tvb-mini .tvb-logo,
 .tvb-mini .tvb-badge {
-  width: 46vh !important;
-  height: 46vh !important;
+  width: 44vh !important;
+  height: 44vh !important;
 }
-.tvb-light {
-  width: 18vh;
-  height: 18vh;
-  border-radius: 50%;
+.tvb-mini.tvb-bet {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--vc) 38%, #06100c),
+    color-mix(in srgb, var(--vc) 24%, #040806)
+  );
+  box-shadow:
+    inset 0 0 0 3vh var(--vc),
+    0 0 24vh color-mix(in srgb, var(--vc) 35%, transparent);
+}
+.tvb-mini-l {
+  font:
+    700 28vh var(--font-numeric),
+    monospace;
+  color: #fff;
 }
 
 /* Touchdown: the strip floods in the scoring school's colour. */

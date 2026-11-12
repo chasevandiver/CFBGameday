@@ -434,13 +434,9 @@ function LiveTile({ g }: { g: TickerGame }) {
   const spot = fieldPosition(view);
   const redZone = isRedZone(view);
   const sit = situationText(g.situation);
-  const totalTicket = g.stake?.side === "over" || g.stake?.side === "under";
 
   const score = (s: "home" | "away") => {
     const pts = (s === "home" ? g.homePoints : g.awayPoints) ?? 0;
-    if (graded && !totalTicket && g.stake?.side === s) {
-      return <span className="tvb-s tvb-s-v">{pts}</span>;
-    }
     return <span className={`tvb-s ${lead !== null && lead !== s ? "tvb-trail" : ""}`}>{pts}</span>;
   };
   const name = (s: "home" | "away") => (
@@ -452,7 +448,6 @@ function LiveTile({ g }: { g: TickerGame }) {
   const cls = [
     "tvb-tile",
     graded ? "tvb-bet" : g.stake ? "tvb-mine" : "",
-    graded && totalTicket ? "tvb-total" : "",
     !graded && redZone ? "tvb-rz" : "",
   ]
     .filter(Boolean)
@@ -525,7 +520,10 @@ function FinalTile({ g }: { g: TickerGame }) {
           : null;
   const v = g.mine ? VERDICT[g.mine] : undefined;
   return (
-    <div className={`tvb-tile tvb-fin ${g.mine ? "tvb-mine" : ""}`} style={tileStyle(g)}>
+    <div
+      className={`tvb-tile tvb-fin ${g.mine ? "tvb-mine" : ""} ${v ? "tvb-bet" : ""}`}
+      style={tileStyle(g)}
+    >
       <Logo src={g.awayLogo} abbr={g.awayAbbr} color={g.awayColor} size={24} />
       <span className={`tvb-s ${lead === "away" ? "tvb-w" : ""}`}>{g.awayPoints ?? 0}</span>
       <span className="tvb-at">–</span>
@@ -552,46 +550,42 @@ function fmtUnits(u: number): string {
 function Summary({ s, games }: { s: TickerSummary; games: TickerGame[] }) {
   const live = games.filter((g) => g.mine && g.status === "in_progress");
   const next = games.filter((g) => g.mine && g.status === "scheduled");
-  const ubg = s.units > 0 ? "var(--win)" : s.units < 0 ? "var(--loss)" : "var(--elev)";
+  const ucls = s.units > 0 ? "tvb-up" : s.units < 0 ? "tvb-down" : "";
   return (
     <div className="tvb-sum">
-      <span className="tvb-k">YOUR NIGHT</span>
-      <span className="tvb-rec">{s.record}</span>
-      <span className="tvb-units" style={{ background: ubg }}>
-        {fmtUnits(s.units)}
+      <span className="tvb-stat">
+        <span className="tvb-rec">{s.record}</span>
+        <span className="tvb-cap">YOUR NIGHT</span>
       </span>
+      <span className={`tvb-units ${ucls}`}>{fmtUnits(s.units)}</span>
       {live.length > 0 && <span className="tvb-k">LIVE</span>}
-      {live.map((g) => {
-        const mineAway = g.stake?.side === "away";
-        const v = g.mine ? (VERDICT[g.mine] ?? "var(--text-dim)") : "var(--text-dim)";
-        return (
-          <span key={g.id} className="tvb-mini">
-            <Logo
-              src={mineAway ? g.awayLogo : g.homeLogo}
-              abbr={mineAway ? g.awayAbbr : g.homeAbbr}
-              color={mineAway ? g.awayColor : g.homeColor}
-              size={24}
-            />
-            <span className="tvb-light" style={{ background: v, boxShadow: `0 0 8px ${v}` }} />
-          </span>
-        );
-      })}
+      {live.map((g) => (
+        <MiniBet key={g.id} g={g} />
+      ))}
       {next.length > 0 && <span className="tvb-k">UP NEXT</span>}
-      {next.map((g) => {
-        const mineAway = g.stake?.side === "away";
-        return (
-          <span key={g.id} className="tvb-mini">
-            <Logo
-              src={mineAway ? g.awayLogo : g.homeLogo}
-              abbr={mineAway ? g.awayAbbr : g.homeAbbr}
-              color={mineAway ? g.awayColor : g.homeColor}
-              size={24}
-            />
-            <span className="tvb-k">{tvStatus(g).split(" ")[0]}</span>
-          </span>
-        );
-      })}
+      {next.map((g) => (
+        <MiniBet key={g.id} g={g} when={tvStatus(g).split(" ")[0]} />
+      ))}
     </div>
+  );
+}
+
+/** One ticket on the night card: the side's logo and the line, tinted by how it's going. */
+function MiniBet({ g, when }: { g: TickerGame; when?: string }) {
+  const away = g.stake?.side === "away";
+  const v = g.mine ? VERDICT[g.mine] : undefined;
+  return (
+    <span className={`tvb-mini ${v ? "tvb-bet" : ""}`} style={tileStyle(g)}>
+      <Logo
+        src={away ? g.awayLogo : g.homeLogo}
+        abbr={away ? g.awayAbbr : g.homeAbbr}
+        color={away ? g.awayColor : g.homeColor}
+        size={24}
+      />
+      <span className="tvb-mini-l">{g.stake?.label ?? (away ? g.awayAbbr : g.homeAbbr)}</span>
+      {when && <span className="tvb-k tvb-bright">{when}</span>}
+      <VerdictWords g={g} />
+    </span>
   );
 }
 
@@ -627,8 +621,8 @@ function pts(n: number): string {
 
 /**
  * A fantasy matchup in the broadcast tile (TV-12). The viewer's matchup reads
- * like their bets: the tile, their name and their score go green leading,
- * orange trailing, gold level. ESPN's win probability and the starters left
+ * like their bets: the whole tile goes green leading, red trailing, gold
+ * level. ESPN's win probability and the starters left
  * to play sit in the middle where a game's clock would be.
  */
 function FantasyTile({ m }: { m: FantasyMatchup }) {
@@ -652,20 +646,17 @@ function FantasyTile({ m }: { m: FantasyMatchup }) {
       <span className={`tvb-ab tvb-fname ${me && v ? "tvb-me" : ""}`}>{s.name}</span>
     </>
   );
-  const score = (s: FantasyMatchup["a"], me: boolean, other: FantasyMatchup["a"]) =>
-    me && v ? (
-      <span className="tvb-s tvb-s-v">{pts(s.score)}</span>
-    ) : (
-      <span className={`tvb-s ${started && s.score < other.score ? "tvb-trail" : ""}`}>
-        {pts(s.score)}
-      </span>
-    );
+  const score = (s: FantasyMatchup["a"], other: FantasyMatchup["a"]) => (
+    <span className={`tvb-s ${started && s.score < other.score ? "tvb-trail" : ""}`}>
+      {pts(s.score)}
+    </span>
+  );
 
   return (
     <div className={`tvb-tile tvb-ff ${v ? "tvb-bet" : m.mine ? "tvb-mine" : ""}`} style={style}>
       <span className="tvb-wash" />
       {side(m.a, m.mine)}
-      {score(m.a, m.mine, m.b)}
+      {score(m.a, m.b)}
       <span className="tvb-ctr">
         <span className="tvb-clk">
           {m.final ? (
@@ -683,7 +674,7 @@ function FantasyTile({ m }: { m: FantasyMatchup }) {
           {m.final ? `${m.a.record} · ${m.b.record}` : `PROJ ${pts(m.a.projected)} · ${left(m.a)}`}
         </span>
       </span>
-      {score(m.b, false, m.a)}
+      {score(m.b, m.a)}
       {side(m.b, false)}
       {m.final && m.mine && v && (
         <span className="tvb-res" style={{ background: v }}>
