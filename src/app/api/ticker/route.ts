@@ -22,6 +22,8 @@ export const dynamic = "force-dynamic";
 
 const DAY_MS = 24 * 3600 * 1000;
 const SOON_MS = 4 * 3600 * 1000;
+/** How far back a basketball bet can have been placed and still be on tonight's strip. */
+const CBB_BET_LOOKBACK_MS = 8 * DAY_MS;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -85,14 +87,92 @@ export async function GET(req: NextRequest) {
   const merged = ([...(data ?? []), ...(nflData ?? [])] as Row[]).sort((a, b) =>
     (a.start_ts ?? "9999").localeCompare(b.start_ts ?? "9999"),
   );
-  const rows = merged.filter((g) => {
+  const inWindow = (g: Row): boolean => {
     if (g.status === "in_progress") return true;
     const kick = g.start_ts ? Date.parse(g.start_ts) : null;
     if (kick === null) return false;
     if (g.status === "final") return now - kick <= DAY_MS;
     if (g.status === "scheduled") return kick >= now - SOON_MS && kick - now <= SOON_MS;
     return false;
-  });
+  };
+  const footballRows = merged.filter(inWindow);
+
+  // The broadcast-strip layer: which of these games the viewer has money or a
+  // pick on, and how it's going. Signed-out gets the plain strip — the
+  // viewer's queries only run for a session, and RLS scopes them to own rows.
+  //
+  // Resolved here, ahead of the teams and lines reads, since TV-20: which
+  // BASKETBALL games are on the strip depends on who is watching.
+  const { data: auth } = await supabase.auth.getUser();
+  let userId = auth?.user?.id ?? null;
+  let mineDb: SupabaseClient = supabase;
+
+  /* TV-2: the Fire TV overlay can't sign in, so it carries the viewer's
+     calendar key as `?k=` (migration 0054: a capability token for a client
+     that cannot hold a session). Resolved on the service client, the same
+     posture as /api/calendar/[token]; every query below filters on user_id
+     explicitly, so bypassing RLS discloses nothing beyond this viewer's own
+     verdicts. A bad or unknown key is the plain strip, never an error.
+
+     No longer gated on football being on (it was `rows.length > 0`): on a
+     Tuesday in January the only games this viewer has are basketball, and
+     those cannot be found without knowing who they are. */
+  if (userId === null) {
+    const k = req.nextUrl.searchParams.get("k");
+    if (k && UUID_RE.test(k)) {
+      const svc = createServiceClient();
+      const { data: tok } = await svc
+        .from("calendar_tokens")
+        .select("user_id")
+        .eq("token", k)
+        .maybeSingle();
+      if (tok) {
+        userId = tok.user_id as string;
+        mineDb = svc;
+      }
+    }
+  }
+
+  /* TV-20, owner request 2026-11-12: college basketball on the strip, and
+     ONLY the games the viewer has money on. A basketball night is sixty to a
+     hundred and fifty games; a strip that carried them all would be a wall
+     of schools nobody in the room is watching. So basketball rows are found
+     from the viewer's own unvoided bets — picks do not count, there is no
+     basketball pick'em — and then held to the same window as football: live,
+     final inside a day, or tipping inside four hours. Signed-out, and for a
+     viewer with no basketball bets, this adds nothing and costs one read. */
+  const cbbIds = new Set<number>();
+  let cbbRows: Row[] = [];
+  if (userId !== null) {
+    try {
+      const cbb = await fetchCurrentSeasonWeek(supabase, "cbb");
+      const { data: betRows } = await mineDb
+        .from("bets")
+        .select("game_id")
+        .eq("user_id", userId)
+        .eq("season_id", cbb.seasonId)
+        .is("voided_at", null)
+        .not("game_id", "is", null)
+        // A bet settles once and stays; only the last few days can still be
+        // inside the window, and a season of bets is not worth reading for it.
+        .gte("placed_at", new Date(now - CBB_BET_LOOKBACK_MS).toISOString());
+      const ids = [...new Set(((betRows ?? []) as Array<{ game_id: number }>).map((b) => b.game_id))];
+      if (ids.length > 0) {
+        const { data: cbbData } = await supabase
+          .from("games")
+          .select(GAME_COLS)
+          .in("id", ids)
+          .eq("season_id", cbb.seasonId);
+        cbbRows = ((cbbData ?? []) as Row[]).filter(inWindow);
+        for (const g of cbbRows) cbbIds.add(g.id);
+      }
+    } catch {
+      /* no basketball season configured — the strip is football's alone */
+    }
+  }
+  const rows = [...footballRows, ...cbbRows].sort((a, b) =>
+    (a.start_ts ?? "9999").localeCompare(b.start_ts ?? "9999"),
+  );
 
   const teamIds = [...new Set(rows.flatMap((g) => [g.home_team_id, g.away_team_id]))];
   const [{ data: teams }, { data: consensus }] = await Promise.all([
@@ -139,35 +219,6 @@ export async function GET(req: NextRequest) {
           .toUpperCase(),
     ]),
   );
-
-  // The broadcast-strip layer: which of these games the viewer has money or a
-  // pick on, and how it's going. Signed-out gets the plain strip — the two
-  // extra queries only run for a session, and RLS scopes both to own rows.
-  const { data: auth } = await supabase.auth.getUser();
-  let userId = auth?.user?.id ?? null;
-  let mineDb: SupabaseClient = supabase;
-
-  /* TV-2: the Fire TV overlay can't sign in, so it carries the viewer's
-     calendar key as `?k=` (migration 0054: a capability token for a client
-     that cannot hold a session). Resolved on the service client, the same
-     posture as /api/calendar/[token]; both queries below filter on user_id
-     explicitly, so bypassing RLS discloses nothing beyond this viewer's own
-     verdicts. A bad or unknown key is the plain strip, never an error. */
-  if (userId === null) {
-    const k = req.nextUrl.searchParams.get("k");
-    if (k && UUID_RE.test(k) && rows.length > 0) {
-      const svc = createServiceClient();
-      const { data: tok } = await svc
-        .from("calendar_tokens")
-        .select("user_id")
-        .eq("token", k)
-        .maybeSingle();
-      if (tok) {
-        userId = tok.user_id as string;
-        mineDb = svc;
-      }
-    }
-  }
 
   let summary: TickerSummary | null = null;
   const mineById = new Map<number, TickerMine | null>();
@@ -274,7 +325,11 @@ export async function GET(req: NextRequest) {
     possession: g.status === "in_progress" ? (g.possession ?? null) : null,
     situation: g.status === "in_progress" ? (g.current_situation ?? null) : null,
     // MIA is Miami on Saturday and the Dolphins on Sunday; the chip says which.
-    ...(nflIds.has(g.id) ? { sport: "nfl" as const } : {}),
+    ...(nflIds.has(g.id)
+      ? { sport: "nfl" as const }
+      : cbbIds.has(g.id)
+        ? { sport: "cbb" as const }
+        : {}),
   }));
 
   // TV-16: the deploy this answer came from. The TV pages reload themselves

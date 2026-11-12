@@ -3127,9 +3127,16 @@ are open.
 
 **Queued (v2).**
 
-- [ ] **CBB-12 — TV overlay and the score ticker.** Owner: v2. The ticker
-      route reads the CFB and NFL weeks only; nothing basketball reaches the
-      strip or the TV today.
+- [x] **CBB-12 / TV-20 — college basketball bets on the TV overlay and the
+      score ticker.** Owner request 2026-11-12. `/api/ticker` adds the
+      basketball games the viewer has an unvoided BET on (never the whole
+      board, never picks), held to the same window as football. They carry
+      `sport: "cbb"`: a basketball glyph on every tile type, the clock in
+      halves and OT, HALFTIME after period 1, `FINAL/OT`, no down, distance
+      or field, and no scoring banner. The overlay's `?k=` key now resolves
+      even when no football is in the window, or a January weeknight would
+      show nothing. Rendered on all three TV surfaces (cards, ticker, corner)
+      from a mocked feed. **Not checked on a real Fire TV.**
 - [ ] **CBB-13 — bonus and team fouls on the slate card.** Needs a cheaper
       source than `/summary`, or a watch-list (games someone has bet).
 - [ ] **CBB-14 — tomorrow's lines.** The feed publishes one day; a card for

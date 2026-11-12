@@ -61,8 +61,11 @@ export interface TickerGame {
   possession?: "home" | "away" | null;
   situation?: string | null;
   /** Present (as "nfl") on NFL chips — MIA is Miami on Saturday and the
-   *  Dolphins on Sunday, and the chip has to say which. Absent = CFB. */
-  sport?: "nfl";
+   *  Dolphins on Sunday, and the chip has to say which. Absent = CFB.
+   *  "cbb" since TV-20: a college basketball game the viewer has a bet on.
+   *  It reads its clock in halves, carries no down or possession, and is
+   *  never announced when it scores. */
+  sport?: "nfl" | "cbb";
 }
 
 /**

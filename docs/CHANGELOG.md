@@ -234,6 +234,28 @@ shipping it.
 
 ## Log
 
+### Nov 12 — TV-20: college basketball bets on the TV overlay
+
+Owner request: the CBB games he is betting, and only those, on the overlay,
+marked as basketball; no down and distance, halves and OT rather than
+quarters, and no banner every time one scores.
+
+- `/api/ticker` finds basketball games from the viewer's own unvoided bets and
+  holds them to football's window (live, final inside a day, tipping inside
+  four hours). Signed-out, or with no basketball bets, the strip is unchanged.
+- A basketball glyph in place of the `NFL` letters, on the ticker chip, the
+  corner box, and the live, upcoming, final and night-card tiles. Same marker
+  on the in-app score ticker.
+- `tvStatus` reads the sport: `1H 12:34`, `HALFTIME` after period 1, `OT`,
+  `FINAL/OT`.
+- `newScores` skips basketball, so the touchdown banner never fires for it.
+- The `?k=` viewer key used to resolve only when football was in the window.
+
+Checked: 2,372 unit tests, typecheck, lint, `next build`; the three TV pages
+rendered at their real sizes from a mocked feed with football and basketball
+bets side by side. Not checked on the Fire TV itself — the pages reload
+themselves on a new deploy (TV-16), so it needs no app update.
+
 ### Nov 12 — CBB second pass: the pick on the card, the model's record, a league bottom bar (CBB-16…18, NAV-2)
 
 Owner report after the first evening with the CBB slate live.
