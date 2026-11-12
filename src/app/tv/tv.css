@@ -25,6 +25,14 @@ body > footer {
   letter-spacing: 0.02em;
   overflow: hidden;
 }
+/* TV-14: losing is red on the TV, not the Field palette's orange. Over live
+   video at couch distance the brand orange (#e4572e) read as a cousin of the
+   gold push, so a losing ticket looked like a push. Scoped to the overlay
+   only; the site keeps its palette. */
+.tv-panel,
+.tv-panel.brand-surface {
+  --loss: #ef2f3c;
+}
 
 .tv-dot {
   display: inline-block;
