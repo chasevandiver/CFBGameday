@@ -598,8 +598,18 @@ body > footer {
     inset 0 0 0 3vh var(--vc),
     0 0 30vh color-mix(in srgb, var(--vc) 38%, transparent);
 }
+/* TV-17: the team colours still wash in from each end, over the verdict
+   tint, so a bet tile has the same depth as every other live tile. */
 .tvb-bet .tvb-wash {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 55%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 55%),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--ta) 60%, transparent),
+      transparent 30%,
+      transparent 70%,
+      color-mix(in srgb, var(--th) 60%, transparent)
+    );
 }
 .tvb-bet .tvb-ticket {
   font-weight: 700;

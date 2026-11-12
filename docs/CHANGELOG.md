@@ -234,6 +234,15 @@ shipping it.
 
 ## Log
 
+### Nov 11 — TV-17: bet tiles get their team colours back
+
+On the TV the TV-15 bet tile read as bland beside the live tiles: the flat
+verdict tint had replaced the school-colour washes every other tile carries.
+The washes now sit on top of the verdict tint at both ends (60%, fading by 30%),
+so the verdict still owns the edge, the middle and the ticket chip. The fantasy
+tile has no school colours and passes transparent ones. Zero units on the night
+card now reads EVEN; "0U" read as "OU" on the TV.
+
 ### Nov 11 — TV-16: the overlay reloads itself on a new deploy; Reload button
 
 After TV-15 merged, the TVs kept the old page: the WebView only reloads hourly,

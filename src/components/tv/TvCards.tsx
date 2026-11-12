@@ -541,9 +541,10 @@ function FinalTile({ g }: { g: TickerGame }) {
   );
 }
 
-/** "+1.4U" / "-2U", one decimal at most. */
+/** "+1.4U" / "-2U", one decimal at most; "EVEN" at zero, since "0U" reads as OU. */
 function fmtUnits(u: number): string {
   const r = Math.round(u * 10) / 10;
+  if (r === 0) return "EVEN";
   return `${r > 0 ? "+" : ""}${r}U`;
 }
 
@@ -631,7 +632,9 @@ function FantasyTile({ m }: { m: FantasyMatchup }) {
   const verdict =
     !m.mine || !started ? undefined : diff > 0 ? "covering" : diff < 0 ? "losing" : "push";
   const v = verdict ? VERDICT[verdict] : undefined;
-  const style = (v ? { "--vc": v, "--vdir": "90deg" } : {}) as CSSProperties;
+  const style = (
+    v ? { "--vc": v, "--vdir": "90deg", "--ta": "transparent", "--th": "transparent" } : {}
+  ) as CSSProperties;
   const prob = m.a.winProb;
   const left = (s: FantasyMatchup["a"]) =>
     s.playing > 0
