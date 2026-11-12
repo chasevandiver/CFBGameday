@@ -234,6 +234,18 @@ shipping it.
 
 ## Log
 
+### Nov 11 — TV-16: the overlay reloads itself on a new deploy; Reload button
+
+After TV-15 merged, the TVs kept the old page: the WebView only reloads hourly,
+Show with the same URL doesn't reload, and the phone page had no Reload button
+even though `/api/reload` existed. Two fixes:
+- `/api/ticker` now carries `build` (`VERCEL_GIT_COMMIT_SHA`). The TV pages
+  remember the first one they see and `location.reload()` when the feed names a
+  different one (`newDeploy`, tested). A shipped fix reaches every TV within a
+  poll (30-60s) with nothing to tap.
+- The phone page gets a Reload button beside Hide, relayed to every TV when
+  All TVs is selected. This one ships in the APK, through the in-app updater.
+
 ### Nov 11 — TV-15: bet tiles and the night card cleaned up
 
 On the TV (BUF -1.5 up 14-7) the bet tile and the night card looked worst

@@ -271,7 +271,10 @@ export async function GET(req: NextRequest) {
     ...(nflIds.has(g.id) ? { sport: "nfl" as const } : {}),
   }));
 
-  const payload: TickerData = { seasonId, week, games, summary };
+  // TV-16: the deploy this answer came from. The TV pages reload themselves
+  // when it changes, so a fix reaches the overlay without touching the remote.
+  const build = process.env.VERCEL_GIT_COMMIT_SHA ?? null;
+  const payload: TickerData = { seasonId, week, games, summary, build };
   return NextResponse.json(payload, {
     headers: { "cache-control": "no-store" },
   });
