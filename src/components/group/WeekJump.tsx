@@ -1,5 +1,6 @@
 "use client";
 
+import type { Sport } from "../../lib/league";
 import { ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
@@ -35,7 +36,7 @@ export function WeekJump({
   base: string;
   weeks: WeekRef[];
   current: WeekRef;
-  sport: "cfb" | "nfl";
+  sport: Sport;
   /** Carried through so a both-league group stays on the league in view. */
   league?: string | null;
 }) {

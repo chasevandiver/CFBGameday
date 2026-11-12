@@ -34,7 +34,8 @@ import {
   weekBuckets,
   type WeekWager,
 } from "../../../lib/week-records";
-import type { GroupSummary } from "../../../lib/groups";
+import { leagueQuery, type GroupSummary } from "../../../lib/groups";
+import { cbbDateOfDay } from "../../../lib/cbb";
 import type { BetRow } from "../../../lib/db-types";
 import type { Sport } from "../../../lib/league";
 import { buildSheetShareContext } from "../../../lib/group-share";
@@ -94,11 +95,18 @@ export async function BettingHome({
   /** `?for=`: the member an admin is logging bets for (0083). */
   forParam?: string | null;
 }) {
-  const leagueParam = league === "nfl" ? "nfl" : null;
+  const leagueParam = leagueQuery(league);
   /* Every road to the slate from here opens the league in view: a reader on
      the NFL tab who taps "Go bet the slate" and lands on Saturday's games has
-     been told, wrongly, that this is a CFB product. */
-  const slateHref = league === "nfl" ? "/slate?sport=nfl" : "/slate";
+     been told, wrongly, that this is a CFB product. Basketball's also opens
+     the DAY in view — its sheet is one night, and the slate's default is
+     today, which is a different night once you have stepped back. */
+  const slateHref =
+    league === "cbb"
+      ? `/slate?sport=cbb&date=${cbbDateOfDay(seasonId, week)}`
+      : league === "nfl"
+        ? "/slate?sport=nfl"
+        : "/slate";
 
   const [sheet, slate, joinRes] = await Promise.all([
     fetchBettingSheet(supabase, group.id, seasonId),
@@ -398,7 +406,13 @@ export async function BettingHome({
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Link
-              href={`/slate?g=${encodeURIComponent(group.slug)}&for=${encodeURIComponent(actingFor.userId)}${league === "nfl" ? "&sport=nfl" : ""}`}
+              href={`/slate?g=${encodeURIComponent(group.slug)}&for=${encodeURIComponent(actingFor.userId)}${
+                league === "cbb"
+                  ? `&sport=cbb&date=${cbbDateOfDay(seasonId, week)}`
+                  : league === "nfl"
+                    ? "&sport=nfl"
+                    : ""
+              }`}
               className="stat inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-ink"
             >
               <PenLine size={14} aria-hidden />

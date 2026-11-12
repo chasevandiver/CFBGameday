@@ -92,6 +92,17 @@ export interface LeagueSplit {
   total: Tally;
   cfb: Tally;
   nfl: Tally;
+  cbb: Tally;
+}
+
+/** The leagues with something decided in a split, in display order. */
+export function leagueParts(split: Pick<LeagueSplit, Sport>): Array<[string, Tally]> {
+  const all: Array<[string, Tally]> = [
+    ["CFB", split.cfb],
+    ["NFL", split.nfl],
+    ["CBB", split.cbb],
+  ];
+  return all.filter(([, t]) => t.decided > 0);
 }
 
 /** The three cuts, all through `tally` — never a second arithmetic. */
@@ -102,6 +113,7 @@ export function leagueSplit<T extends Wager & { seasonId: number }>(
     total: tally(wagers),
     cfb: tally(wagers.filter((w) => sportOfSeasonId(w.seasonId) === "cfb")),
     nfl: tally(wagers.filter((w) => sportOfSeasonId(w.seasonId) === "nfl")),
+    cbb: tally(wagers.filter((w) => sportOfSeasonId(w.seasonId) === "cbb")),
   };
 }
 
@@ -133,8 +145,8 @@ export interface SliceRecord {
 }
 
 export const EMPTY_SLICE: SliceRecord = {
-  settled: { total: EMPTY_TALLY, cfb: EMPTY_TALLY, nfl: EMPTY_TALLY },
-  now: { total: EMPTY_TALLY, cfb: EMPTY_TALLY, nfl: EMPTY_TALLY },
+  settled: { total: EMPTY_TALLY, cfb: EMPTY_TALLY, nfl: EMPTY_TALLY, cbb: EMPTY_TALLY },
+  now: { total: EMPTY_TALLY, cfb: EMPTY_TALLY, nfl: EMPTY_TALLY, cbb: EMPTY_TALLY },
   live: 0,
   projected: 0,
   upcoming: 0,
@@ -412,9 +424,20 @@ function shortToken(ref: WeekRef, sport: Sport): string {
 export function weekBucketLabel(wagers: readonly WeekWager[]): string {
   const cfb = modalWeek(wagers, "cfb");
   const nfl = modalWeek(wagers, "nfl");
-  if (cfb && nfl) return `CFB ${shortToken(cfb, "cfb")} · NFL ${shortToken(nfl, "nfl")}`;
+  /* Basketball has no week of its own to name — its stored `week` is a day
+     (src/lib/cbb.ts) and a calendar week of it is seven of them. So it is
+     named as present, never numbered: the date range the caller prints beside
+     this label already says which week it was. */
+  const hoops = wagers.some((w) => sportOfSeasonId(w.seasonId) === "cbb");
+  const tokens = [
+    cfb ? `CFB ${shortToken(cfb, "cfb")}` : null,
+    nfl ? `NFL ${shortToken(nfl, "nfl")}` : null,
+    hoops ? "CBB" : null,
+  ].filter((t): t is string => t !== null);
+  if (tokens.length > 1) return tokens.join(" · ");
   if (cfb) return weekLabel(cfb, "cfb");
   if (nfl) return `NFL ${weekLabel(nfl, "nfl")}`;
+  if (hoops) return "CBB";
   return "Week";
 }
 

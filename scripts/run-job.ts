@@ -13,6 +13,7 @@ import {
   freezeJob,
   gradeSeasonFinals,
   nflScoringJob,
+  cbbGradeJob,
   logCfbdCalls,
   ratingsUpdateJob,
   recordJobRun,
@@ -30,6 +31,7 @@ import { teamNewsJob } from "./lib/team-news";
 import { dailyPuzzlesJob } from "./lib/daily-puzzles";
 import { sixPackJob } from "./lib/six-pack";
 import { NFL_SEASON } from "./lib/nfl";
+import { CBB_SEASON } from "./lib/cbb";
 import { notifyLogBetsJob, notifyPicksDueJob } from "./lib/notify-jobs";
 
 async function main() {
@@ -64,6 +66,10 @@ async function main() {
     // NFL settlement: the ratings replay stays CFB-only, but an NFL final
     // grades picks/bets and CLV with the identical shared machinery.
     "nfl-grade": (db: Parameters<typeof gradeSeasonFinals>[0]) => gradeSeasonFinals(db, NFL_SEASON),
+    // College basketball settlement (CBB-5): the last few days' finals and
+    // dead games. Dispatched by the database when a finished game carries an
+    // open bet (0086), and once a morning as the backstop.
+    "cbb-grade": (db: Parameters<typeof cbbGradeJob>[0]) => cbbGradeJob(db, CBB_SEASON),
     // SCORE-1: the scoring timeline, one job per league because the two feeds
     // are shaped differently — ESPN publishes a ready-made summary per game,
     // CFBD publishes a whole week of plays and expects you to filter. Both are

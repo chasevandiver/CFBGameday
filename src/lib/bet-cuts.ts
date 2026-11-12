@@ -21,7 +21,8 @@
 
 import { BET_TYPE_LABELS, TEAM_SIDED, TOTAL_SIDED, type BetType } from "./db-types";
 import { kickSlot, nflKickSlot } from "./kick";
-import { sportOfSeasonId, type Sport } from "./league";
+import { cbbTipSlot } from "./cbb";
+import { sportLabel, sportOfSeasonId, type Sport } from "./league";
 import type { Wager } from "./records";
 
 /**
@@ -112,7 +113,7 @@ export const priceOf: Cut = (b) => {
 
 /* ── Teams and matchups ──────────────────────────────────────────────────── */
 
-export const leagueOf: Cut = (b) => (sportOfSeasonId(b.seasonId) === "nfl" ? "NFL" : "CFB");
+export const leagueOf: Cut = (b) => sportLabel(sportOfSeasonId(b.seasonId));
 
 /**
  * The team id a bet backed, and the one it faded — as ids, because this module
@@ -143,7 +144,9 @@ export function teamsOf(b: StatsBet): { backed: number | null; faded: number | n
  */
 export const windowOf: Cut = (b) => {
   if (!b.startTs) return null;
-  return sportOfSeasonId(b.seasonId) === "nfl" ? nflKickSlot(b.startTs) : kickSlot(b.startTs);
+  const sport = sportOfSeasonId(b.seasonId);
+  if (sport === "cbb") return cbbTipSlot(b.startTs);
+  return sport === "nfl" ? nflKickSlot(b.startTs) : kickSlot(b.startTs);
 };
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;

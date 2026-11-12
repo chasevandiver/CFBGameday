@@ -39,10 +39,11 @@ const member = (name: string, whole: Tally, cfb: Tally, nfl: Tally): SheetMember
   managed: false,
   stats: stats(whole),
   form: form("level"),
-  leagueSplit: { cfb, nfl },
+  leagueSplit: { cfb, nfl, cbb: EMPTY_TALLY },
   byLeague: {
     cfb: { stats: stats(cfb), form: form("cold") },
     nfl: { stats: stats(nfl), form: form("hot") },
+    cbb: { stats: stats(EMPTY_TALLY), form: form("level") },
   },
 });
 

@@ -9,11 +9,12 @@ import type { PickRow } from "../../../../lib/db-types";
 import {
   fetchGroupMembers,
   fetchGroupWeek,
-  groupLeague,
+  groupFootballLeague,
   resolveActiveGroup,
   type GroupSummary,
   type GroupWeek,
 } from "../../../../lib/groups";
+import { isGroupLeague } from "../../../../lib/league";
 import { DEFAULT_TZ, kickParts, tzLabel } from "../../../../lib/kick";
 import { fetchCurrentSeasonWeek, fetchSlateView } from "../../../../lib/queries";
 import { createClient } from "../../../../lib/supabase/server";
@@ -60,7 +61,8 @@ async function loadBoard(
 ): Promise<Board> {
   // Each league runs its own week calendar; ?league= picks which board is
   // being configured, and only leagues the group plays are reachable.
-  const league = groupLeague(q.league, active.leagues);
+  // Boards are a pick'em thing and pick'em is football (`groups_leagues_sane`).
+  const league = groupFootballLeague(q.league, active.leagues);
   const { seasonId, week: currentWeek, seasonType: currentType, minWeek } =
     await fetchCurrentSeasonWeek(supabase, league);
 
@@ -281,7 +283,7 @@ export default async function GroupSettingsPage({
               visibility={active.visibility}
               hidePicks={active.picksHiddenUntilKickoff}
               kind={active.kind}
-              leagues={active.leagues}
+              leagues={active.leagues.filter(isGroupLeague)}
               joinCode={joinCode}
             />
           </section>

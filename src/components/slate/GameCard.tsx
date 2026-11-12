@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { voidBet } from "../../app/actions/bets";
 import { inSlip, useBetSlip, type SlipSelection } from "../../lib/bet-slip-store";
 import { betsChanged } from "../../lib/bets-changed";
-import { breakLabel, kickParts, periodLabel, underTwo } from "../../lib/kick";
+import { breakLabel, kickParts, overtimeSuffix, periodLabel, underTwo } from "../../lib/kick";
 import {
   settledResult,
   statusForBet,
@@ -28,6 +28,7 @@ import {
   gradeModel,
   isDead,
   isFinal,
+  isHoops,
   isLive,
   isRedZone,
   headlinePick,
@@ -114,13 +115,20 @@ export function GameCard({
     const p = prev.current;
     const homeScored = game.homePoints !== p.h && game.homePoints !== null && p.h !== null;
     const awayScored = game.awayPoints !== p.a && game.awayPoints !== null && p.a !== null;
+    // A six-to-eight point jump is a touchdown in football. In basketball it
+    // is two threes inside one poll, and flooding an end zone for it would be
+    // a celebration of nothing.
+    const td = (delta: number) => !isHoops(game) && isTdDelta(delta);
     if (homeScored) {
-      setFlash({ side: "home", key: Date.now(), td: isTdDelta((game.homePoints ?? 0) - (p.h ?? 0)) });
+      setFlash({ side: "home", key: Date.now(), td: td((game.homePoints ?? 0) - (p.h ?? 0)) });
     } else if (awayScored) {
-      setFlash({ side: "away", key: Date.now(), td: isTdDelta((game.awayPoints ?? 0) - (p.a ?? 0)) });
+      setFlash({ side: "away", key: Date.now(), td: td((game.awayPoints ?? 0) - (p.a ?? 0)) });
     }
     if (homeScored || awayScored) setFlare(Date.now());
     prev.current = { h: game.homePoints, a: game.awayPoints };
+    // `game` is read for its sport only, which never changes for a card; the
+    // effect is about the two scores and must not re-run on every poll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.homePoints, game.awayPoints]);
 
   useEffect(() => {
@@ -158,7 +166,7 @@ export function GameCard({
   const pulse = pulseCycle({
     live,
     redZone: isRedZone(game),
-    underTwo: underTwo(game.period, game.clock),
+    underTwo: underTwo(game.period, game.clock, game.sport),
   });
 
   const headline = headlinePick(game.myPicks);
@@ -300,7 +308,7 @@ export function GameCard({
         {live && headline && (
           <p className="sr-only" aria-live="polite">
             {game.away.abbr} {game.awayPoints ?? 0}, {game.home.abbr} {game.homePoints ?? 0},{" "}
-            {breakLabel(game.period, game.clock) ?? periodLabel(game.period)}
+            {breakLabel(game.period, game.clock, game.sport) ?? periodLabel(game.period, game.sport)}
           </p>
         )}
 
@@ -374,11 +382,20 @@ function CardHeader({
   focused: boolean;
   onFocus?: (gameId: number) => void;
 }) {
-  const u2m = live && underTwo(game.period, game.clock);
-  const liveBreak = live ? breakLabel(game.period, game.clock) : null;
+  const u2m = live && underTwo(game.period, game.clock, game.sport);
+  const liveBreak = live ? breakLabel(game.period, game.clock, game.sport) : null;
   return (
     <div className="flex min-h-5 items-center justify-between gap-2">
       <div className="flex min-w-0 items-center gap-2">
+        {/* The event's banner — "NCAA Tournament - 1st Round", "Maui
+            Invitational" — where football carries a rivalry's name. Pregame
+            and final only: live, this row is the clock's, and the clock is
+            the one thing on the card that must never be squeezed. */}
+        {game.note && !game.rivalry && !live && (
+          <span className="chip min-w-0 shrink bg-chalk/10 text-chalk" title={game.note}>
+            <span className="truncate">{game.note}</span>
+          </span>
+        )}
         {game.rivalry && (
           <span
             className="chip shrink-0 bg-chalk/10 text-chalk"
@@ -409,7 +426,7 @@ function CardHeader({
                   the broadcast. */}
               {liveBreak ?? (
                 <>
-                  {periodLabel(game.period)}
+                  {periodLabel(game.period, game.sport)}
                   {game.clock ? ` · ${game.clock}` : ""}
                 </>
               )}
@@ -420,7 +437,7 @@ function CardHeader({
           </>
         ) : final ? (
           <span className="stat text-xs font-semibold uppercase tracking-wide text-dim">
-            Final{game.period !== null && game.period > 4 ? ` / ${periodLabel(game.period)}` : ""}
+            Final{overtimeSuffix(game.period, game.sport)}
           </span>
         ) : dead ? (
           <span className="stat text-xs uppercase text-push">{game.status}</span>
@@ -1004,7 +1021,7 @@ function PregameFooter({
               .map(({ bet }) => (
                 <BetChip key={bet.id} bet={bet} label={betPrefix(game, bet)} />
               ))}
-          <EdgeChip flag={p?.edgeFlag ?? null} edge={p?.edge ?? null} />
+          <EdgeChip flag={p?.edgeFlag ?? null} edge={p?.edge ?? null} hoops={isHoops(game)} />
           <ConsensusChip on={p?.consensus ?? false} />
           {/* SLATE-4, owner report 2026-08-23: "what is the up arrow 3? It
               looks weird." Pregame this sits among labelled chips and reads as
@@ -1076,7 +1093,9 @@ function PregameFooter({
           <p className="stat mt-1.5 truncate text-[10.5px] leading-none text-dim">
             {live ? (
               <>
-                Live win prob
+                {/* Basketball's live number is ESPN's, and says so: this app
+                    computes football's and does not compute this one. */}
+                {isHoops(game) ? "ESPN win prob" : "Live win prob"}
                 {p && (
                   <>
                     {" · pregame "}
@@ -1114,6 +1133,33 @@ function PregameFooter({
               </>
             )}
           </p>
+          {/* CBB-9: the model's score and pace, where football has weather.
+              A basketball projection is easiest to argue with as a final
+              score — "76–65" says who, by how many and how fast in one read —
+              and the tempo is the number the total hangs on. Pregame only;
+              live, the real score has replaced the projected one. Its own
+              line so the row above stays exactly football's, and so a missing
+              projection removes a line rather than leaving a gap in one. */}
+          {!live && isHoops(game) && p && p.awayScore !== null && p.homeScore !== null && (
+            <p className="stat mt-1.5 truncate text-[10.5px] leading-none text-dim">
+              {"Proj: "}
+              <span className="text-chalk">
+                {game.away.abbr} {Math.round(p.awayScore)}, {game.home.abbr} {Math.round(p.homeScore)}
+              </span>
+              {game.tempo != null && (
+                <>
+                  {" · "}
+                  <span className="text-chalk">{Math.round(game.tempo)}</span> poss
+                </>
+              )}
+              {p.total !== null && game.lines.total !== null && (
+                <>
+                  {" · mkt "}
+                  <span className="text-chalk">{fmtTotal(game.lines.total)}</span>
+                </>
+              )}
+            </p>
+          )}
         </div>
       )}
       {/* F16. Outside the prediction block on purpose.

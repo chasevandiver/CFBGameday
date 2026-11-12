@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 import { ACTIVE_GROUP_COOKIE, activeOfKind, resolveActiveGroup } from "../../../lib/groups";
-import { seasonYearOf } from "../../../lib/league";
+import { isValidCbbDay } from "../../../lib/cbb";
+import { seasonYearOf, type Sport } from "../../../lib/league";
 import { resolveActingBettor } from "../../../lib/log-for";
 import { fetchCurrentSeasonWeek, fetchLiveSlate, fetchSlateView } from "../../../lib/queries";
 import { createClient } from "../../../lib/supabase/server";
@@ -25,8 +26,9 @@ export async function GET(request: NextRequest) {
   // every week, so it short-circuits the week resolution below entirely.
   const sportParam = request.nextUrl.searchParams.get("sport");
   const liveView = sportParam === "live";
-  const sport = sportParam === "nfl" ? "nfl" : "cfb";
+  const sport: Sport = sportParam === "nfl" ? "nfl" : sportParam === "cbb" ? "cbb" : "cfb";
   const { seasonId, week: currentWeek, seasonType } = await fetchCurrentSeasonWeek(supabase, sport);
+  const hoops = sport === "cbb";
   const stParam = request.nextUrl.searchParams.get("st");
   /* `parseWeekParam`, not `Number(...)`. A missing `?week=` reads back as
      `null`, `Number(null)` is `0`, and Week 0 is a real addressable week
@@ -38,11 +40,22 @@ export async function GET(request: NextRequest) {
      `parseWeekParam` exists for exactly this and handles absent separately
      from zero. The slate's own poller always sends a week, which is why this
      survived: it only ever showed up on a bare request. */
-  const weekParam = parseWeekParam(request.nextUrl.searchParams.get("week"));
+  const rawWeek = request.nextUrl.searchParams.get("week");
+  /* Basketball's week is a day index (src/lib/cbb.ts) and runs to ~160, far
+     outside `parseWeekParam`'s football range — which would read every day
+     after November 21 as absent and quietly serve today instead. Same
+     absent-versus-zero care as below: `Number(null)` is 0, and day 0 is real. */
+  const cbbDay = rawWeek === null || rawWeek === "" ? null : Number(rawWeek);
+  const weekParam = hoops
+    ? cbbDay !== null && isValidCbbDay(cbbDay)
+      ? cbbDay
+      : null
+    : parseWeekParam(rawWeek);
   const hasWeek = weekParam !== null;
   const week = hasWeek ? weekParam : currentWeek;
-  const st =
-    stParam === "postseason" || stParam === "regular" || stParam === "preseason"
+  const st = hoops
+    ? "regular"
+    : stParam === "postseason" || stParam === "regular" || stParam === "preseason"
       ? stParam
       : hasWeek
         ? "regular"

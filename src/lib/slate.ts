@@ -11,6 +11,7 @@ import type { GroupBetView } from "./tailing";
 import { spreadCoverSide, totalCoverSide } from "./cover";
 import type { PickMarket } from "./grade";
 import type { Sport } from "./league";
+import type { CbbLive } from "./cbb";
 import { isDeadStatus } from "./void";
 
 export interface TeamView {
@@ -329,6 +330,13 @@ export function playAge(
 
 export interface GameView {
   id: number;
+  /**
+   * Which league this game is. Optional only so fixtures written before
+   * basketball need no edit — absent reads as football, which every one of
+   * them is. The cross-league Live view mixes leagues in one list, so a card
+   * cannot take this from the slate it was loaded under.
+   */
+  sport?: Sport;
   week: number;
   startTs: string | null;
   status: string;
@@ -396,7 +404,16 @@ export interface GameView {
   rivalry: RivalryView | null;
   /** Latest SP+/FPI/Elo for both sides (spec §2.4); empty when unsynced */
   systems: SystemRatingView[];
+  /** CBB only: the line score, current run and ESPN's live win probability. */
+  hoops?: CbbLive | null;
+  /** CBB only: the model's projected possessions per team (its pace). */
+  tempo?: number | null;
+  /** The event's banner — "NCAA Tournament - 1st Round", "Maui Invitational". */
+  note?: string | null;
 }
+
+/** True for a college basketball game. The one sport test the card makes. */
+export const isHoops = (g: Pick<GameView, "sport">): boolean => g.sport === "cbb";
 
 export interface RivalryView {
   name: string;
@@ -555,6 +572,12 @@ export function fieldPosition(g: {
  */
 export function liveHomeWinProb(g: GameView): number | null {
   if (!isLive(g)) return null;
+  /* Basketball takes ESPN's number rather than computing one. `liveWinProb`
+     is a football model — its clock is four quarters and its scoring comes in
+     sevens — and running a basketball score through it would print a
+     confident bar that means nothing. ESPN's probability arrives with the
+     score on the same call; when it is absent the bar is, too. */
+  if (isHoops(g)) return g.hoops?.wp ?? null;
   return liveWinProb({
     pregameMargin: g.prediction ? -g.prediction.spread : 0,
     homePoints: g.homePoints ?? 0,
@@ -868,11 +891,15 @@ export function watchability(g: GameView): number | null {
   const q = (r: number | null) =>
     r === null || r > 25 ? 2 : (17.5 * (26 - r)) / 25;
   score += q(displayRank(g.home)) + q(displayRank(g.away));
-  // shootout potential: total 38 → +0 … 75+ → +20
+  // shootout potential: total 38 → +0 … 75+ → +20. Basketball is the same
+  // idea on its own scale (130 → +0 … 165+ → +20); on football's, every
+  // college basketball total would read as the highest-scoring game ever
+  // played and the term would stop separating anything.
+  const [totalFloor, totalSpan] = isHoops(g) ? [130, 35] : [38, 37];
   score +=
     g.lines.total === null
       ? 8
-      : Math.max(0, Math.min(1, (g.lines.total - 38) / 37)) * 20;
+      : Math.max(0, Math.min(1, (g.lines.total - totalFloor) / totalSpan)) * 20;
   // stakes: the trophy games people watch regardless of record
   if (g.rivalry) score += 10;
   return Math.round(Math.min(score, 100));
@@ -883,7 +910,9 @@ export function watchability(g: GameView): number | null {
  * 20+ spots worse (or unranked).
  */
 export function upsetAlert(g: GameView): boolean {
-  if (!isLive(g) || g.period === null || g.period < 3) return false;
+  // "Second half" is the third quarter on in football and period 2 on in
+  // basketball, where the periods ARE the halves.
+  if (!isLive(g) || g.period === null || g.period < (isHoops(g) ? 2 : 3)) return false;
   if (g.homePoints === null || g.awayPoints === null || g.homePoints === g.awayPoints)
     return false;
   const hr = displayRank(g.home);

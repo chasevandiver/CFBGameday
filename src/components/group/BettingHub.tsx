@@ -1,3 +1,4 @@
+import { leagueParts } from "../../lib/week-records";
 import { ChevronDown, Flame, Snowflake, TrendingDown, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { memberCut, type SheetMember } from "../../lib/betting-groups";
@@ -222,11 +223,11 @@ function SourceCardBody({
           <span className="stat block text-[10.5px] leading-tight text-chalk/45">
             {s.overall.decided === 0
               ? `nothing graded ${league === null ? "yet" : `in the ${league.toUpperCase()} yet`}${wholeNote}`
-              : league === null &&
-                  member.leagueSplit.cfb.decided > 0 &&
-                  member.leagueSplit.nfl.decided > 0
-                ? // whole book, both leagues in play: the split is the more useful caption
-                  `CFB ${formatRecord(member.leagueSplit.cfb)} ${fmtUnits(member.leagueSplit.cfb.units)} · NFL ${formatRecord(member.leagueSplit.nfl)} ${fmtUnits(member.leagueSplit.nfl.units)}`
+              : league === null && leagueParts(member.leagueSplit).length > 1
+                ? // whole book, more than one league in play: the split is the more useful caption
+                  leagueParts(member.leagueSplit)
+                    .map(([name, t]) => `${name} ${formatRecord(t)} ${fmtUnits(t.units)}`)
+                    .join(" · ")
                 : `${s.overall.decided} graded · ${
                     s.overall.roi === null ? "no priced action" : `${(s.overall.roi * 100).toFixed(0)}% ROI`
                   }${

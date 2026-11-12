@@ -16,8 +16,10 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { EMPTY_TRAIL, foldTrail, type TrailState } from "../../lib/drive-trail";
 import { playAge, showsScore } from "../../lib/slate";
 import { breakLabel } from "../../lib/kick";
+import { HoopsLive } from "./HoopsLive";
 import {
   fieldPosition,
+  isHoops,
   isRedZone,
   parseSituation,
   type FieldPosition,
@@ -117,14 +119,29 @@ function FieldStrip({
  * are a list, not a set of cards, and a 12px playing field in every row reads
  * as decoration; the slate is where the game gets the space to be a game.
  */
-export function LiveSituation({
+export function LiveSituation(props: {
+  game: GameView;
+  compact?: boolean;
+  /** Fun Mode (FUN-13): forwarded from GameCard's score detector. */
+  flood?: EzFlood | null;
+}) {
+  /* The one branch, here, so every surface that shows "what is happening in
+     this game right now" — the slate card, the home hub's position rows, the
+     Jumbotron — gets basketball's block without each learning the sport
+     (CBB-9). A separate component rather than a conditional inside the
+     football one: the two share no markup, and the football one's hooks (the
+     drive trail) must not run for a game with no field. */
+  if (isHoops(props.game)) return <HoopsLive game={props.game} compact={props.compact} />;
+  return <FootballSituation {...props} />;
+}
+
+function FootballSituation({
   game,
   compact = false,
   flood = null,
 }: {
   game: GameView;
   compact?: boolean;
-  /** Fun Mode (FUN-13): forwarded from GameCard's score detector. */
   flood?: EzFlood | null;
 }) {
   const sit = parseSituation(game.situation);

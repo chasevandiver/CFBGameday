@@ -44,7 +44,7 @@ function TeamRow({ team, points, leading }: { team: TeamView; points: number; le
 export function JumbotronCard({ game, demo = false }: { game: GameView; demo?: boolean }) {
   const h = game.homePoints ?? 0;
   const a = game.awayPoints ?? 0;
-  const u2m = underTwo(game.period, game.clock);
+  const u2m = underTwo(game.period, game.clock, game.sport);
   const prob = liveHomeWinProb(game);
 
   const body = (
@@ -53,9 +53,9 @@ export function JumbotronCard({ game, demo = false }: { game: GameView; demo?: b
         <span className="flex items-center gap-2">
           <LiveBadge />
           <span className={`stat text-lg font-semibold ${u2m ? "u2m" : "text-chalk"}`}>
-            {breakLabel(game.period, game.clock) ?? (
+            {breakLabel(game.period, game.clock, game.sport) ?? (
               <>
-                {periodLabel(game.period)}
+                {periodLabel(game.period, game.sport)}
                 {game.clock ? ` · ${game.clock}` : ""}
               </>
             )}

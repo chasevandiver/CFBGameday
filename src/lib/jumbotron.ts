@@ -32,7 +32,7 @@ function oneScore(g: GameView): boolean {
 /** A state that takes the screen NOW, mid-dwell. */
 export function urgentNow(g: GameView): "redzone" | "closing" | null {
   if (!isLive(g)) return null;
-  if (underTwo(g.period, g.clock) && oneScore(g)) return "closing";
+  if (underTwo(g.period, g.clock, g.sport) && oneScore(g)) return "closing";
   if (isRedZone(g)) return "redzone";
   return null;
 }
@@ -44,7 +44,7 @@ export function jumbotronRank(g: GameView): number {
   const p = liveHomeWinProb(g);
   if (p !== null) score += 80 * (1 - Math.abs(p - 0.5) * 2);
   if (isRedZone(g)) score += 45;
-  if (underTwo(g.period, g.clock) && oneScore(g)) score += 60;
+  if (underTwo(g.period, g.clock, g.sport) && oneScore(g)) score += 60;
   if (upsetAlert(g)) score += 35;
   // Your sweat: liveUrgency is distance-to-the-number, smaller = louder.
   const urgency = liveUrgency(g);

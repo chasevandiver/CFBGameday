@@ -180,6 +180,13 @@ on:
           - nfl-grade
           - nfl-scoring
           - cfb-scoring
+          # College basketball (CBB-4…CBB-6). ESPN for the schedule and the
+          # cbbmodel feed for the model and lines — both free, no CFBD calls.
+          # Reference is dispatch-only and once a season: it creates the
+          # seasons row and marks it current for the cbb sport.
+          - cbb-sync-reference
+          - cbb-sync
+          - cbb-grade
           - guess-lines
           - streak
           - daily-puzzles
@@ -324,6 +331,24 @@ on:
     # Monday. Idempotent — result-null filters make a re-run a no-op — so the
     # four extra runs a week cost one query each.
     - cron: "30 13 * * *"
+    # College basketball: schedule + model + lines (CBB-4). The cbbmodel repo
+    # prices the day at 11:10 UTC (retrying hourly to 14:10 when Barttorvik's
+    # cache is stale) and snapshots the market at 16, 18, 20, 22, 23:30, 01 and
+    # 02:30 UTC. Each slot below trails one of those by about twenty minutes —
+    # its commit has to land and Vercel has to redeploy the feed — so the line
+    # on a card is never more than one snapshot behind the feed's own. The
+    # sync is idempotent and appends only what changed, so a late or doubled
+    # run costs nothing. Idles itself May–October.
+    - cron: "25 12,14 * * *"
+    - cron: "20 16,18,20,22 * * *"
+    - cron: "50 23 * * *"
+    - cron: "20 1 * * *"
+    - cron: "50 2 * * *"
+    # Basketball settlement backstop (CBB-5). A bet normally settles within
+    # minutes of the final — the database dispatches `cbb-grade` itself when a
+    # finished game carries an open bet (0086) — so this is the net under
+    # that, and the only thing that grades the model's CLV on games nobody bet.
+    - cron: "40 13 * * *"
     # Watchdog: absence check on the data jobs, a few times a day and once
     # mid-Saturday-afternoon while games are live. Red run = a job went silent.
     - cron: "0 8,14,20 * * *"
@@ -506,6 +531,8 @@ jobs:
             "0 10 * * 6") echo "task=weather" >> "$GITHUB_OUTPUT" ;;
             "0 13 * * 0") echo "task=ratings-update" >> "$GITHUB_OUTPUT" ;;
             "30 13 * * *") echo "task=nfl-grade" >> "$GITHUB_OUTPUT" ;;
+            "25 12,14 * * *"|"20 16,18,20,22 * * *"|"50 23 * * *"|"20 1 * * *"|"50 2 * * *") echo "task=cbb-sync" >> "$GITHUB_OUTPUT" ;;
+            "40 13 * * *") echo "task=cbb-grade" >> "$GITHUB_OUTPUT" ;;
             "0 8,14,20 * * *"|"30 21 * * 6") echo "task=watchdog" >> "$GITHUB_OUTPUT" ;;
             "0 15 * * 0") echo "task=backup" >> "$GITHUB_OUTPUT" ;;
             "0 6 1 * *") echo "task=keepalive" >> "$GITHUB_OUTPUT" ;;
@@ -562,8 +589,13 @@ jobs:
             nfl-sync-reference) npx tsx scripts/nfl-sync-reference.ts ;;
             nfl-sync-games) npx tsx scripts/nfl-sync-games.ts ;;
             nfl-refresh-lines) npx tsx scripts/nfl-refresh-lines.ts ;;
+            cbb-sync-reference) npx tsx scripts/cbb-sync-reference.ts ;;
+            # Games first: the feed import drops any game the schedule does
+            # not carry yet, so the order is what lets a morning run pick up a
+            # game ESPN added overnight in the same pass.
+            cbb-sync) npx tsx scripts/cbb-sync-games.ts && npx tsx scripts/cbb-sync-feed.ts ;;
             scoreboard-loop) npx tsx scripts/scoreboard-loop.ts --minutes 240 ;;
-            sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze|freeze-dry-run|freeze-groups|freeze-daily|freeze-daily-dry-run|watchdog|notify-picks-due|notify-log-bets|nfl-grade|nfl-scoring|cfb-scoring|guess-lines|streak|six-pack|daily-puzzles|team-news|notes|backfill-games|backfill-lines|backfill-rankings) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
+            sync-rankings|sync-systems|scoreboard|weather|ratings-update|freeze|freeze-dry-run|freeze-groups|freeze-daily|freeze-daily-dry-run|watchdog|notify-picks-due|notify-log-bets|nfl-grade|cbb-grade|nfl-scoring|cfb-scoring|guess-lines|streak|six-pack|daily-puzzles|team-news|notes|backfill-games|backfill-lines|backfill-rankings) npx tsx scripts/run-job.ts "${{ steps.task.outputs.task }}" ;;
             # Keep-alive: touch nothing, just make the run green so GitHub's
             # 60-day inactivity timer resets. No DB, no CFBD.
             keepalive) echo "keep-alive tick $(date -u +%Y-%m-%d) — resets the Actions inactivity clock" ;;

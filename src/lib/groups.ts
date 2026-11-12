@@ -16,6 +16,7 @@ import type {
   PickMarket,
 } from "./db-types";
 import { DEFAULT_TZ, dayKey } from "./kick";
+import type { GroupLeague, Sport } from "./league";
 import type { SeasonType } from "./season";
 
 /**
@@ -49,7 +50,7 @@ export interface GroupSummary {
    * league so each week is read on that league's own calendar (GRP-12).
    * Survivor: the one league the pool plays.
    */
-  leagues: Array<"cfb" | "nfl">;
+  leagues: Sport[];
   /** The viewer's role, or null when they are only looking at a public group. */
   role: "admin" | "member" | null;
 }
@@ -67,9 +68,13 @@ export interface GroupSummary {
  */
 export function groupLeagues(
   kind: GroupKind,
-  stored: Array<"cfb" | "nfl"> | null | undefined,
-): Array<"cfb" | "nfl"> {
-  if (kind === "betting") return ["cfb", "nfl"];
+  stored: GroupLeague[] | null | undefined,
+): Sport[] {
+  // Basketball too, since 0086 — and only here. A pick'em group's or a
+  // survivor pool's leagues come from its row, which the schema keeps to
+  // football; a betting group's sheet follows its members' bets wherever
+  // they are, so it carries every league the product does.
+  if (kind === "betting") return ["cfb", "nfl", "cbb"];
   // Rows written before 0042 have no leagues; they are all CFB by history.
   return stored ?? ["cfb"];
 }
@@ -145,12 +150,30 @@ export async function resolveActiveGroup(
  * names a league the group actually plays, else the group's first league.
  * CFB wins the tie for a both-league group — it is the product's spine.
  */
-export function groupLeague(
-  param: string | undefined | null,
-  leagues: Array<"cfb" | "nfl">,
-): "cfb" | "nfl" {
+export function groupLeague(param: string | undefined | null, leagues: Sport[]): Sport {
   if (param === "nfl" && leagues.includes("nfl")) return "nfl";
-  return leagues.includes("cfb") ? "cfb" : "nfl";
+  if (param === "cbb" && leagues.includes("cbb")) return "cbb";
+  return leagues.includes("cfb") ? "cfb" : (leagues[0] ?? "cfb");
+}
+
+/**
+ * The same, for the pages only a football group reaches — the pick'em board,
+ * its settings, a survivor pool. Their group's leagues are football by schema
+ * (`groups_leagues_sane`), so this never changes an answer; it exists so
+ * those pages keep a type that says so, rather than each casting.
+ */
+export function groupFootballLeague(
+  param: string | undefined | null,
+  leagues: Sport[],
+): GroupLeague {
+  const l = groupLeague(param, leagues);
+  return l === "nfl" ? "nfl" : "cfb";
+}
+
+/** `?league=` for a link that should stay on the league in view; null for the
+ *  default (CFB), which every group URL omits. */
+export function leagueQuery(league: Sport): string | null {
+  return league === "cfb" ? null : league;
 }
 
 /**

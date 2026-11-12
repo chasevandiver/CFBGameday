@@ -579,9 +579,9 @@ function RowHeader({
           <>
             <LiveBadge />
             <span className="stat text-xs font-semibold text-chalk">
-              {breakLabel(game.period, game.clock) ?? (
+              {breakLabel(game.period, game.clock, game.sport) ?? (
                 <>
-                  {periodLabel(game.period)}
+                  {periodLabel(game.period, game.sport)}
                   {game.clock ? ` · ${game.clock}` : ""}
                 </>
               )}

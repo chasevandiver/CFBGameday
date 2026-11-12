@@ -4,6 +4,9 @@
  * after mount (no hydration mismatch, times just settle to local).
  */
 
+import { cbbBreakLabel, cbbCrunchTime, cbbPeriodLabel } from "./cbb";
+import type { Sport } from "./league";
+
 export const DEFAULT_TZ = "America/Chicago";
 
 /**
@@ -206,10 +209,27 @@ export function nflKickSlot(iso: string): "Early window" | "Late window" | "Prim
   return "Primetime"; // SNF / MNF / TNF by day prefix
 }
 
-export function periodLabel(period: number | null): string {
+/**
+ * `sport` is optional on all three clock helpers below and absent means
+ * football, so every caller written before basketball reads exactly as it
+ * did. Basketball's periods are halves — 1H, 2H, then OT — and its rules for
+ * a break and for the tense minutes are its own (src/lib/cbb.ts); routing
+ * through here means a surface gets them by passing the game's sport rather
+ * than by learning a second set of functions.
+ */
+export function periodLabel(period: number | null, sport?: Sport): string {
+  if (sport === "cbb") return cbbPeriodLabel(period);
   if (period === null) return "";
   if (period <= 4) return `Q${period}`;
   return period === 5 ? "OT" : `${period - 4}OT`;
+}
+
+/** " / OT" for a game that needed it, "" otherwise — the suffix on FINAL.
+ *  Regulation is four periods in football and two in basketball. */
+export function overtimeSuffix(period: number | null, sport?: Sport): string {
+  if (period === null) return "";
+  const regulation = sport === "cbb" ? 2 : 4;
+  return period > regulation ? ` / ${periodLabel(period, sport)}` : "";
 }
 
 /**
@@ -224,7 +244,10 @@ export function periodLabel(period: number | null): string {
  * twelve minutes of the game. The urgency is about time REMAINING, and there
  * is none.
  */
-export function underTwo(period: number | null, clock: string | null): boolean {
+export function underTwo(period: number | null, clock: string | null, sport?: Sport): boolean {
+  // Basketball's equivalent is the last four minutes of the second half or
+  // any overtime — the under-four timeout is where a game gets decided.
+  if (sport === "cbb") return cbbCrunchTime(period, clock);
   if ((period !== 2 && period !== 4) || !clock) return false;
   if (isZeroClock(clock)) return false;
   const m = /^(\d+):\d\d$/.exec(clock.trim());
@@ -254,7 +277,12 @@ function isZeroClock(clock: string): boolean {
  * Callers render this INSTEAD of the period and clock: "HALFTIME" already says
  * everything `Q2 · 0:00` does, and says it in the language of the broadcast.
  */
-export function breakLabel(period: number | null, clock: string | null): string | null {
+export function breakLabel(
+  period: number | null,
+  clock: string | null,
+  sport?: Sport,
+): string | null {
+  if (sport === "cbb") return cbbBreakLabel(period, clock);
   if (period === null || period < 1 || !clock || !isZeroClock(clock)) return null;
   // Q4 at 0:00 is a game going to overtime — it reads as END Q4 rather than
   // anything cleverer, because "the fourth quarter is over" is what happened

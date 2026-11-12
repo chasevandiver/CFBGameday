@@ -27,9 +27,9 @@ export function JumbotronRail({ games, demo = false }: { games: GameView[]; demo
               {isRedZone(g) && (
                 <span aria-label="Red zone" className="live-dot inline-block h-2 w-2 rounded-full bg-loss" />
               )}
-              {breakLabel(g.period, g.clock) ?? (
+              {breakLabel(g.period, g.clock, g.sport) ?? (
                 <>
-                  {periodLabel(g.period)}
+                  {periodLabel(g.period, g.sport)}
                   {g.clock ? ` ${g.clock}` : ""}
                 </>
               )}

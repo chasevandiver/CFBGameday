@@ -5,6 +5,7 @@
  */
 
 import type { PickMarket } from "./grade";
+import type { GroupLeague } from "./league";
 
 export type { PickMarket };
 
@@ -18,6 +19,11 @@ export interface TeamRow {
   color: string | null;
   alt_color: string | null;
   logo_url: string | null;
+  /** CBB only (0086): standing as ESPN's board states it. Football derives
+   *  records from finals and leaves all three null. */
+  record?: string | null;
+  conf_record?: string | null;
+  poll_rank?: number | null;
 }
 
 export interface GameRow {
@@ -43,6 +49,10 @@ export interface GameRow {
   last_play_at?: string | null;
   possession: "home" | "away" | null;
   tv: string | null;
+  /** CBB only (0086): `CbbLive` — line score, run, live win probability. */
+  hoops?: unknown;
+  /** The event's banner ("NCAA Tournament - 1st Round"); CFBD's notes on CFB. */
+  notes?: string | null;
 }
 
 /** ESPN team-scoped news, one row per (team, article) — see migration 0079. */
@@ -168,7 +178,7 @@ export interface GroupRow {
   picks_hidden_until_kickoff: boolean;
   /** Pick'em league scope (0042): cfb by default, admin can open nfl or both.
    *  Meaningless on betting groups — the sheet follows the bets. */
-  leagues: Array<"cfb" | "nfl">;
+  leagues: GroupLeague[];
   join_code: string;
   created_by: string;
   created_at: string;

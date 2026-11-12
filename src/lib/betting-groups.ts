@@ -50,7 +50,7 @@ export interface SheetMember extends GroupMemberView {
   stats: MemberStats;
   form: Form;
   /** Per-league records (0042) — who's doing better where. */
-  leagueSplit: { cfb: Tally; nfl: Tally };
+  leagueSplit: Record<Sport, Tally>;
   /**
    * Every number in `stats` and `form`, cut to one league (GRP-13).
    *
@@ -98,8 +98,8 @@ export async function fetchBettingSheet(
   const { data } = await supabase
     .from("bets")
     .select("*")
-    // A betting group always reads both leagues (0042): the sheet is its
-    // members' one book. Origination classifies across the whole book too.
+    // A betting group always reads every league (0042, and basketball since
+    // 0086): the sheet is its members' one book. Origination classifies across the whole book too.
     .in("season_id", seasonIdsForYear(seasonYearOf(seasonId)))
     .in("user_id", ids)
     .order("placed_at", { ascending: true });
@@ -115,13 +115,14 @@ export async function fetchBettingSheet(
   const statsByLeague: Record<Sport, Map<string, MemberStats>> = {
     cfb: statsByMember(betsInLeague(bets, "cfb"), ids),
     nfl: statsByMember(betsInLeague(bets, "nfl"), ids),
+    cbb: statsByMember(betsInLeague(bets, "cbb"), ids),
   };
   const cut = (userId: string, sport: Sport): LeagueCut => ({
     stats: statsByLeague[sport].get(userId)!,
     form: recentForm(betsInLeague(byUser.get(userId) ?? [], sport)),
   });
 
-  const settled = (list: SheetBet[], sport: "cfb" | "nfl") =>
+  const settled = (list: SheetBet[], sport: Sport) =>
     tally(
       list
         .filter((b) => sportOfSeasonId(b.seasonId) === sport && b.result && b.result !== "void")
@@ -141,8 +142,13 @@ export async function fetchBettingSheet(
       leagueSplit: {
         cfb: settled(byUser.get(m.userId) ?? [], "cfb"),
         nfl: settled(byUser.get(m.userId) ?? [], "nfl"),
+        cbb: settled(byUser.get(m.userId) ?? [], "cbb"),
       },
-      byLeague: { cfb: cut(m.userId, "cfb"), nfl: cut(m.userId, "nfl") },
+      byLeague: {
+        cfb: cut(m.userId, "cfb"),
+        nfl: cut(m.userId, "nfl"),
+        cbb: cut(m.userId, "cbb"),
+      },
     })),
     bets,
     nameById: new Map(members.map((m) => [m.userId, m.name])),
