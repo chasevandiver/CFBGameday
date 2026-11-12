@@ -234,6 +234,17 @@ shipping it.
 
 ## Log
 
+### Nov 11 — TV-13: fantasy links built for you; logo fallback fixed
+
+First night with fantasy on Chase's TV (MAC night, BUF -1.5 live):
+- The bet didn't show. `/api/ticker` with his key had it (`mine: losing`); the
+  link on the TV had lost `?k=` when `&ffl=…` was added by hand. /me's "On your
+  TV" card now takes the ESPN league ID, lists the league's teams to pick
+  from (via `/api/fantasy`), and every Copy carries key + league + team.
+- His opponent's logo (an `http://` URL) didn't load, and the fallback badge
+  printed four letters over the team name. Logos are tried over https first;
+  the badge clips to its circle and shows up to three letters.
+
 ### Nov 11 — TV-12: ESPN fantasy on the strip
 
 - `/api/fantasy?league=&team=` reads ESPN's league feed (unofficial,

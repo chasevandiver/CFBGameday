@@ -350,15 +350,21 @@ function Logo({
         className="tvb-badge"
         style={{ width: size, height: size, background: color ?? "var(--elev)" }}
       >
-        {abbr.slice(0, 4)}
+        {abbr
+          .replace(/[^A-Za-z0-9]/g, "")
+          .slice(0, 3)
+          .toUpperCase()}
       </span>
     );
   }
+  // Fantasy logos are whatever URL a league member pasted; an http one won't
+  // load on an https page, so try it over https first (TV-12).
+  const safe = src.startsWith("http://") ? `https://${src.slice(7)}` : src;
   return (
     // eslint-disable-next-line @next/next/no-img-element -- remote logos on a TV; no optimiser round-trip
     <img
       className="tvb-logo"
-      src={src}
+      src={safe}
       alt=""
       width={size}
       height={size}
