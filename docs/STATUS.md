@@ -3185,7 +3185,7 @@ name, restarted from `main`.
       `supabase/tests/cbb.sql`.
 - [x] **CBB-R7 — apply `0088` to production.** Applied 2026-11-13;
       `cbb-sync-launcher-hourly` is in `cron.job`.
-- [ ] **CBB-R8 / LIVE-10 — the dispatch token was never stored.** Found
+- [x] **CBB-R8 / LIVE-10 — the dispatch token was never stored.** Found
       2026-11-13 on the first production call: `launch_cbb_sync_if_needed()`
       returned `no_token`. `vault.secrets` is empty and `loop_launches` has
       no rows, so no database launcher has ever dispatched — not this one,
@@ -3193,8 +3193,11 @@ name, restarted from `main`.
       football loop (`launch_live_loop_if_needed`, 0084, live since Sep 5).
       All three are correct and inert. Owner: a fine-grained GitHub token on
       `CFBGameday` with Actions read/write, saved in Supabase Vault as
-      `github_actions_dispatch`. Until then the import, the basketball
-      grader and the football loop run on GitHub's schedule alone.
+      `github_actions_dispatch`. **Done 2026-11-13.** First attempt 403
+      (the token had Actions read only); after the owner raised it to
+      read/write the launcher's dispatch returned 204 and `jobs · cbb-sync`
+      run 2287 was queued two seconds later. The grader's and the football
+      loop's launchers read the same secret and have not fired yet.
 - [ ] **CBB-19 — `/model/cbb` has not been rendered.** It reads Postgres and
       the local check had no database. The slate card and the bottom bar
       were rendered at 390px from tonight's real data.
