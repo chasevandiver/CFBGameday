@@ -253,3 +253,43 @@ select expect_denied('…and cannot rewrite it',
 select expect_denied('a signed-in member cannot rewrite it either',
   '22222222-2222-2222-2222-222222222222'::uuid,
   $$insert into cbb_model_stats (season_id, payload) values (2026, '{}')$$, 'permission denied');
+
+select '# the import launcher (0088)';
+
+select pg_temp.chk('scheduled hourly through the day',
+  (select schedule = '12 0-4,11-23 * * *' from cron.job where jobname = 'cbb-sync-launcher-hourly'));
+-- game 401 tipped three hours ago, so basketball is in season here
+select pg_temp.chk('dispatches while basketball is in season (reaches the vault check)',
+  launch_cbb_sync_if_needed() = 'no_vault');
+
+\o /dev/null
+insert into loop_launches (reason, requested_at) values ('cbb-sync', now() - interval '20 minutes');
+\o
+select pg_temp.chk('holds for 45 minutes after a dispatch',
+  launch_cbb_sync_if_needed() = 'pending');
+\o /dev/null
+update loop_launches set requested_at = now() - interval '50 minutes' where reason = 'cbb-sync';
+\o
+select pg_temp.chk('…then goes again',
+  launch_cbb_sync_if_needed() = 'no_vault');
+select pg_temp.chk('is not throttled by the grader''s or the football loop''s dispatches',
+  (select count(*) > 0 from loop_launches where reason <> 'cbb-sync')
+  and launch_cbb_sync_if_needed() = 'no_vault');
+
+\o /dev/null
+update games set start_ts = now() - interval '5 days' where sport = 'cbb';
+\o
+select pg_temp.chk('idle out of season — no basketball inside the window',
+  launch_cbb_sync_if_needed() = 'idle');
+\o /dev/null
+update games set start_ts = now() + interval '2 days' where sport = 'cbb';
+\o
+select pg_temp.chk('wakes for a game two days out',
+  launch_cbb_sync_if_needed() = 'no_vault');
+select pg_temp.chk('football in the window does not count as basketball season',
+  (select count(*) > 0 from games where sport = 'cfb'));
+
+select pg_temp.chk('anon cannot execute the import launcher',
+  not has_function_privilege('anon', 'public.launch_cbb_sync_if_needed()', 'EXECUTE'));
+select pg_temp.chk('authenticated cannot execute the import launcher',
+  not has_function_privilege('authenticated', 'public.launch_cbb_sync_if_needed()', 'EXECUTE'));

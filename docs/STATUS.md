@@ -3171,8 +3171,20 @@ name, restarted from `main`.
       Slate opens the cross-league Live view; Ledger and Games moved to More.
       Seven cells at 390px are 56px each. The four slate tabs are told apart
       by `?sport=` (`isBottomTabActive`), since they share a pathname.
-- [ ] **CBB-R6 — apply `0087` to production.** Until it lands the strip, the
-      page and the hit-rate line are empty; nothing errors.
+- [x] **CBB-R6 — apply `0087` to production.** Applied 2026-11-12; the
+      strip read 174-128 after the Nov 13 import.
+- [x] **CBB-20 — the import is launched by the database.** 2026-11-13, owner:
+      "no cbb lines are pulling up" at 1:30pm ET. The feed had published at
+      6:41am; the last `cbb-sync` GitHub had started was at 5:06am (the
+      8:20pm slot, nine hours late) and four later slots had not fired.
+      Nothing failed. Migration `0088`: `launch_cbb_sync_if_needed()` on
+      pg_cron hourly at :12, 6am-11pm ET, dispatches `cbb-sync` while a
+      basketball game sits inside the last day or the next three, at most
+      once per 45 minutes, logged to `loop_launches` as `cbb-sync`. The
+      jobs.yml slots stay as the second path. Ten assertions in
+      `supabase/tests/cbb.sql`.
+- [ ] **CBB-R7 — apply `0088` to production.** Until it lands the import
+      still depends on GitHub's schedule alone.
 - [ ] **CBB-19 — `/model/cbb` has not been rendered.** It reads Postgres and
       the local check had no database. The slate card and the bottom bar
       were rendered at 390px from tonight's real data.

@@ -234,6 +234,26 @@ shipping it.
 
 ## Log
 
+### Nov 13 — CBB-20: the basketball import is launched by the database
+
+Owner report at 1:30pm ET: no college basketball lines on the slate. The
+cbbmodel feed had published the day's picks at 6:41am. `cbb-sync` imports
+them and ran only on GitHub's cron: the last run before the report started at
+5:06am ET — the previous evening's 8:20pm slot, nine hours late — and the
+7:25am, 9:25am, 11:20am and 1:20pm slots had not fired. No run failed. A
+manual dispatch loaded lines for 55 of 61 games in under two minutes.
+
+Same fault as LIVE-10, same fix. Migration `0088` adds
+`launch_cbb_sync_if_needed()`, run by pg_cron hourly at :12 from 6am to 11pm
+ET. It dispatches `jobs.yml` with `task=cbb-sync` through the Vault token the
+loop launcher uses, only while a basketball game is inside the last day or
+the next three (so it is idle April to November with no calendar), and holds
+45 minutes after any dispatch it logged. GitHub's nine slots stay; the import
+is idempotent, so an overlap costs one short run.
+
+Not fixed: a manual `cbb-sync` run from the Actions page is not logged to
+`loop_launches`, so the launcher can dispatch right behind one. Harmless.
+
 ### Nov 12 — TV-20: college basketball bets on the TV overlay
 
 Owner request: the CBB games he is betting, and only those, on the overlay,
