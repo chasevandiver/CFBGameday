@@ -251,6 +251,12 @@ the next three (so it is idle April to November with no calendar), and holds
 45 minutes after any dispatch it logged. GitHub's nine slots stay; the import
 is idempotent, so an overlap costs one short run.
 
+Applied to production the same day, and the first call returned `no_token`:
+the Vault secret `github_actions_dispatch` does not exist, and
+`loop_launches` has never had a row. The football loop launcher (LIVE-10) and
+the basketball bet grader's launcher have therefore been inert since they
+shipped. Open as CBB-R8; it needs a token only the owner can create.
+
 Not fixed: a manual `cbb-sync` run from the Actions page is not logged to
 `loop_launches`, so the launcher can dispatch right behind one. Harmless.
 
