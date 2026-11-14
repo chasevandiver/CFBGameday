@@ -1,6 +1,6 @@
 /** Payload for the slim gameday score-ticker strip (spec §7). */
 
-import { statusForBet, tintFor } from "./live-status";
+import { statusForBet, statusForPick, tintFor } from "./live-status";
 import { formatRecord, payoutAt, tally, type Wager, type WagerResult } from "./records";
 import {
   betSideLabel,
@@ -29,6 +29,27 @@ export interface TickerStake {
   side: "home" | "away" | "over" | "under" | null;
 }
 
+/**
+ * One ticket of possibly several on a game (TV-22). `stake` is the single
+ * ticket the tile colour grades; this is every one of them, each with its own
+ * verdict, so a side and a total on the same game can disagree in plain sight.
+ */
+export interface TickerTicket extends TickerStake {
+  /** This ticket's own verdict; "on" while a score can't give one. */
+  state: TickerMine;
+  /** Final ledger bets only: what it paid, in units. Null for picks, and for
+   *  a bet nothing can price yet. */
+  units?: number | null;
+}
+
+/** A ledger bet with what `tickerTickets` needs to settle and price it. */
+export interface TicketBet extends MyBetView {
+  odds?: number | null;
+  units?: number | null;
+  /** `result` is MyBetView's: the grader's word, "void" included. */
+  payoutUnits?: number | null;
+}
+
 export interface TickerGame {
   id: number;
   status: string;
@@ -46,6 +67,12 @@ export interface TickerGame {
   mine?: TickerMine | null;
   /** The ticket `mine` grades, same precedence (a ledger bet over a pick). */
   stake?: TickerStake | null;
+  /** Every ticket on the game (TV-22), the one `stake` names first. */
+  tickets?: TickerTicket[];
+  /** Poll rank (TV-21): CFP, else AP, else Coaches for football; AP for
+   *  basketball. Null or absent for an unranked team, and always for the NFL. */
+  homeRank?: number | null;
+  awayRank?: number | null;
   /** Consensus spread, home-perspective (negative = home favoured). */
   spread?: number | null;
   /** TV-10: school colour (#hex) and logo URL for the broadcast tiles. */
@@ -147,6 +174,109 @@ export function tickerStake(
     };
   }
   return null;
+}
+
+const verdictOf = (state: "winning" | "losing" | "push"): TickerMine =>
+  state === "winning" ? "covering" : state === "losing" ? "losing" : "push";
+
+/**
+ * TV-22: every ticket the viewer holds on one game, each graded on its own.
+ *
+ * Ledger bets when there are any, else pick'em picks: the same "money outranks
+ * a pick" rule `tintFor` applies, and it keeps a bet that mirrors a pick from
+ * printing twice. Ordered so the first is the ticket `tickerStake` names — a
+ * bet a score can grade before one it can't, the headline pick before the
+ * others — which is what lets a narrow surface print the first and count the
+ * rest.
+ *
+ * A final takes the grader's result when it has run, so a first-half or
+ * team-total bet settles here once Sunday has settled it. Units are the
+ * grader's payout, else the bet's own odds at that result.
+ */
+export function tickerTickets(
+  status: string,
+  homePoints: number | null,
+  awayPoints: number | null,
+  myBets: TicketBet[],
+  myPicks: MyPickView[],
+  homeAbbr: string,
+  awayAbbr: string,
+): TickerTicket[] {
+  const sideOf = (s: string | null): TickerStake["side"] =>
+    s === "home" || s === "away" || s === "over" || s === "under" ? s : null;
+  const final = status === "final";
+  const scored =
+    (status === "in_progress" || final) && homePoints !== null && awayPoints !== null;
+
+  // Not filtered for a void result: `tickerStake` doesn't either, and the two
+  // must agree on which ticket is first. A voided one is drawn ungraded.
+  const bets = myBets;
+  if (bets.length > 0) {
+    const gradable = (b: TicketBet) => statusForBet(b, 0, 0) !== null;
+    const ordered = [...bets.filter(gradable), ...bets.filter((b) => !gradable(b))];
+    return ordered.map((b) => {
+      const live =
+        scored && b.result !== "void"
+          ? statusForBet(b, homePoints ?? 0, awayPoints ?? 0)
+          : null;
+      const stored = b.result === "win" || b.result === "loss" || b.result === "push";
+      const result: WagerResult =
+        final && stored
+          ? (b.result as WagerResult)
+          : final && live
+            ? live.state === "winning"
+              ? "win"
+              : live.state === "losing"
+                ? "loss"
+                : "push"
+            : null;
+      const state: TickerMine = result
+        ? result === "win"
+          ? "covering"
+          : result === "loss"
+            ? "losing"
+            : "push"
+        : live
+          ? verdictOf(live.state)
+          : "on";
+      const units =
+        result === null
+          ? null
+          : (b.payoutUnits ??
+            (b.units === null || b.units === undefined
+              ? null
+              : payoutAt(b.units, b.odds, result)));
+      return {
+        label: betSideLabel(b.betType, b.side, b.line, homeAbbr, awayAbbr),
+        side: sideOf(b.side),
+        state,
+        units: units === null ? null : Math.round(Number(units) * 100) / 100,
+      };
+    });
+  }
+
+  const head = headlinePick(myPicks);
+  const picks = head ? [head, ...myPicks.filter((p) => p !== head)] : [];
+  return picks.map((p) => {
+    const live = scored
+      ? statusForPick(p.market, p.side, p.line, homePoints ?? 0, awayPoints ?? 0)
+      : null;
+    return {
+      label: pickSideLabel(p.market, p.side, p.line, homeAbbr, awayAbbr, { compact: true }),
+      side: sideOf(p.side),
+      state: live ? verdictOf(live.state) : "on",
+      units: null,
+    };
+  });
+}
+
+/**
+ * The tickets a surface should draw: the feed's list, or — for a payload from
+ * before TV-22, and for the demo — the one `stake` it always carried.
+ */
+export function ticketsOf(g: TickerGame): TickerTicket[] {
+  if (g.tickets && g.tickets.length > 0) return g.tickets;
+  return g.stake ? [{ ...g.stake, state: g.mine ?? "on" }] : [];
 }
 
 /**

@@ -1,19 +1,23 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import type { GameRow, TeamRow } from "../../../lib/db-types";
+import { pickPollRanks } from "../../../lib/rankings";
 import { fetchCurrentSeasonWeek } from "../../../lib/queries";
 import type { SeasonType } from "../../../lib/season";
-import type { MyBetView, MyPickView } from "../../../lib/slate";
+import type { MyPickView } from "../../../lib/slate";
 import type { WagerResult } from "../../../lib/records";
 import {
   tickerMine,
   tickerStake,
   tickerSummary,
+  tickerTickets,
+  type TicketBet,
   type TickerData,
   type TickerGame,
   type TickerMine,
   type TickerStake,
   type TickerSummary,
+  type TickerTicket,
 } from "../../../lib/ticker";
 import { createClient } from "../../../lib/supabase/server";
 import { createServiceClient } from "../../../lib/supabase/service";
@@ -175,9 +179,12 @@ export async function GET(req: NextRequest) {
   );
 
   const teamIds = [...new Set(rows.flatMap((g) => [g.home_team_id, g.away_team_id]))];
-  const [{ data: teams }, { data: consensus }] = await Promise.all([
+  const [{ data: teams }, { data: consensus }, { data: polls }] = await Promise.all([
     teamIds.length > 0
-      ? supabase.from("teams").select("id, school, abbreviation, color, logo_url").in("id", teamIds)
+      ? supabase
+          .from("teams")
+          .select("id, school, abbreviation, color, logo_url, poll_rank")
+          .in("id", teamIds)
       : Promise.resolve({ data: [] }),
     // The market number on each chip (TV-3). Public, like the scores.
     rows.length > 0
@@ -189,7 +196,33 @@ export async function GET(req: NextRequest) {
             rows.map((g) => g.id),
           )
       : Promise.resolve({ data: [] }),
+    // TV-21: football's poll ranks. The whole latest week, not just these
+    // teams: `pickPollRanks` chooses ONE poll for the board (CFP, else AP,
+    // else Coaches), and a read narrowed to the strip's teams could pick a
+    // different poll than the slate does. Three polls of 25, once a poll.
+    footballRows.length > 0
+      ? supabase
+          .from("latest_poll_rankings")
+          .select("week, poll, team_id, rank")
+          .eq("season_id", seasonId)
+          .eq("season_type", "regular")
+      : Promise.resolve({ data: [] }),
   ]);
+  const footballRanks = pickPollRanks(
+    (polls ?? []) as Array<{ week: number; poll: string; team_id: number; rank: number }>,
+  ).byTeam;
+  // Basketball's AP rank rides on the team row (0084); the NFL has no poll.
+  const hoopsRanks = new Map(
+    ((teams ?? []) as Array<Pick<TeamRow, "id" | "poll_rank">>)
+      .filter((t) => typeof t.poll_rank === "number")
+      .map((t) => [t.id, t.poll_rank as number]),
+  );
+  const rankOf = (g: Row, teamId: number): number | null =>
+    nflIds.has(g.id)
+      ? null
+      : cbbIds.has(g.id)
+        ? (hoopsRanks.get(teamId) ?? null)
+        : (footballRanks.get(teamId) ?? null);
   type ConsensusSlim = { game_id: number; spread: number | null; total: number | null };
   const toNum = (v: number | null) => (v === null ? null : Number(v));
   const spreadById = new Map(
@@ -223,6 +256,7 @@ export async function GET(req: NextRequest) {
   let summary: TickerSummary | null = null;
   const mineById = new Map<number, TickerMine | null>();
   const stakeById = new Map<number, TickerStake | null>();
+  const ticketsById = new Map<number, TickerTicket[]>();
   if (userId !== null && rows.length > 0) {
     const gameIds = rows.map((g) => g.id);
     const [betsRes, picksRes] = await Promise.all([
@@ -256,13 +290,18 @@ export async function GET(req: NextRequest) {
       side: string;
       line_at_pick: number | null;
     };
-    const betsByGame = new Map<number, MyBetView[]>();
+    const betsByGame = new Map<number, TicketBet[]>();
     for (const b of (betsRes.data ?? []) as BetRowSlim[]) {
-      const view: MyBetView = {
+      const view: TicketBet = {
         id: b.id,
         betType: b.bet_type,
         side: b.side,
         line: b.line_taken === null ? null : Number(b.line_taken),
+        // TV-22: what each ticket needs to settle and price itself.
+        odds: b.odds,
+        units: b.units,
+        result: b.result,
+        payoutUnits: b.payout_units,
       };
       betsByGame.set(b.game_id, [...(betsByGame.get(b.game_id) ?? []), view]);
     }
@@ -277,6 +316,18 @@ export async function GET(req: NextRequest) {
     }
     summary = tickerSummary((betsRes.data ?? []) as BetRowSlim[], rows);
     for (const g of rows) {
+      ticketsById.set(
+        g.id,
+        tickerTickets(
+          g.status,
+          g.home_points,
+          g.away_points,
+          betsByGame.get(g.id) ?? [],
+          picksByGame.get(g.id) ?? [],
+          abbrById.get(g.home_team_id) ?? "?",
+          abbrById.get(g.away_team_id) ?? "?",
+        ),
+      );
       stakeById.set(
         g.id,
         tickerStake(
@@ -318,6 +369,9 @@ export async function GET(req: NextRequest) {
     tv: g.tv ?? null,
     mine: mineById.get(g.id) ?? null,
     stake: stakeById.get(g.id) ?? null,
+    ...((ticketsById.get(g.id)?.length ?? 0) > 0 ? { tickets: ticketsById.get(g.id) } : {}),
+    homeRank: rankOf(g, g.home_team_id),
+    awayRank: rankOf(g, g.away_team_id),
     spread: spreadById.get(g.id) ?? null,
     total: totalById.get(g.id) ?? null,
     // TV-8: the card view shows who has the ball and where. Only meaningful

@@ -10,7 +10,10 @@
  * both numbers. Order: the viewer's summary, their games, then everyone else.
  *
  * When one of the viewer's games scores, that game takes the whole strip for
- * a few seconds (TV-9), then the rotation picks up where it was.
+ * a few seconds (TV-9), then the rotation picks up where it was. The same
+ * takeover announces a ticket changing sides of its number (TV-24) and a bet
+ * settling at the final whistle (TV-23); a score that causes either is folded
+ * into that banner rather than shown twice.
  *
  * TV-10 is the broadcast look (public/design/tv-direction-f.html): every game
  * is a tile with both logos, the clock and down in the middle, the channel,
@@ -20,10 +23,15 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import type { TickerGame, TickerSummary } from "../../lib/ticker";
+import {
+  ticketsOf,
+  type TickerGame,
+  type TickerSummary,
+  type TickerTicket,
+} from "../../lib/ticker";
 import { fieldPosition, isRedZone, parseSituation } from "../../lib/slate";
 import { leadingSide } from "../ScoreTicker";
-import { marketSpread, SportTag, tvStatus, VerdictWords } from "./TvChip";
+import { marketSpread, Rank, SportTag, tvStatus, VerdictWords } from "./TvChip";
 import { useTickerFeed } from "./use-ticker-feed";
 import { useFantasy } from "./use-fantasy";
 import type { FantasyMatchup } from "../../lib/fantasy";
@@ -112,6 +120,137 @@ export function newScores(
   return out;
 }
 
+/** The two verdicts a ticket can flip between; a push is only passing through. */
+export type Decided = "covering" | "losing";
+
+/** One or more of the viewer's tickets on a game just changed sides (TV-24). */
+export interface FlipAlert {
+  kind: "flip";
+  gameId: number;
+  to: Decided;
+  tickets: TickerTicket[];
+  /** What scored to cause it ("TOUCHDOWN"), when the same poll shows it. */
+  cause: string | null;
+  key: number;
+}
+
+/** One of the viewer's games just went final (TV-23). */
+export interface FinalAlert {
+  kind: "final";
+  gameId: number;
+  key: number;
+}
+
+export type Banner = ({ kind: "score" } & ScoreAlert) | FlipAlert | FinalAlert;
+
+/** What the last poll looked like, for the three announcers to compare with. */
+export interface Snapshot {
+  scores: Map<number, { h: number; a: number }>;
+  status: Map<number, string>;
+  /** Each ticket's last DECISIVE verdict, keyed `gameId:label`. */
+  decided: Map<string, Decided>;
+}
+
+const ticketKey = (g: TickerGame, t: TickerTicket) => `${g.id}:${t.label}`;
+
+/**
+ * Carry the snapshot forward one poll. A ticket sitting on the number, or one
+ * a score can't grade, keeps the verdict it last had: covering, push, then
+ * not covering is one flip, and it is announced when it lands.
+ */
+export function snapshot(prev: Snapshot | null, games: TickerGame[]): Snapshot {
+  const decided = new Map(prev?.decided ?? []);
+  for (const g of games) {
+    if (g.status !== "in_progress" && g.status !== "final") continue;
+    for (const t of ticketsOf(g)) {
+      if (t.state === "covering" || t.state === "losing") decided.set(ticketKey(g, t), t.state);
+    }
+  }
+  return {
+    scores: new Map(games.map((g) => [g.id, { h: g.homePoints ?? 0, a: g.awayPoints ?? 0 }])),
+    status: new Map(games.map((g) => [g.id, g.status])),
+    decided,
+  };
+}
+
+/**
+ * TV-24: tickets that changed sides of their number since the last poll, one
+ * alert per game and direction. Live games only — a final is TV-23's to
+ * announce — and never basketball, for the reason its scores aren't announced
+ * (TV-20): a spread there trades sides all night.
+ */
+export function newFlips(prev: Snapshot | null, games: TickerGame[], key: number): FlipAlert[] {
+  if (!prev) return [];
+  const out: FlipAlert[] = [];
+  for (const g of games) {
+    if (g.status !== "in_progress" || g.sport === "cbb") continue;
+    for (const to of ["covering", "losing"] as const) {
+      const tickets = ticketsOf(g).filter((t) => {
+        const was = prev.decided.get(ticketKey(g, t));
+        return t.state === to && was !== undefined && was !== to;
+      });
+      if (tickets.length > 0)
+        out.push({ kind: "flip", gameId: g.id, to, tickets, cause: null, key: key + out.length });
+    }
+  }
+  return out;
+}
+
+/**
+ * TV-23: the viewer's games that went final since the last poll, when at
+ * least one ticket on them has a verdict to announce. Basketball included: a
+ * bet settles once, however often the game scored.
+ */
+export function newFinals(prev: Snapshot | null, games: TickerGame[], key: number): FinalAlert[] {
+  if (!prev) return [];
+  const out: FinalAlert[] = [];
+  for (const g of games) {
+    const was = prev.status.get(g.id);
+    if (g.status !== "final" || was === undefined || was === "final") continue;
+    if (!ticketsOf(g).some((t) => t.state !== "on")) continue;
+    out.push({ kind: "final", gameId: g.id, key: key + out.length });
+  }
+  return out;
+}
+
+/**
+ * Everything worth taking the strip over for, in the order it is shown. One
+ * banner per event: the final whistle outranks whatever score ended the game,
+ * and a flip carries the score that caused it as its caption.
+ */
+export function newBanners(prev: Snapshot | null, games: TickerGame[], key: number): Banner[] {
+  if (!prev) return [];
+  const finals = newFinals(prev, games, 0);
+  const settled = new Set(finals.map((f) => f.gameId));
+  const scores = newScores(prev.scores, games, 0).filter((a) => !settled.has(a.gameId));
+  const flips = newFlips(prev, games, 0).map((f) => ({
+    ...f,
+    cause: scores.find((a) => a.gameId === f.gameId)?.label ?? null,
+  }));
+  const flipped = new Set(flips.map((f) => f.gameId));
+  const out: Banner[] = [
+    ...scores.filter((a) => !flipped.has(a.gameId)).map((a) => ({ kind: "score" as const, ...a })),
+    ...flips,
+    ...finals,
+  ];
+  return out.map((b, i) => ({ ...b, key: key + i }));
+}
+
+/** WON / LOST / PUSH when every graded ticket agrees, SPLIT when they don't. */
+export function finalWord(tickets: TickerTicket[]): "WON" | "LOST" | "PUSH" | "SPLIT" | null {
+  const graded = tickets.filter((t) => t.state !== "on");
+  if (graded.length === 0) return null;
+  const all = (s: TickerTicket["state"]) => graded.every((t) => t.state === s);
+  return all("covering") ? "WON" : all("losing") ? "LOST" : all("push") ? "PUSH" : "SPLIT";
+}
+
+/** Units across the tickets that were priced; null when none were (picks). */
+export function finalUnits(tickets: TickerTicket[]): number | null {
+  const priced = tickets.filter((t) => typeof t.units === "number");
+  if (priced.length === 0) return null;
+  return Math.round(priced.reduce((n, t) => n + (t.units ?? 0), 0) * 100) / 100;
+}
+
 const DOWN = ["", "1st", "2nd", "3rd", "4th"];
 
 /** "2nd & 7 · MOH 34", or the raw string when it doesn't parse. */
@@ -192,17 +331,15 @@ export function TvCards() {
     it.kind === "summary" ? "summary" : it.kind === "fantasy" ? "fantasy" : sectionOf(it.g),
   );
 
-  // ── Scoring alerts ──────────────────────────────────────────────────────
-  const prevScores = useRef<Map<number, { h: number; a: number }> | null>(null);
+  // ── Alerts: a score, a ticket changing sides, a bet settling ────────────
+  const prevPoll = useRef<Snapshot | null>(null);
   const alertSeq = useRef(0);
-  const [alerts, setAlerts] = useState<ScoreAlert[]>([]);
+  const [alerts, setAlerts] = useState<Banner[]>([]);
   useEffect(() => {
     if (!data) return;
-    const found = newScores(prevScores.current, data.games, alertSeq.current);
+    const found = newBanners(prevPoll.current, data.games, alertSeq.current);
     alertSeq.current += found.length;
-    prevScores.current = new Map(
-      data.games.map((g) => [g.id, { h: g.homePoints ?? 0, a: g.awayPoints ?? 0 }]),
-    );
+    prevPoll.current = snapshot(prevPoll.current, data.games);
     if (found.length > 0) setAlerts((q) => [...q, ...found]);
   }, [data]);
   const alert = alerts[0] ?? null;
@@ -224,7 +361,9 @@ export function TvCards() {
     games
       .map(
         (g) =>
-          `${g.id}:${g.status}:${g.situation ?? ""}:${g.possession ?? ""}:${g.mine ?? ""}:${g.total ?? ""}:${g.clock ?? ""}`,
+          `${g.id}:${g.status}:${g.situation ?? ""}:${g.possession ?? ""}:${g.mine ?? ""}:${g.total ?? ""}:${g.clock ?? ""}:${g.homeRank ?? ""}:${g.awayRank ?? ""}:${ticketsOf(g)
+            .map((t) => t.label + t.state)
+            .join("+")}`,
       )
       .join("|");
   const sectionKey = sections.join(",");
@@ -274,7 +413,13 @@ export function TvCards() {
   if (alert && alertGame) {
     return (
       <main className="tv-strip tv-panel tvb brand-surface">
-        <Touchdown key={alert.key} alert={alert} g={alertGame} />
+        {alert.kind === "score" ? (
+          <Touchdown key={alert.key} alert={alert} g={alertGame} />
+        ) : alert.kind === "flip" ? (
+          <CoverFlip key={alert.key} alert={alert} g={alertGame} />
+        ) : (
+          <Settled key={alert.key} g={alertGame} />
+        )}
       </main>
     );
   }
@@ -400,11 +545,40 @@ function Ball() {
   );
 }
 
-/** The viewer's ticket as a gold chip, else the market spread, dimmed. */
+/** A tile has room for this many tickets; the rest are counted. */
+const MAX_TICKETS = 3;
+
+/**
+ * The viewer's tickets as chips, else the market spread, dimmed. Every ticket
+ * (TV-22), each in the colour of its OWN verdict: the tile tints by the first,
+ * and a second that is going the other way has to be able to say so.
+ */
 function Line({ g }: { g: TickerGame }) {
-  if (g.stake) return <span className="tvb-ticket">{g.stake.label}</span>;
-  const m = marketSpread(g);
-  return m ? <span className="tvb-mkt">{m}</span> : null;
+  const tickets = ticketsOf(g);
+  if (tickets.length === 0) {
+    const m = marketSpread(g);
+    return m ? <span className="tvb-mkt">{m}</span> : null;
+  }
+  return (
+    <>
+      {tickets.slice(0, MAX_TICKETS).map((t, i) => {
+        const v = VERDICT[t.state];
+        const cls = v ? `tvb-tk-graded ${t.state === g.mine ? "" : "tvb-tk-other"}` : "tvb-tk-plain";
+        return (
+          <span
+            key={i}
+            className={`tvb-ticket ${cls}`}
+            style={v ? ({ "--vc": v } as CSSProperties) : undefined}
+          >
+            {t.label}
+          </span>
+        );
+      })}
+      {tickets.length > MAX_TICKETS && (
+        <span className="tvb-mkt tvb-bright">+{tickets.length - MAX_TICKETS}</span>
+      )}
+    </>
+  );
 }
 
 function Net({ g }: { g: TickerGame }) {
@@ -413,15 +587,16 @@ function Net({ g }: { g: TickerGame }) {
 }
 
 /** Inline style for a tile: team colours, and the verdict when it's the viewer's. */
-function tileStyle(g: TickerGame): CSSProperties {
+function tileStyle(g: TickerGame, ticket?: TickerTicket): CSSProperties {
   const style: Record<string, string> = {
     "--ta": g.awayColor ?? "transparent",
     "--th": g.homeColor ?? "transparent",
   };
-  const v = g.mine ? VERDICT[g.mine] : undefined;
+  const state = ticket ? ticket.state : g.mine;
+  const v = state ? VERDICT[state] : undefined;
   if (v) {
     style["--vc"] = v;
-    style["--vdir"] = g.stake?.side === "home" ? "270deg" : "90deg";
+    style["--vdir"] = (ticket ?? g.stake)?.side === "home" ? "270deg" : "90deg";
   }
   return style as CSSProperties;
 }
@@ -446,6 +621,7 @@ function LiveTile({ g }: { g: TickerGame }) {
   };
   const name = (s: "home" | "away") => (
     <span className={`tvb-ab ${graded && g.stake?.side === s ? "tvb-me" : ""}`}>
+      <Rank n={s === "home" ? g.homeRank : g.awayRank} className="tvb-rk" />
       {s === "home" ? g.homeAbbr : g.awayAbbr}
     </span>
   );
@@ -504,10 +680,16 @@ function NextTile({ g }: { g: TickerGame }) {
         {mer && <small>{mer}</small>}
       </span>
       <Logo src={g.awayLogo} abbr={g.awayAbbr} color={g.awayColor} size={26} />
-      <span className="tvb-ab">{g.awayAbbr}</span>
+      <span className="tvb-ab">
+        <Rank n={g.awayRank} className="tvb-rk" />
+        {g.awayAbbr}
+      </span>
       <span className="tvb-at">AT</span>
       <Logo src={g.homeLogo} abbr={g.homeAbbr} color={g.homeColor} size={26} />
-      <span className="tvb-ab">{g.homeAbbr}</span>
+      <span className="tvb-ab">
+        <Rank n={g.homeRank} className="tvb-rk" />
+        {g.homeAbbr}
+      </span>
       <Line g={g} />
       <Net g={g} />
     </div>
@@ -516,15 +698,8 @@ function NextTile({ g }: { g: TickerGame }) {
 
 function FinalTile({ g }: { g: TickerGame }) {
   const lead = leadingSide(g);
-  const res =
-    g.mine === "covering"
-      ? "WON"
-      : g.mine === "losing"
-        ? "LOST"
-        : g.mine === "push"
-          ? "PUSH"
-          : null;
   const v = g.mine ? VERDICT[g.mine] : undefined;
+  const tickets = ticketsOf(g);
   return (
     <div
       className={`tvb-tile tvb-fin ${g.mine ? "tvb-mine" : ""} ${v ? "tvb-bet" : ""}`}
@@ -539,16 +714,26 @@ function FinalTile({ g }: { g: TickerGame }) {
       {/* tvStatus, not the literal: a basketball final that needed overtime
           says FINAL/OT (TV-20). Football's reads FINAL exactly as before. */}
       <span className="tvb-k tvb-dim">{tvStatus(g)}</span>
-      {g.stake && <span className="tvb-mkt tvb-bright">{g.stake.label}</span>}
-      {res && v && (
-        <span className="tvb-res" style={{ background: v }}>
-          {res}
+      {/* TV-22: each ticket with its own result, not one badge for the game. */}
+      {tickets.slice(0, MAX_TICKETS).map((t, i) => (
+        <span key={i} className="tvb-fin-tk">
+          <span className="tvb-mkt tvb-bright">{t.label}</span>
+          {VERDICT[t.state] && (
+            <span className="tvb-res" style={{ background: VERDICT[t.state] }}>
+              {RESULT[t.state]}
+            </span>
+          )}
         </span>
+      ))}
+      {tickets.length > MAX_TICKETS && (
+        <span className="tvb-mkt tvb-bright">+{tickets.length - MAX_TICKETS}</span>
       )}
       <VerdictWords g={g} />
     </div>
   );
 }
+
+const RESULT: Record<string, string> = { covering: "WON", losing: "LOST", push: "PUSH" };
 
 /** "+1.4U" / "-2U", one decimal at most; "EVEN" at zero, since "0U" reads as OU. */
 function fmtUnits(u: number): string {
@@ -569,23 +754,23 @@ function Summary({ s, games }: { s: TickerSummary; games: TickerGame[] }) {
       </span>
       <span className={`tvb-units ${ucls}`}>{fmtUnits(s.units)}</span>
       {live.length > 0 && <span className="tvb-k">LIVE</span>}
-      {live.map((g) => (
-        <MiniBet key={g.id} g={g} />
-      ))}
+      {live.flatMap((g) => ticketsOf(g).map((t, i) => <MiniBet key={`${g.id}:${i}`} g={g} t={t} />))}
       {next.length > 0 && <span className="tvb-k">UP NEXT</span>}
-      {next.map((g) => (
-        <MiniBet key={g.id} g={g} when={tvStatus(g).split(" ")[0]} />
-      ))}
+      {next.flatMap((g) =>
+        ticketsOf(g).map((t, i) => (
+          <MiniBet key={`${g.id}:${i}`} g={g} t={t} when={tvStatus(g).split(" ")[0]} />
+        )),
+      )}
     </div>
   );
 }
 
 /** One ticket on the night card: the side's logo and the line, tinted by how it's going. */
-function MiniBet({ g, when }: { g: TickerGame; when?: string }) {
-  const away = g.stake?.side === "away";
-  const v = g.mine ? VERDICT[g.mine] : undefined;
+function MiniBet({ g, t, when }: { g: TickerGame; t: TickerTicket; when?: string }) {
+  const away = t.side === "away";
+  const v = VERDICT[t.state];
   return (
-    <span className={`tvb-mini ${v ? "tvb-bet" : ""}`} style={tileStyle(g)}>
+    <span className={`tvb-mini ${v ? "tvb-bet" : ""}`} style={tileStyle(g, t)}>
       <SportTag g={g} className="tvb-tag" />
       <Logo
         src={away ? g.awayLogo : g.homeLogo}
@@ -593,7 +778,7 @@ function MiniBet({ g, when }: { g: TickerGame; when?: string }) {
         color={away ? g.awayColor : g.homeColor}
         size={24}
       />
-      <span className="tvb-mini-l">{g.stake?.label ?? (away ? g.awayAbbr : g.homeAbbr)}</span>
+      <span className="tvb-mini-l">{t.label}</span>
       {when && <span className="tvb-k tvb-bright">{when}</span>}
       <VerdictWords g={g} />
     </span>
@@ -608,9 +793,7 @@ function Touchdown({ alert, g }: { alert: ScoreAlert; g: TickerGame }) {
   // TV-18: full names, the scoring side bright and the other dimmed, and the
   // viewer's ticket as a solid chip in the colour it's now running.
   const team = (s: "home" | "away") => (
-    <span className={`tvb-td-name ${alert.side === s ? "" : "tvb-td-other"}`}>
-      {(s === "home" ? g.homeName : g.awayName) ?? (s === "home" ? g.homeAbbr : g.awayAbbr)}
-    </span>
+    <BannerName g={g} s={s} dim={alert.side !== s} />
   );
   return (
     <div className="tvb-td" style={{ "--tc": color } as CSSProperties}>
@@ -637,6 +820,117 @@ function Touchdown({ alert, g }: { alert: ScoreAlert; g: TickerGame }) {
         </span>
       )}
       <VerdictWords g={g} />
+    </div>
+  );
+}
+
+/** A school's full name on a banner, its rank ahead of it (TV-18, TV-21). */
+function BannerName({ g, s, dim }: { g: TickerGame; s: "home" | "away"; dim?: boolean }) {
+  return (
+    <span className={`tvb-td-name ${dim ? "tvb-td-other" : ""}`}>
+      <Rank n={s === "home" ? g.homeRank : g.awayRank} className="tvb-rk" />
+      {(s === "home" ? g.homeName : g.awayName) ?? (s === "home" ? g.homeAbbr : g.awayAbbr)}
+    </span>
+  );
+}
+
+/* A banner floods in a verdict colour, darkened so white type holds on the
+   gold of a push as well as on green and red. Its ticket chips go white:
+   a chip in the verdict colour would vanish into the flood. */
+const flood = (v: string): CSSProperties =>
+  ({ "--tc": `color-mix(in srgb, ${v} 72%, #000)` }) as CSSProperties;
+const CHIP_ON_FLOOD = { "--vc": "rgba(255, 255, 255, 0.94)" } as CSSProperties;
+
+function BannerScore({ g, dim }: { g: TickerGame; dim?: "home" | "away" | null }) {
+  return (
+    <span className="tvb-td-score">
+      <BannerName g={g} s="away" dim={dim === "away"} />
+      <span className="tvb-td-pts">{g.awayPoints ?? 0}</span>
+      <span className="tvb-td-dash">–</span>
+      <span className="tvb-td-pts">{g.homePoints ?? 0}</span>
+      <BannerName g={g} s="home" dim={dim === "home"} />
+    </span>
+  );
+}
+
+/**
+ * TV-24: one of the viewer's tickets just changed sides of its number. The
+ * strip floods green or red and says which way; the score that did it, when
+ * the same poll caught it, is the caption rather than a banner of its own.
+ */
+function CoverFlip({ alert, g }: { alert: FlipAlert; g: TickerGame }) {
+  const side = alert.tickets[0]?.side;
+  const home = side === "home";
+  return (
+    <div className="tvb-td" style={flood(VERDICT[alert.to])}>
+      <span className="tvb-td-word">
+        {alert.to === "covering" ? "NOW COVERING" : "NO LONGER COVERING"}
+      </span>
+      {(side === "home" || side === "away") && (
+        <Logo
+          src={home ? g.homeLogo : g.awayLogo}
+          abbr={home ? g.homeAbbr : g.awayAbbr}
+          color={home ? g.homeColor : g.awayColor}
+          size={40}
+        />
+      )}
+      <BannerScore g={g} />
+      <span className="tvb-td-bet">
+        <span className="tvb-td-cap">{alert.cause ?? "YOUR BET"}</span>
+        {alert.tickets.map((t, i) => (
+          <span key={i} className="tvb-td-ticket" style={CHIP_ON_FLOOD}>
+            {t.label}
+          </span>
+        ))}
+      </span>
+      <span className="sr-only">
+        {alert.to === "covering" ? "You're now covering." : "You're no longer covering."}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * TV-23: one of the viewer's games just went final. The result, the score,
+ * each ticket, and what the game paid. Tickets that disagree read SPLIT, each
+ * chip in its own colour; a ticket nothing has graded yet is left off.
+ */
+function Settled({ g }: { g: TickerGame }) {
+  const tickets = ticketsOf(g).filter((t) => t.state !== "on");
+  const word = finalWord(tickets);
+  const units = finalUnits(tickets);
+  const lead = leadingSide(g);
+  const split = word === "SPLIT";
+  // A split floods gold, like a push: neither won nor lost, and the units
+  // figure beside the chips says which way it came out.
+  const color =
+    word === "WON" ? VERDICT.covering : word === "LOST" ? VERDICT.losing : VERDICT.push;
+  return (
+    <div className="tvb-td" style={flood(color)}>
+      <span className="tvb-td-word">{word}</span>
+      <span className="tvb-td-cap">{tvStatus(g)}</span>
+      <BannerScore g={g} dim={lead === "home" ? "away" : lead === "away" ? "home" : null} />
+      <span className="tvb-td-bet">
+        {tickets.slice(0, MAX_TICKETS).map((t, i) => (
+          <span
+            key={i}
+            className="tvb-td-ticket"
+            style={split ? ({ "--vc": VERDICT[t.state] } as CSSProperties) : CHIP_ON_FLOOD}
+          >
+            {t.label}
+          </span>
+        ))}
+        {units !== null && <span className="tvb-td-units">{fmtUnits(units)}</span>}
+      </span>
+      <span className="sr-only">
+        {word === "WON"
+          ? "Your bet won."
+          : word === "LOST"
+            ? "Your bet lost."
+            : word === "PUSH"
+              ? "Your bet pushed."
+              : "Your bets split."}
+      </span>
     </div>
   );
 }

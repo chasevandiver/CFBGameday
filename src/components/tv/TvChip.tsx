@@ -1,6 +1,6 @@
 import { breakLabel, overtimeSuffix, periodLabel } from "../../lib/kick";
 import { BasketballIcon } from "../nav-icons";
-import type { TickerGame, TickerMine } from "../../lib/ticker";
+import { ticketsOf, type TickerGame, type TickerMine } from "../../lib/ticker";
 import { leadingSide } from "../ScoreTicker";
 
 /** Status text for a TV chip: clock while live, FINAL, or the kickoff time. */
@@ -28,10 +28,30 @@ export function tvStatus(g: TickerGame, opts: { short?: boolean } = {}): string 
  * way a broadcast bug sets it. Consensus spreads are home-perspective, so a
  * positive number means the visitors are laying it.
  */
-export function tvLine(g: TickerGame): { text: string; mine: boolean } | null {
-  if (g.stake) return { text: g.stake.label, mine: true };
+export function tvLine(g: TickerGame): { text: string; mine: boolean; more: number } | null {
+  // TV-22: a one-line surface prints the ticket the colour grades and counts
+  // the others ("ALA -3.5 +1"), so a second bet is never silently missing.
+  if (g.stake) return { text: g.stake.label, mine: true, more: ticketsOf(g).length - 1 };
   const m = marketSpread(g);
-  return m === null ? null : { text: m, mine: false };
+  return m === null ? null : { text: m, mine: false, more: 0 };
+}
+
+/** "+1" after the line when the viewer holds more tickets on the game. */
+export function MoreTickets({ n }: { n: number }) {
+  return n > 0 ? (
+    <span className="tv-more" aria-label={`and ${n} more ${n === 1 ? "bet" : "bets"}`}>
+      +{n}
+    </span>
+  ) : null;
+}
+
+/** A team's poll rank (TV-21), small and ahead of its name; nothing unranked. */
+export function Rank({ n, className = "tv-rank" }: { n?: number | null; className?: string }) {
+  return typeof n === "number" ? (
+    <span className={className} aria-label={`ranked ${n}`}>
+      {n}
+    </span>
+  ) : null;
 }
 
 /** The market spread, favourite first ("ALA -3.5", "PK"); null when unknown. */
@@ -88,6 +108,7 @@ export function TvChip({ g }: { g: TickerGame }) {
   const line = tvLine(g);
   const team = (abbr: string, pts: number | null, s: "home" | "away") => (
     <span className={teamClass(g, s)} style={{ fontWeight: lead === s ? 700 : 500 }}>
+      <Rank n={s === "home" ? g.homeRank : g.awayRank} />
       {abbr}
       {scored && <span className="stat"> {pts ?? 0}</span>}
     </span>
@@ -98,7 +119,12 @@ export function TvChip({ g }: { g: TickerGame }) {
       <SportTag g={g} className="tv-tag" />
       {team(g.awayAbbr, g.awayPoints, "away")}
       {team(g.homeAbbr, g.homePoints, "home")}
-      {line && <span className={`tv-line stat ${lineClass(g, line.mine)}`}>{line.text}</span>}
+      {line && (
+        <span className={`tv-line stat ${lineClass(g, line.mine)}`}>
+          {line.text}
+          <MoreTickets n={line.more} />
+        </span>
+      )}
       <span className={`tv-status stat ${live ? "text-live" : "text-dim"}`}>{tvStatus(g)}</span>
       <VerdictWords g={g} />
     </span>

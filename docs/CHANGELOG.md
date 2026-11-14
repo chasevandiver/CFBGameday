@@ -234,6 +234,51 @@ shipping it.
 
 ## Log
 
+### Nov 14 — TV-21…TV-24: ranks, every ticket, and two more banners on the TV overlay
+
+Owner picks from a list of options for the overlay, 2026-11-14.
+
+- **TV-21, poll ranks.** A small rank ahead of each ranked team on the card
+  tiles, the crawl, the corner box and the banners. Football reads
+  `latest_poll_rankings` through `pickPollRanks` (CFP, else AP, else Coaches),
+  the same choice the slate makes; basketball reads `teams.poll_rank`; the NFL
+  has none. One extra read per poll, and only while football is in the window.
+- **TV-22, every ticket on a game.** The feed carried one `stake` per game, so
+  a side and a total on the same game showed as the side alone. It now also
+  carries `tickets`, each graded on its own (`tickerTickets`). The card tiles
+  draw up to three chips, each in its own verdict's colour, and count the
+  rest; the crawl and the corner box print the first and a `+1`. A final tile
+  gives each ticket its own WON / LOST, and the night card lists each ticket.
+  Ledger bets when there are any, else picks, as before. `mine` and `stake`
+  are unchanged, so the tile still tints by the same ticket and the in-app
+  ticker is untouched.
+- **TV-23, the final banner.** When one of the viewer's games goes final the
+  strip takes over once: WON, LOST, PUSH, or SPLIT when the tickets disagree;
+  the score; each ticket; and what the game paid, at the grader's payout when
+  it has run and the bet's own odds otherwise. Picks carry no units figure.
+  Basketball included.
+- **TV-24, the cover-flip banner.** When a ticket changes sides of its number
+  between polls: NOW COVERING or NO LONGER COVERING, in green or red. A
+  ticket's verdict is carried through a push, so covering, push, not covering
+  is one flip. Detected in the page from the viewer's own line, not from
+  `cover_flips`, which records the consensus line and only the fourth
+  quarter. Never for basketball, for the reason its scores aren't announced.
+- **One banner per event.** A flip is always caused by a score, so the flip
+  banner replaces that score's banner and carries it as a caption
+  ("TOUCHDOWN"); a final replaces the banner for the score that ended the
+  game. A flip therefore adds no takeover the touchdown banner wasn't already
+  making.
+
+Banners remain a card-strip feature: the crawl and the corner box announce
+nothing, as before.
+
+Checked: 2,390 unit tests, typecheck, lint, `next build`; the three TV pages
+rendered at their real sizes from a mocked feed, stepping it through a flip
+each way, a won final and a split final. Not checked: on the Fire TV itself
+(the pages reload on a new deploy, TV-16, so no app update is needed), and
+`/api/ticker` against the real database — the new reads were typechecked, not
+run.
+
 ### Nov 13 — CBB-20: the basketball import is launched by the database
 
 Owner report at 1:30pm ET: no college basketball lines on the slate. The

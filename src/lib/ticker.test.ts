@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { demoTickerData } from "./demo-data";
-import { newDeploy, tickerMine, tickerStake, tickerSummary } from "./ticker";
+import {
+  newDeploy,
+  tickerMine,
+  tickerStake,
+  tickerSummary,
+  tickerTickets,
+  ticketsOf,
+  type TicketBet,
+} from "./ticker";
 import type { MyBetView, MyPickView } from "./slate";
 
 const bet = (overrides: Partial<MyBetView> = {}): MyBetView => ({
@@ -163,5 +171,100 @@ describe("newDeploy (TV-16)", () => {
     expect(newDeploy(null, "abc")).toBe(false);
     expect(newDeploy("abc", null)).toBe(false);
     expect(newDeploy("abc", undefined)).toBe(false);
+  });
+});
+
+/**
+ * TV-22, owner pick 2026-11-14: every ticket on a game, each graded on its
+ * own. `tickerStake` returns one, so a side and a total on the same game
+ * showed as the side alone.
+ */
+describe("tickerTickets (TV-22)", () => {
+  const total = (o: Partial<TicketBet> = {}): TicketBet => ({
+    id: 2,
+    betType: "total",
+    side: "over",
+    line: 54.5,
+    odds: -110,
+    units: 1,
+    ...o,
+  });
+  const side = (o: Partial<TicketBet> = {}): TicketBet => ({
+    ...bet(),
+    odds: -110,
+    units: 1,
+    ...o,
+  });
+
+  it("lists a side and a total, each with its own verdict", () => {
+    const t = tickerTickets("in_progress", 28, 20, [side(), total()], [], "UGA", "ALA");
+    expect(t.map((x) => [x.label, x.state])).toEqual([
+      ["UGA -3.5", "covering"],
+      ["O 54.5", "losing"],
+    ]);
+  });
+
+  it("leads with the ticket tickerStake names, so the first is the one the tile grades", () => {
+    const bets = [side({ betType: "first_half" }), total()];
+    const t = tickerTickets("in_progress", 28, 20, bets, [], "UGA", "ALA");
+    expect(t[0].label).toBe(tickerStake(bets, [], "UGA", "ALA")?.label);
+    expect(t.map((x) => x.state)).toEqual(["losing", "on"]);
+  });
+
+  it("is ungraded before kickoff and carries no units until the game is final", () => {
+    expect(tickerTickets("scheduled", null, null, [side()], [], "UGA", "ALA")).toEqual([
+      { label: "UGA -3.5", side: "home", state: "on", units: null },
+    ]);
+    expect(tickerTickets("in_progress", 28, 20, [side()], [], "UGA", "ALA")[0].units).toBeNull();
+  });
+
+  it("prices a final at the bet's own odds, and takes the grader's word when it has run", () => {
+    const fromScore = tickerTickets("final", 28, 20, [side({ units: 2 })], [], "UGA", "ALA");
+    expect(fromScore[0]).toMatchObject({ state: "covering", units: 1.82 });
+    // The grader settles what a score can't: a first-half bet reads WON here.
+    const graded = tickerTickets(
+      "final",
+      28,
+      20,
+      [side({ betType: "first_half", result: "win", payoutUnits: 0.91 })],
+      [],
+      "UGA",
+      "ALA",
+    );
+    expect(graded[0]).toMatchObject({ state: "covering", units: 0.91 });
+  });
+
+  it("never grades a voided bet from the score", () => {
+    const t = tickerTickets("final", 28, 20, [side({ result: "void" })], [], "UGA", "ALA");
+    expect(t[0]).toMatchObject({ state: "on", units: null });
+  });
+
+  it("shows picks only when there is no bet, headline first, with no units", () => {
+    const picks = [pick({ market: "total", side: "under", line: 54.5 }), pick()];
+    expect(
+      tickerTickets("in_progress", 28, 20, [], picks, "UGA", "ALA").map((x) => [x.label, x.state]),
+    ).toEqual([
+      ["UGA -3.5", "covering"],
+      ["U 54.5", "covering"],
+    ]);
+    expect(tickerTickets("in_progress", 28, 20, [side()], picks, "UGA", "ALA")).toHaveLength(1);
+  });
+
+  it("falls back to the single stake for a payload that predates tickets", () => {
+    const g = {
+      id: 1,
+      status: "in_progress",
+      startTs: null,
+      period: 2,
+      clock: "5:00",
+      homeAbbr: "UGA",
+      awayAbbr: "ALA",
+      homePoints: 7,
+      awayPoints: 3,
+    };
+    expect(ticketsOf(g)).toEqual([]);
+    expect(
+      ticketsOf({ ...g, mine: "covering", stake: { label: "UGA -3.5", side: "home" } }),
+    ).toEqual([{ label: "UGA -3.5", side: "home", state: "covering" }]);
   });
 });

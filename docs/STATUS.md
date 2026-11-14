@@ -3137,6 +3137,16 @@ are open.
       even when no football is in the window, or a January weeknight would
       show nothing. Rendered on all three TV surfaces (cards, ticker, corner)
       from a mocked feed. **Not checked on a real Fire TV.**
+- [x] **TV-21…TV-24 — poll ranks, every ticket on a game, a final banner
+      and a cover-flip banner on the TV overlay.** Owner picks 2026-11-14.
+      `/api/ticker` adds `homeRank` / `awayRank` (football from
+      `latest_poll_rankings`, basketball from `teams.poll_rank`) and
+      `tickets`, every bet on the game with its own verdict and, at the
+      final, its payout. The card strip announces a ticket changing sides of
+      its number and a bet settling, one banner per event: a flip or a final
+      replaces the score banner that caused it. No basketball flips. Rendered
+      on all three TV surfaces from a mocked feed. **Not checked on a real
+      Fire TV, and the feed's new reads have not run against production.**
 - [ ] **CBB-13 — bonus and team fouls on the slate card.** Needs a cheaper
       source than `/summary`, or a watch-list (games someone has bet).
 - [ ] **CBB-14 — tomorrow's lines.** The feed publishes one day; a card for

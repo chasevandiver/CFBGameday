@@ -9,7 +9,16 @@
 import { useEffect, useState } from "react";
 import type { TickerGame } from "../../lib/ticker";
 import { leadingSide } from "../ScoreTicker";
-import { lineClass, SportTag, teamClass, tvLine, tvStatus, VerdictWords } from "./TvChip";
+import {
+  lineClass,
+  MoreTickets,
+  Rank,
+  SportTag,
+  teamClass,
+  tvLine,
+  tvStatus,
+  VerdictWords,
+} from "./TvChip";
 import { tvOrder, useTickerFeed } from "./use-ticker-feed";
 
 const PER_PAGE = 4;
@@ -71,7 +80,10 @@ function Cell({ g }: { g: TickerGame }) {
   const line = tvLine(g);
   const row = (abbr: string, pts: number | null, s: "home" | "away") => (
     <span className={`tv-team ${teamClass(g, s)}`}>
-      <span style={{ fontWeight: lead === s ? 700 : 500 }}>{abbr}</span>
+      <span style={{ fontWeight: lead === s ? 700 : 500 }}>
+        <Rank n={s === "home" ? g.homeRank : g.awayRank} />
+        {abbr}
+      </span>
       {scored && <span className="stat">{pts ?? 0}</span>}
     </span>
   );
@@ -85,6 +97,7 @@ function Cell({ g }: { g: TickerGame }) {
       {row(g.homeAbbr, g.homePoints, "home")}
       <span className={`tv-cell-line stat ${line ? lineClass(g, line.mine) : ""}`}>
         {line?.text}
+        {line && <MoreTickets n={line.more} />}
       </span>
       <VerdictWords g={g} />
     </div>

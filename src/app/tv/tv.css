@@ -78,6 +78,23 @@ body > footer {
 .tv-v-push {
   color: var(--accent);
 }
+/* TV-21: poll rank, small and ahead of the name it belongs to. */
+.tv-rank,
+.tvb-rk {
+  margin-right: 0.3em;
+  font-size: 0.62em;
+  font-weight: 600;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  vertical-align: 0.22em;
+  opacity: 0.72;
+}
+/* TV-22: how many more tickets the viewer holds than the line shows. */
+.tv-more {
+  margin-left: 0.4em;
+  font-size: 0.72em;
+  color: var(--accent);
+}
 .tv-line {
   font-size: 0.86em;
   margin-left: 0.15em;
@@ -641,6 +658,30 @@ body > footer {
   color: #fff;
   font-weight: 700;
 }
+/* TV-22: several tickets on one tile, each in its OWN verdict's colour. A
+   graded chip looks the way the single ticket on a bet tile always has; one
+   the score can't grade stays an outline, even on a tinted tile; and one
+   going the other way from the tile gets a dark ring to hold its edge. */
+.tvb-ticket.tvb-tk-graded {
+  font-weight: 700;
+  color: var(--accent-ink);
+  background: var(--vc);
+  box-shadow: 0 0 18vh color-mix(in srgb, var(--vc) 55%, transparent);
+}
+.tvb-ticket.tvb-tk-other {
+  box-shadow: 0 0 0 3vh rgba(0, 0, 0, 0.45);
+}
+.tvb-bet .tvb-ticket.tvb-tk-plain {
+  font-weight: 500;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.28);
+  box-shadow: inset 0 0 0 2vh rgba(255, 255, 255, 0.4);
+}
+.tvb-fin-tk {
+  display: inline-flex;
+  align-items: center;
+  gap: 10vh;
+}
 
 /* Up next */
 .tvb-ko {
@@ -874,6 +915,14 @@ body > footer {
   box-shadow:
     0 0 0 3vh rgba(0, 0, 0, 0.25),
     0 0 26vh color-mix(in srgb, var(--vc, var(--accent)) 70%, transparent);
+}
+
+/* TV-23: what the game paid, beside its tickets on the final banner. */
+.tvb-td-units {
+  font:
+    700 56vh/1 var(--font-numeric),
+    monospace;
+  color: #fff;
 }
 
 /* Fantasy (TV-12): team names are the fun part, but they can run long. */
