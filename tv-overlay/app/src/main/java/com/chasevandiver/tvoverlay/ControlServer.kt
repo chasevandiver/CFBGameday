@@ -15,6 +15,7 @@ import kotlin.concurrent.thread
  * The remote stays with the show; the phone is the overlay's remote.
  *
  *   GET  /             the control page
+ *   GET  /apple-touch-icon.png  its home-screen icon
  *   GET  /api/state    current config, presets, permission status
  *   POST /api/show     {url?, layout?, position?, size?, opacity?, zoom?}
  *   POST /api/hide
@@ -111,6 +112,11 @@ class ControlServer(private val svc: OverlayService, private val port: Int) {
         return when {
             method == "GET" && (path == "/" || path == "/index.html") ->
                 Triple("200 OK", "text/html; charset=utf-8", svc.assets.open("control.html").use { it.readBytes() })
+            // The home-screen icon for the control page. iOS asks for these
+            // names on its own when a page is added to the home screen, with or
+            // without the link tag, so both answer.
+            method == "GET" && (path == "/apple-touch-icon.png" || path == "/apple-touch-icon-precomposed.png") ->
+                Triple("200 OK", "image/png", svc.assets.open("apple-touch-icon.png").use { it.readBytes() })
             method == "GET" && path == "/api/state" -> ok()
             // "all": true runs it here and relays it to every other TV (TV-9).
             method == "POST" && path == "/api/show" -> {

@@ -234,6 +234,27 @@ shipping it.
 
 ## Log
 
+### Nov 14 — TV-25: a home-screen icon for the overlay's phone remote
+
+Owner request. The control page the Fire TV app serves says "add this page to
+your home screen", and had no icon, so iOS used a screenshot of the page.
+
+- `tv-overlay/icon/icon.html` draws a TV carrying the Slate S, with the
+  overlay's ticker strip along the bottom of the picture. **The S is the
+  supplied artwork**, composited from `public/brand/slate-mark.png` and not
+  redrawn; the TV, the strip and the lighting are new, in the brand palette.
+  `node tv-overlay/icon/render.mjs` renders the 1024px master and the 180px
+  `apple-touch-icon.png` in the app's assets.
+- `ControlServer` answers `/apple-touch-icon.png` (and the `-precomposed`
+  name iOS also asks for); `control.html` links it and sets the home-screen
+  title.
+
+Checked: rendered and looked at 512, 180, 120 and 60px with iOS's corner
+mask. Not checked: the Kotlin was not compiled here (the APK workflow does
+that on push), and nothing was added to a real iPhone's home screen. An
+existing home-screen shortcut keeps its old icon until it is removed and
+added again, and the TV needs the app update first.
+
 ### Nov 14 — TV-21…TV-24: ranks, every ticket, and two more banners on the TV overlay
 
 Owner picks from a list of options for the overlay, 2026-11-14.

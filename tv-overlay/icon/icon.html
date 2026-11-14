@@ -1,0 +1,121 @@
+<!doctype html>
+<!--
+  The home-screen icon for the TV Overlay control page (the phone remote).
+
+  The S is the supplied artwork, composited from public/brand/slate-mark.png and
+  never redrawn (docs/BRAND.md). Everything around it is drawn here: a TV
+  carrying the mark, with the overlay's ticker strip along the bottom of the
+  screen. Full bleed and opaque; iOS cuts the corners itself.
+
+  Render with: node tv-overlay/icon/render.mjs
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; }
+  body {
+    width: 1024px; height: 1024px; overflow: hidden; position: relative;
+    background:
+      radial-gradient(90% 70% at 22% 12%, rgba(40, 150, 100, .50), transparent 62%),
+      radial-gradient(80% 70% at 86% 92%, rgba(232, 185, 61, .30), transparent 60%),
+      linear-gradient(160deg, #0E3B2C 0%, #08251C 42%, #020A08 100%);
+  }
+  /* The room: a soft pool of light the TV throws on the wall behind it. */
+  .glow {
+    position: absolute; left: 32px; top: 130px; width: 960px; height: 700px;
+    border-radius: 120px;
+    background: radial-gradient(closest-side, rgba(70, 200, 140, .38), transparent 78%);
+    filter: blur(46px);
+  }
+  .tv {
+    position: absolute; left: 56px; top: 176px; width: 912px; height: 596px;
+    border-radius: 58px;
+    padding: 22px;
+    box-sizing: border-box;
+    /* The bezel takes the source icon's rim light: green from the top left,
+       gold from the bottom right. */
+    background: linear-gradient(135deg, #8fe0b4 0%, #1d6b4c 22%, #06110d 50%, #7a5a14 80%, #f3c64d 100%);
+    box-shadow:
+      0 44px 80px rgba(0, 0, 0, .62),
+      0 0 0 3px rgba(0, 0, 0, .55),
+      0 0 90px rgba(60, 190, 130, .22);
+  }
+  .screen {
+    position: relative; width: 100%; height: 100%; overflow: hidden;
+    border-radius: 38px;
+    background:
+      radial-gradient(70% 90% at 50% 34%, #14503b 0%, #0a2e22 55%, #041510 100%);
+    box-shadow: inset 0 0 0 4px #010504, inset 0 0 70px rgba(0, 0, 0, .7);
+  }
+  /* Yard lines, faint, as on the source icon's field. */
+  .yard { position: absolute; top: 0; bottom: 120px; width: 5px; background: rgba(244, 239, 226, .09); }
+  .hash { position: absolute; height: 5px; width: 34px; background: rgba(244, 239, 226, .10); }
+  .mark {
+    position: absolute; left: 50%; top: 28px; height: 384px;
+    transform: translateX(-50%);
+    filter: drop-shadow(0 12px 18px rgba(0, 0, 0, .65));
+  }
+  /* The overlay itself: the strip along the bottom of the picture. */
+  .ticker {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 120px;
+    display: flex; align-items: center; gap: 26px; padding: 0 34px;
+    box-sizing: border-box;
+    background: linear-gradient(180deg, #0b0f0d, #020504);
+    border-top: 6px solid #E8B93D;
+    box-shadow: 0 -10px 30px rgba(232, 185, 61, .28);
+  }
+  .dot { width: 34px; height: 34px; border-radius: 50%; background: #ef2f3c; box-shadow: 0 0 22px rgba(239, 47, 60, .9); flex: none; }
+  .chip { height: 40px; border-radius: 12px; flex: none; }
+  .chalk { background: #F4EFE2; }
+  .dim { background: rgba(244, 239, 226, .38); }
+  .gold { background: #E8B93D; }
+  .win { background: #35c47a; }
+  .sep { width: 5px; height: 52px; background: rgba(244, 239, 226, .2); flex: none; }
+  /* Glass: one diagonal sheen across the screen. */
+  .sheen {
+    position: absolute; inset: 0;
+    background: linear-gradient(118deg, rgba(255, 255, 255, .16) 0%, rgba(255, 255, 255, .04) 26%, transparent 42%);
+    pointer-events: none;
+  }
+  .neck { position: absolute; left: 472px; top: 772px; width: 80px; height: 46px; background: linear-gradient(180deg, #0a1410, #1b2a23); }
+  .foot {
+    position: absolute; left: 302px; top: 814px; width: 420px; height: 26px; border-radius: 13px;
+    background: linear-gradient(90deg, #2c7a58, #101c17 45%, #101c17 55%, #b98f25);
+    box-shadow: 0 18px 30px rgba(0, 0, 0, .6);
+  }
+</style>
+</head>
+<body>
+  <div class="glow"></div>
+  <div class="tv">
+    <div class="screen">
+      <div class="yard" style="left:132px"></div>
+      <div class="yard" style="left:262px"></div>
+      <div class="yard" style="right:132px"></div>
+      <div class="yard" style="right:262px"></div>
+      <div class="hash" style="left:40px;top:106px"></div>
+      <div class="hash" style="left:40px;top:216px"></div>
+      <div class="hash" style="left:40px;top:326px"></div>
+      <div class="hash" style="right:40px;top:106px"></div>
+      <div class="hash" style="right:40px;top:216px"></div>
+      <div class="hash" style="right:40px;top:326px"></div>
+      <img class="mark" src="../../public/brand/slate-mark.png" alt="">
+      <div class="ticker">
+        <span class="dot"></span>
+        <span class="chip chalk" style="width:118px"></span>
+        <span class="chip win" style="width:64px"></span>
+        <span class="sep"></span>
+        <span class="chip dim" style="width:104px"></span>
+        <span class="chip gold" style="width:64px"></span>
+        <span class="sep"></span>
+        <span class="chip chalk" style="width:118px"></span>
+        <span class="chip dim" style="width:64px"></span>
+      </div>
+      <div class="sheen"></div>
+    </div>
+  </div>
+  <div class="neck"></div>
+  <div class="foot"></div>
+</body>
+</html>
