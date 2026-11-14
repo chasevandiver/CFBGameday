@@ -7,6 +7,7 @@ import {
   feedPrediction,
   feedSnapshot,
   isCbbModelVersion,
+  nextSlateIsAhead,
   predictionChanged,
   snapshotChanged,
   trustedMarket,
@@ -188,5 +189,30 @@ describe("model version", () => {
     expect(cbbModelVersion(null)).toBe("cbb-unknown");
     expect(isCbbModelVersion("cbb-4.1.0")).toBe(true);
     expect(isCbbModelVersion("2026.3.1")).toBe(false);
+  });
+});
+
+describe("the day-before preview (CBB-14)", () => {
+  it("stores an early record unfrozen, marked, with the same numbers", () => {
+    const official = feedPrediction(fx.AWAY_FAV)!;
+    const early = feedPrediction(fx.AWAY_FAV, { early: true })!;
+    expect(official.frozen).toBe(true);
+    expect(official.adjustments.early).toBeUndefined();
+    expect(early.frozen).toBe(false);
+    expect(early.adjustments.early).toBe(true);
+    expect({ ...early, frozen: true, adjustments: official.adjustments }).toEqual(official);
+  });
+
+  it("takes a next slate only when it is dated after the published one", () => {
+    const published = { slate_date: "2026-11-14" };
+    const next = { ...fx.header, slate_date: "2026-11-15" };
+    expect(nextSlateIsAhead(published, next)).toBe(true);
+    // the morning run has published the day the preview was for
+    expect(nextSlateIsAhead({ slate_date: "2026-11-15" }, next)).toBe(false);
+    expect(nextSlateIsAhead({ slate_date: "2026-11-16" }, next)).toBe(false);
+    expect(nextSlateIsAhead(published, { ...next, slate_date: undefined })).toBe(false);
+    expect(nextSlateIsAhead({}, next)).toBe(false);
+    expect(nextSlateIsAhead(published, { ...next, schema_version: "2.0" })).toBe(false);
+    expect(nextSlateIsAhead(published, { ...next, kind: "season" })).toBe(false);
   });
 });

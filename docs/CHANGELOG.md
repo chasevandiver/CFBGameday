@@ -234,6 +234,42 @@ shipping it.
 
 ## Log
 
+### Nov 14 — CBB-14, CBB-21: tomorrow's picks a day early, and a record that moves during the slate
+
+Owner: "Is there a way to get the model stats to show up as games are
+finished… Also is there a way to get the model to work the day before the
+games to give picks to? I can't see it on the slate app until it fires."
+
+Both were limits of the cbbmodel feed, not of this app, so most of the change
+is in that repo (same branch name).
+
+- **Live grading.** The feed graded yesterday once, in the morning. It now
+  grades a pick when its game is final: at each of the seven line snapshots
+  and hourly from 1:40pm to 3:40am ET. ESPN scores only. This app still
+  grades nothing (the CBB-16 rule stands); `cbb_model_stats.days` simply
+  starts carrying the day being played. The strip shows it as
+  "Model · Sat, Nov 14 · so far" beside the season and the day before.
+  `cbb-sync` gets ten more slots (`5 0,3-9,19,21 * * *`).
+- **The next slate.** The feed adds `slate-next.json`: the next unpublished
+  day, priced on today's ratings and the lines posted so far, rewritten at
+  every snapshot. `cbb-sync-feed` stores it as **unfrozen** predictions, which
+  the slate already knows how to show and the grader already ignores. The
+  morning run's frozen row takes over without anything being rewritten.
+  `nextSlateIsAhead` refuses a preview not dated after the published slate.
+
+What was checked: a scratch copy of cbbmodel graded Nov 13 live (174-128 →
+205-145), wrote a schema-valid `slate-next.json` (60 games, 57 lined), and
+this importer's dry-run read both files from it. 645 tests pass. What was
+not: no write to the production database, no scheduled run, no render of the
+strip or the Early card. CBB-R9.
+
+Same day: CBB-R8 closed. The owner had stored the dispatch token on Nov 13;
+production shows it in Vault and 14 rows in `loop_launches`, with `cbb-sync`
+dispatched hourly at :12.
+
+Rejected: having this app tally today's record from its own scoreboard. It
+would be instant, and it would be a second number beside the feed's.
+
 ### Nov 14 — TV-25: a home-screen icon for the overlay's phone remote
 
 Owner request. The control page the Fire TV app serves says "add this page to

@@ -6,7 +6,7 @@ import type { SeasonType } from "../../lib/season";
 import { NFL_PLAYOFF_ROUNDS } from "../../lib/week-range";
 import { CBB_MAX_DAY, cbbDateOfDay, cbbDayIndex, cbbDayLabel, cbbTipSlot, isCbbLive } from "../../lib/cbb";
 import type { Sport } from "../../lib/league";
-import { hitPct, wlText, yesterdayOf } from "../../lib/cbb-model-stats";
+import { dayOf, hitPct, wlText, yesterdayOf } from "../../lib/cbb-model-stats";
 import { onBetsChanged } from "../../lib/bets-changed";
 import { useFocusedGames, useStarred, useViewerTz } from "../../lib/client-store";
 import { useRundown, weekDirection } from "../../lib/fun-mode";
@@ -685,6 +685,9 @@ export function SlateView({
   const modelYesterday = hoops
     ? yesterdayOf(data.modelStats ?? null, cbbDateOfDay(data.seasonId, week))
     : null;
+  // The board's own day (CBB-21): the feed grades each game as it goes final,
+  // so this is a running tally while the slate is still being played.
+  const modelToday = hoops ? dayOf(data.modelStats ?? null, cbbDateOfDay(data.seasonId, week)) : null;
   const record = weekModelRecord(games);
   const finals = games.filter(isFinal).length;
 
@@ -795,8 +798,8 @@ export function SlateView({
           {hoops && <SummaryStat label="With a line" value={String(linedCount)} />}
           <SummaryStat label="Ranked" value={String(rankedCount)} />
           <SummaryStat label="Finals" value={`${finals}/${games.length}`} />
-          {/* CBB-16: the model's own record, from its own feed — the season
-              and the last day it graded. A link, because the full breakdown
+          {/* CBB-16: the model's own record, from its own feed — the season,
+              the day in view as it is graded (CBB-21), and the day before. A link, because the full breakdown
               (by tier, by edge, by day) is a page of its own. */}
           {hoops && data.modelStats && hitPct(data.modelStats.ats) !== null && (
             <a href="/model/cbb" className="flex shrink-0 items-stretch gap-2">
@@ -804,6 +807,13 @@ export function SlateView({
                 label="Model ATS · season"
                 value={`${wlText(data.modelStats.ats)} · ${hitPct(data.modelStats.ats)}%`}
               />
+              {modelToday && (
+                <SummaryStat
+                  label={`Model · ${cbbDayLabel(modelToday.date)}${finals < games.length ? " · so far" : ""}`}
+                  value={wlText(modelToday)}
+                  tone={modelToday.w >= modelToday.l ? "win" : "loss"}
+                />
+              )}
               {modelYesterday && (
                 <SummaryStat
                   label={`Model · ${cbbDayLabel(modelYesterday.date)}`}

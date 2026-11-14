@@ -6,6 +6,7 @@ import {
   isCbbModelStats,
   modelHitFor,
   wlText,
+  dayOf,
   yesterdayOf,
   type FeedGradedRecord,
   type FeedIndex,
@@ -152,5 +153,23 @@ describe("yesterdayOf", () => {
     expect(yesterdayOf(stats, "2026-11-11")?.date).toBe("2026-11-10");
     expect(yesterdayOf(stats, "2026-11-10")).toBeNull();
     expect(yesterdayOf(null, "2026-11-12")).toBeNull();
+  });
+});
+
+describe("dayOf", () => {
+  it("is the record for that date alone, and null before anything on it is graded", () => {
+    const stats = buildCbbModelStats(
+      { season_label: "2026-27", generated_at: "x", model: { version: "4.1.0" }, files: { season: "s.json" }, summary: {} },
+      [
+        { slate_date: "2026-11-13", result: { ats: "W" } },
+        { slate_date: "2026-11-14", result: { ats: "W" } },
+        { slate_date: "2026-11-14", result: { ats: "L" } },
+        // still being played: no result yet, so it is not in the tally
+        { slate_date: "2026-11-14", result: null },
+      ],
+    );
+    expect(dayOf(stats, "2026-11-14")).toEqual({ date: "2026-11-14", w: 1, l: 1, p: 0 });
+    expect(dayOf(stats, "2026-11-15")).toBeNull();
+    expect(dayOf(null, "2026-11-14")).toBeNull();
   });
 });

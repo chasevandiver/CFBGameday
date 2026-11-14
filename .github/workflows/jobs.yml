@@ -344,6 +344,10 @@ on:
     - cron: "50 23 * * *"
     - cron: "20 1 * * *"
     - cron: "50 2 * * *"
+    # CBB-21: the feed now grades hourly at :40 from 18:40 to 08:40 UTC, so the
+    # model's record moves as games finish. These pick each of those up about
+    # twenty-five minutes later, in the hours the slots above leave open.
+    - cron: "5 0,3-9,19,21 * * *"
     # Basketball settlement backstop (CBB-5). A bet normally settles within
     # minutes of the final — the database dispatches `cbb-grade` itself when a
     # finished game carries an open bet (0086) — so this is the net under
@@ -531,7 +535,7 @@ jobs:
             "0 10 * * 6") echo "task=weather" >> "$GITHUB_OUTPUT" ;;
             "0 13 * * 0") echo "task=ratings-update" >> "$GITHUB_OUTPUT" ;;
             "30 13 * * *") echo "task=nfl-grade" >> "$GITHUB_OUTPUT" ;;
-            "25 12,14 * * *"|"20 16,18,20,22 * * *"|"50 23 * * *"|"20 1 * * *"|"50 2 * * *") echo "task=cbb-sync" >> "$GITHUB_OUTPUT" ;;
+            "25 12,14 * * *"|"20 16,18,20,22 * * *"|"50 23 * * *"|"20 1 * * *"|"50 2 * * *"|"5 0,3-9,19,21 * * *") echo "task=cbb-sync" >> "$GITHUB_OUTPUT" ;;
             "40 13 * * *") echo "task=cbb-grade" >> "$GITHUB_OUTPUT" ;;
             "0 8,14,20 * * *"|"30 21 * * 6") echo "task=watchdog" >> "$GITHUB_OUTPUT" ;;
             "0 15 * * 0") echo "task=backup" >> "$GITHUB_OUTPUT" ;;
