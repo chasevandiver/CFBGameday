@@ -7,6 +7,9 @@
   carrying the mark, with the overlay's ticker strip along the bottom of the
   screen. Full bleed and opaque; iOS cuts the corners itself.
 
+  The same file draws the Fire TV launcher icon and, with #banner on the URL,
+  the 16:9 home-row banner.
+
   Render with: node tv-overlay/icon/render.mjs
 -->
 <html>
@@ -84,7 +87,23 @@
     background: linear-gradient(90deg, #2c7a58, #101c17 45%, #101c17 55%, #b98f25);
     box-shadow: 0 18px 30px rgba(0, 0, 0, .6);
   }
+  /* The Fire TV home-row banner (16:9): the same picture, with the app's name
+     beside it. Chosen by `#banner` on the URL; see render.mjs. */
+  .name { display: none; }
+  body.banner { width: 1820px; }
+  body.banner .name {
+    display: block; position: absolute; left: 1040px; top: 330px;
+    font: 800 138px/1 "Helvetica Neue", Arial, "Liberation Sans", sans-serif;
+    letter-spacing: 0.01em; color: #F4EFE2;
+    text-shadow: 0 10px 30px rgba(0, 0, 0, .6);
+  }
+  body.banner .name b { display: block; color: #E8B93D; font-weight: 800; }
 </style>
+<script>
+  addEventListener("DOMContentLoaded", () => {
+    if (location.hash === "#banner") document.body.classList.add("banner");
+  });
+</script>
 </head>
 <body>
   <div class="glow"></div>
@@ -115,6 +134,7 @@
       <div class="sheen"></div>
     </div>
   </div>
+  <div class="name"><b>TV</b>OVERLAY</div>
   <div class="neck"></div>
   <div class="foot"></div>
 </body>

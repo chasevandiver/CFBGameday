@@ -249,6 +249,12 @@ your home screen", and had no icon, so iOS used a screenshot of the page.
   name iOS also asks for); `control.html` links it and sets the home-screen
   title.
 
+- **The Fire TV launcher too** (same day, owner request). `render.mjs` also
+  cuts `ic_launcher.png` at 96, 144 and 192px and a 16:9 `banner.png`, the
+  same picture with the app's name beside it, replacing the placeholder
+  square and the text-only banner. Fire TV's home row shows the banner; the
+  icon appears in app lists and settings. Not looked at on a Fire TV.
+
 Checked: rendered and looked at 512, 180, 120 and 60px with iOS's corner
 mask. Not checked: the Kotlin was not compiled here (the APK workflow does
 that on push), and nothing was added to a real iPhone's home screen. An
