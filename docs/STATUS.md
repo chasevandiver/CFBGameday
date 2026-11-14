@@ -3149,8 +3149,42 @@ are open.
       Fire TV, and the feed's new reads have not run against production.**
 - [ ] **CBB-13 — bonus and team fouls on the slate card.** Needs a cheaper
       source than `/summary`, or a watch-list (games someone has bet).
-- [ ] **CBB-14 — tomorrow's lines.** The feed publishes one day; a card for
-      tomorrow has no line or model number until the morning run.
+- [x] **CBB-14 — tomorrow's lines and picks, the day before.** Owner,
+      2026-11-14: "is there a way to get the model to work the day before the
+      games to give picks to? I can't see it on the slate app until it fires."
+      cbbmodel now prices the next unpublished day at every line snapshot
+      (`cbb_model.py --early`, on the snapshot's own Odds API response, so no
+      extra requests) and publishes it as `feed/cbb/slate-next.json`.
+      `cbb-sync-feed` imports it with the predictions **unfrozen**: the card
+      shows Pick / Model / Conf and reads "Early ·" on its hit line, the
+      morning's frozen pick replaces it, and the grader never touches it.
+      The preview is not a pick of record in either repo. Scratch run
+      2026-11-14: 60 games priced, 57 with a line, importer dry-run stored
+      60 predictions and 57 snapshots. **Not run against the production
+      database, and no scheduled run has happened yet** (CBB-R9).
+- [x] **CBB-21 — the model's record moves as games finish.** Owner, same
+      message: "model today would be live on games." The feed graded once, the
+      next morning. cbbmodel now grades each pick when its game is final
+      (`results_tracker.py --live`, at every snapshot and hourly 1:40pm to
+      3:40am ET from a new `grade.yml`; ESPN only). This app still grades
+      nothing: the strip gains the board day's own record, labelled "so far"
+      while games are out, read from the same `cbb_model_stats` row, and
+      `cbb-sync` gains ten slots trailing the feed's hourly grading. Scratch
+      run: the season record went 174-128 to 205-145 with Nov 13 graded.
+      **Latency is two GitHub schedules in a row** — about half an hour when
+      both fire on time, hours when they do not (CBB-20). Storing the dispatch
+      token (CBB-R8) is what makes the second hop reliable.
+- [ ] **CBB-R9 — merge both branches, then watch one evening.** Both sit on
+      `claude/vigilant-curie-v0mks8`. cbbmodel first, with a merge commit
+      (its README: Vercel skips a SHA it already built as a preview). Then
+      confirm on a game night: a `grade.yml` run commits "graded finals", the
+      strip shows the board day's record before midnight, and tomorrow's
+      cards carry a pick marked Early.
+- [ ] **CBB-22 — the early pick is not graded anywhere.** By choice: the
+      record and CLV stay measured from the morning line, exactly as before.
+      If the owner bets the evening number, that is the number the record
+      should answer for, and the feed would need a second, separately
+      labelled record for it. Owner decision.
 - [x] **CBB-15 — a basketball model-record page.** Shipped as CBB-16
       (`/model/cbb`). The worry recorded here was wrong on one point:
       `/model/stats` lists CFB seasons only (`.eq("sport", "cfb")`), so it

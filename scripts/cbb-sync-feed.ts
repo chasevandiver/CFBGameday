@@ -12,6 +12,9 @@
  *                      only if the feed's numbers for the game change;
  *   - `line_snapshots` the feed's current line, appended only when it moves.
  *
+ * It then reads `slate-next.json`, when the feed has one, for the next day's
+ * preview (CBB-14): the same two tables, with the predictions unfrozen.
+ *
  * Everything about the translation — sign conventions, the self-contradiction
  * guard, when a row counts as changed — is pure and lives in
  * `src/lib/cbb-feed.ts`, tested against real feed records.
@@ -29,6 +32,7 @@ import {
   feedIsReadable,
   feedPrediction,
   feedSnapshot,
+  nextSlateIsAhead,
   predictionChanged,
   snapshotChanged,
   type FeedFile,
@@ -81,10 +85,10 @@ async function main() {
   console.log("cbb-sync-feed", JSON.stringify(result));
 }
 
-async function run(
-  sink: ReturnType<typeof createSink>["sink"],
-  db: ReturnType<typeof createSink>["db"],
-): Promise<Record<string, unknown>> {
+type Sink = ReturnType<typeof createSink>["sink"];
+type Db = ReturnType<typeof createSink>["db"];
+
+async function run(sink: Sink, db: Db): Promise<Record<string, unknown>> {
   const url = feedUrl();
   const feed = await fetchFeed(url);
   if (!feed) return { skipped: "feed_unavailable" };
@@ -95,14 +99,60 @@ async function run(
     );
   }
   const seasonId = cbbSeasonIdFromEndYear(feed.season);
+  const slate = await importSlate(sink, db, feed, false);
+  const next = await importNextSlate(sink, db, url, feed);
+  if (!db) return { ...slate, next };
+
+  const stats = await syncModelStats(db, url, seasonId);
+  return {
+    slate_date: feed.slate_date ?? null,
+    generated_at: feed.generated_at,
+    ...slate,
+    next,
+    stats,
+  };
+}
+
+/**
+ * Tomorrow's slate, a day early (CBB-14).
+ *
+ * The feed publishes `slate-next.json` beside `slate.json` from late morning:
+ * the next day's games priced on today's ratings and whatever lines are up,
+ * repriced at every snapshot. It is a preview. Its rows are stored unfrozen
+ * (see `feedPrediction`), so the morning's pick replaces them on the card and
+ * nothing here is ever graded.
+ *
+ * Best-effort, like the stats: the file is absent for the hours between the
+ * morning run and the first snapshot, and a missing preview is the state the
+ * app was in before this existed.
+ */
+async function importNextSlate(sink: Sink, db: Db, slateUrl: string, published: FeedFile): Promise<unknown> {
+  try {
+    const next = await fetchFeed(slateUrl.slice(0, slateUrl.lastIndexOf("/") + 1) + "slate-next.json");
+    if (!next) return "none";
+    if (!nextSlateIsAhead(published, next)) return `stale (${next.slate_date ?? "undated"})`;
+    return { slate_date: next.slate_date, ...(await importSlate(sink, db, next, true)) };
+  } catch (err) {
+    console.warn(`  next slate skipped: ${(err as Error).message}`);
+    return `skipped: ${(err as Error).message}`.slice(0, 160);
+  }
+}
+
+/**
+ * One slate file → `predictions` and `line_snapshots`. `early` marks the
+ * preview: unfrozen rows, compared against the last unfrozen row, and never
+ * written for a game that already carries the pick of record.
+ */
+async function importSlate(sink: Sink, db: Db, feed: FeedFile, early: boolean): Promise<Record<string, unknown>> {
+  const seasonId = cbbSeasonIdFromEndYear(feed.season);
   const now = new Date().toISOString();
   console.log(
-    `CBB feed ${feed.slate_date ?? "?"} · ${feed.records.length} records · ` +
+    `CBB feed ${feed.slate_date ?? "?"}${early ? " (early)" : ""} · ${feed.records.length} records · ` +
       `model ${feed.model.version} · generated ${feed.generated_at}`,
   );
 
   const allPreds = feed.records.flatMap((r) => {
-    const p = feedPrediction(r);
+    const p = feedPrediction(r, { early });
     return p ? [{ ...p, season_id: seasonId }] : [];
   });
   const allSnaps = feed.records.flatMap((r) => {
@@ -144,16 +194,19 @@ async function run(
   }
 
   // What is already stored, newest first, so each game's first row is its
-  // standing one. A day's slate is a few hundred rows at most.
-  const storedPred = new Map<number, { spread: string; total: string | null; vegas_spread: string | null }>();
+  // standing one. A day's slate is a few hundred rows at most. Frozen and
+  // unfrozen rows are kept apart: the morning's pick is always appended over
+  // a preview, and a preview is compared only with the preview before it.
+  type StoredPred = { spread: string; total: string | null; vegas_spread: string | null };
+  const storedPred = new Map<number, StoredPred>();
+  const storedEarly = new Map<number, StoredPred>();
   const storedSnap = new Map<number, { spread: string | null; total: string | null }>();
   for (const batch of chunk([...known], 300)) {
     const [p, s] = await Promise.all([
       db
         .from("predictions")
-        .select("game_id, spread, total, vegas_spread, created_at")
+        .select("game_id, spread, total, vegas_spread, frozen, created_at")
         .in("game_id", batch)
-        .eq("frozen", true)
         .order("created_at", { ascending: false })
         .limit(5000),
       db
@@ -166,28 +219,30 @@ async function run(
     ]);
     if (p.error) throw new Error(`predictions read: ${p.error.message}`);
     if (s.error) throw new Error(`snapshots read: ${s.error.message}`);
-    for (const r of (p.data ?? []) as Array<{ game_id: number; spread: string; total: string | null; vegas_spread: string | null }>)
-      if (!storedPred.has(r.game_id)) storedPred.set(r.game_id, r);
+    for (const r of (p.data ?? []) as Array<StoredPred & { game_id: number; frozen: boolean }>) {
+      const into = r.frozen ? storedPred : storedEarly;
+      if (!into.has(r.game_id)) into.set(r.game_id, r);
+    }
     for (const r of (s.data ?? []) as Array<{ game_id: number; spread: string | null; total: string | null }>)
       if (!storedSnap.has(r.game_id)) storedSnap.set(r.game_id, r);
   }
 
-  const newPreds = preds.kept.filter((p) => predictionChanged(storedPred.get(p.game_id), p));
+  const newPreds = preds.kept.filter((p) =>
+    early
+      ? !storedPred.has(p.game_id) && predictionChanged(storedEarly.get(p.game_id), p)
+      : predictionChanged(storedPred.get(p.game_id), p),
+  );
   const newSnaps = snaps.kept.filter((s) => snapshotChanged(storedSnap.get(s.game_id), s));
   for (const batch of chunk(newPreds, 500)) await sink.insert("predictions", batch);
   for (const batch of chunk(newSnaps, 500)) await sink.insert("line_snapshots", batch);
 
   console.log(`  ${newPreds.length} predictions, ${newSnaps.length} snapshots appended`);
-  const stats = await syncModelStats(db, url, seasonId);
   return {
-    slate_date: feed.slate_date ?? null,
-    generated_at: feed.generated_at,
     records: feed.records.length,
     predictions: newPreds.length,
     snapshots: newSnaps.length,
     unknown_games: preds.dropped.length,
     ...(distrusted ? { distrusted } : {}),
-    stats,
   };
 }
 

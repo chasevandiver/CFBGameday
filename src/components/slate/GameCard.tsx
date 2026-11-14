@@ -1016,10 +1016,14 @@ function HoopsModelChips({ game }: { game: GameView }) {
  */
 function HoopsHitLine({ game }: { game: GameView }) {
   const hit = game.modelHit;
-  if (!hoopsPickSide(game)) return <>Model: no bet — within half a point of the line</>;
-  if (!hit) return <>Model pick</>;
+  // CBB-14: a day-before preview is stored unfrozen. Say so on the line the
+  // eye lands on, because the morning run can move both numbers above it.
+  const early = game.prediction && !game.prediction.frozen ? "Early · " : "";
+  if (!hoopsPickSide(game)) return <>{early}Model: no bet — within half a point of the line</>;
+  if (!hit) return <>{early}Model pick</>;
   return (
     <>
+      {early}
       {hit.label}
       {" · "}
       {hit.pct === null ? (

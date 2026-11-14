@@ -67,6 +67,8 @@ export interface FeedFile {
   sport: string;
   season: number;
   slate_date?: string;
+  /** True on `slate-next.json`: a preview of a later day, not picks of record (CBB-14). */
+  early?: boolean;
   generated_at: string;
   model: { name: string; version: string | null };
   records: FeedRecord[];
@@ -155,7 +157,7 @@ export function trustedMarket(rec: FeedRecord, mk: FeedMarket | null): FeedMarke
 export interface FeedPrediction {
   game_id: number;
   model_version: string;
-  frozen: true;
+  frozen: boolean;
   spread: number;
   total: number | null;
   home_score: number | null;
@@ -181,11 +183,18 @@ export interface FeedPrediction {
  * `market`, not `closing`: it is the line the model's edge was measured
  * against, which is what the grader's CLV compares the close to.
  *
+ * The one exception is a record from `slate-next.json` (`early`, CBB-14): the
+ * day-before preview, which the feed reprices at every snapshot and replaces
+ * with the morning's pick. That is stored `frozen: false` — this table's
+ * existing word for a price that is not a receipt — so the slate shows it,
+ * the standing-row rule prefers the morning's frozen row the moment it
+ * lands, and the grader, which settles frozen rows only, never grades it.
+ *
  * Flags map the feed's own two tiers: its "best bet" (an edge inside the
  * band that repo found worth flagging) is this app's BIG_EDGE, and a "value"
  * play (edge ≥ 3) is EDGE. The thresholds are that model's, applied there.
  */
-export function feedPrediction(rec: FeedRecord): FeedPrediction | null {
+export function feedPrediction(rec: FeedRecord, opts: { early?: boolean } = {}): FeedPrediction | null {
   const gameId = Number(rec.game_id);
   const m = rec.model;
   if (!Number.isSafeInteger(gameId) || m.spread_home === null || m.home_win_prob === null) return null;
@@ -194,7 +203,7 @@ export function feedPrediction(rec: FeedRecord): FeedPrediction | null {
   return {
     game_id: gameId,
     model_version: cbbModelVersion(m.version),
-    frozen: true,
+    frozen: !opts.early,
     spread: m.spread_home,
     total: m.total,
     home_score: m.home_score,
@@ -219,8 +228,26 @@ export function feedPrediction(rec: FeedRecord): FeedPrediction | null {
       confidence: m.confidence,
       tempo: m.tempo ?? null,
       bookmaker: rec.market?.bookmaker ?? null,
+      ...(opts.early ? { early: true } : {}),
     },
   };
+}
+
+/**
+ * Whether `slate-next.json` is a preview this importer should store: a
+ * readable slate dated strictly after the published one. The feed removes the
+ * file once its day is published, but a cached copy can outlive that, and a
+ * stale preview stored after the morning's pick would be yesterday's opinion
+ * arriving late.
+ */
+export function nextSlateIsAhead(
+  published: Pick<FeedFile, "slate_date">,
+  next: Pick<FeedFile, "schema_version" | "sport" | "kind" | "slate_date">,
+): boolean {
+  const iso = /^\d{4}-\d{2}-\d{2}$/;
+  if (!feedIsReadable(next) || !next.slate_date || !iso.test(next.slate_date)) return false;
+  if (!published.slate_date || !iso.test(published.slate_date)) return false;
+  return next.slate_date > published.slate_date;
 }
 
 /** What makes a stored prediction stale against the feed's. */

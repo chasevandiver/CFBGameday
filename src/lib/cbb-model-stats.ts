@@ -167,6 +167,15 @@ export function yesterdayOf(stats: CbbModelStats | null, today: string): ({ date
   return stats?.days.find((d) => d.date < today) ?? null;
 }
 
+/**
+ * The record for `date` itself, or null when nothing on it has been graded.
+ * The feed grades a game once it is final (hourly through the slate), so on
+ * the day being played this is a running tally, not the day's result.
+ */
+export function dayOf(stats: CbbModelStats | null, date: string): ({ date: string } & Wl) | null {
+  return stats?.days.find((d) => d.date === date) ?? null;
+}
+
 export function isCbbModelStats(v: unknown): v is CbbModelStats {
   if (typeof v !== "object" || v === null) return false;
   const o = v as Record<string, unknown>;
