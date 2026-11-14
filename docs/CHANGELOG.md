@@ -263,6 +263,10 @@ this importer's dry-run read both files from it. 645 tests pass. What was
 not: no write to the production database, no scheduled run, no render of the
 strip or the Early card. CBB-R9.
 
+Same day: CBB-R8 closed. The owner had stored the dispatch token on Nov 13;
+production shows it in Vault and 14 rows in `loop_launches`, with `cbb-sync`
+dispatched hourly at :12.
+
 Rejected: having this app tally today's record from its own scoreboard. It
 would be instant, and it would be a second number beside the feed's.
 

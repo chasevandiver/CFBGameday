@@ -3171,9 +3171,11 @@ are open.
       while games are out, read from the same `cbb_model_stats` row, and
       `cbb-sync` gains ten slots trailing the feed's hourly grading. Scratch
       run: the season record went 174-128 to 205-145 with Nov 13 graded.
-      **Latency is two GitHub schedules in a row** — about half an hour when
-      both fire on time, hours when they do not (CBB-20). Storing the dispatch
-      token (CBB-R8) is what makes the second hop reliable.
+      **Latency:** the feed's half is a GitHub schedule, which can run
+      late (CBB-20). This app's half is not: the database launcher dispatches
+      `cbb-sync` at :12 every hour from 6am to 11pm ET (CBB-R8, closed), so a
+      feed graded at :40 is on the strip about half an hour later. After 11pm
+      ET only the GitHub slots remain.
 - [ ] **CBB-R9 — merge both branches, then watch one evening.** Both sit on
       `claude/vigilant-curie-v0mks8`. cbbmodel first, with a merge commit
       (its README: Vercel skips a SHA it already built as a preview). Then
@@ -3229,7 +3231,12 @@ name, restarted from `main`.
       `supabase/tests/cbb.sql`.
 - [x] **CBB-R7 — apply `0088` to production.** Applied 2026-11-13;
       `cbb-sync-launcher-hourly` is in `cron.job`.
-- [ ] **CBB-R8 / LIVE-10 — the dispatch token was never stored.** Found
+- [x] **CBB-R8 / LIVE-10 — the dispatch token was never stored.**
+      *Closed 2026-11-14 on a read of production: `github_actions_dispatch`
+      has been in `vault.secrets` since 2026-11-13 20:54 UTC, and
+      `loop_launches` holds 14 rows, among them `cbb-sync` at 01:12, 02:12,
+      03:12 and 04:12 UTC, `cbb-grade` three times and `live` once. All three
+      launchers dispatch. The original finding follows.* Found
       2026-11-13 on the first production call: `launch_cbb_sync_if_needed()`
       returned `no_token`. `vault.secrets` is empty and `loop_launches` has
       no rows, so no database launcher has ever dispatched — not this one,
