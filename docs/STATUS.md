@@ -3268,6 +3268,43 @@ name, restarted from `main`.
   imported opinion under their own `model_version` (`cbb-…`); its own feed
   reports 57.9% ATS with closing-line value at −0.1 as of Nov 11.
 
+### 2.8 The Jarvis door, 2026-11-19
+
+Owner, about the voice assistant on his home server: "I don't want the picks
+for bets logged in Jarvis, I want them in my app." Asked how Jarvis should be
+let in, he chose an endpoint here over a saved sign-in on the Jarvis box.
+
+- [x] **JARVIS-1 — a door for the owner's home assistant.** Three routes under
+      `/api/jarvis`: `context` (who the owner may log for, and the bet form's
+      window of games with teams named), `bets` (log one spread, moneyline or
+      total on a game) and `bets/void`. Guarded by a bearer token; with
+      `JARVIS_DOOR_TOKEN` or `JARVIS_DOOR_USER_ID` unset the routes answer 404.
+      **The door does not go around RLS.** Each request is carried out on a
+      session minted for the owner (`generateLink` then `verifyOtp`, the call
+      `actions/invites.ts` already makes), so the insert meets the same policy
+      (0083), grant (`can_log_bet_for`) and sanitizer (0013) as the bet form,
+      and a proxy row still carries the byline. The service client mints the
+      session and touches no table. `storedLine` and `resolveBettor` moved
+      from `actions/bets.ts` to `lib/bet-write.ts` so the form and the door
+      share them; moved, not changed. Two things the door adds because nobody
+      is looking at a screen: a repeat of the same side of the same market on
+      the same game is refused (`copyBet`'s rule), and a void that touched no
+      row is a 404. No migration. 2,414 tests pass, 21 of them new.
+- [ ] **JARVIS-R1 — turn it on, then watch the first bet.** Owner-run. Set
+      `JARVIS_DOOR_TOKEN` (32+ random characters) and `JARVIS_DOOR_USER_ID`
+      (the owner's `profiles.id`) in Vercel, redeploy, and save the same token
+      on the Jarvis box. **Nothing here has run against the production
+      project.** In particular the session mint has only been type-checked: if
+      `verifyOtp` refuses a `magiclink` hash minted this way, `context`
+      answers 502 "Could not sign in as the owner" and no bet is written. Say
+      one pick for yourself and one for a member, then check both rows on the
+      ledger: bettor, byline, home-perspective line, `placed_at`.
+- Residual, recorded: each cold function mints one session for the owner and
+  keeps its access token in memory for up to an hour. Sessions are not
+  revoked; they expire. Volume is a handful of bets a week.
+- Residual, recorded: a bet logged through the door after kickoff carries the
+  time it was logged, as from the form (0083, §6).
+
 ---
 
 ## 3. Decisions owed by the owner

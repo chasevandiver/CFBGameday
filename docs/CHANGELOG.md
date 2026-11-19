@@ -234,6 +234,38 @@ shipping it.
 
 ## Log
 
+### Nov 19 — JARVIS-1: a door for the owner's home assistant
+
+Owner: "I don't want the picks for bets logged in Jarvis, I want them in my
+app that I created in the CFBGameday repo." Jarvis is the voice assistant on
+his home server; it hears "Hayden is on Texas plus 4", finds the game, and
+until today kept its own pick log. It now logs here instead.
+
+- **Three routes under `/api/jarvis`**, behind a bearer token: `context`,
+  `bets`, `bets/void`. Unconfigured, they are 404.
+- **Carried out as the owner, under RLS.** The route mints a session for
+  `JARVIS_DOOR_USER_ID` and runs every query on it. The database still decides
+  who he may log for and still stamps `placed_at`; a member's row still needs
+  his byline.
+- **Narrower than the form.** Spread, moneyline or total, on a game. Futures,
+  team totals and first halves stay where there is a screen.
+- **A repeat is refused**, and the new row's id is returned so Jarvis can
+  offer Void.
+- `storedLine` and `resolveBettor` moved to `lib/bet-write.ts`.
+
+What was checked: lint, typecheck, 2,414 tests (the row the route writes, the
+away-spread flip, the byline, the three refusals, the roster against the
+grant). What was not: anything against the production project. The session
+mint is the part to watch (JARVIS-R1).
+
+Rejected: writing the row with the service client. Shorter, and it skips the
+insert policy and the sanitizer, both of which key on the database role. The
+ledger's claim that nobody can quietly put a number on someone else's record
+would then rest on this route's TypeScript instead of on the database.
+
+Not chosen by the owner: a saved sign-in on the Jarvis box, with no change
+here. Offered first; he preferred the secret to live in this app's settings.
+
 ### Nov 14 — CBB-14, CBB-21: tomorrow's picks a day early, and a record that moves during the slate
 
 Owner: "Is there a way to get the model stats to show up as games are

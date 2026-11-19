@@ -2,49 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { CONFIDENCE_TIERS, type ConfidenceTier } from "../../lib/db-types";
-import { canLogBetFor } from "../../lib/log-for";
-import { homeLineForSide } from "../../lib/slate";
+import { resolveBettor, storedLine, type Bettor } from "../../lib/bet-write";
 import { createClient } from "../../lib/supabase/server";
-
-/**
- * Bet forms and the slip speak in the bettor's number ("UNC +6.5"); the
- * `bets` table stores spread-style lines home-perspective (−6.5), which is
- * what the grader (`jobs-core`), `liveSpreadStatus` and `spreadClv` all read.
- * Totals are side-agnostic and pass through.
- */
-const SPREAD_STYLE = new Set(["spread", "first_half"]);
-function storedLine(betType: string, side: string | null, line: number | null): number | null {
-  if (line === null || side === null || !SPREAD_STYLE.has(betType)) return line;
-  return homeLineForSide(side, line);
-}
 
 export interface BetActionResult {
   ok: boolean;
   message?: string;
-}
-
-/**
- * Whose row this is (0083).
- *
- * Every write below is the signed-in user's own by default. A betting-group
- * admin may instead name a member of that group, and the row lands as that
- * member's bet with the admin's id in `logged_by`. The policy on `bets` would
- * refuse an unauthorised proxy row on its own; asking first turns a bare RLS
- * error into a sentence, and keeps the "who" decision in one place for the
- * three actions that need it.
- */
-type Bettor = { userId: string; loggedBy: string | null };
-
-async function resolveBettor(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  callerId: string,
-  forUserId: string | null,
-): Promise<Bettor | { refused: string }> {
-  if (!forUserId || forUserId === callerId) return { userId: callerId, loggedBy: null };
-  if (!(await canLogBetFor(supabase, forUserId))) {
-    return { refused: "You can only log bets for a member of a betting group you run" };
-  }
-  return { userId: forUserId, loggedBy: callerId };
 }
 
 /** The pages a proxy write shows up on, beyond the ledger the actions already refresh. */
